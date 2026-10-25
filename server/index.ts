@@ -20,7 +20,7 @@ import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
-import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
+import { backlogSummary, candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView } from "./queue.js";
@@ -331,7 +331,7 @@ app.post<{ Body: { tvdbIds?: number[]; on?: boolean } }>("/api/managed", async (
   const ids = (req.body?.tvdbIds ?? []).map(id).slice(0, 500);
   return setManaged(ids, req.body?.on !== false);
 });
-app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId).slice(0, 6) })), grabs: listGrabs(30) }));
+app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30) }));
 app.put<{ Params: { tvdbId: string }; Body: { dryRun?: boolean } }>("/api/managed/:tvdbId", async (req) => {
   writable();
   if (typeof req.body?.dryRun !== "boolean") throw fail("dryRun must be true or false");
@@ -495,6 +495,7 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
 app.get("/api/grabs", async () => listGrabs(100));
+app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/repair/recent", async () => ({ mode: getSettings().repair.mode, checks: recentChecks(100) }));
 app.post("/api/repair/run", async () => {
   writable();

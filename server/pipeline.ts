@@ -19,7 +19,7 @@ import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
-import { db, dbState } from "./db.js";
+import { cache, db, dbState } from "./db.js";
 import { burnedInFact } from "./audit.js";
 import { learnFromVerify, refreshSeriesEpisodes, sourceKey } from "./library.js";
 import { clientToSonarr, localPath as realLocalPath } from "./paths.js";
@@ -114,7 +114,7 @@ function isBlocked(c: { guid: string; title: string }) {
 function scheduleAfter(episodeIds: number[], outcome: "done" | "retry", why: string) {
   const now = Date.now();
   for (const e of episodeIds)
-    db.prepare("UPDATE search_state SET state = ?, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'").run(outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
+    db.prepare("UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'").run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
 }
 
 /** Starts a grab (or records what it would do in dry-run). */
@@ -356,6 +356,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     }
   }
   setState(row.id, "done");
+  for (const e of mapped) cache.prepare("UPDATE episodes SET has_file = 1 WHERE id = ?").run(e);
   scheduleAfter(mapped, "done", `imported ${row.release}`);
   const labels = eps.filter((e) => mapped.includes(e.id)).map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`);
   logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Imported ✓ as ${labels.join(", ")}: ${[...new Set(verdicts)].join("; ") || "checked"}`, detail: { grabId: row.id, final: true } });

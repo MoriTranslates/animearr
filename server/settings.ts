@@ -74,6 +74,12 @@ export interface Settings {
    * off, log (report only; the default), or auto (blocklist + re-search when two signals agree), capped per day.
    */
   repair: { mode: "off" | "log" | "auto"; maxPerDay: number };
+  /**
+   * Missing-episode search for managed shows (Sonarr's "Wanted > Missing", Huntarr-style): older aired, monitored
+   * episodes without a file are searched a few per hour; ones not found are tried again every retryDays.
+   * Off by default: turning it on can grab many episodes for shows that aren't in dry-run.
+   */
+  backlog: { enabled: boolean; perHour: number; retryDays: number };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -109,6 +115,7 @@ const DEFAULTS: Settings = {
   defaultProfileId: "default",
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
   repair: { mode: "log", maxPerDay: 10 },
+  backlog: { enabled: false, perHour: 4, retryDays: 7 },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -119,7 +126,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -137,6 +144,8 @@ const RANGES: Record<string, [number, number]> = {
   "managed.minConfidence": [50, 100],
   "sync.intervalHours": [1, 168],
   "repair.maxPerDay": [1, 100],
+  "backlog.perHour": [1, 24],
+  "backlog.retryDays": [1, 60],
 };
 
 export const MASK = "••••••••";

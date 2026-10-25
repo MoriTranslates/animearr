@@ -177,6 +177,7 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
           ))}
         </div>
       </div>
+      <Backlog s={s} upd={upd} />
       <div className="card pad stack">
         <h2>{t("repair.title")}</h2>
         <p className="muted small">{t("repair.help")}</p>
@@ -215,6 +216,43 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
         <label>
           {t("settings.safety.confidence")}
           <NumberInput value={m.minConfidence} min={50} max={100} onChange={(v) => setM((x) => ({ ...x, minConfidence: v }))} label={t("settings.safety.confidence")} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/** Missing-episode search: off by default, rate-limited, with what it would do. */
+function Backlog({ s, upd }: { s: S; upd: Upd }) {
+  const sum = useLoad(() => api<{ missing: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
+  const [confirm, setConfirm] = useState(false);
+  const b = s.backlog;
+  const setB = (fn: (x: S["backlog"]) => S["backlog"]) => upd((x) => ({ ...x, backlog: fn(x.backlog) }));
+  const st = sum.data?.states ?? {};
+  return (
+    <div className="card pad stack">
+      <h2>{t("backlog.title")}</h2>
+      <p className="muted small">{t("backlog.help")}</p>
+      <Toggle checked={b.enabled} onChange={(v) => (v ? setConfirm(true) : setB((x) => ({ ...x, enabled: false })))} label={t("backlog.enabled")} help={t("backlog.enabledHelp")} />
+      {confirm && (
+        <Confirm title={t("backlog.confirmTitle")} confirmLabel={t("backlog.confirmOk")} onClose={() => setConfirm(false)} onConfirm={() => (setB((x) => ({ ...x, enabled: true })), setConfirm(false))}>
+          <p>{t("backlog.confirmBody", { live: sum.data?.liveShows ?? 0, missing: sum.data?.missingLive ?? 0, perHour: b.perHour })}</p>
+          <p className="muted small">{t("backlog.confirmSave")}</p>
+        </Confirm>
+      )}
+      {sum.data && (
+        <p className="small">
+          {t("backlog.summary", { missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
+        </p>
+      )}
+      <div className="form">
+        <label>
+          {t("backlog.perHour")}
+          <NumberInput value={b.perHour} min={1} max={24} onChange={(v) => setB((x) => ({ ...x, perHour: v }))} label={t("backlog.perHour")} />
+        </label>
+        <label>
+          {t("backlog.retryDays")}
+          <NumberInput value={b.retryDays} min={1} max={60} onChange={(v) => setB((x) => ({ ...x, retryDays: v }))} label={t("backlog.retryDays")} />
         </label>
       </div>
     </div>

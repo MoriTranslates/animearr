@@ -260,7 +260,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
   const state = opts.replace ? "replace" : "waiting";
   for (const e of ids)
-    db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, next_at = excluded.next_at, attempts = 0, last_why = ?").run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
+    db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, last_why = ?").run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
 }
 
 const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });

@@ -260,6 +260,12 @@ const USER_MIGRATIONS: string[] = [
    CREATE INDEX checked_imports_at ON checked_imports (at);
    CREATE INDEX checked_imports_dl ON checked_imports (download_id);
    CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // 5: missing-episode (backlog) search: which search rows are backlog ones
+  `ALTER TABLE search_state ADD COLUMN kind TEXT NOT NULL DEFAULT 'new';
+   CREATE INDEX search_state_kind ON search_state (kind, state, next_at);
+   CREATE INDEX search_state_tvdb ON search_state (tvdb_id, air_utc);
+   CREATE TABLE backlog_searches (at INTEGER NOT NULL);
+   CREATE INDEX backlog_searches_at ON backlog_searches (at);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

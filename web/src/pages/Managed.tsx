@@ -5,7 +5,7 @@ import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, relTime, Spinner, Toggle, useLoad, usePageTitle, useToast, Why } from "../ui";
 
-const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { waiting: "info", retry: "warn", "would-grab": "accent", grabbed: "good", "gave-up": "bad", done: "good" };
+const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { waiting: "info", retry: "warn", "would-grab": "accent", grabbed: "good", "gave-up": "bad", done: "good", backlog: "info", replace: "warn" };
 
 export function Managed({ status }: { status: Status }) {
   usePageTitle(t("managed.title"));

@@ -12,7 +12,7 @@ import { logDecision } from "./activity.js";
 import { prowlarrConfigured, prowlarrSearch } from "./arr/prowlarr.js";
 import { setSeriesMonitored } from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
-import { cache, db, dbState, setJob } from "./db.js";
+import { cache, db, dbState, setJob, tx } from "./db.js";
 import { startGrab, type Candidate } from "./pipeline.js";
 import { decisionSummary, deepSearch, identifyContext, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
@@ -145,6 +145,7 @@ interface StateRow {
   last_at: number | null;
   state: string;
   last_why: string;
+  kind?: string;
 }
 
 /** Creates/updates search_state rows for aired-or-airing episodes of managed shows that have no file. */
@@ -166,10 +167,15 @@ export function planSchedule(now = Date.now()) {
   return added;
 }
 
-export function scheduleFor(tvdbId?: number) {
-  const rows = (tvdbId ? db.prepare("SELECT * FROM search_state WHERE tvdb_id = ? ORDER BY air_utc DESC").all(tvdbId) : db.prepare("SELECT * FROM search_state ORDER BY next_at").all()) as unknown as StateRow[];
+export function scheduleFor(tvdbId?: number, limit = 500) {
+  const rows = (tvdbId ? db.prepare("SELECT * FROM search_state WHERE tvdb_id = ? ORDER BY air_utc DESC LIMIT ?").all(tvdbId, limit) : db.prepare("SELECT * FROM search_state ORDER BY next_at LIMIT ?").all(limit)) as unknown as StateRow[];
+  const info = new Map<number, { season: number; episode: number; title: string | null }>();
+  for (let i = 0; i < rows.length; i += 400) {
+    const ids = rows.slice(i, i + 400).map((r) => r.episode_id);
+    for (const e of cache.prepare(`SELECT id, season, episode, title FROM episodes WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) as { id: number; season: number; episode: number; title: string | null }[]) info.set(e.id, e);
+  }
   return rows.map((r) => {
-    const e = cache.prepare("SELECT season, episode, title FROM episodes WHERE id = ?").get(r.episode_id) as { season: number; episode: number; title: string | null } | undefined;
+    const e = info.get(r.episode_id);
     return { episodeId: r.episode_id, tvdbId: r.tvdb_id, season: e?.season ?? null, episode: e?.episode ?? null, title: e?.title ?? null, airUtc: r.air_utc, nextAt: r.next_at, attempts: r.attempts, lastAt: r.last_at, state: r.state, why: r.last_why };
   });
 }
@@ -181,6 +187,7 @@ function toCandidate(r: SearchResult): Candidate {
 /** Searches one episode of a managed show and grabs (or, in dry-run, logs) the best acceptable release. */
 export async function decideEpisode(st: StateRow, now = Date.now()) {
   const s = getSettings().managed;
+  const backlog = st.kind === "backlog" && st.state !== "replace";
   const m = listManaged().find((x) => x.tvdbId === st.tvdb_id);
   if (!m) return;
   const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
@@ -208,22 +215,142 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
   if (best && ok.includes(best)) {
     const out = await startGrab({ tvdbId: st.tvdb_id, episodeIds: [st.episode_id], candidate: toCandidate(best), fallbacks: ok.filter((x) => x !== best).map(toCandidate), origin: "managed" });
-    const state = out.dryRun ? "would-grab" : out.failed ? "retry" : "grabbed";
-    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ? WHERE episode_id = ?").run(attempts, now, state === "retry" ? now + backoff : now, state, out.message, out.id, st.episode_id);
+    const failedState = backlog ? "backlog" : "retry";
+    const state = out.dryRun ? "would-grab" : out.failed ? failedState : "grabbed";
+    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ? WHERE episode_id = ?").run(attempts, now, out.failed ? now + (backlog ? DAY : backoff) : now, state, out.message, out.id, st.episode_id);
+    return;
+  }
+  const label = `${m.title} ${res.targets[0] ? `S${res.targets[0].season}E${res.targets[0].episode}` : ""}`;
+  if (backlog) {
+    // Missing-episode search: no give-up, just try again in retryDays (RSS can still bring it forward).
+    const days = getSettings().backlog.retryDays;
+    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ? WHERE episode_id = ?").run(attempts, now, now + days * DAY, `${why} (${res.found} releases seen)`, st.episode_id);
+    logDecision("skip", { tvdbId: st.tvdb_id, title: m.title, episodeIds: [st.episode_id], why: `Missing-episode search, ${label}: ${why}. Next try in ${days} days.` });
     return;
   }
   const gaveUp = attempts >= s.maxAttempts;
   db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ? WHERE episode_id = ?").run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why} (${res.found} releases seen)`, st.episode_id);
-  logDecision("skip", { tvdbId: st.tvdb_id, title: m.title, episodeIds: [st.episode_id], why: `${m.title} ${res.targets[0] ? `S${res.targets[0].season}E${res.targets[0].episode}` : ""}: ${why}. ${gaveUp ? `Gave up after ${attempts} searches.` : `Next try in ${Math.round(backoff / 60_000)} min.`}` });
+  logDecision("skip", { tvdbId: st.tvdb_id, title: m.title, episodeIds: [st.episode_id], why: `${label}: ${why}. ${gaveUp ? `Gave up after ${attempts} searches.` : `Next try in ${Math.round(backoff / 60_000)} min.`}` });
 }
 
 /** Leaving dry-run: episodes that were only "would grab" get searched for real on the next tick. */
 export function releaseDryRunDecisions(tvdbId?: number) {
   const now = Date.now();
   const r = tvdbId
-    ? db.prepare("UPDATE search_state SET state = 'waiting', next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab' AND tvdb_id = ?").run(now, tvdbId)
-    : db.prepare("UPDATE search_state SET state = 'waiting', next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab'").run(now);
+    ? db.prepare("UPDATE search_state SET state = CASE kind WHEN 'backlog' THEN 'backlog' ELSE 'waiting' END, next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab' AND tvdb_id = ?").run(now, tvdbId)
+    : db.prepare("UPDATE search_state SET state = CASE kind WHEN 'backlog' THEN 'backlog' ELSE 'waiting' END, next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab'").run(now);
   return Number(r.changes);
+}
+
+async function decideSafely(st: StateRow, now: number) {
+  try {
+    await decideEpisode(st, now);
+  } catch (e) {
+    // Errors count as an attempt, so a permanently broken episode (removed series, outside the allowed roots)
+    // ends in "gave-up" instead of retrying forever. Backlog rows just wait a day.
+    const attempts = st.attempts + 1;
+    if (st.kind === "backlog") {
+      db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, last_why = ?, next_at = ? WHERE episode_id = ?").run(attempts, now, `Error: ${(e as Error).message}`, now + DAY, st.episode_id);
+      return;
+    }
+    const gaveUp = attempts >= getSettings().managed.maxAttempts;
+    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, state = ?, last_why = ?, next_at = ? WHERE episode_id = ?").run(attempts, now, gaveUp ? "gave-up" : "retry", `Error: ${(e as Error).message}`, now + 30 * 60_000, st.episode_id);
+  }
+}
+
+const HOUR = 3_600_000;
+const BACKLOG_STATES = "('backlog', 'retry')"; // a failed backlog grab comes back as 'retry' but stays in the backlog's budget
+
+/**
+ * Closes schedule rows whose episode got a file in the meantime (Sonarr, a manual import), was unmonitored, left
+ * Sonarr or isn't managed any more. Runs even while the missing-episode search is off. 'replace' rows are left
+ * alone: they have a (bad) file by design.
+ */
+function closeFound() {
+  const managedIds = new Set(listManaged().map((m) => m.tvdbId));
+  const epInfo = cache.prepare("SELECT has_file, monitored FROM episodes WHERE id = ?");
+  const close = db.prepare("UPDATE search_state SET state = 'done', last_why = ? WHERE episode_id = ?");
+  const rows = db.prepare("SELECT episode_id, tvdb_id, kind FROM search_state WHERE state IN ('backlog', 'waiting', 'retry')").all() as { episode_id: number; tvdb_id: number; kind: string }[];
+  tx(db, () => {
+    for (const r of rows) {
+      const e = epInfo.get(r.episode_id) as { has_file: number; monitored: number } | undefined;
+      if (!e) close.run("no longer in Sonarr", r.episode_id);
+      else if (e.has_file) close.run("Sonarr has a file", r.episode_id);
+      else if (r.kind === "backlog" && (!e.monitored || !managedIds.has(r.tvdb_id))) close.run(!e.monitored ? "not monitored" : "not managed", r.episode_id);
+    }
+  });
+}
+
+/**
+ * Plans the missing-episode search: aired (more than 30 days ago, newer ones are the normal schedule's), monitored
+ * episodes of managed shows without a file. Episodes the normal schedule gave up on join after retryDays.
+ */
+export function planBacklog(now = Date.now()) {
+  closeFound();
+  const b = getSettings().backlog;
+  if (!b.enabled) return 0;
+  const cutoff = now - b.retryDays * DAY;
+  db.prepare("UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?").run(now, cutoff);
+  const insert = db.prepare("INSERT INTO search_state (episode_id, tvdb_id, air_utc, next_at, state, kind) VALUES (?, ?, ?, ?, 'backlog', 'backlog') ON CONFLICT(episode_id) DO NOTHING");
+  // A 'done' episode that is missing again (file deleted) rejoins, but never right after AnimeArr imported it
+  // (the cache can lag behind the import until the next refresh).
+  const reopen = db.prepare(
+    "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
+  );
+  const listEps = cache.prepare("SELECT id, air_utc FROM episodes WHERE series_id = ? AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?");
+  let added = 0;
+  tx(db, () => {
+    for (const m of listManaged()) {
+      for (const e of listEps.all(m.seriesId, now - 30 * DAY) as { id: number; air_utc: number }[]) {
+        const n = Number(insert.run(e.id, m.tvdbId, e.air_utc, now).changes);
+        added += n || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
+      }
+    }
+  });
+  return added;
+}
+
+/** Backlog searches in the last hour (an explicit log: one row per search, whatever its outcome). */
+const searchesLastHour = (now: number) => (db.prepare("SELECT COUNT(*) AS n FROM backlog_searches WHERE at > ?").get(now - HOUR) as { n: number }).n;
+
+let lastPlan = 0;
+/**
+ * Missing-episode searches that are due, within the hourly budget. RSS finds first, then newest episodes first (like
+ * Sonarr's Wanted list). Planning (a scan of the library) runs at most every 30 minutes.
+ */
+export async function backlogPass(now = Date.now(), opts: { plan?: boolean } = {}) {
+  if (opts.plan ?? now - lastPlan >= 30 * 60_000) {
+    lastPlan = now;
+    planBacklog(now);
+  }
+  const b = getSettings().backlog;
+  if (!b.enabled) return 0;
+  db.prepare("DELETE FROM backlog_searches WHERE at < ?").run(now - DAY);
+  const take = Math.min(2, b.perHour - searchesLastHour(now));
+  if (take <= 0) return 0;
+  const due = db.prepare(`SELECT * FROM search_state WHERE kind = 'backlog' AND state IN ${BACKLOG_STATES} AND next_at <= ? ORDER BY (last_why LIKE 'New release seen%') DESC, air_utc DESC LIMIT ?`).all(now, take) as unknown as StateRow[];
+  for (const st of due) {
+    // Counts against the hourly budget whatever the outcome (Prowlarr down included).
+    db.prepare("INSERT INTO backlog_searches (at) VALUES (?)").run(now);
+    db.prepare("UPDATE search_state SET last_at = ? WHERE episode_id = ?").run(now, st.episode_id);
+    await decideSafely({ ...st, kind: "backlog" }, now);
+  }
+  return due.length;
+}
+
+/** What the missing-episode search has to do (for Settings). */
+export function backlogSummary(now = Date.now()) {
+  const b = getSettings().backlog;
+  const ids = listManaged().map((m) => m.seriesId);
+  const missing = ids.length
+    ? (cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE series_id IN (${ids.map(() => "?").join(",")}) AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?`).get(...ids, now - 30 * DAY) as { n: number }).n
+    : 0;
+  const live = listManaged().filter((m) => !isDryRun(m.dryRun)).map((m) => m.seriesId);
+  const missingLive = live.length
+    ? (cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE series_id IN (${live.map(() => "?").join(",")}) AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?`).get(...live, now - 30 * DAY) as { n: number }).n
+    : 0;
+  const rows = db.prepare("SELECT state, COUNT(*) AS n FROM search_state WHERE kind = 'backlog' GROUP BY state").all() as { state: string; n: number }[];
+  return { ...b, missing, missingLive, liveShows: live.length, states: Object.fromEntries(rows.map((r) => [r.state, r.n])), searchedLastHour: searchesLastHour(now) };
 }
 
 let ticking = false;
@@ -233,19 +360,10 @@ export async function managedTick(now = Date.now()) {
   ticking = true;
   try {
     planSchedule(now);
-    const due = db.prepare("SELECT * FROM search_state WHERE state IN ('waiting', 'retry', 'replace') AND next_at <= ? ORDER BY next_at LIMIT 3").all(now) as unknown as StateRow[];
-    for (const st of due) {
-      try {
-        await decideEpisode(st, now);
-      } catch (e) {
-        // Errors count as an attempt, so a permanently broken episode (removed series, outside the allowed roots)
-        // ends in "gave-up" instead of retrying forever.
-        const attempts = st.attempts + 1;
-        const gaveUp = attempts >= getSettings().managed.maxAttempts;
-        db.prepare("UPDATE search_state SET attempts = ?, state = ?, last_why = ?, next_at = ? WHERE episode_id = ?").run(attempts, gaveUp ? "gave-up" : "retry", `Error: ${(e as Error).message}`, now + 30 * 60_000, st.episode_id);
-      }
-    }
-    setJob("managed", "done", `${listManaged().length} managed shows; ${due.length} episode searches this round${isDryRun(null) ? " (dry-run)" : ""}`);
+    const due = db.prepare("SELECT * FROM search_state WHERE state IN ('waiting', 'retry', 'replace') AND kind <> 'backlog' AND next_at <= ? ORDER BY next_at LIMIT 3").all(now) as unknown as StateRow[];
+    for (const st of due) await decideSafely(st, now);
+    const backlog = await backlogPass(now);
+    setJob("managed", "done", `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`);
   } finally {
     ticking = false;
   }
@@ -254,7 +372,7 @@ export async function managedTick(now = Date.now()) {
 /** RSS-like pass: Prowlarr's recent releases; a release that maps to a waiting episode makes it due now. */
 export async function rssTick(now = Date.now()) {
   if (dbState.corrupt || !prowlarrConfigured() || !listManaged().length) return;
-  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace')").all() as { episode_id: number; tvdb_id: number }[];
+  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog')").all() as { episode_id: number; tvdb_id: number }[];
   if (!waiting.length) return;
   const wanted = new Map(waiting.map((w) => [w.episode_id, w.tvdb_id]));
   const recent = await prowlarrSearch("", { limit: 100 });
