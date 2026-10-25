@@ -47,6 +47,8 @@ export function App() {
   const [, setSearch] = useState(location.search);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Dismissed for a day, then it comes back while the default password is still in use.
+  const [dismissed, setDismissed] = useState(() => Date.now() - store.get("dismissDefaultPw", 0) < 86_400_000);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -113,6 +115,16 @@ export function App() {
           </span>
         </header>
         <main id="main" tabIndex={-1}>
+          {status.defaultPassword && !dismissed && (
+            <div className="banner warn row between" role="alert">
+              <span>
+                {t("security.defaultBanner")} · <Link to="/settings?tab=security">{t("security.defaultBannerLink")}</Link>
+              </span>
+              <button className="small ghost" onClick={() => (setDismissed(true), store.set("dismissDefaultPw", Date.now()))}>
+                {t("security.dismiss")}
+              </button>
+            </div>
+          )}
           {status.warnings?.map((w) => (
             <p key={w} className="banner warn" role="alert">
               {w}

@@ -27,6 +27,11 @@ the downloads (`/data`) and anime libraries (`/media/Anime`, `/media/AnimeArr`) 
 AnimeArr can check files with ffprobe before importing them.
 Keep `/config` on a local disk (on Unraid `/mnt/cache/appdata`, not `/mnt/user`): SQLite can be damaged on network or FUSE filesystems.
 
+## First login
+
+The default login is **admin / animearr**. The app shows a banner until you change it in Settings → Security, where you can also
+tick "No password on my local network" (applies to private LAN addresses only; anything through a reverse proxy still logs in).
+
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) (portions ported from Sonarr; based on Tastearr).

@@ -38,6 +38,8 @@ export interface Status {
   librarySeries?: number;
   warnings?: string[];
   uiLanguage?: string;
+  defaultPassword?: boolean;
+  bypassLocal?: boolean;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";

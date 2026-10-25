@@ -4,8 +4,8 @@ import { applyTheme, query } from "../App";
 import { t } from "../i18n";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "connections" | "profile" | "safety" | "paths" | "system";
-const TABS: Tab[] = ["connections", "profile", "safety", "paths", "system"];
+type Tab = "connections" | "profile" | "safety" | "paths" | "security" | "system";
+const TABS: Tab[] = ["connections", "profile", "safety", "paths", "security", "system"];
 
 export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
   usePageTitle(t("settings.title"));
@@ -51,7 +51,8 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       {tab === "safety" && <Safety s={s} upd={upd} />}
       {tab === "paths" && <Paths s={s} upd={upd} />}
       {tab === "system" && <System status={status} />}
-      {tab !== "system" && (
+      {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
+      {tab !== "system" && tab !== "security" && (
         <div className="sticky-actions">
           <button className="primary" disabled={!dirty} onClick={save}>
             {t("common.save")}
@@ -397,3 +398,68 @@ function System({ status }: { status: Status }) {
   );
 }
 
+
+function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: () => void }) {
+  const toast = useToast();
+  const [cur, setCur] = useState("");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [user, setUser] = useState(s.auth.username);
+  const [bypass, setBypass] = useState(status.bypassLocal ?? s.auth.bypassLocal);
+  async function change(e: React.FormEvent) {
+    e.preventDefault();
+    if (pw !== pw2) return toast(t("security.mismatch"), true);
+    try {
+      await api("/auth/account", { method: "PUT", body: { currentPassword: cur, username: user, password: pw } });
+      setCur("");
+      setPw("");
+      setPw2("");
+      toast(t("security.changed"));
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  }
+  async function setMode(on: boolean) {
+    try {
+      await api("/auth/mode", { method: "PUT", body: { bypassLocal: on } });
+      setBypass(on);
+      toast(on ? t("security.bypassOn") : t("security.bypassOff"));
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  }
+  return (
+    <div className="stack">
+      <form className="card pad stack" onSubmit={change}>
+        <h2>{t("security.password")}</h2>
+        <div className="form">
+          <label>
+            {t("security.username")}
+            <input value={user} onChange={(e) => setUser(e.target.value)} autoComplete="username" />
+          </label>
+          <label>
+            {t("security.current")}
+            <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" required />
+          </label>
+          <label>
+            {t("security.new")}
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" minLength={8} required />
+          </label>
+          <label>
+            {t("security.confirm")}
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" minLength={8} required />
+          </label>
+        </div>
+        <button className="primary self-start">{t("common.save")}</button>
+      </form>
+      <div className="card pad stack">
+        <label className="check">
+          <input type="checkbox" checked={bypass} onChange={(e) => void setMode(e.target.checked)} /> {t("security.bypass")}
+        </label>
+        <p className="muted small">{t("security.bypassHelp")}</p>
+      </div>
+    </div>
+  );
+}

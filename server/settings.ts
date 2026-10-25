@@ -290,6 +290,25 @@ export async function checkPassword(pw: string, stored: string) {
   return want.length === got.length && crypto.timingSafeEqual(got, want);
 }
 
+/** Fresh installs start with this login; the app nags until the password is changed. */
+export const DEFAULT_LOGIN = { username: "admin", password: "animearr" } as const;
+
+/** Creates the default account on a fresh install (no account yet). */
+export async function ensureDefaultAccount() {
+  if (dbState.corrupt || getSettings().auth.passwordHash) return false;
+  await setAccount(DEFAULT_LOGIN.username, DEFAULT_LOGIN.password);
+  return true;
+}
+
+let defaultCheck: { hash: string; result: boolean } | null = null;
+/** True while the account password is still the default one (cached per stored hash, so it costs one scrypt). */
+export async function usingDefaultPassword() {
+  const hash = getSettings().auth.passwordHash;
+  if (!hash) return false;
+  if (defaultCheck?.hash !== hash) defaultCheck = { hash, result: await checkPassword(DEFAULT_LOGIN.password, hash) };
+  return defaultCheck.result;
+}
+
 export function safeEqual(a: string | undefined, b: string) {
   if (!a || !b) return false;
   const x = Buffer.from(a);

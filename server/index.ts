@@ -21,7 +21,7 @@ import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, 
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
-import { checkPassword, getSettings, isMasked, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
+import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
 
 const WEB_DIR = path.join(ROOT_DIR, "dist", "web");
@@ -98,6 +98,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     librarySeries: (cache.prepare("SELECT COUNT(*) AS n FROM series").get() as { n: number }).n,
     warnings: [...startupWarnings, ...(dbState.corrupt ? [`The database failed its integrity check (${dbState.detail}). AnimeArr is read-only until you restore a backup (System → Backups).`] : [])],
     uiLanguage: s.ui.language,
+    defaultPassword: await usingDefaultPassword(),
+    bypassLocal: s.auth.bypassLocal,
   };
 });
 
@@ -524,6 +526,6 @@ every(60_000, async () => {
   }
 }, "rss");
 
+if (await ensureDefaultAccount()) app.log.warn(`First start: log in with ${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password}, then change the password in Settings → Security.`);
 await app.listen({ host: "0.0.0.0", port: PORT });
-if (!getSettings().auth.passwordHash)
-  app.log.warn(`No account yet. Open AnimeArr from your home network to create one, or use setup code ${SETUP_TOKEN} from elsewhere (one-time, changes on restart).`);
+if (await usingDefaultPassword()) app.log.warn(`The login is still the default (${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password}). Change it in Settings → Security.`);
