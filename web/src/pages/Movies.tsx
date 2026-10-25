@@ -143,7 +143,7 @@ export function MoviePage({ id }: { id: number }) {
       </div>
       {!m.allowed && <p className="banner warn">{t("movies.notAllowed", { path: m.path })}</p>}
       <div className="row">
-        <button className="primary" disabled={searching || !m.allowed} onClick={() => void search()}>
+        <button className="primary" disabled={searching} onClick={() => void search()}>
           {searching ? t("common.working") : t("movies.search")}
         </button>
       </div>
@@ -155,7 +155,7 @@ export function MoviePage({ id }: { id: number }) {
           {!res.results.length && <Empty>{t("movies.noResults")}</Empty>}
           <div className="list">
             {res.results.map((r) => (
-              <ResultCard key={r.guid} r={r} onGrab={() => setGrab(r)} />
+              <ResultCard key={r.guid} r={r} onGrab={m.allowed ? () => setGrab(r) : undefined} />
             ))}
           </div>
         </div>
