@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { api, sxe } from "../api";
+import { api, fmtSize, sxe } from "../api";
 import { navigate, query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
-type Tab = "language" | "gaps" | "specials" | "checks";
+type Tab = "language" | "gaps" | "specials" | "checks" | "recycle";
 
 export function Audit() {
   usePageTitle(t("audit.title"));
   const initial = (query().get("tab") as Tab) || "gaps";
-  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks"].includes(initial) ? initial : "gaps");
+  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks", "recycle"].includes(initial) ? initial : "gaps");
   const pick = (x: Tab) => {
     setTab(x);
     history.replaceState(null, "", `/audit?tab=${x}`);
@@ -20,7 +20,7 @@ export function Audit() {
       <h1>{t("audit.title")}</h1>
       <p className="muted small">{t(tab === "checks" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       <div className="tabs" role="tablist">
-        {(["gaps", "language", "specials", "checks"] as Tab[]).map((x) => (
+        {(["gaps", "language", "specials", "checks", "recycle"] as Tab[]).map((x) => (
           <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
             {t(`audit.tab.${x}`)}
           </button>
@@ -30,6 +30,7 @@ export function Audit() {
       {tab === "language" && <Language />}
       {tab === "specials" && <Specials />}
       {tab === "checks" && <Checks />}
+      {tab === "recycle" && <Recycle />}
     </section>
   );
 }
@@ -266,6 +267,55 @@ function Checks() {
             )}
             <p className="mono small">{c.release}</p>
             <p className="small">{c.why}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface RecycleItem { path: string; series: string | null; tvdbId: number | null; size: number; deletedAt: number; purgeAt: number | null }
+
+/** Sonarr's recycle bin, anime shows only (read-only: restore by moving the file back). */
+function Recycle() {
+  const [fresh, setFresh] = useState(0);
+  const d = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; reachable: boolean; items: RecycleItem[]; totalCount: number; totalBytes: number; truncated: boolean; error?: string }>(`/recycle${fresh ? "?fresh=1" : ""}`), [fresh]);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return <Spinner label={t("app.loading")} />;
+  const r = d.data;
+  if (r.error) return <ErrorBox error={r.error} retry={d.reload} />;
+  const refresh = (
+    <button className="small self-start" onClick={() => setFresh((x) => x + 1)}>
+      {t("recycle.refresh")}
+    </button>
+  );
+  if (!r.configured)
+    return (
+      <div className="stack">
+        <p className="warn-text">⚠ {t("recycle.none")}</p>
+        {refresh}
+      </div>
+    );
+  return (
+    <div className="stack">
+      <p className="muted">{r.cleanupDays ? t("recycle.intro", { path: r.path, days: r.cleanupDays }) : t("recycle.introForever", { path: r.path })}</p>
+      {!r.reachable && <p className="muted small">{t("recycle.unreachable")}</p>}
+      {r.reachable && !r.items.length && <Empty>{t("recycle.empty")}</Empty>}
+      {refresh}
+      {r.reachable && !!r.items.length && <p className="small">{t("recycle.total", { n: r.totalCount, size: fmtSize(r.totalBytes) })}{r.truncated ? ` ${t("recycle.truncated", { n: r.items.length })}` : ""}</p>}
+      <div className="list">
+        {r.items.map((i) => (
+          <article key={i.path} className="card pad stack">
+            {i.tvdbId && i.series ? (
+              <ShowLink tvdbId={i.tvdbId} title={i.series}>
+                <strong className="clamp2">{i.series}</strong>
+              </ShowLink>
+            ) : null}
+            <p className="mono small">{i.path}</p>
+            <p className="muted small">
+              {t("recycle.item", { size: fmtSize(i.size), when: dateTime(i.deletedAt) })}
+              {i.purgeAt ? ` · ${t("recycle.purge", { when: dateTime(i.purgeAt) })}` : ""}
+            </p>
           </article>
         ))}
       </div>

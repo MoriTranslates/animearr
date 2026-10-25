@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize, sxe } from "./api";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Chip, Confirm, dateTime, Spinner, useToast, Why } from "./ui";
+import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -113,6 +113,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
           }}
         >
           <p>{files.length === 1 ? t("ep.deleteBody", { file: files[0][0] }) : t("ep.deleteMany", { n: files.length })}</p>
+          <RecycleNote />
           <ul className="plain small">
             {files.map(([file, eps]) => (
               <li key={file}>
@@ -315,5 +316,16 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
         {actions.ui}
       </aside>
     </div>
+  );
+}
+
+/** Where a deleted file goes: Sonarr's recycle bin (and for how long), or nowhere. */
+function RecycleNote() {
+  const r = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; error?: string }>("/recycle/setting"), []);
+  if (!r.data || r.data.error) return <p className="small muted">{t("recycle.maybe")}</p>;
+  return r.data.configured ? (
+    <p className="small">{r.data.cleanupDays ? t("recycle.goesTo", { path: r.data.path, days: r.data.cleanupDays }) : t("recycle.goesToForever", { path: r.data.path })}</p>
+  ) : (
+    <p className="small warn-text">⚠ {t("recycle.none")}</p>
   );
 }

@@ -6,6 +6,7 @@
 import path from "node:path";
 import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
+import { recycleSetting } from "./recycle.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -183,6 +184,8 @@ export interface EpisodeDeps {
   refresh(seriesId: number): Promise<void>;
   search: typeof deepSearch;
   grab: typeof startGrab;
+  /** Sonarr's recycle-bin setting, for the delete log line. */
+  recycle?: () => Promise<{ configured: boolean; path: string; cleanupDays: number }>;
 }
 export const realEpisodeDeps: EpisodeDeps = {
   episode: sonarr.getEpisode,
@@ -191,6 +194,7 @@ export const realEpisodeDeps: EpisodeDeps = {
   refresh: (id) => refreshSeriesEpisodes(id),
   search: deepSearch,
   grab: startGrab,
+  recycle: () => recycleSetting(undefined, Date.now(), true),
 };
 
 function guard(tvdbId: number) {
@@ -209,6 +213,8 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
   const deleted: { episodeId: number; file: string; episodes: string[] }[] = [];
   const skipped: { episodeId: number; why: string }[] = [];
   const done = new Set<number>();
+  const bin = deps.recycle ? await deps.recycle().catch(() => null) : null;
+  const where = !bin ? "if Sonarr has a recycle bin, the file is there" : bin.configured ? `it is in Sonarr's recycle bin (${bin.path})${bin.cleanupDays ? ` for ${bin.cleanupDays} days` : ""}` : "Sonarr has no recycle bin, so it is gone for good";
   for (const eid of episodeIds) {
     if (!own.has(eid)) {
       skipped.push({ episodeId: eid, why: "not an episode of this show" });
@@ -236,7 +242,7 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
         title: s.title,
         episodeIds: sharing.length ? sharing.map((x) => x.id) : [eid],
         release: f.sceneName ?? null,
-        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; if Sonarr has a recycle bin, the file is there.`,
+        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.`,
         detail: { kind: "delete", fileId: ep.episodeFileId, path: f.path },
       });
     } catch (e) {

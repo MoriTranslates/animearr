@@ -25,6 +25,7 @@ import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
+import { recycleSetting, recycleStatus } from "./recycle.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -496,6 +497,14 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 });
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
+app.get<{ Querystring: { fresh?: string } }>("/api/recycle", async (req) => recycleStatus(undefined, Date.now(), req.query.fresh === "1"));
+app.get("/api/recycle/setting", async () => {
+  try {
+    return await recycleSetting(undefined, Date.now(), true);
+  } catch (e) {
+    return { configured: false, path: "", cleanupDays: 0, error: (e as Error).message };
+  }
+});
 app.get("/api/repair/recent", async () => ({ mode: getSettings().repair.mode, checks: recentChecks(100) }));
 app.post("/api/repair/run", async () => {
   writable();

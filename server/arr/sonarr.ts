@@ -161,6 +161,9 @@ export interface SonarrQueueItem {
   series?: { title: string; tvdbId: number; path: string };
   episode?: { seasonNumber: number; episodeNumber: number };
 }
+/** Media management settings (read-only): where Sonarr's recycle bin is and how long it keeps files. */
+export const getMediaManagement = () => call<{ recycleBin?: string; recycleBinCleanupDays?: number }>("GET", "/config/mediamanagement");
+
 /** Sonarr's download queue, with series and episode (read-only). */
 export async function getQueue() {
   const out: SonarrQueueItem[] = [];
