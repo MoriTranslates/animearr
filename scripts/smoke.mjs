@@ -42,16 +42,22 @@ await send("Emulation.setDeviceMetricsOverride", { width: W, height: Hh, deviceS
 await send("Network.setCookie", { name: sid[0], value: sid[1], url: base });
 const pages = (process.env.PAGES ?? "/,/managed,/shows,/audit?tab=gaps,/audit?tab=language,/audit?tab=specials,/search?tvdbId=328670&eps=,/search?tab=identify,/activity,/settings,/settings?tab=safety,/settings?tab=system,/show/328670").split(",");
 const report = [];
-for (const p of pages) {
+for (const entry of pages) {
+  // "path|css-selector" clicks that element after loading (e.g. open the episode sheet).
+  const [p, click] = entry.split("|");
   const before = errors.length;
   await send("Page.navigate", { url: base + p });
   await new Promise((r) => setTimeout(r, Number(process.env.WAIT ?? 3500)));
+  if (click) {
+    await send("Runtime.evaluate", { expression: `document.querySelector(${JSON.stringify(click)})?.click()` });
+    await new Promise((r) => setTimeout(r, 2500));
+  }
   const shot = await send("Page.captureScreenshot", { format: "png" });
-  const name = p.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "home";
+  const name = (entry.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "home").slice(0, 60);
   fs.writeFileSync(path.join(out, `${name}-${W}.png`), Buffer.from(shot.result.data, "base64"));
   const ev = await send("Runtime.evaluate", { expression: "JSON.stringify({h1: document.querySelector('h1')?.textContent ?? null, text: document.body.innerText.length, scrollW: document.documentElement.scrollWidth, err: document.querySelector('.error-box')?.textContent ?? null})", returnByValue: true });
   const info = JSON.parse(ev.result.result.value);
-  report.push({ page: p, ...info, overflowX: info.scrollW > W, consoleErrors: errors.slice(before) });
+  report.push({ page: entry, ...info, overflowX: info.scrollW > W, consoleErrors: errors.slice(before) });
 }
 console.log(JSON.stringify(report, null, 1));
 ws.close();

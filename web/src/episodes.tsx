@@ -237,7 +237,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               <button className="primary" onClick={actions.search}>
                 ⌕ {t("ep.search")}
               </button>
-              <button onClick={actions.regrab}>↻ {t("ep.regrab")}</button>
+              {(d.file || d.status !== "unaired") && <button onClick={actions.regrab}>↻ {t("ep.regrab")}</button>}
               {d.file && (
                 <button className="danger" onClick={actions.remove}>
                   🗑 {t("ep.delete")}

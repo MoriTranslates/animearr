@@ -326,3 +326,12 @@ dl.facts .wide { grid-column: 1 / -1; }
   .agenda-entry { grid-template-columns: auto 1fr; }
   .agenda-status { grid-column: 2; }
 }
+
+.episodes-toolbar { row-gap: var(--space-2); }
+.later { border-top: 1px solid var(--line); }
+.later > summary { padding: var(--space-2) var(--space-4); cursor: pointer; }
+@media (max-width: 760px) {
+  .tabbar a span { line-height: 1; font-size: 1.05rem; }
+  .tabbar a { min-height: 56px; justify-content: center; }
+  .episodes-toolbar h2 { width: 100%; }
+}

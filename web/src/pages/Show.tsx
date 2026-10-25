@@ -138,7 +138,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {!h.allowed && <p className="banner warn">{t("series.outsideRoot")}</p>}
 
       {/* ---------------- episodes */}
-      <div className="row between">
+      <div className="row between episodes-toolbar">
         <h2>{t("show.episodes")}</h2>
         <div className="row">
           <div className="seg" role="group">
@@ -189,7 +189,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               </div>
             ) : (
               <ul className="ep-list">
-                {rows.map((r) => (
+                {ordered(rows, nextId).main.map((r) => (
                   <li key={r.id} className={`ep-row${r.id === nextId ? " next" : ""}${sel.has(r.id) ? " selected" : ""}`}>
                     {selecting && <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={sxe(r.season, r.episode)} />}
                     <button className="ep-main" onClick={() => (selecting ? toggle(r.id) : setOpen(r.id))}>
@@ -210,6 +210,27 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   </li>
                 ))}
               </ul>
+            )}
+            {!grid && ordered(rows, nextId).later.length > 0 && (
+              <details className="later">
+                <summary className="muted small">{t("ep.upcoming", { n: ordered(rows, nextId).later.length })}</summary>
+                <ul className="ep-list">
+                  {ordered(rows, nextId).later.map((r) => (
+                    <li key={r.id} className="ep-row">
+                      <button className="ep-main" onClick={() => setOpen(r.id)}>
+                        <span className="ep-num">{r.episode}</span>
+                        <span className="ep-text">
+                          <span className="ep-title clamp2">{r.title ?? t("ep.tba")}</span>
+                          <span className="ep-meta muted small">{airLabel(r.airUtc)}</span>
+                        </span>
+                        <span className="ep-status">
+                          <StatusPill e={r} lang={lang} />
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </details>
         );
@@ -237,6 +258,14 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => (void d.reload(), void act.reload())} managedLive={managedLive} dryRun={dryRun} lang={lang} />}
     </section>
   );
+}
+
+/** Season rows: the next unaired episode first, then aired ones newest first; later unaired ones go under "Upcoming". */
+function ordered(rows: EpisodeRow[], nextId: number | undefined) {
+  const aired = rows.filter((r) => r.status !== "unaired" || r.file);
+  const next = rows.find((r) => r.id === nextId);
+  const later = rows.filter((r) => r.status === "unaired" && !r.file && r.id !== nextId).sort((a, b) => a.episode - b.episode);
+  return { main: [...(next ? [next] : []), ...aired], later };
 }
 
 function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number; path: string; onChanged: () => void }) {
