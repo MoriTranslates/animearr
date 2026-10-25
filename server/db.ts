@@ -266,6 +266,11 @@ const USER_MIGRATIONS: string[] = [
    CREATE INDEX search_state_tvdb ON search_state (tvdb_id, air_utc);
    CREATE TABLE backlog_searches (at INTEGER NOT NULL);
    CREATE INDEX backlog_searches_at ON backlog_searches (at);`,
+  // 6: movie grabs (Radarr movie id; tvdb_id/series_id stay null for those)
+  `ALTER TABLE grabs ADD COLUMN movie_id INTEGER;
+   ALTER TABLE grabs ADD COLUMN replace_file INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE blocklist ADD COLUMN movie_id INTEGER;
+   CREATE INDEX grabs_movie ON grabs (movie_id);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

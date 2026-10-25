@@ -4,6 +4,7 @@ import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
 import { Audit } from "./pages/Audit";
 import { Calendar } from "./pages/Calendar";
+import { MoviePage, Movies } from "./pages/Movies";
 import { Queue } from "./pages/Queue";
 import { Home } from "./pages/Home";
 import { Login, Setup } from "./pages/Login";
@@ -19,6 +20,7 @@ const NAV: { path: string; label: I18nKey; icon: string; phone: boolean }[] = [
   { path: "/calendar", label: "nav.calendar", icon: "▤", phone: true },
   { path: "/managed", label: "nav.managed", icon: "★", phone: true },
   { path: "/shows", label: "nav.shows", icon: "▦", phone: false },
+  { path: "/movies", label: "nav.movies", icon: "▶", phone: false },
   { path: "/audit", label: "nav.audit", icon: "✓", phone: true },
   { path: "/search", label: "nav.search", icon: "⌕", phone: false },
   { path: "/queue", label: "nav.queue", icon: "↓", phone: false },
@@ -94,7 +96,7 @@ export function App() {
   if (!status.loggedIn) return <Login onDone={refreshStatus} />;
 
   const section = "/" + (path.split("/")[1] ?? "");
-  const active = (p: string) => (p === "/" ? path === "/" : section === p || (p === "/shows" && section === "/show"));
+  const active = (p: string) => (p === "/" ? path === "/" : section === p || (p === "/shows" && section === "/show") || (p === "/movies" && section === "/movie"));
 
   return (
     <ToastProvider>
@@ -138,6 +140,8 @@ export function App() {
           {section === "/managed" && <Managed status={status} />}
           {section === "/shows" && <Shows status={status} />}
           {section === "/show" && <Show tvdbId={Number(path.split("/")[2])} />}
+          {section === "/movies" && <Movies />}
+          {section === "/movie" && <MoviePage id={Number(path.split("/")[2])} />}
           {section === "/calendar" && <Calendar />}
           {section === "/queue" && <Queue />}
           {section === "/audit" && <Audit />}

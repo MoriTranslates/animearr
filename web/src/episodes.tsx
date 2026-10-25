@@ -48,9 +48,9 @@ export function airLabel(ms: number | null) {
 }
 
 /** Whole-card link for a show (poster + title + chevron). Inner controls belong outside it. */
-export function ShowLink({ tvdbId, title, children, className = "" }: { tvdbId: number; title: string; children: ReactNode; className?: string }) {
+export function ShowLink({ tvdbId, title, children, className = "", to }: { tvdbId: number | null; title: string; children: ReactNode; className?: string; to?: string }) {
   return (
-    <Link to={`/show/${tvdbId}`} className={`card-link ${className}`}>
+    <Link to={to ?? `/show/${tvdbId}`} className={`card-link ${className}`}>
       {children}
       <span className="chevron" aria-hidden="true">
         ›

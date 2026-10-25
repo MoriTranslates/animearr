@@ -1,0 +1,199 @@
+import { useMemo, useState } from "react";
+import { api, fmtSize, type SearchResult } from "../api";
+import { Link } from "../App";
+import { t } from "../i18n";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { ResultCard } from "./Search";
+
+interface MovieItem { id: number; tmdbId: number | null; title: string; year: number | null; cover: string | null; monitored: boolean; status: "have" | "missing" | "downloading" | "attention"; allowed: boolean; verdict: { ok: boolean | null; why: string } | null; quality: string | null }
+
+type Filter = "all" | "missing" | "problems";
+const STATUS_TONE = { have: "good", missing: "warn", downloading: "accent", attention: "warn" } as const;
+
+/** Anime movies from Radarr, Sonarr-style poster grid. */
+export function Movies() {
+  usePageTitle(t("movies.title"));
+  const d = useLoad(() => api<MovieItem[]>("/movies"), []);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [q, setQ] = useState("");
+  const shown = useMemo(() => {
+    const ql = q.trim().toLowerCase();
+    return (d.data ?? []).filter((m) => (filter === "all" || (filter === "missing" && m.status === "missing") || (filter === "problems" && m.verdict?.ok === false)) && (!ql || m.title.toLowerCase().includes(ql)));
+  }, [d.data, filter, q]);
+  return (
+    <section>
+      <h1>{t("movies.title")}</h1>
+      <p className="muted">{t("movies.intro")}</p>
+      <div className="filters card pad">
+        <div className="chips pickable" role="group" aria-label={t("common.filter")}>
+          {(["all", "missing", "problems"] as Filter[]).map((f) => (
+            <button key={f} className={`chip${filter === f ? " on" : ""}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {t(`movies.filter.${f}`)}
+            </button>
+          ))}
+        </div>
+        <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("movies.searchPlaceholder")} aria-label={t("movies.searchPlaceholder")} />
+      </div>
+      {d.error && <ErrorBox error={d.error} retry={d.reload} />}
+      {d.loading && !d.data && <Spinner label={t("app.loading")} />}
+      {d.data && !d.data.length && <Empty>{t("movies.none")}</Empty>}
+      {d.data && !!d.data.length && !shown.length && <Empty>{t("shows.empty")}</Empty>}
+      <div className="poster-grid">
+        {shown.map((m) => (
+          <article key={m.id} className="poster-card">
+            <Link to={`/movie/${m.id}`} className="poster-link card-link">
+              <Cover src={m.cover} alt={m.title} size="lg" />
+              <span className="poster-title clamp2">
+                {m.title}
+                {m.year ? ` (${m.year})` : ""}
+              </span>
+            </Link>
+            <div className="poster-body">
+              <div className="chips">
+                <Chip tone={STATUS_TONE[m.status]}>{t(`movies.status.${m.status}`)}</Chip>
+                {m.verdict?.ok === false && <Chip tone="bad">✕ {t("movies.notProfile")}</Chip>}
+                {!m.allowed && <Chip tone="warn">{t("chip.outsideRoot")}</Chip>}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface MovieDetail {
+  id: number;
+  title: string;
+  originalTitle: string | null;
+  altTitles: string[];
+  year: number | null;
+  runtime: number | null;
+  path: string;
+  cover: string | null;
+  monitored: boolean;
+  allowed: boolean;
+  file: { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; resolution: string | null } | null;
+  verdict: { ok: boolean | null; why: string } | null;
+  active: { id: number; state: string; progress: number | null; release: string } | null;
+  grabs: { id: number; at: number; release: string; state: string; error: string | null }[];
+}
+interface MovieSearch { queries: string[]; found: number; matched: number; skipped: Record<string, number>; errors: string[]; tookMs: number; results: SearchResult[]; dryRun: boolean }
+
+/** One movie: file and language check, search and grab (imported through Radarr). */
+export function MoviePage({ id }: { id: number }) {
+  const toast = useToast();
+  const d = useLoad(() => api<MovieDetail>(`/movies/${id}`), [id]);
+  usePageTitle(d.data?.title ?? t("movies.title"));
+  const [res, setRes] = useState<MovieSearch | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [grab, setGrab] = useState<SearchResult | null>(null);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return <Spinner label={t("app.loading")} />;
+  const m = d.data;
+  const search = async () => {
+    setSearching(true);
+    try {
+      setRes(await api<MovieSearch>(`/movies/${id}/search`, { body: {} }));
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setSearching(false);
+    }
+  };
+  return (
+    <section className="stack">
+      <p className="small">
+        <Link to="/movies">← {t("movies.title")}</Link>
+      </p>
+      <div className="row top">
+        <Cover src={m.cover} alt={m.title} size="lg" />
+        <div className="stack grow">
+          <h1 className="clamp2">
+            {m.title}
+            {m.year ? ` (${m.year})` : ""}
+          </h1>
+          {m.originalTitle && m.originalTitle !== m.title && <p className="muted small">{m.originalTitle}</p>}
+          <div className="chips">
+            {m.runtime ? <Chip>{t("movies.runtime", { min: m.runtime })}</Chip> : null}
+            {!m.monitored && <Chip tone="info">{t("movies.unmonitored")}</Chip>}
+            {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
+          </div>
+        </div>
+      </div>
+      <div className="card pad stack">
+        <h2>{t("movies.file")}</h2>
+        {m.file ? (
+          <>
+            <p className="mono small">{m.file.path}</p>
+            <div className="chips">
+              {m.file.quality && <Chip>{m.file.quality}</Chip>}
+              {m.verdict && <Chip tone={m.verdict.ok === false ? "bad" : m.verdict.ok ? "good" : "info"}>{m.verdict.ok === false ? "✕ " : m.verdict.ok ? "✓ " : ""}{m.verdict.why}</Chip>}
+            </div>
+            <p className="small muted">{t("movies.tracks", { audio: m.file.audio.join(", ") || "?", subs: m.file.subs.join(", ") || "—" })}</p>
+          </>
+        ) : (
+          <p className="warn-text">{t("movies.noFile")}</p>
+        )}
+        {m.active && (
+          <p className="small">
+            {t("movies.active", { release: m.active.release, state: t(`grab.${m.active.state}` as never) })} · <Link to="/queue">{t("nav.queue")}</Link>
+          </p>
+        )}
+      </div>
+      {!m.allowed && <p className="banner warn">{t("movies.notAllowed", { path: m.path })}</p>}
+      <div className="row">
+        <button className="primary" disabled={searching || !m.allowed} onClick={() => void search()}>
+          {searching ? t("common.working") : t("movies.search")}
+        </button>
+      </div>
+      {res && (
+        <div className="stack">
+          <p className="muted small">{t("movies.searchSummary", { matched: res.matched, found: res.found, s: (res.tookMs / 1000).toFixed(1) })}</p>
+          {!!Object.keys(res.skipped).length && <Why lines={Object.entries(res.skipped).map(([k, n]) => `${n} × ${k}`)} />}
+          {!!res.errors.length && <Why lines={res.errors} />}
+          {!res.results.length && <Empty>{t("movies.noResults")}</Empty>}
+          <div className="list">
+            {res.results.map((r) => (
+              <ResultCard key={r.guid} r={r} onGrab={() => setGrab(r)} />
+            ))}
+          </div>
+        </div>
+      )}
+      {!!m.grabs.length && (
+        <div className="card pad stack">
+          <h2>{t("movies.history")}</h2>
+          {m.grabs.map((g) => (
+            <p key={g.id} className="small">
+              <span className="mono">{g.release}</span> · {t(`grab.${g.state}` as never)} · {dateTime(g.at)}
+              {g.error ? ` · ${g.error}` : ""}
+            </p>
+          ))}
+        </div>
+      )}
+      {grab && res && (
+        <Confirm
+          title={t("search.grabTitle")}
+          confirmLabel={t("search.grabConfirm")}
+          onClose={() => setGrab(null)}
+          onConfirm={async () => {
+            try {
+              const r = await api<{ message: string }>(`/movies/${id}/grab`, { body: { guid: grab.guid, confirm: true, replace: !!m.file } });
+              toast(t("search.grabDone", { message: r.message }));
+              setGrab(null);
+              await d.reload();
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          <p className="mono">{grab.title}</p>
+          <FlagChips flags={grab.rank.flags} />
+          <p className="small">{fmtSize(grab.size)} · {grab.indexer}</p>
+          <p>{res.dryRun ? t("search.grabDry") : t("movies.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent" })}</p>
+          {m.file && <p className="warn-text">⚠ {t("movies.replaceWarn", { file: m.file.path ?? "" })}</p>}
+        </Confirm>
+      )}
+    </section>
+  );
+}

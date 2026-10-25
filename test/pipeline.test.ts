@@ -93,7 +93,7 @@ test("grab → download → ManualImport with explicit episode IDs → verify OK
   const imp = calls.imports[0] as { files: { seriesId: number; episodeIds: number[]; path: string }[]; mode: string };
   assert.deepEqual(imp.files[0].episodeIds, [EP.s6e1]);
   assert.equal(imp.files[0].seriesId, 264);
-  assert.equal(imp.mode, "auto");
+  assert.equal(imp.mode, "move", "Usenet downloads are moved; torrents are copied so they keep seeding");
   const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string };
   assert.equal(g.state, "done");
 });

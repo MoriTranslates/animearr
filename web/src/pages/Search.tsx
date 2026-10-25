@@ -286,7 +286,7 @@ function Identify() {
   );
 }
 
-function ResultCard({ r, onGrab }: { r: SearchResult; onGrab?: () => void }) {
+export function ResultCard({ r, onGrab }: { r: SearchResult; onGrab?: () => void }) {
   return (
     <article className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
       <p className="mono release">{r.title}</p>

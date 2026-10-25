@@ -12,9 +12,14 @@ const label = (id: number) => {
 };
 const seriesTitle = (tvdbId: number) => (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? String(tvdbId);
 
+const movieTitle = (id: number) => {
+  const m = cache.prepare("SELECT title, year FROM movies WHERE id = ?").get(id) as { title: string; year: number | null } | undefined;
+  return m ? (m.year ? `${m.title} (${m.year})` : m.title) : `Movie ${id}`;
+};
+
 function view(g: GrabRow) {
   const eps = JSON.parse(g.episode_ids) as number[];
-  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, series: seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin };
+  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin };
 }
 
 export async function queueView(deps: PipelineDeps = realDeps) {

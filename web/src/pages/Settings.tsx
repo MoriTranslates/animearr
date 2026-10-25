@@ -151,7 +151,7 @@ function Connections({ s, upd }: { s: S; upd: Upd }) {
 }
 
 function Safety({ s, upd }: { s: S; upd: Upd }) {
-  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number }[]; suggested: string | null }>("/sonarr/rootfolders"), []);
+  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null }>("/sonarr/rootfolders"), []);
   const m = s.managed;
   const setM = (fn: (x: S["managed"]) => S["managed"]) => upd((x) => ({ ...x, managed: fn(x.managed) }));
   return (
@@ -172,6 +172,7 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
                 onChange={(e) => upd((x) => ({ ...x, allowedRoots: e.target.checked ? [...x.allowedRoots, r.path] : x.allowedRoots.filter((y) => y !== r.path) }))}
               />
               <span className="mono">{r.path}</span>
+              {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>}
               {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
             </label>
           ))}

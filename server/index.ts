@@ -7,8 +7,8 @@ import fastifyStatic from "@fastify/static";
 import { authState, COOKIE, csrfOk, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, SETUP_TOKEN, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
-import { testProwlarr } from "./arr/prowlarr.js";
-import { testRadarr, radarrOptions } from "./arr/radarr.js";
+import { prowlarrConfigured, testProwlarr } from "./arr/prowlarr.js";
+import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
 import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
@@ -26,6 +26,7 @@ import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGr
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
+import { listMovies, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -224,8 +225,11 @@ app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", 
 
 /** Sonarr root folders, for the "allowed root folders" picker (suggests /media/AnimeArr when present; never auto-enabled). */
 app.get("/api/sonarr/rootfolders", async () => {
-  const o = await sonarrOptions();
-  return { roots: o.roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots };
+  const o = await sonarrOptions().catch(() => ({ roots: [] as { id: number; path: string; freeSpace?: number }[] }));
+  // Radarr's root folders too (movies), when Radarr is set up.
+  const movieRoots = radarrConfigured() ? await radarrRootFolders().catch(() => []) : [];
+  const roots = [...o.roots.map((r) => ({ ...r, app: "sonarr" })), ...movieRoots.filter((r) => !o.roots.some((x) => x.path === r.path)).map((r) => ({ id: r.id, path: r.path, freeSpace: r.freeSpace, app: "radarr" }))];
+  return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots };
 });
 
 // ---------------------------------------------------------------- library import / sync, managed shows
@@ -332,7 +336,7 @@ app.post<{ Body: { tvdbIds?: number[]; on?: boolean } }>("/api/managed", async (
   const ids = (req.body?.tvdbIds ?? []).map(id).slice(0, 500);
   return setManaged(ids, req.body?.on !== false);
 });
-app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30) }));
+app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30, { episodesOnly: true }) }));
 app.put<{ Params: { tvdbId: string }; Body: { dryRun?: boolean } }>("/api/managed/:tvdbId", async (req) => {
   writable();
   if (typeof req.body?.dryRun !== "boolean") throw fail("dryRun must be true or false");
@@ -497,6 +501,28 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 });
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
+app.get("/api/movies", async () => listMovies());
+app.get<{ Params: { id: string } }>("/api/movies/:id", async (req) => movieDetail(id(req.params.id)));
+// Grabs pick from the server's own last results (never a download URL sent by the browser).
+const lastMovieResults = new Map<number, { at: number; results: Awaited<ReturnType<typeof searchMovie>>["results"] }>();
+app.post<{ Params: { id: string } }>("/api/movies/:id/search", async (req) => {
+  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  const r = await searchMovie(id(req.params.id));
+  lastMovieResults.set(r.movie.id, { at: Date.now(), results: r.results });
+  return { ...r, dryRun: getSettings().managed.dryRun };
+});
+app.post<{ Params: { id: string }; Body: { guid?: string; confirm?: boolean; replace?: boolean } }>("/api/movies/:id/grab", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm the grab first");
+  const movieId = id(req.params.id);
+  const cached = lastMovieResults.get(movieId);
+  if (!cached || Date.now() - cached.at > 30 * 60_000) throw fail("Search again first (results expire after 30 minutes)", 409);
+  const pick = cached.results.find((r) => r.guid === req.body?.guid);
+  if (!pick) throw fail("That release isn't in the last search results", 404);
+  const toCand = (r: (typeof cached.results)[number]): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: [] });
+  const fallbacks = cached.results.filter((r) => r !== pick && r.rank.accept && r.confidence >= 80).map(toCand);
+  return startMovieGrab({ movieId, candidate: toCand(pick), fallbacks, origin: "manual", replace: req.body?.replace === true });
+});
 app.get<{ Querystring: { fresh?: string } }>("/api/recycle", async (req) => recycleStatus(undefined, Date.now(), req.query.fresh === "1"));
 app.get("/api/recycle/setting", async () => {
   try {

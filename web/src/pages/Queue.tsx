@@ -9,6 +9,7 @@ interface Item {
   id: number;
   at: number;
   tvdbId: number;
+  movieId?: number | null;
   series: string;
   episodes: string[];
   release: string;
@@ -83,7 +84,7 @@ function Downloading() {
         const pct = Math.round((g.live?.progress ?? g.progress ?? 0) * 100);
         return (
           <article key={g.id} className="card pad stack">
-            <ShowLink tvdbId={g.tvdbId} title={g.series}>
+            <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined}>
               <span className="stack">
                 <span className="strong clamp2">{g.series}</span>
                 <span className="mono small">{g.episodes.join(", ")}</span>
@@ -190,7 +191,7 @@ function History() {
         {all.map((g) => (
           <article key={g.id} className="card pad stack">
             <div className="row between">
-              <ShowLink tvdbId={g.tvdbId} title={g.series}>
+              <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined}>
                 <span className="strong clamp2">
                   {g.series} <span className="mono small">{g.episodes.join(", ")}</span>
                 </span>

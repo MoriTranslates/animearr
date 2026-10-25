@@ -1,7 +1,7 @@
 import { getSettings } from "../settings.js";
 import { jsonCall, type Conn } from "./http.js";
 
-/** Radarr v3 API client: read-only in 1.0. */
+/** Radarr v3 API client: reads everywhere; the only write is ManualImport for AnimeArr's own movie grabs. */
 
 export interface RadarrMovie {
   id: number;
@@ -40,3 +40,30 @@ export async function radarrOptions(c: Conn = conn()) {
 }
 
 export const getMovies = () => call<RadarrMovie[]>("GET", "/movie", undefined, conn(), 120_000);
+export const getMovie = (id: number) => call<RadarrMovie & { movieFile?: RadarrMovie["movieFile"] & { id?: number; dateAdded?: string } }>("GET", `/movie/${id}`);
+export const radarrRootFolders = () => call<{ id: number; path: string; freeSpace?: number }[]>("GET", "/rootfolder");
+export const getRadarrCommand = (id: number) => call<{ id: number; status: string; result?: string; message?: string }>("GET", `/command/${id}`);
+
+export interface RadarrImportItem {
+  path: string;
+  relativePath?: string;
+  name?: string;
+  size?: number;
+  movie?: { id: number; title: string };
+  quality: unknown;
+  languages?: unknown[];
+  releaseGroup?: string;
+  downloadId?: string;
+  indexerFlags?: number;
+  rejections?: { reason: string; type: string }[];
+}
+/** Files Radarr would import from a folder (read-only preview; nothing is imported). */
+export const radarrImportPreview = (folder: string) =>
+  call<RadarrImportItem[]>("GET", `/manualimport?folder=${encodeURIComponent(folder)}&filterExistingFiles=false`, undefined, conn(), 180_000);
+
+// ---------------------------------------------------------------- WRITE calls (pipeline only)
+
+/** Imports files for a movie through Radarr's ManualImport command (explicit movie id). */
+export async function radarrManualImport(files: { path: string; movieId: number; quality: unknown; languages?: unknown[]; releaseGroup?: string; downloadId?: string; indexerFlags?: number }[], importMode: "auto" | "move" | "copy") {
+  return call<{ id: number }>("POST", "/command", { name: "ManualImport", files, importMode });
+}
