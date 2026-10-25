@@ -258,7 +258,10 @@ function Checks() {
             </div>
             {c.title && (
               <ShowLink tvdbId={c.tvdb_id} title={c.title}>
-                <strong className="clamp2">{c.title}</strong> {c.label && <span className="muted">{c.label}</span>}
+                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <strong className="clamp2">{c.title}</strong>
+                  {c.label && <span className="muted small">{c.label}</span>}
+                </span>
               </ShowLink>
             )}
             <p className="mono small">{c.release}</p>
