@@ -98,6 +98,7 @@ test("a stalled download is failed after the timeout and the next (non-blocklist
   assert.equal(state(r.id).state, "failed");
   assert.match(state(r.id).error ?? "", /no download progress/);
   assert.deepEqual(calls.fetched, ["Test Show - 06 [stuck]", "Test Show - 06 [good]"], "the blocklisted twin is skipped");
+  assert.ok(removed.length >= 1, "the stalled download was removed from the client (queueHealth.removeFailed)");
   db.prepare("UPDATE grabs SET state = 'done' WHERE state = 'downloading'").run();
 });
 
@@ -159,8 +160,9 @@ test("queue: remove a download (deletes it from the client), blocklist it with u
   const item = q.items.find((x) => x.id === r.id)!;
   assert.equal(item.live?.etaSec, 120);
   assert.deepEqual(item.episodes, ["S01E04"]);
+  const before = removed.length;
   await removeGrab(r.id, { blocklist: true, searchNext: true }, d);
-  assert.equal(removed.length, 1, "removed from the client");
+  assert.equal(removed.length, before + 1, "removed from the client");
   assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "failed");
   assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 04 [slow]'").get());
   assert.deepEqual(calls.fetched.slice(-1), ["Test Show - 04 [next]"]);
@@ -184,4 +186,63 @@ test("queue: if the client refuses (not AnimeArr's category, or unreachable) the
   db.prepare("UPDATE grabs SET state = 'sending' WHERE id = ?").run(r.id);
   await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /still being sent/);
   db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(r.id);
+});
+
+test("queue health: waiting in the client's queue isn't a stall; a torrent without metadata fails and is removed", async () => {
+  for (const [id, ep] of [[121, 21], [122, 22]]) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime, air_utc) VALUES (?, 1, 1, ?, 0, 0, 24, 0)").run(id, ep);
+  const queued = deps({ status: async () => ({ state: "queued", progress: 0, clientStatus: "Queued" }) });
+  const q = await startGrab({ tvdbId: TVDB, episodeIds: [121], candidate: cand("Test Show - 21", "q1", [121]), fallbacks: [], origin: "manual" }, queued.d);
+  await pipelineTick(queued.d, Date.now() + STALL_MS + 60_000);
+  assert.equal(state(q.id).state, "downloading", "queued behind other downloads");
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(q.id);
+
+  const meta = deps({ status: async () => ({ state: "queued", progress: 0, clientStatus: "metaDL" }) });
+  const m = await startGrab({ tvdbId: TVDB, episodeIds: [122], candidate: cand("Test Show - 22", "m1", [122], "torrent"), fallbacks: [], origin: "manual" }, meta.d);
+  const ref = (db.prepare("SELECT client_ref FROM grabs WHERE id = ?").get(m.id) as { client_ref: string }).client_ref;
+  await pipelineTick(queued.d, Date.now() + 2 * 3_600_000); // waited in qBit's queue for 2 h first
+  await pipelineTick(meta.d, Date.now() + 2 * 3_600_000 + 30 * 60_000);
+  assert.equal(state(m.id).state, "downloading", "still within metadataMin");
+  await pipelineTick(meta.d, Date.now() + 2 * 3_600_000 + 61 * 60_000);
+  assert.equal(state(m.id).state, "failed");
+  assert.match(state(m.id).error ?? "", /metadata/);
+  assert.ok(removed.includes(ref), "removed from the client");
+});
+
+test("Sonarr queue problems: only allowed roots; failed, import-blocked and not-started items are reported", async () => {
+  const { sonarrQueueProblems } = await import("../server/queue.js");
+  patchSettings((s) => ({ ...s, sonarr: { ...s.sonarr, url: "http://sonarr.test", apiKey: "k" } }));
+  const series = { title: "Test Show", tvdbId: TVDB, path: "/media/AnimeArr/Test Show" };
+  const old = new Date(Date.now() - 10 * 3_600_000).toISOString();
+  const items = [
+    { id: 1, title: "ok", status: "downloading", trackedDownloadStatus: "ok", size: 10, sizeleft: 5, added: old, series },
+    { id: 2, title: "dead", status: "failed", trackedDownloadStatus: "error", trackedDownloadState: "failed", errorMessage: "Download failed", series, downloadId: "D2", episode: { seasonNumber: 1, episodeNumber: 1 } },
+    { id: 22, title: "dead", status: "failed", trackedDownloadStatus: "error", trackedDownloadState: "failed", errorMessage: "Download failed", series, downloadId: "D2", episode: { seasonNumber: 1, episodeNumber: 2 } },
+    { id: 6, title: "sonarr does it", status: "failed", trackedDownloadState: "failedPending", series, downloadId: "D6" },
+    { id: 3, title: "blocked", status: "completed", trackedDownloadStatus: "warning", trackedDownloadState: "importBlocked", statusMessages: [{ title: "x", messages: ["No files found are eligible for import"] }], series },
+    { id: 4, title: "never started", status: "downloading", trackedDownloadStatus: "ok", size: 10, sizeleft: 10, added: old, series },
+    { id: 5, title: "tv show", status: "failed", series: { title: "TV", tvdbId: 1, path: "/media/Tv Shows/TV" } },
+  ];
+  const r = await sonarrQueueProblems(async () => items as never);
+  assert.deepEqual(r.map((x) => [x.id, x.problem]), [[2, "failed"], [6, "sonarr-handling"], [3, "import-blocked"], [4, "stalled"]]);
+  assert.deepEqual(r[0].episodes, ["S01E01", "S01E02"], "a pack is one entry");
+  assert.deepEqual(r[2].messages, ["No files found are eligible for import"]);
+});
+
+test("queue health: a client error needs your attention (no blocklist, no delete); removeFailed off keeps failed downloads", async () => {
+  for (const [id, ep] of [[123, 23], [124, 24]]) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime, air_utc) VALUES (?, 1, 1, ?, 0, 0, 24, 0)").run(id, ep);
+  const err = deps({ status: async () => ({ state: "error", progress: 0.4, message: 'qBittorrent reports "error"' }) });
+  const e = await startGrab({ tvdbId: TVDB, episodeIds: [123], candidate: cand("Test Show - 23", "e1", [123], "torrent"), fallbacks: [], origin: "manual" }, err.d);
+  const before = removed.length;
+  await pipelineTick(err.d);
+  assert.equal(state(e.id).state, "needs-attention");
+  assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 23'").get(), undefined);
+  assert.equal(removed.length, before);
+
+  patchSettings((s) => ({ ...s, queueHealth: { ...s.queueHealth, removeFailed: false } }));
+  const bad = deps({ status: async () => ({ state: "failed", progress: 0, message: "CRC error" }) });
+  const f = await startGrab({ tvdbId: TVDB, episodeIds: [124], candidate: cand("Test Show - 24", "f1", [124]), fallbacks: [], origin: "manual" }, bad.d);
+  await pipelineTick(bad.d);
+  assert.equal(state(f.id).state, "failed");
+  assert.equal(removed.length, before, "kept in the client");
+  patchSettings((s) => ({ ...s, queueHealth: { ...s.queueHealth, removeFailed: true } }));
 });

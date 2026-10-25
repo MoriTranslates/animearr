@@ -94,7 +94,7 @@ export interface GrabRow {
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
 const ACTIVE = ["sending", "downloading", "importing"];
-/** No download progress for this long → the download is treated as dead. */
+/** Default stall time (tests); the live value is Settings → queueHealth.stallHours. */
 export const STALL_MS = 6 * 3_600_000;
 const MAX_ATTEMPTS = 3;
 
@@ -214,13 +214,44 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
     const rows = db.prepare("SELECT * FROM grabs WHERE state = 'downloading' ORDER BY id").all() as unknown as GrabRow[];
     for (const row of rows) {
       try {
-        const st = await deps.clients.status({ client: row.client as ClientJob["client"], ref: row.client_ref! });
-        const stalled = st.state !== "completed" && now - (row.progress_at ?? row.updated_at) > STALL_MS && (row.progress ?? -1) >= st.progress;
-        if (st.state === "failed" || stalled) {
-          const why = stalled ? `no download progress for ${STALL_MS / 3_600_000} hours` : `download failed${st.message ? `: ${st.message}` : ""}`;
+        const job = { client: row.client as ClientJob["client"], ref: row.client_ref! };
+        const st = await deps.clients.status(job);
+        const qh = getSettings().queueHealth;
+        const stallMs = qh.stallHours * 3_600_000;
+        const noMetadata = /metaDL/i.test(st.clientStatus ?? "");
+        // Waiting in the client's queue behind other downloads, paused, or post-processing isn't stalling: restart the
+        // clock. After 3 days of that the Queue page says so (nothing is removed).
+        if (st.state === "queued" && !noMetadata) {
+          const long = now - row.at > 3 * 86_400_000 ? `still waiting in the download client after ${Math.floor((now - row.at) / 86_400_000)} days (${st.clientStatus ?? "queued"})` : null;
+          db.prepare("UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ? WHERE id = ?").run(now, st.progress, long, row.id);
+          continue;
+        }
+        if (st.state === "error") {
+          // Often transient (disk full, permissions): don't blocklist or delete; the user decides on the Queue page.
+          setState(row.id, "needs-attention", `${st.message ?? "the download client reports an error"}; check the client, then retry or remove it`);
+          continue;
+        }
+        // Time spent in metaDL (the queued branch keeps progress_at fresh until the torrent starts fetching metadata).
+        const metadataStuck = noMetadata && now - (row.progress_at ?? row.at) > qh.metadataMin * 60_000;
+        const stalled = st.state === "downloading" && !noMetadata && now - (row.progress_at ?? row.updated_at) > stallMs && (row.progress ?? -1) >= st.progress;
+        if (st.state === "failed" || stalled || metadataStuck) {
+          const why = metadataStuck
+            ? `the torrent found no peers to get its metadata from in ${qh.metadataMin} min`
+            : stalled
+              ? `no download progress for ${qh.stallHours} hours${st.seeders === 0 ? " (no seeders)" : ""}`
+              : `download failed${st.message ? `: ${st.message}` : ""}`;
           setState(row.id, "failed", why);
           blocklist(row, why);
-          logDecision("fail", { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `${why}; blocklisted ${row.release}`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
+          let removed = "";
+          if (qh.removeFailed) {
+            try {
+              await deps.clients.remove(job);
+              removed = `; removed it from ${job.client === "sabnzbd" ? "SABnzbd" : "qBittorrent"}`;
+            } catch (e) {
+              removed = `; couldn't remove it from the download client (${(e as Error).message})`;
+            }
+          }
+          logDecision("fail", { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `${why}; blocklisted ${row.release}${removed}`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
           await tryNext(row.id, rowRequest(row), deps, why);
         } else if (st.state === "missing") {
           // The job vanished from the client (e.g. its history was cleared by hand): not the release's fault.

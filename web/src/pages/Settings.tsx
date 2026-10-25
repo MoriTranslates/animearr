@@ -179,6 +179,21 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
       </div>
       <Backlog s={s} upd={upd} />
       <div className="card pad stack">
+        <h2>{t("qh.title")}</h2>
+        <p className="muted small">{t("qh.help")}</p>
+        <div className="form">
+          <label>
+            {t("qh.stallHours")}
+            <NumberInput value={s.queueHealth.stallHours} min={1} max={72} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, stallHours: v } }))} label={t("qh.stallHours")} />
+          </label>
+          <label>
+            {t("qh.metadataMin")}
+            <NumberInput value={s.queueHealth.metadataMin} min={10} max={1440} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, metadataMin: v } }))} label={t("qh.metadataMin")} />
+          </label>
+        </div>
+        <Toggle checked={s.queueHealth.removeFailed} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, removeFailed: v } }))} label={t("qh.removeFailed")} help={t("qh.removeFailedHelp")} />
+      </div>
+      <div className="card pad stack">
         <h2>{t("repair.title")}</h2>
         <p className="muted small">{t("repair.help")}</p>
         <div className="form">

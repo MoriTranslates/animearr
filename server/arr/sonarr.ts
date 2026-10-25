@@ -141,6 +141,37 @@ export const getHistorySince = (date: Date, eventType: "downloadFolderImported" 
 export const getEpisodeGrabs = async (episodeId: number) =>
   (await call<{ records: HistoryItem[] }>("GET", `/history?episodeId=${episodeId}&eventType=1&sortKey=date&sortDirection=descending&pageSize=20`)).records;
 
+export interface SonarrQueueItem {
+  id: number;
+  seriesId?: number;
+  episodeId?: number;
+  title: string;
+  status: string;
+  trackedDownloadStatus?: "ok" | "warning" | "error";
+  trackedDownloadState?: string;
+  statusMessages?: { title?: string; messages?: string[] }[];
+  errorMessage?: string;
+  downloadId?: string;
+  protocol?: string;
+  downloadClient?: string;
+  size?: number;
+  sizeleft?: number;
+  timeleft?: string;
+  added?: string;
+  series?: { title: string; tvdbId: number; path: string };
+  episode?: { seasonNumber: number; episodeNumber: number };
+}
+/** Sonarr's download queue, with series and episode (read-only). */
+export async function getQueue() {
+  const out: SonarrQueueItem[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const r = await call<{ records: SonarrQueueItem[]; totalRecords: number }>("GET", `/queue?page=${page}&pageSize=500&includeSeries=true&includeEpisode=true&includeUnknownSeriesItems=false`);
+    out.push(...r.records);
+    if (!r.records.length || out.length >= r.totalRecords) break;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- WRITE calls (pipeline only)
 
 /** Import specific files as specific episodes (explicit episode IDs: works even if the series is unmonitored). */
@@ -151,6 +182,11 @@ export async function manualImport(files: { path: string; seriesId: number; epis
 /** Deletes an episode file through Sonarr (Sonarr's recycle bin applies if one is set). User-confirmed only. */
 export async function deleteEpisodeFile(id: number) {
   await call<void>("DELETE", `/episodefile/${id}`);
+}
+
+/** Removes an item from Sonarr's queue and its download client, optionally blocklisting it (user-confirmed only). */
+export async function removeQueueItem(id: number, blocklist: boolean) {
+  await call<void>("DELETE", `/queue/${id}?removeFromClient=true&blocklist=${blocklist}&skipRedownload=false`);
 }
 
 /** Marks a grab as failed in Sonarr (Sonarr blocklists it and, if the episode is monitored, searches again). */

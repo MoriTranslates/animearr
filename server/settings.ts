@@ -80,6 +80,12 @@ export interface Settings {
    * Off by default: turning it on can grab many episodes for shows that aren't in dry-run.
    */
   backlog: { enabled: boolean; perHour: number; retryDays: number };
+  /**
+   * Queue health for AnimeArr's own downloads (Cleanuparr-style): a download with no progress for stallHours, or a
+   * torrent still without metadata after metadataMin, counts as failed (blocklist + next candidate). removeFailed
+   * also takes failed downloads out of the download client (AnimeArr's own category only; never library files).
+   */
+  queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -116,6 +122,7 @@ const DEFAULTS: Settings = {
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
   repair: { mode: "log", maxPerDay: 10 },
   backlog: { enabled: false, perHour: 4, retryDays: 7 },
+  queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -126,7 +133,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -146,6 +153,8 @@ const RANGES: Record<string, [number, number]> = {
   "repair.maxPerDay": [1, 100],
   "backlog.perHour": [1, 24],
   "backlog.retryDays": [1, 60],
+  "queueHealth.stallHours": [1, 72],
+  "queueHealth.metadataMin": [10, 1440],
 };
 
 export const MASK = "••••••••";

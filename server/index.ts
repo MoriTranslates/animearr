@@ -23,7 +23,7 @@ import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { backlogSummary, candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
-import { grabHistory, queueView } from "./queue.js";
+import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -508,6 +508,13 @@ app.post("/api/repair/run", async () => {
   return { done: true, checked: r.length, bad: r.filter((x) => !x.ok && x.action !== "skipped").length };
 });
 app.get("/api/queue", async () => queueView());
+app.get("/api/queue/sonarr", async () => ({ items: await sonarrQueueProblems() }));
+app.post<{ Params: { id: string }; Body: { blocklist?: boolean; confirm?: boolean; downloadId?: string | null } }>("/api/queue/sonarr/:id/remove", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm first");
+  await removeSonarrQueueItem(id(req.params.id), req.body?.blocklist === true, typeof req.body?.downloadId === "string" ? req.body.downloadId : null);
+  return { ok: true };
+});
 app.get<{ Querystring: { before?: string; state?: string } }>("/api/history", async (req) => grabHistory({ before: req.query.before ? Number(req.query.before) : undefined, state: req.query.state || undefined }));
 app.post<{ Params: { id: string }; Body: { blocklist?: boolean; searchNext?: boolean; confirm?: boolean } }>("/api/queue/:id/remove", async (req) => {
   writable();

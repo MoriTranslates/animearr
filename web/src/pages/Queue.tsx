@@ -52,7 +52,14 @@ export function Queue() {
           </button>
         ))}
       </div>
-      {tab === "queue" ? <Downloading /> : <History />}
+      {tab === "queue" ? (
+        <>
+          <Downloading />
+          <SonarrProblems />
+        </>
+      ) : (
+        <History />
+      )}
     </section>
   );
 }
@@ -207,6 +214,78 @@ function History() {
         >
           {t("common.loadMore")}
         </button>
+      )}
+    </div>
+  );
+}
+
+interface Problem { id: number; downloadId: string | null; series: string; tvdbId: number | null; episodes: string[]; release: string; client: string | null; protocol: string | null; problem: string; messages: string[]; added: string | null }
+const PROBLEM_TONE: Record<string, "bad" | "warn" | "info"> = { failed: "bad", "sonarr-handling": "info", "import-blocked": "warn", warning: "warn", stalled: "info" };
+
+/** Sonarr's own queue: only the items that need a look (report; removal only when you ask). */
+function SonarrProblems() {
+  const toast = useToast();
+  const d = useLoad(() => api<{ items: Problem[] }>("/queue/sonarr"), []);
+  const [remove, setRemove] = useState<Problem | null>(null);
+  const [blocklist, setBlocklist] = useState(true);
+  useEffect(() => {
+    const id = setInterval(() => void d.reload(), 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!d.error && (!d.data || !d.data.items.length)) return null;
+  return (
+    <div className="stack" style={{ marginTop: "var(--space-6, 24px)" }}>
+      <h2>{t("queue.sonarr.title")}</h2>
+      {d.error ? <ErrorBox error={d.error} retry={d.reload} /> : <p className="muted small">{t("queue.sonarr.intro")}</p>}
+      <div className="list">
+        {(d.data?.items ?? []).map((p) => (
+          <article key={p.id} className="card pad stack">
+            <span className="stack">
+              <span className="strong clamp2">{p.series}</span>
+              {!!p.episodes.length && <span className="mono small">{p.episodes.join(", ")}</span>}
+            </span>
+            <p className="mono small muted">{p.release}</p>
+            <div className="row">
+              <Chip tone={PROBLEM_TONE[p.problem] ?? "info"}>
+                <span aria-hidden="true">⚠ </span>
+                {t(`queue.sonarr.${p.problem}` as I18nKey)}
+              </Chip>
+              {p.client && <span className="muted small">{p.client}</span>}
+            </div>
+            {!!p.messages.length && <Why lines={p.messages} />}
+            {p.problem !== "sonarr-handling" && (
+              <div className="row">
+                <button className="small danger" onClick={() => (setBlocklist(true), setRemove(p))}>
+                  {t("queue.remove")}
+                </button>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      {remove && (
+        <Confirm
+          danger
+          title={t("queue.removeTitle")}
+          confirmLabel={t("queue.remove")}
+          onClose={() => setRemove(null)}
+          onConfirm={async () => {
+            try {
+              await api(`/queue/sonarr/${remove.id}/remove`, { body: { blocklist, confirm: true, downloadId: remove.downloadId } });
+              toast(t("queue.removed"));
+              setRemove(null);
+              await d.reload();
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          <p>{t("queue.sonarr.removeBody", { release: remove.release })}</p>
+          <label className="check">
+            <input type="checkbox" checked={blocklist} onChange={(e) => setBlocklist(e.target.checked)} /> {t("queue.sonarr.blocklist")}
+          </label>
+        </Confirm>
       )}
     </div>
   );

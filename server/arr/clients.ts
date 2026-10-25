@@ -11,7 +11,8 @@ export interface ClientJob {
   client: "sabnzbd" | "qbittorrent";
 }
 export interface ClientStatus {
-  state: "queued" | "downloading" | "completed" | "failed" | "missing";
+  /** queued = waiting, paused or post-processing in the client (not stalling); error = the client needs a look. */
+  state: "queued" | "downloading" | "completed" | "failed" | "missing" | "error";
   progress: number;
   /** Folder or file path as the client sees it, once completed. */
   path?: string;
@@ -151,15 +152,17 @@ export const realClients: DownloadClients = {
       if (!hs) return { state: "missing", progress: 0 };
       if (hs.status === "Completed") return { state: "completed", progress: 1, path: hs.storage };
       if (hs.status === "Failed") return { state: "failed", progress: 0, message: hs.fail_message };
-      return { state: "downloading", progress: 0.99, message: hs.status };
+      // Post-processing (Queued, Verifying, Repairing, Extracting, Moving…): busy, not stalled.
+      return { state: "queued", progress: 0.99, message: hs.status, clientStatus: `post-processing: ${hs.status}` };
     }
     const list = (await (await qbit(`/torrents/info?hashes=${job.ref}`)).json()) as { hash: string; progress: number; state: string; content_path: string; eta: number; dlspeed: number; size: number; num_seeds: number }[];
     const t = list[0];
     if (!t) return { state: "missing", progress: 0 };
     const live = { etaSec: t.eta >= 8640000 ? null : t.eta, speed: t.dlspeed, sizeBytes: t.size, clientStatus: t.state, seeders: t.num_seeds };
-    if (/error|missingFiles/.test(t.state)) return { state: "failed", progress: t.progress, message: t.state, ...live };
+    // error/missingFiles are often transient (disk full, permissions, a missing save path): the user should look.
+    if (/error|missingFiles/.test(t.state)) return { state: "error", progress: t.progress, message: `qBittorrent reports "${t.state}"`, ...live };
     if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path, ...live };
-    return { state: /queued|metaDL|checking/i.test(t.state) ? "queued" : "downloading", progress: t.progress, ...live };
+    return { state: /queued|metaDL|checking|^paused|^stopped|moving/i.test(t.state) ? "queued" : "downloading", progress: t.progress, ...live };
   },
   async remove(job) {
     // Only ever AnimeArr's own jobs: the job must still be in AnimeArr's category. Not found = already gone (fine).
