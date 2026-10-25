@@ -114,6 +114,8 @@ export interface SearchResponse {
   tookMs: number;
   results: SearchResult[];
   dryRun: boolean;
+  tier: 1 | 2;
+  complete: boolean;
 }
 
 export interface PathMapping { from: string; to: string }

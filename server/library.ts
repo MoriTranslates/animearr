@@ -124,27 +124,32 @@ async function syncSonarr(full: boolean, res: SyncResult) {
   let done = 0;
   await pool(stale, 4, async (x) => {
     try {
-      const [eps, files] = await Promise.all([getEpisodes(x.id), getEpisodeFiles(x.id)]);
-      tx(cache, () => {
-        cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(x.id);
-        cache.prepare("DELETE FROM files WHERE series_id = ?").run(x.id);
-        const ins = cache.prepare(`INSERT INTO episodes (id, series_id, season, episode, absolute, scene_season, scene_episode, scene_absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        for (const e of eps)
-          ins.run(e.id, x.id, e.seasonNumber, e.episodeNumber, e.absoluteEpisodeNumber ?? null, e.sceneSeasonNumber ?? null, e.sceneEpisodeNumber ?? null, e.sceneAbsoluteEpisodeNumber ?? null, e.title ?? null,
-            e.airDate ?? null, e.airDateUtc ? Date.parse(e.airDateUtc) : null, e.runtime ?? null, e.monitored ? 1 : 0, e.hasFile ? 1 : 0, e.episodeFileId || null);
-        const insF = cache.prepare(`INSERT INTO files (id, series_id, season, path, size, quality, source, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        for (const f of files)
-          insF.run(f.id, x.id, f.seasonNumber, f.path, f.size, f.quality?.quality?.name ?? null, f.quality?.quality?.source ?? null, f.releaseGroup ?? null, f.sceneName ?? null,
-            langList(f.mediaInfo?.audioLanguages).join("/"), langList(f.mediaInfo?.subtitles).join("/"), f.mediaInfo?.runTime ?? null, f.mediaInfo?.resolution ?? null, f.dateAdded ?? null);
-        cache.prepare("UPDATE series SET sig = ?, synced_at = ? WHERE id = ?").run(sigOf(x), Date.now(), x.id);
-      });
+      await refreshSeriesEpisodes(x.id, sigOf(x));
       res.refreshed++;
     } catch (e) {
       res.errors.push(`${x.title}: ${(e as Error).message}`);
     }
     if (++done % 25 === 0) setJob("sync", "running", `Reading episodes ${done}/${stale.length}`);
+  });
+}
+
+/** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
+export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
+  const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
+  tx(cache, () => {
+    cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);
+    cache.prepare("DELETE FROM files WHERE series_id = ?").run(seriesId);
+    const ins = cache.prepare(`INSERT INTO episodes (id, series_id, season, episode, absolute, scene_season, scene_episode, scene_absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    for (const e of eps)
+      ins.run(e.id, seriesId, e.seasonNumber, e.episodeNumber, e.absoluteEpisodeNumber ?? null, e.sceneSeasonNumber ?? null, e.sceneEpisodeNumber ?? null, e.sceneAbsoluteEpisodeNumber ?? null, e.title ?? null,
+        e.airDate ?? null, e.airDateUtc ? Date.parse(e.airDateUtc) : null, e.runtime ?? null, e.monitored ? 1 : 0, e.hasFile ? 1 : 0, e.episodeFileId || null);
+    const insF = cache.prepare(`INSERT INTO files (id, series_id, season, path, size, quality, source, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    for (const f of files)
+      insF.run(f.id, seriesId, f.seasonNumber, f.path, f.size, f.quality?.quality?.name ?? null, f.quality?.quality?.source ?? null, f.releaseGroup ?? null, f.sceneName ?? null,
+        langList(f.mediaInfo?.audioLanguages).join("/"), langList(f.mediaInfo?.subtitles).join("/"), f.mediaInfo?.runTime ?? null, f.mediaInfo?.resolution ?? null, f.dateAdded ?? null);
+    if (sig !== undefined) cache.prepare("UPDATE series SET sig = ?, synced_at = ? WHERE id = ?").run(sig, Date.now(), seriesId);
   });
 }
 

@@ -129,7 +129,41 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   return k;
 }
 
-export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number } = {}) {
+/** Short, search-friendly form of a long title: "Magic Repo Man: Dumped by My Party, ..." → "Magic Repo Man". */
+export function shortTitle(t: string): string {
+  const clean = t.replace(/[!?'’"]/g, " ").replace(/\s+/g, " ").trim();
+  if (clean.length <= 40) return clean.replace(/:/g, " ").replace(/\s+/g, " ").trim();
+  const head = clean.split(/[:：–—]|\s-\s/)[0].trim();
+  return head.length >= 4 ? head : clean.slice(0, 40);
+}
+
+/**
+ * Tier 1: the canonical title and the top romaji title, with the episode forms groups actually use
+ * (S01E01 and "- 01"), or the season form for several episodes. 2-4 queries; most searches end here.
+ */
+export function tier1Queries(canonical: string, romaji: string | null, targets: LibEpisode[]): string[] {
+  const titles = [...new Map([canonical, romaji].filter((x): x is string => !!x).map(shortTitle).filter((t) => t.length >= 3).map((t) => [normalizeTitle(t), t])).values()];
+  const out = new Set<string>();
+  const seasons = [...new Set(targets.map((t) => t.season))];
+  for (const t of titles) {
+    if (targets.length === 1) {
+      const e = targets[0];
+      if (e.season > 0) out.add(`${t} S${pad(e.season)}E${pad(e.episode)}`);
+      out.add(`${t} ${pad(e.episode)}`);
+    } else for (const s of seasons) out.add(s > 0 ? `${t} S${s}` : t);
+  }
+  return [...out];
+}
+
+export interface SearchProgress {
+  searched: number;
+  total: number;
+  tier: 1 | 2;
+  found: number;
+  results: SearchResult[];
+}
+
+export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; onProgress?: (p: SearchProgress) => void } = {}) {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("That series isn't in the synced library; run Sync first"), { statusCode: 404 });
   const all = episodesFor(tvdbId);
@@ -137,46 +171,41 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   if (!targets.length) throw Object.assign(new Error("Pick at least one episode"), { statusCode: 400 });
   const ctx = identifyContext();
   const titles = ctx.index.titlesFor(tvdbId, targets[0].season);
-  const grid = [...queryGrid(titles, targets, opts.budget), ...(opts.extraQueries ?? [])];
-  const combos = opts.budget && opts.budget < 10 ? [] : comboQueries(titles, series.title);
-  const queries = [...grid, ...combos];
+  const season = targets[0].season;
+  const entry = ctx.index.anidbIdsFor(tvdbId).sort((x, y) => Number(y.season === season) - Number(x.season === season))[0];
+  const romaji = entry ? ctx.index.anidbTitle(entry.aid) : null;
+  const tier1 = [...tier1Queries(series.title, romaji, targets), ...(opts.extraQueries ?? [])];
+  const combos = comboQueries(titles, series.title);
   const allCats = new Set(combos);
   const started = Date.now();
   const raw = new Map<string, ProwlarrRelease>();
   const errors: string[] = [];
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: 3 }, async () => {
-      while (i < queries.length) {
-        const q = queries[i++];
-        try {
-          for (const r of await prowlarrSearch(q, allCats.has(q) ? { categories: [] } : {})) if (!raw.has(r.guid)) raw.set(r.guid, r);
-        } catch (e) {
-          errors.push(`${q}: ${(e as Error).message}`);
-        }
-      }
-    }),
-  );
   const prof = getSettings().profile;
   const targetIds = new Set(targets.map((t) => t.id));
   const results: SearchResult[] = [];
   const skipped: Record<string, number> = {};
-  for (const r of raw.values()) {
+  const queries: string[] = [];
+  let searched = 0;
+  let total = tier1.length;
+  let tier: 1 | 2 = 1;
+
+  /** Parses, maps and ranks one release as soon as it arrives (so partial results can be shown). */
+  const consider = (r: ProwlarrRelease) => {
     const pub = r.publishDate ? Date.parse(r.publishDate) : null;
     const id = identify(r.title, ctx, { tvdbId, publishDate: pub });
     if (!id.resolution?.ok) {
       const reason = !id.candidate ? "other show" : "couldn't map the episode";
       skipped[reason] = (skipped[reason] ?? 0) + 1;
-      continue;
+      return;
     }
     const eps = id.resolution.episodes;
     const covers = eps.filter((e) => targetIds.has(e.id)).length;
     if (!covers) {
       skipped["other episodes"] = (skipped["other episodes"] ?? 0) + 1;
-      continue;
+      return;
     }
-    const season = eps[0]?.season ?? null;
-    const known = knownFor(r, series, season, !id.parsed.group);
+    const ss = eps[0]?.season ?? null;
+    const known = knownFor(r, series, ss, !id.parsed.group);
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
     const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length }, prof, learned, known);
     results.push({
@@ -200,19 +229,61 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
       downloadUrl: r.downloadUrl,
       magnetUrl: r.magnetUrl,
     });
+  };
+  const sorted = () => [...results].sort((a, b) => compareRanked(a, b) || a.extra - b.extra);
+  const report = () => opts.onProgress?.({ searched, total, tier, found: raw.size, results: sorted() });
+
+  const run = async (list: string[]) => {
+    let i = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(6, list.length) }, async () => {
+        while (i < list.length) {
+          const q = list[i++];
+          try {
+            for (const r of await prowlarrSearch(q, allCats.has(q) ? { categories: [] } : {}))
+              if (!raw.has(r.guid)) {
+                raw.set(r.guid, r);
+                consider(r);
+              }
+          } catch (e) {
+            errors.push(`${q}: ${(e as Error).message}`);
+          }
+          searched++;
+          report();
+        }
+      }),
+    );
+  };
+
+  queries.push(...tier1);
+  report();
+  await run(tier1);
+  // Tier 2 only when tier 1 left a target episode without a usable candidate (or when asked for the full search).
+  const usable = (eid: number) => results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid));
+  const uncovered = targets.filter((t) => !usable(t.id));
+  if (opts.full || uncovered.length) {
+    tier = 2;
+    const done = new Set(queries);
+    const more = [...queryGrid(titles, targets, opts.budget), ...(opts.budget && opts.budget < 10 ? [] : combos)].filter((q) => !done.has(q));
+    queries.push(...more);
+    total += more.length;
+    report();
+    await run(more);
   }
-  // Single-episode releases before packs at equal rank; then the ranking.
-  results.sort((a, b) => compareRanked(a, b) || a.extra - b.extra);
+  const final = sorted();
   return {
     series: { tvdbId: series.tvdbId, title: series.title, cover: series.cover },
     targets: targets.map((t) => ({ id: t.id, season: t.season, episode: t.episode, absolute: t.absolute, title: t.title ?? null, hasFile: !!t.hasFile })),
     queries,
+    tier,
+    /** True when the wider alias grid was searched too (tier 2); otherwise "Search more" can widen it. */
+    complete: tier === 2,
     found: raw.size,
-    matched: results.length,
+    matched: final.length,
     skipped,
     errors,
     tookMs: Date.now() - started,
-    results,
+    results: final,
   };
 }
 

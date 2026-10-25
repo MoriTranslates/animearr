@@ -37,14 +37,28 @@ export async function prowlarrIndexers() {
   return (await call<{ id: number; name: string; protocol: string; enable: boolean }[]>("GET", "/indexer")).map(({ id, name, protocol, enable }) => ({ id, name, protocol, enable }));
 }
 
+/** Results of recent identical queries (10 min), and queries in flight, so repeat searches are instant. */
+const queryCache = new Map<string, { at: number; rows: Promise<ProwlarrRelease[]> }>();
+const QUERY_TTL = 10 * 60_000;
+
 /** Free-text search across the configured indexers and categories. An empty query returns each indexer's recent feed. */
-export async function prowlarrSearch(query: string, opts: { limit?: number; categories?: number[] } = {}): Promise<ProwlarrRelease[]> {
+export async function prowlarrSearch(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean } = {}): Promise<ProwlarrRelease[]> {
   const s = getSettings().prowlarr;
   const qs = new URLSearchParams({ query, type: "search", limit: String(opts.limit ?? 200) });
   for (const c of opts.categories ?? s.categories) qs.append("categories", String(c));
   for (const i of s.indexerIds) qs.append("indexerIds", String(i));
-  const rows = await call<ProwlarrRelease[]>("GET", `/search?${qs}`, undefined, conn(), 180_000);
-  return rows.map((r) => ({ ...r, protocol: r.protocol === "usenet" ? "usenet" : "torrent" }));
+  const key = qs.toString();
+  const now = Date.now();
+  for (const [k, v] of queryCache) if (now - v.at > QUERY_TTL) queryCache.delete(k);
+  // The empty "recent releases" query is never cached (the RSS-style poll needs fresh results).
+  const hit = query && !opts.fresh ? queryCache.get(key) : undefined;
+  if (hit) return hit.rows;
+  const rows = call<ProwlarrRelease[]>("GET", `/search?${qs}`, undefined, conn(), 180_000).then((list) => list.map((r) => ({ ...r, protocol: r.protocol === "usenet" ? ("usenet" as const) : ("torrent" as const) })));
+  if (query) {
+    queryCache.set(key, { at: now, rows });
+    rows.catch(() => queryCache.delete(key)); // failures are not cached
+  }
+  return rows;
 }
 
 /**

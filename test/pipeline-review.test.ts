@@ -132,3 +132,17 @@ test("leaving dry-run re-queues episodes that were only 'would grab'", () => {
   assert.equal(s.state, "waiting");
   assert.ok(s.next_at <= Date.now());
 });
+
+test("a successful import ends with a clear 'Imported ✓' entry and refreshes the series cache", async () => {
+  cache.prepare("UPDATE episodes SET has_file = 0 WHERE id = 101").run();
+  const { d } = deps();
+  let refreshed = 0;
+  d.refreshSeries = async () => void refreshed++;
+  const r = await startGrab({ tvdbId: TVDB, episodeIds: [101], candidate: cand("[SubsPlease] Test Show - 01 (1080p)", "ok1", [101]), fallbacks: [], origin: "manual" }, d);
+  await pipelineTick(d);
+  assert.equal(state(r.id).state, "done");
+  assert.equal(refreshed, 1);
+  const last = db.prepare("SELECT kind, why FROM decisions ORDER BY id DESC LIMIT 1").get() as { kind: string; why: string };
+  assert.equal(last.kind, "import");
+  assert.match(last.why, /^Imported ✓ as S01E01: has en subtitles/);
+});

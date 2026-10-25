@@ -61,6 +61,7 @@ function DeepSearch() {
   const [season, setSeason] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<SearchResponse | null>(null);
+  const [partial, setPartial] = useState<{ searched: number; total: number; tier: number; found: number; results: SearchResult[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [grab, setGrab] = useState<SearchResult | null>(null);
 
@@ -83,13 +84,26 @@ function DeepSearch() {
   const seasons = useMemo(() => [...new Set(eps.map((e) => e.season))].sort((a, b) => a - b), [eps]);
   const shown = eps.filter((e) => e.season === season && (!missingOnly || !e.hasFile || sel.has(e.id)));
 
-  async function run(ids = [...sel]) {
+  /** Starts a search job and polls it: progress and partial results show while it runs. */
+  async function run(ids = [...sel], full = false) {
     if (!series || !ids.length) return toast(t("search.selectEpisodes"), true);
     setBusy(true);
     setErr(null);
     setRes(null);
+    setPartial(null);
     try {
-      setRes(await api<SearchResponse>("/search", { body: { tvdbId: series.tvdbId, episodeIds: ids } }));
+      const { jobId } = await api<{ jobId: string }>("/search/start", { body: { tvdbId: series.tvdbId, episodeIds: ids, full } });
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 700));
+        const j = await api<{ done: boolean; progress: { searched: number; total: number; tier: number; found: number }; results?: SearchResult[]; result: SearchResponse | null; error: string | null }>(`/search/job/${jobId}`);
+        if (j.done) {
+          if (j.error) throw new Error(j.error);
+          setRes(j.result);
+          setPartial(null);
+          break;
+        }
+        setPartial({ ...j.progress, results: j.results ?? [] });
+      }
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -152,7 +166,14 @@ function DeepSearch() {
           </>
         )}
       </div>
-      {busy && <Spinner label={t("search.running")} />}
+      {busy && <Spinner label={partial ? t("search.progress", { searched: partial.searched, total: partial.total, found: partial.found }) : t("search.running")} />}
+      {busy && partial && !!partial.results.length && (
+        <div className="list">
+          {partial.results.slice(0, 8).map((r) => (
+            <ResultCard key={r.guid} r={r} />
+          ))}
+        </div>
+      )}
       {err && <ErrorBox error={err} />}
       {res && (
         <>
@@ -166,28 +187,18 @@ function DeepSearch() {
               {!!Object.keys(res.skipped).length && <p className="muted small">{t("search.skipped", { list: Object.entries(res.skipped).map(([k, v]) => `${v} ${k}`).join(", ") })}</p>}
             </div>
           </div>
-          <Why summary={t("common.more")} lines={res.queries} />
+          <div className="row between">
+            <Why summary={t("common.more")} lines={res.queries} />
+            {!res.complete && (
+              <button className="small" onClick={() => run(res.targets.map((x) => x.id), true)}>
+                {t("search.more")}
+              </button>
+            )}
+          </div>
           {!res.results.length && <Empty>{t("search.none")}</Empty>}
           <div className="list">
             {res.results.map((r) => (
-              <article key={r.guid} className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
-                <p className="mono release">{r.title}</p>
-                <div className="row">
-                  <Chip tone={r.confidence >= 80 ? "good" : "warn"}>{t("search.mapping", { label: r.label, confidence: r.confidence })}</Chip>
-                  <span className="muted small">
-                    {fmtSize(r.size)} · {r.indexer}
-                    {r.ageHours !== null ? ` · ${Math.round(r.ageHours / 24)}d` : ""}
-                  </span>
-                </div>
-                <FlagChips flags={r.rank.flags} />
-                <p className="small">{r.rank.why}</p>
-                <div className="row between">
-                  <Why lines={r.mappingWhy} />
-                  <button className={r.rank.accept ? "primary" : ""} onClick={() => setGrab(r)}>
-                    {t("search.grab")}
-                  </button>
-                </div>
-              </article>
+              <ResultCard key={r.guid} r={r} onGrab={() => setGrab(r)} />
             ))}
           </div>
         </>
@@ -272,5 +283,30 @@ function Identify() {
         </article>
       )}
     </div>
+  );
+}
+
+function ResultCard({ r, onGrab }: { r: SearchResult; onGrab?: () => void }) {
+  return (
+    <article className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
+      <p className="mono release">{r.title}</p>
+      <div className="row">
+        <Chip tone={r.confidence >= 80 ? "good" : "warn"}>{t("search.mapping", { label: r.label, confidence: r.confidence })}</Chip>
+        <span className="muted small">
+          {fmtSize(r.size)} · {r.indexer}
+          {r.ageHours !== null ? ` · ${Math.round(r.ageHours / 24)}d` : ""}
+        </span>
+      </div>
+      <FlagChips flags={r.rank.flags} />
+      <p className="small">{r.rank.why}</p>
+      <div className="row between">
+        <Why lines={r.mappingWhy} />
+        {onGrab && (
+          <button className={r.rank.accept ? "primary" : ""} onClick={onGrab}>
+            {t("search.grab")}
+          </button>
+        )}
+      </div>
+    </article>
   );
 }

@@ -165,6 +165,8 @@ const en = {
   "search.missingOnly": "Missing only",
   "search.run": "Search",
   "search.running": "Searching Prowlarr…",
+  "search.progress": "Searched {searched} of {total} queries · {found} releases so far",
+  "search.more": "Search more (all aliases)",
   "search.summary": "{found} releases found, {matched} for these episodes ({queries} queries, {secs}s)",
   "search.skipped": "Skipped: {list}",
   "search.none": "Nothing for these episodes. Try adding an alias on the show page.",

@@ -21,7 +21,7 @@ import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { db, dbState } from "./db.js";
 import { burnedInFact } from "./audit.js";
-import { learnFromVerify, sourceKey } from "./library.js";
+import { learnFromVerify, refreshSeriesEpisodes, sourceKey } from "./library.js";
 import { clientToSonarr, localPath as realLocalPath } from "./paths.js";
 import { episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
@@ -40,6 +40,8 @@ export interface PipelineDeps {
   probe(file: string): Promise<ProbeResult>;
   localPath(p: string): string | null;
   sleep(ms: number): Promise<void>;
+  /** Re-reads the series from Sonarr into the cache after an import (so the UI shows the new file at once). */
+  refreshSeries?(seriesId: number): Promise<void>;
 }
 
 export const realDeps: PipelineDeps = {
@@ -49,6 +51,7 @@ export const realDeps: PipelineDeps = {
   probe: (f) => ffprobe(f),
   localPath: realLocalPath,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  refreshSeries: (id) => refreshSeriesEpisodes(id),
 };
 
 export type Candidate = Pick<SearchResult, "guid" | "title" | "indexerId" | "indexer" | "protocol" | "size" | "downloadUrl" | "magnetUrl" | "label" | "group"> & { why: string; episodeIds: number[] };
@@ -294,6 +297,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
 
   // Verify BEFORE import when the file is reachable from here.
   const preVerified = new Set<string>();
+  const verdicts: string[] = [];
   for (const p of plan) {
     const local = deps.localPath(p.item.path);
     if (!local) continue;
@@ -302,6 +306,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
     if (!v.ok) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
     preVerified.add(p.item.path);
+    verdicts.push(v.why);
     logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Checked ${path.posix.basename(p.item.path)} before import: ${v.why}`, detail: { grabId: row.id, probe } });
   }
 
@@ -340,11 +345,19 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       const v = judge({ subs, audio, durationSec: Number.isFinite(mm) ? mm * 60 + (ss || 0) : null, sidecars: [], untagged: 0 }, prof, expectedMin, burned);
       learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
       if (!v.ok) return fail(`${path.posix.basename(ef.path)}: ${v.why}`, true);
+      verdicts.push(v.why);
       logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Imported and checked ${path.posix.basename(ef.path)}: ${v.why}`, detail: { grabId: row.id } });
     }
   }
   setState(row.id, "done");
   scheduleAfter(mapped, "done", `imported ${row.release}`);
+  const labels = eps.filter((e) => mapped.includes(e.id)).map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`);
+  logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Imported ✓ as ${labels.join(", ")}: ${[...new Set(verdicts)].join("; ") || "checked"}`, detail: { grabId: row.id, final: true } });
+  try {
+    await deps.refreshSeries?.(series.id);
+  } catch {
+    /* the next sync catches up */
+  }
 }
 
 /** "Retry import" for a grab that downloaded fine but couldn't be imported. */

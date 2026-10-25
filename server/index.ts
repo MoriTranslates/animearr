@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -20,7 +21,7 @@ import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, retryImport, startGrab, type Candidate } from "./pipeline.js";
-import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
+import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
 
@@ -365,14 +366,48 @@ app.post<{ Body: { name?: string; tvdbId?: number } }>("/api/identify", async (r
 const lastResults = new Map<string, { at: number; tvdbId: number; episodeIds: number[]; results: SearchResult[] }>();
 const searchKey = (tvdbId: number, eps: number[]) => `${tvdbId}:${[...eps].sort((a, b) => a - b).join(",")}`;
 
-app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/search", async (req) => {
-  const tvdbId = id(req.body?.tvdbId);
-  const eps = (req.body?.episodeIds ?? []).map(id).slice(0, 50);
-  const r = await deepSearch(tvdbId, eps);
+const publicResults = (rs: SearchResult[]) => rs.map(({ downloadUrl: _d, magnetUrl: _m, ...x }) => x);
+
+/** Runs a Deep Search, keeps its results for grabbing, and logs it. */
+async function runSearch(tvdbId: number, eps: number[], full: boolean, onProgress?: (p: SearchProgress) => void) {
+  const r = await deepSearch(tvdbId, eps, { full, onProgress });
   for (const [k, v] of lastResults) if (Date.now() - v.at > 30 * 60_000) lastResults.delete(k);
   lastResults.set(searchKey(tvdbId, eps), { at: Date.now(), tvdbId, episodeIds: eps, results: r.results });
-  logDecision("search", { tvdbId, title: r.series.title, episodeIds: eps, why: `Deep Search: ${r.queries.length} queries, ${r.found} releases, ${r.matched} for these episodes, ${r.results.filter((x) => x.rank.accept).length} acceptable` });
-  return { ...r, results: r.results.map(({ downloadUrl: _d, magnetUrl: _m, ...x }) => x), dryRun: getSettings().managed.dryRun };
+  logDecision("search", { tvdbId, title: r.series.title, episodeIds: eps, why: `Deep Search: ${r.queries.length} queries (${r.tier === 1 ? "quick" : "wide"} search, ${Math.round(r.tookMs / 100) / 10} s), ${r.found} releases, ${r.matched} for these episodes, ${r.results.filter((x) => x.rank.accept).length} acceptable` });
+  return { ...r, results: publicResults(r.results), dryRun: getSettings().managed.dryRun };
+}
+
+const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, 50), full: b?.full === true });
+
+/** Blocking search (scripts, acceptance tests). */
+app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("/api/search", async (req) => {
+  const { tvdbId, eps, full } = searchBody(req.body);
+  return runSearch(tvdbId, eps, full);
+});
+
+/** Search as a job the UI polls: progress ("searched X of Y") and partial results while it runs. */
+interface SearchJob { at: number; done: boolean; progress: { searched: number; total: number; tier: number; found: number }; partial: ReturnType<typeof publicResults>; result: Awaited<ReturnType<typeof runSearch>> | null; error: string | null }
+const searchJobs = new Map<string, SearchJob>();
+app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("/api/search/start", async (req) => {
+  const { tvdbId, eps, full } = searchBody(req.body);
+  if (!seriesByTvdb(tvdbId)) throw fail("That series isn't in the synced library; run Sync first", 404);
+  for (const [k, v] of searchJobs) if (Date.now() - v.at > 15 * 60_000) searchJobs.delete(k);
+  const jobId = crypto.randomUUID();
+  const job: SearchJob = { at: Date.now(), done: false, progress: { searched: 0, total: 0, tier: 1, found: 0 }, partial: [], result: null, error: null };
+  searchJobs.set(jobId, job);
+  void runSearch(tvdbId, eps, full, (p) => {
+    job.progress = { searched: p.searched, total: p.total, tier: p.tier, found: p.found };
+    job.partial = publicResults(p.results);
+  })
+    .then((r) => (job.result = r))
+    .catch((e) => (job.error = (e as Error).message))
+    .finally(() => (job.done = true));
+  return { jobId };
+});
+app.get<{ Params: { id: string } }>("/api/search/job/:id", async (req) => {
+  const job = searchJobs.get(req.params.id);
+  if (!job) throw fail("That search expired; search again", 404);
+  return { done: job.done, progress: job.progress, results: job.done ? undefined : job.partial, result: job.result, error: job.error };
 });
 
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confirm?: boolean } }>("/api/grab", async (req) => {
