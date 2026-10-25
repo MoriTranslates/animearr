@@ -463,10 +463,13 @@ app.post("/api/system/cache/reset", async () => {
 
 // ---------------------------------------------------------------- web UI
 
-if (fs.existsSync(WEB_DIR)) {
-  await app.register(fastifyStatic, { root: WEB_DIR, wildcard: false });
-  app.setNotFoundHandler((req, reply) => (req.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : reply.sendFile("index.html")));
-} else app.log.warn(`No web build in ${WEB_DIR}; run "npm run build" (the API still works).`);
+if (!fs.existsSync(path.join(WEB_DIR, "index.html"))) app.log.warn(`No web build in ${WEB_DIR} yet; run "npm run build" (the API works meanwhile).`);
+fs.mkdirSync(WEB_DIR, { recursive: true });
+// wildcard: true serves files built after startup too (vite build while the dev server runs).
+await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: ["index.html"] });
+app.setNotFoundHandler((req, reply) =>
+  req.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : fs.existsSync(path.join(WEB_DIR, "index.html")) ? reply.sendFile("index.html") : reply.code(503).send("Web UI not built yet: run npm run build"),
+);
 
 // ---------------------------------------------------------------- background jobs
 

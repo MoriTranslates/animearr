@@ -182,7 +182,12 @@ function detectHints(raw: string, group: string | null, platform: string | null)
   let hardsub = false;
   let hardsubLang: string | null = null;
   let hardsubWhy: string | null = null;
-  if (/\b(hard[ ._-]?subs?|hardsubbed|burned[ ._-]?in|burnt[ ._-]?in|\bHC\b)\b|\[HS\]/i.test(raw)) {
+  if (/内嵌|內嵌|硬字幕/.test(raw)) {
+    // Chinese "embedded" = burned-in (usually Chinese, sometimes with Japanese).
+    hardsub = true;
+    hardsubLang = "zh";
+    hardsubWhy = "Chinese release with embedded (burned-in) subtitles";
+  } else if (/\b(hard[ ._-]?subs?|hardsubbed|burned[ ._-]?in|burnt[ ._-]?in|\bHC\b)\b|\[HS\]/i.test(raw)) {
     hardsub = true;
     hardsubWhy = "the name says hardsub";
     hardsubLang = subs.size === 1 ? [...subs][0] : null;

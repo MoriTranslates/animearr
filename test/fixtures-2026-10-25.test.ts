@@ -133,3 +133,12 @@ test("ACCEPTANCE: Magister S6 Usenet releases map to S06Exx and are flagged Engl
   assert.deepEqual(pack.resolution!.episodes.map((e) => [e.season, e.episode]), Array.from({ length: 12 }, (_, i) => [6, i + 1]));
   assert.equal(pack.resolution!.label, "S06E01-E12");
 });
+
+test("Chinese 內嵌 (embedded) releases are flagged burned-in Chinese and rejected for an English profile", () => {
+  const r = rank("【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]", "torrent");
+  const p = parseRelease("【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]");
+  assert.equal(p.hints.hardsub, true);
+  assert.equal(p.hints.hardsubLang, "zh");
+  assert.deepEqual(p.absolute, [4]);
+  assert.equal(r.accept, false);
+});
