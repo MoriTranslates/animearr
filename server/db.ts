@@ -255,14 +255,14 @@ const USER_MIGRATIONS: string[] = [
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_SCHEMA = `
   CREATE TABLE meta (source TEXT PRIMARY KEY, fetched_at INTEGER, etag TEXT, last_modified TEXT, info TEXT NOT NULL DEFAULT '{}');
   CREATE TABLE jobs (name TEXT PRIMARY KEY, state TEXT NOT NULL, detail TEXT, started_at INTEGER, finished_at INTEGER);
   CREATE TABLE series (id INTEGER PRIMARY KEY, tvdb_id INTEGER NOT NULL, tmdb_id INTEGER, imdb_id TEXT, title TEXT NOT NULL, sort_title TEXT, year INTEGER,
     status TEXT, series_type TEXT, path TEXT, root_folder TEXT, monitored INTEGER NOT NULL, quality_profile_id INTEGER, tags TEXT NOT NULL DEFAULT '[]',
     network TEXT, runtime INTEGER, original_language TEXT, seasons TEXT NOT NULL DEFAULT '[]', first_aired TEXT, next_airing TEXT, previous_airing TEXT,
-    anidb_ids TEXT NOT NULL DEFAULT '[]', anidb_status TEXT NOT NULL DEFAULT 'unmatched', poster TEXT, added TEXT, sig TEXT, synced_at INTEGER NOT NULL);
+    anidb_ids TEXT NOT NULL DEFAULT '[]', anidb_status TEXT NOT NULL DEFAULT 'unmatched', poster TEXT, added TEXT, sig TEXT, overview TEXT, genres TEXT NOT NULL DEFAULT '[]', synced_at INTEGER NOT NULL);
   CREATE INDEX series_tvdb ON series (tvdb_id);
   CREATE TABLE alt_titles (series_id INTEGER NOT NULL, title TEXT NOT NULL, key TEXT NOT NULL, season INTEGER, scene_season INTEGER);
   CREATE INDEX alt_titles_key ON alt_titles (key);

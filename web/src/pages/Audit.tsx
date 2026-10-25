@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, sxe } from "../api";
-import { Link, navigate, query } from "../App";
+import { navigate, query } from "../App";
+import { ShowLink } from "../episodes";
 import { t } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
@@ -48,11 +49,11 @@ function Gaps() {
       <div className="list">
         {d.data.series.map((s) => (
           <article key={s.tvdbId} className="card show-card">
-            <Cover src={s.cover} alt={s.title} size="sm" />
             <div className="show-body">
-              <Link to={`/show/${s.tvdbId}`} className="strong">
-                {s.title}
-              </Link>
+              <ShowLink tvdbId={s.tvdbId} title={s.title} className="show-card-head">
+                <Cover src={s.cover} alt={s.title} size="sm" />
+                <span className="strong clamp2">{s.title}</span>
+              </ShowLink>
               {!!s.missingSeasons.length && (
                 <div className="chips">
                   {s.missingSeasons.map((m) => (
@@ -103,16 +104,16 @@ function Language() {
       <div className="list">
         {d.data.series.map((g) => (
           <article key={`${g.tvdbId}-${g.season}`} className="card show-card">
-            <Cover src={g.cover} alt={g.title} size="sm" />
             <div className="show-body">
-              <div className="row between">
-                <Link to={`/show/${g.tvdbId}`} className="strong">
-                  {g.title}
-                </Link>
-                <Chip tone="info">
-                  {t("common.season", { n: g.season })} · {t("audit.lang.files", { n: g.files.length })}
-                </Chip>
-              </div>
+              <ShowLink tvdbId={g.tvdbId} title={g.title} className="show-card-head">
+                <Cover src={g.cover} alt={g.title} size="sm" />
+                <span className="stack">
+                  <span className="strong clamp2">{g.title}</span>
+                  <Chip tone="info">
+                    {t("common.season", { n: g.season })} · {t("audit.lang.files", { n: g.files.length })}
+                  </Chip>
+                </span>
+              </ShowLink>
               <p className="small muted">{g.files[0].reason}</p>
               <Why summary={t("common.more")} lines={g.files.map((f) => `${f.name}${f.group ? ` [${f.group}]` : ""}: ${f.reason}`)} />
               <button
@@ -188,11 +189,11 @@ function Specials() {
           .filter((s) => s.items.length)
           .map((s) => (
             <article key={s.tvdbId} className="card show-card">
-              <Cover src={s.cover} alt={s.title} size="sm" />
               <div className="show-body">
-                <Link to={`/show/${s.tvdbId}`} className="strong">
-                  {s.title}
-                </Link>
+                <ShowLink tvdbId={s.tvdbId} title={s.title} className="show-card-head">
+                  <Cover src={s.cover} alt={s.title} size="sm" />
+                  <span className="strong clamp2">{s.title}</span>
+                </ShowLink>
                 <ul className="plain">
                   {s.items.map((i) => (
                     <li key={i.id} className="special-row">

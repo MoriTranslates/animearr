@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
 import { t, type I18nKey } from "../i18n";
@@ -80,6 +80,12 @@ export function Activity() {
     return api<Decision[]>(`/activity${kinds ? `?kinds=${kinds}` : ""}`);
   }, [filter]);
   const all = [...(list.data ?? []), ...extra];
+  // Refresh while the page is open, so grabs and imports move on by themselves.
+  useEffect(() => {
+    const id = setInterval(() => void list.reload(), 15_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   async function more() {
     const last = all[all.length - 1];
     if (!last) return;

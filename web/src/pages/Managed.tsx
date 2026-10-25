@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
 import { Link } from "../App";
+import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, relTime, Spinner, Toggle, useLoad, usePageTitle, useToast, Why } from "../ui";
 
@@ -10,6 +11,12 @@ export function Managed({ status }: { status: Status }) {
   usePageTitle(t("managed.title"));
   const toast = useToast();
   const data = useLoad(() => api<{ dryRun: boolean; shows: ManagedShow[]; grabs: Grab[] }>("/managed"), []);
+  // Refresh while the page is open, so grabs and imports move on by themselves.
+  useEffect(() => {
+    const id = setInterval(() => void data.reload(), 15_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [confirm, setConfirm] = useState<ManagedShow | null>(null);
 
   async function setDry(m: ManagedShow, dryRun: boolean) {
@@ -47,14 +54,14 @@ export function Managed({ status }: { status: Status }) {
       <div className="list">
         {data.data?.shows.map((m) => (
           <article key={m.tvdbId} className="card show-card">
-            <Cover src={m.cover} alt={m.title} size="md" />
-            <div className="show-body">
-              <div className="row between">
-                <Link to={`/show/${m.tvdbId}`} className="strong">
-                  {m.title}
-                </Link>
+            <ShowLink tvdbId={m.tvdbId} title={m.title} className="show-card-head">
+              <Cover src={m.cover} alt={m.title} size="md" />
+              <span className="stack">
+                <span className="strong clamp2">{m.title}</span>
                 {m.unmonitoredInSonarr && <Chip tone="info">{t("managed.sonarrUnmonitored")}</Chip>}
-              </div>
+              </span>
+            </ShowLink>
+            <div className="show-body">
               <Toggle checked={m.dryRun} onChange={(v) => setDry(m, v)} label={t("managed.showDryRun")} />
               {!m.unmonitoredInSonarr && (
                 <button className="small ghost self-start" onClick={() => setConfirm(m)}>

@@ -4,6 +4,7 @@ import { Link } from "../App";
 import { t } from "../i18n";
 import { relTime, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
+import { Calendar } from "./Calendar";
 
 export function Home({ status, onChanged }: { status: Status; onChanged: () => void }) {
   usePageTitle(t("home.title"));
@@ -60,6 +61,10 @@ export function Home({ status, onChanged }: { status: Status; onChanged: () => v
           <span className="muted small">{t("nav.managed")} →</span>
         </Link>
       </div>
+      <h2 className="section-title">
+        {t("cal.title")} <Link to="/calendar">→</Link>
+      </h2>
+      <Calendar compact />
       <h2 className="section-title">{t("home.quick")}</h2>
       <div className="tiles">
         <Link to="/audit?tab=gaps" className="card pad tile link-tile">

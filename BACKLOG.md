@@ -61,6 +61,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [ ] Muse Asia and other official free-stream links
 
 ### Themes
+- UI design rules (user feedback 2026-10-25) live in PROPOSAL §10 "Design rules"; themes must keep them (no colour-only meaning, readable phone type).
 - [ ] Themes engine with presets: "server/compact" dense view, "pretty" poster-heavy view, colour themes, community theme files. Builds on 0.1's design tokens.
 - [ ] "Theme it after your favourite anime": pick a show; AnimeArr takes an accent palette from its AniList art (`coverImage.color`), uses its banner as the header/background, and lets users share theme files.
 

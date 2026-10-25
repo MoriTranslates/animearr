@@ -131,6 +131,11 @@ export async function manualImport(files: { path: string; seriesId: number; epis
   return call<{ id: number }>("POST", "/command", { name: "ManualImport", files, importMode });
 }
 
+/** Deletes an episode file through Sonarr (Sonarr's recycle bin applies if one is set). User-confirmed only. */
+export async function deleteEpisodeFile(id: number) {
+  await call<void>("DELETE", `/episodefile/${id}`);
+}
+
 /** Sets a series' monitored flag (only after the user confirms in the Managed screen). */
 export async function setSeriesMonitored(id: number, monitored: boolean) {
   const s = await getOneSeries(id);

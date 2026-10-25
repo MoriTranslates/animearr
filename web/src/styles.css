@@ -246,3 +246,83 @@ dl.facts dd { margin: 0; }
   .cover.md { width: 64px; height: 92px; }
   input.search { width: 100%; }
 }
+
+/* ---------------------------------------------------------------- tappable show cards */
+.card-link { display: flex; align-items: center; gap: var(--space-3); color: var(--text); text-decoration: none; border-radius: var(--radius-sm); min-width: 0; position: relative; }
+.card-link:hover .chevron, .card-link:focus-visible .chevron { color: var(--accent-2); transform: translateX(2px); }
+.card-link:hover .strong, .card-link:hover .poster-title { color: var(--accent-2); }
+.chevron { margin-left: auto; font-size: 1.6rem; line-height: 1; color: var(--muted); transition: transform 0.15s, color 0.15s; flex: none; padding-left: var(--space-2); }
+.show-card { flex-direction: column; align-items: stretch; }
+.show-card-head { padding: 2px; }
+.poster-card { position: relative; }
+.poster-check { position: absolute; top: 8px; left: 8px; z-index: 2; width: 24px; height: 24px; }
+.poster-link { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 4px; }
+.poster-link .cover { border-radius: 0; }
+.poster-link .poster-title { padding: 0 var(--space-2); font-weight: 600; font-size: var(--text-sm); }
+.poster-link .chevron { position: absolute; right: 6px; bottom: 2px; }
+
+/* ---------------------------------------------------------------- series header */
+.series-hero { display: flex; gap: var(--space-4); padding: var(--space-4); background-size: cover; background-position: center top; }
+.series-hero .cover.lg { width: 150px; flex: none; box-shadow: var(--shadow); }
+.hero-body { min-width: 0; flex: 1; }
+.strong-line { font-weight: 600; }
+.synopsis-box summary, .advanced summary { cursor: pointer; font-weight: 600; }
+.advanced[open] summary { margin-bottom: var(--space-3); }
+
+/* ---------------------------------------------------------------- episode list (Sonarr-style, vertical) */
+.season { padding: 0; overflow: hidden; }
+.season-head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); cursor: pointer; flex-wrap: wrap; }
+.season-head::-webkit-details-marker { display: none; }
+.season-head::before { content: "▸"; color: var(--muted); }
+.season[open] > .season-head::before { content: "▾"; }
+.ep-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.ep-row { display: flex; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-left: var(--space-2); }
+.ep-row:last-child { border-bottom: 0; }
+.ep-row.next { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ep-row.selected { background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.ep-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: var(--space-3); background: none; border: 0; border-radius: 0; padding: 10px var(--space-3) 10px 0; text-align: left; justify-content: stretch; }
+.ep-main:hover { background: var(--panel-2); }
+.ep-num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); text-align: right; }
+.ep-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ep-title { font-weight: 600; }
+.ep-status { justify-self: end; }
+.ep-grid { display: flex; flex-wrap: wrap; gap: 4px; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
+.ep-cell { min-width: 34px; height: 30px; padding: 0 6px; font-size: var(--text-xs); border-radius: 6px; }
+.ep-cell.have { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good); }
+.ep-cell.missing { background: color-mix(in srgb, var(--bad) 20%, transparent); color: var(--bad); }
+.ep-cell.downloading { background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--accent-2); }
+.ep-cell.attention { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.ep-cell.selected { outline: 2px solid var(--accent-2); }
+.legend { width: 100%; margin-top: 4px; }
+
+/* ---------------------------------------------------------------- episode sheet: bottom sheet on phones, side panel on desktop */
+.sheet-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 60; display: flex; justify-content: flex-end; }
+.sheet { width: min(480px, 100%); height: 100%; overflow: auto; border-radius: 0; border-width: 0 0 0 1px; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); outline: none; animation: sheet-in-side 0.18s ease-out; }
+.sheet-grip { display: none; }
+.sheet-actions button { flex: 1 1 auto; }
+.history-row { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+dl.facts .wide { grid-column: 1 / -1; }
+@keyframes sheet-in-side { from { transform: translateX(30px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes sheet-in-up { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* ---------------------------------------------------------------- agenda calendar */
+.agenda { display: flex; flex-direction: column; gap: var(--space-4); }
+.agenda-date { font-size: var(--text-md); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-2); }
+.agenda-day.today .agenda-date { color: var(--accent-2); }
+.agenda-day ul { display: flex; flex-direction: column; gap: var(--space-2); }
+.agenda-entry { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: center; text-align: left; padding: var(--space-2) var(--space-3); justify-content: stretch; }
+.agenda-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agenda-day.today .agenda-entry { border-color: color-mix(in srgb, var(--accent-2) 45%, var(--line)); }
+
+@media (max-width: 760px) {
+  .series-hero { flex-direction: row; padding: var(--space-3); }
+  .series-hero .cover.lg { width: 96px; }
+  .series-hero h1 { font-size: var(--text-lg); }
+  .ep-main { grid-template-columns: 28px 1fr; }
+  .ep-status { grid-column: 2; justify-self: start; }
+  .sheet-back { align-items: flex-end; }
+  .sheet { width: 100%; height: auto; max-height: 88vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-width: 1px 0 0; padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom)); animation: sheet-in-up 0.2s ease-out; }
+  .sheet-grip { display: block; width: 44px; height: 5px; border-radius: 99px; background: var(--line); align-self: center; }
+  .agenda-entry { grid-template-columns: auto 1fr; }
+  .agenda-status { grid-column: 2; }
+}

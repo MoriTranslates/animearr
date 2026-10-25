@@ -13,6 +13,7 @@ import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
 import { gaps, listFacts, missingLanguage, specials } from "./audit.js";
+import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
 import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
@@ -252,7 +253,50 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
     rules: db.prepare("SELECT id, grp, mode, season, offset, note FROM rules WHERE tvdb_id = ? ORDER BY id").all(tvdbId),
     facts: listFacts(tvdbId),
     schedule: scheduleFor(tvdbId),
+    header: seriesHeader(tvdbId),
+    rows: episodeRows(s.id),
   };
+});
+
+// ---------------------------------------------------------------- episodes: detail, delete, re-grab, calendar
+
+app.get<{ Params: { id: string } }>("/api/episodes/:id", async (req) => {
+  const d = episodeDetail(id(req.params.id));
+  if (!d) throw fail("Unknown episode", 404);
+  return d;
+});
+type EpBody = { tvdbId?: number; episodeIds?: number[]; confirm?: boolean };
+const epBody = (b: EpBody | undefined) => {
+  const ids = (b?.episodeIds ?? []).map(id).slice(0, 100);
+  if (!ids.length) throw fail("Pick at least one episode");
+  return { tvdbId: id(b?.tvdbId), ids };
+};
+app.post<{ Body: EpBody }>("/api/episodes/delete", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm the delete first");
+  const { tvdbId, ids } = epBody(req.body);
+  return deleteEpisodeFiles(tvdbId, ids);
+});
+app.post<{ Body: EpBody }>("/api/episodes/regrab", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm the re-grab first");
+  const { tvdbId, ids } = epBody(req.body);
+  return { results: await regrabEpisodes(tvdbId, ids), dryRun: getSettings().managed.dryRun };
+});
+app.post<{ Body: EpBody }>("/api/episodes/search-soon", async (req) => {
+  writable();
+  const { tvdbId, ids } = epBody(req.body);
+  if (!listManaged().some((m) => m.tvdbId === tvdbId)) throw fail("Only managed shows have a search schedule; use Deep Search instead", 409);
+  searchAgainSoon(tvdbId, ids);
+  void managedTick().catch(() => undefined);
+  return { ok: true };
+});
+app.get<{ Querystring: { from?: string; to?: string; managed?: string } }>("/api/calendar", async (req) => {
+  const day = 86_400_000;
+  const from = Number(req.query.from) || Date.now() - 7 * day;
+  const to = Number(req.query.to) || Date.now() + 14 * day;
+  if (to - from > 120 * day) throw fail("Pick a shorter range");
+  return { from, to, entries: calendar(from, to, req.query.managed === "1") };
 });
 
 app.post<{ Body: { tvdbIds?: number[]; on?: boolean } }>("/api/managed", async (req) => {
@@ -459,7 +503,8 @@ app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
       db.prepare("DELETE FROM facts WHERE id = ?").run(Number(a.id));
       break;
     case "unblock":
-      db.prepare("DELETE FROM blocklist WHERE release = ?").run(String(a.release));
+      if (a.id) db.prepare("DELETE FROM blocklist WHERE id = ?").run(Number(a.id));
+      else db.prepare("DELETE FROM blocklist WHERE release = ?").run(String(a.release));
       break;
     case "remonitor":
       await unmonitorInSonarr(Number(a.tvdbId), true);

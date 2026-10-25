@@ -85,13 +85,13 @@ async function syncSonarr(full: boolean, res: SyncResult) {
   for (const e of animeListEntries().values()) if (e.tvdbId !== null) byTvdb.set(e.tvdbId, [...(byTvdb.get(e.tvdbId) ?? []), { aid: e.aid, season: e.defaultSeason, offset: e.offset }]);
 
   const upsertSeries = cache.prepare(`INSERT INTO series (id, tvdb_id, tmdb_id, imdb_id, title, sort_title, year, status, series_type, path, root_folder, monitored, quality_profile_id, tags, network, runtime,
-      original_language, seasons, first_aired, next_airing, previous_airing, anidb_ids, anidb_status, poster, added, sig, synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      original_language, seasons, first_aired, next_airing, previous_airing, anidb_ids, anidb_status, poster, added, sig, overview, genres, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET tvdb_id = excluded.tvdb_id, tmdb_id = excluded.tmdb_id, imdb_id = excluded.imdb_id, title = excluded.title, sort_title = excluded.sort_title,
       year = excluded.year, status = excluded.status, series_type = excluded.series_type, path = excluded.path, root_folder = excluded.root_folder, monitored = excluded.monitored,
       quality_profile_id = excluded.quality_profile_id, tags = excluded.tags, network = excluded.network, runtime = excluded.runtime, original_language = excluded.original_language,
       seasons = excluded.seasons, first_aired = excluded.first_aired, next_airing = excluded.next_airing, previous_airing = excluded.previous_airing, anidb_ids = excluded.anidb_ids,
-      anidb_status = excluded.anidb_status, poster = excluded.poster, added = excluded.added, sig = CASE WHEN excluded.sig IS NULL THEN series.sig ELSE excluded.sig END, synced_at = excluded.synced_at`);
+      anidb_status = excluded.anidb_status, poster = excluded.poster, added = excluded.added, overview = excluded.overview, genres = excluded.genres, sig = CASE WHEN excluded.sig IS NULL THEN series.sig ELSE excluded.sig END, synced_at = excluded.synced_at`);
   const now = Date.now();
   const stale: SonarrSeries[] = [];
   tx(cache, () => {
@@ -105,7 +105,7 @@ async function syncSonarr(full: boolean, res: SyncResult) {
       const poster = x.images?.find((i) => i.coverType === "poster")?.remoteUrl ?? null;
       upsertSeries.run(x.id, x.tvdbId, x.tmdbId ?? null, x.imdbId ?? null, x.title, x.sortTitle ?? null, x.year ?? null, x.status, x.seriesType, x.path, x.rootFolderPath ?? null, x.monitored ? 1 : 0,
         x.qualityProfileId, JSON.stringify(x.tags), x.network ?? null, x.runtime ?? null, x.originalLanguage?.name ?? null, JSON.stringify(x.seasons.map((z) => ({ season: z.seasonNumber, monitored: z.monitored, files: z.statistics?.episodeFileCount ?? 0, episodes: z.statistics?.episodeCount ?? 0, total: z.statistics?.totalEpisodeCount ?? 0 }))),
-        x.firstAired ?? null, x.nextAiring ?? null, x.previousAiring ?? null, JSON.stringify(aids), aids.length ? "matched" : "review", poster, x.added ?? null, needs ? null : sig, needs ? (p?.synced_at ?? 0) : p!.synced_at);
+        x.firstAired ?? null, x.nextAiring ?? null, x.previousAiring ?? null, JSON.stringify(aids), aids.length ? "matched" : "review", poster, x.added ?? null, needs ? null : sig, (x as { overview?: string }).overview ?? null, JSON.stringify((x as { genres?: string[] }).genres ?? []), needs ? (p?.synced_at ?? 0) : p!.synced_at);
       cache.prepare("DELETE FROM alt_titles WHERE series_id = ?").run(x.id);
       for (const a of x.alternateTitles ?? []) {
         const season = a.sceneSeasonNumber !== undefined && a.sceneSeasonNumber !== null && a.sceneSeasonNumber >= 1 ? a.sceneSeasonNumber : null;

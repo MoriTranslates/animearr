@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
 import { Link } from "../App";
+import { ShowLink } from "../episodes";
 import { t } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
 
@@ -101,14 +102,12 @@ export function Shows({ status }: { status: Status }) {
           <div className="poster-grid">
             {shown.map((s) => (
               <article key={s.tvdbId} className={`poster-card${sel.has(s.tvdbId) ? " selected" : ""}`}>
-                <label className="poster-select">
-                  <input type="checkbox" checked={sel.has(s.tvdbId)} onChange={() => toggle(s.tvdbId)} aria-label={s.title} />
+                <input className="poster-check" type="checkbox" checked={sel.has(s.tvdbId)} onChange={() => toggle(s.tvdbId)} aria-label={s.title} />
+                <ShowLink tvdbId={s.tvdbId} title={s.title} className="poster-link">
                   <Cover src={s.cover} alt={s.title} size="lg" />
-                </label>
+                  <span className="poster-title clamp2">{s.title}</span>
+                </ShowLink>
                 <div className="poster-body">
-                  <Link to={`/show/${s.tvdbId}`} className="poster-title clamp2">
-                    {s.title}
-                  </Link>
                   <div className="chips">
                     {s.managed && <Chip tone="accent">{t("chip.managed")}{s.dryRun ? ` · ${t("chip.dryRun")}` : ""}</Chip>}
                     {s.airingThisSeason && <Chip tone="good">{t("chip.airing")}</Chip>}
