@@ -21,6 +21,6 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await send("Network.setCookie", { name: sid[0], value: sid[1], url: base });
 await send("Page.navigate", { url: base + process.argv[2] });
 await new Promise((r) => setTimeout(r, 3500));
-const r = await send("Runtime.evaluate", { returnByValue: true, expression: `JSON.stringify([...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > 391).slice(0, 12).map(e => e.tagName + "." + e.className + " w=" + Math.round(e.getBoundingClientRect().width) + " r=" + Math.round(e.getBoundingClientRect().right) + " :" + (e.textContent||"").slice(0,40)))` });
+const r = await send("Runtime.evaluate", { returnByValue: true, expression: `JSON.stringify([...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > 391 || e.scrollWidth > e.clientWidth + 2 && getComputedStyle(e).overflowX === "visible" && e.clientWidth > 0).slice(0, 12).map(e => e.tagName + "." + e.className + " w=" + Math.round(e.getBoundingClientRect().width) + " r=" + Math.round(e.getBoundingClientRect().right) + " sw=" + e.scrollWidth + " cw=" + e.clientWidth + " :" + (e.textContent||"").slice(0,40)))` });
 console.log(JSON.parse(r.result.result.value).join("\n"));
 ws.close(); proc.kill();

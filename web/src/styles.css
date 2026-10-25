@@ -338,3 +338,4 @@ dl.facts .wide { grid-column: 1 / -1; }
 @media (max-width: 760px) {
   .tabbar a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.7rem; }
 }
+.card, .why, .why-text, .toast span { overflow-wrap: anywhere; }
