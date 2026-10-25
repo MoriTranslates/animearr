@@ -22,6 +22,9 @@ npm test           # parser, resolver, ranking and pipeline tests
 ```
 
 Docker: `docker build -t animearr .` then run with `-p 8484:8484 -v /mnt/cache/appdata/animearr:/config`.
+On Unraid, the template in `/boot/config/plugins/dockerMan/templates-user/my-animearr.xml` (br0, 192.168.1.13:8484) also mounts
+the downloads (`/data`) and anime libraries (`/media/Anime`, `/media/AnimeArr`) read-only, at the same paths Sonarr uses, so
+AnimeArr can check files with ffprobe before importing them.
 Keep `/config` on a local disk (on Unraid `/mnt/cache/appdata`, not `/mnt/user`): SQLite can be damaged on network or FUSE filesystems.
 
 ## Licence
