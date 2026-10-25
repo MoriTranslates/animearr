@@ -16,7 +16,7 @@ import { cache, db, dbState, setJob } from "./db.js";
 import { startGrab, type Candidate } from "./pipeline.js";
 import { decisionSummary, deepSearch, identifyContext, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
-import { coverFor } from "./audit.js";
+import { burnedInFact, coverFor } from "./audit.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -117,6 +117,7 @@ export function setManaged(tvdbIds: number[], on: boolean): { changed: number; r
 export function setShowDryRun(tvdbId: number, dryRun: boolean) {
   const r = db.prepare("UPDATE managed SET dry_run = ? WHERE tvdb_id = ?").run(dryRun ? 1 : 0, tvdbId);
   if (!r.changes) throw Object.assign(new Error("That show isn't managed"), { statusCode: 404 });
+  if (!dryRun && !getSettings().managed.dryRun) releaseDryRunDecisions(tvdbId);
   const m = listManaged().find((x) => x.tvdbId === tvdbId)!;
   logDecision("managed", { tvdbId, title: m.title, why: dryRun ? `Dry-run turned ON for ${m.title}` : `Dry-run turned OFF for ${m.title}${getSettings().managed.dryRun ? " (the global dry-run switch is still on, so nothing is grabbed yet)" : ": AnimeArr will grab for real"}` });
 }
@@ -182,18 +183,46 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const m = listManaged().find((x) => x.tvdbId === st.tvdb_id);
   if (!m) return;
   const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
-  const ok = res.results.filter((r) => r.rank.accept && r.confidence >= s.minConfidence && r.rank.langProb >= 0.5 && r.coversTarget && r.extra <= 0);
-  const { best, why } = decisionSummary(ok.length ? ok : res.results);
-  const attempts = st.attempts + 1;
-  if (best && ok.includes(best)) {
-    const out = await startGrab({ tvdbId: st.tvdb_id, episodeIds: [st.episode_id], candidate: toCandidate(best), fallbacks: ok.filter((x) => x !== best).map(toCandidate), origin: "managed" });
-    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, state = ?, last_why = ? WHERE episode_id = ?").run(attempts, now, out.dryRun ? "would-grab" : "grabbed", out.message, st.episode_id);
+  // Prowlarr down: every query failed. Try again later without using up an attempt.
+  if (res.errors.length && res.errors.length >= res.queries.length) {
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(now + 30 * 60_000, `Prowlarr didn't answer (${res.errors[0]}); trying again in 30 min`, st.episode_id);
     return;
   }
+  const season = res.targets[0]?.season ?? null;
+  const burnedOk = getSettings().profile.subLangs.some((l) => !!burnedInFact(st.tvdb_id, season, l));
+  // Automatic grabs are stricter than manual ones: confident mapping, likely profile language, only this episode,
+  // no burn-ins (unless the user confirmed that's all there is), and no dead torrents.
+  const ok = res.results.filter(
+    (r) =>
+      r.rank.accept &&
+      r.confidence >= s.minConfidence &&
+      r.rank.langProb >= 0.5 &&
+      r.coversTarget &&
+      r.extra <= 0 &&
+      (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
+      !(r.protocol === "torrent" && !r.seeders),
+  );
+  const { best, why } = decisionSummary(ok.length ? ok : res.results);
+  const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
+  if (best && ok.includes(best)) {
+    const out = await startGrab({ tvdbId: st.tvdb_id, episodeIds: [st.episode_id], candidate: toCandidate(best), fallbacks: ok.filter((x) => x !== best).map(toCandidate), origin: "managed" });
+    const state = out.dryRun ? "would-grab" : out.failed ? "retry" : "grabbed";
+    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ? WHERE episode_id = ?").run(attempts, now, state === "retry" ? now + backoff : now, state, out.message, out.id, st.episode_id);
+    return;
+  }
   const gaveUp = attempts >= s.maxAttempts;
   db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ? WHERE episode_id = ?").run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why} (${res.found} releases seen)`, st.episode_id);
   logDecision("skip", { tvdbId: st.tvdb_id, title: m.title, episodeIds: [st.episode_id], why: `${m.title} ${res.targets[0] ? `S${res.targets[0].season}E${res.targets[0].episode}` : ""}: ${why}. ${gaveUp ? `Gave up after ${attempts} searches.` : `Next try in ${Math.round(backoff / 60_000)} min.`}` });
+}
+
+/** Leaving dry-run: episodes that were only "would grab" get searched for real on the next tick. */
+export function releaseDryRunDecisions(tvdbId?: number) {
+  const now = Date.now();
+  const r = tvdbId
+    ? db.prepare("UPDATE search_state SET state = 'waiting', next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab' AND tvdb_id = ?").run(now, tvdbId)
+    : db.prepare("UPDATE search_state SET state = 'waiting', next_at = ?, last_why = 'dry-run turned off' WHERE state = 'would-grab'").run(now);
+  return Number(r.changes);
 }
 
 let ticking = false;
@@ -208,7 +237,11 @@ export async function managedTick(now = Date.now()) {
       try {
         await decideEpisode(st, now);
       } catch (e) {
-        db.prepare("UPDATE search_state SET last_why = ?, next_at = ? WHERE episode_id = ?").run(`Error: ${(e as Error).message}`, now + 30 * 60_000, st.episode_id);
+        // Errors count as an attempt, so a permanently broken episode (removed series, outside the allowed roots)
+        // ends in "gave-up" instead of retrying forever.
+        const attempts = st.attempts + 1;
+        const gaveUp = attempts >= getSettings().managed.maxAttempts;
+        db.prepare("UPDATE search_state SET attempts = ?, state = ?, last_why = ?, next_at = ? WHERE episode_id = ?").run(attempts, gaveUp ? "gave-up" : "retry", `Error: ${(e as Error).message}`, now + 30 * 60_000, st.episode_id);
       }
     }
     setJob("managed", "done", `${listManaged().length} managed shows; ${due.length} episode searches this round${isDryRun(null) ? " (dry-run)" : ""}`);

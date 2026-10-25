@@ -85,11 +85,27 @@ export function Managed({ status }: { status: Status }) {
         {data.data?.grabs.map((g) => (
           <article key={g.id} className="card pad">
             <div className="row between">
-              <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.dry_run ? "accent" : "info"}>{g.state}</Chip>
+              <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : g.dry_run ? "accent" : "info"}>{g.state}</Chip>
               <span className="muted small">{relTime(g.at)}</span>
             </div>
             <p className="mono small">{g.release}</p>
             <Why lines={[g.why, ...(g.error ? [g.error] : [])]} />
+            {g.state === "needs-attention" && (
+              <button
+                className="small self-start"
+                onClick={async () => {
+                  try {
+                    await api(`/grabs/${g.id}/retry`, { body: {} });
+                    toast(t("managed.retried"));
+                    await data.reload();
+                  } catch (e) {
+                    toast((e as Error).message, true);
+                  }
+                }}
+              >
+                {t("managed.retryImport")}
+              </button>
+            )}
           </article>
         ))}
       </div>

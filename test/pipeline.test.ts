@@ -43,7 +43,11 @@ function mockDeps(subsAfterImport: string[]) {
       return { data: Buffer.from("<nzb/>"), filename: r.title };
     },
     sonarr: {
-      preview: async (folder) => [{ path: `${folder}/episode.mkv`, size: 4e8, quality: { quality: { id: 9 } }, languages: [{ id: 8 }], releaseGroup: undefined, indexerFlags: 0 }] as never,
+      // Like real Sonarr: with a seriesId the folder is ignored and the series' library files come back.
+      preview: async (folder, _downloadId, seriesId) =>
+        (seriesId
+          ? [{ path: "/media/AnimeArr/Full-Time Magister/Season 6/existing.mkv", size: 4e8, quality: {}, languages: [] }]
+          : [{ path: `${folder}/episode.mkv`, size: 4e8, quality: { quality: { id: 9 } }, languages: [{ id: 8 }], releaseGroup: undefined, indexerFlags: 0 }]) as never,
       importFiles: async (files, mode) => {
         calls.imports.push({ files, mode });
         return { id: 77 };
@@ -107,4 +111,19 @@ test("verify fails (Chinese subs only) → blocklisted, next candidate is tried"
   assert.deepEqual(calls.fetched, ["[BadGroup] Quanzhi Fashi S6 - 01", "[GoodGroup] Quanzhi Fashi S6 - 01"]);
   const learned = db.prepare("SELECT total, subs FROM group_langs WHERE grp = 'badgroup' AND origin = 'verify' AND source = '*'").get() as { total: number; subs: string } | undefined;
   assert.ok(learned && learned.total === 1 && JSON.parse(learned.subs).zh === 1, "verification feeds the learned language table");
+});
+
+test("import problems that aren't the release's fault: needs attention, no blocklist, no next candidate; retry works", async () => {
+  const { deps, calls } = mockDeps(["eng"]);
+  const broken = { ...deps, sonarr: { ...deps.sonarr, preview: async () => [] as never } };
+  const r = await startGrab({ tvdbId: TVDB, episodeIds: [EP.s6e2], candidate: { ...cand("[OKGroup] Quanzhi Fashi S6 - 02", "g7"), episodeIds: [EP.s6e2] }, fallbacks: [cand("[Other] Quanzhi Fashi S6 - 02", "g8")], origin: "manual" }, broken);
+  await pipelineTick(broken);
+  const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string };
+  assert.equal(g.state, "needs-attention");
+  assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get("[OKGroup] Quanzhi Fashi S6 - 02"), undefined);
+  assert.deepEqual(calls.fetched, ["[OKGroup] Quanzhi Fashi S6 - 02"]);
+  const { retryImport } = await import("../server/pipeline.js");
+  retryImport(r.id);
+  await pipelineTick(deps);
+  assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "done");
 });

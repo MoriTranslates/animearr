@@ -478,7 +478,11 @@ export function parseRelease(input: string): ParsedRelease {
   if (/\b(batch|complete(?: series| season)?)\b/i.test(s) && !(episodes.length === 1 && absolute.length <= 1)) batch = true;
   if (season !== null && !episodes.length && !absolute.length && specialNumber === null) fullSeason = true;
   if (episodes.length === 1 && absolute.length === 0) batch = false;
-  if (absolute.length === 1 && !episodes.length && !fullSeason) batch = /\b(batch)\b/i.test(s) && false;
+  // One episode number (with or without a season marker like "2nd Season - 08") is a single episode, not a batch.
+  if (absolute.length === 1 && !episodes.length) {
+    batch = false;
+    fullSeason = false;
+  }
 
   // ---- title
   let title = s.slice(0, titleEnd);

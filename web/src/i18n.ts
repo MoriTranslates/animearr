@@ -125,6 +125,8 @@ const en = {
   "managed.nextAt": "next check {when}",
   "managed.grabs": "Recent grabs",
   "managed.noGrabs": "No grabs yet.",
+  "managed.retryImport": "Retry import",
+  "managed.retried": "Import queued again",
 
   "audit.title": "Audit",
   "audit.readOnly": "Read-only: audits never change Sonarr or Radarr.",

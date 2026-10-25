@@ -17,9 +17,9 @@ import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
-import { candidates, listManaged, managedTick, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
+import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
-import { listGrabs, pipelineTick, startGrab, type Candidate } from "./pipeline.js";
+import { listGrabs, pipelineTick, recoverGrabs, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
 import { checkPassword, getSettings, isMasked, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -168,7 +168,10 @@ app.put<{ Body: Partial<Settings> }>("/api/settings", async (req) => {
   writable();
   const before = getSettings();
   const next = updateSettings(req.body);
-  if (before.managed.dryRun !== next.managed.dryRun) logDecision("info", { why: next.managed.dryRun ? "Global dry-run turned ON: nothing will be grabbed" : "Global dry-run turned OFF: shows whose own dry-run is off will be grabbed for real" });
+  if (before.managed.dryRun !== next.managed.dryRun) {
+    logDecision("info", { why: next.managed.dryRun ? "Global dry-run turned ON: nothing will be grabbed" : "Global dry-run turned OFF: shows whose own dry-run is off will be grabbed for real" });
+    if (!next.managed.dryRun) for (const m of listManaged()) if (!m.dryRun) releaseDryRunDecisions(m.tvdbId);
+  }
   if (before.allowedRoots.join("|") !== next.allowedRoots.join("|")) logDecision("info", { why: `Allowed root folders: ${next.allowedRoots.join(", ") || "none"}` });
   invalidateIndex();
   return publicSettings();
@@ -289,8 +292,8 @@ app.post<{ Body: { tvdbId?: number; season?: number | null; kind?: string; lang?
   const season = req.body?.season === null || req.body?.season === undefined ? null : Number(req.body.season);
   const lang = String(req.body?.lang ?? getSettings().profile.subLangs[0]).slice(0, 10);
   const note = String(req.body?.note ?? "").slice(0, 200);
-  const r = db.prepare("INSERT INTO facts (tvdb_id, season, kind, lang, note, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET note = excluded.note, at = excluded.at").run(tvdbId, season, kind, lang, note, Date.now());
-  logDecision("fact", { tvdbId, title: s.title, why: `You confirmed: ${s.title}${season !== null ? ` season ${season}` : ""} ${kind === "burned_in" ? `has burned-in ${lang} subtitles` : "has no release in your language"}${note ? ` (${note})` : ""}`, undo: { action: "delete-fact", args: { id: Number(r.lastInsertRowid) } } });
+  const r = db.prepare("INSERT INTO facts (tvdb_id, season, kind, lang, note, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET note = excluded.note, at = excluded.at RETURNING id").get(tvdbId, season, kind, lang, note, Date.now()) as { id: number };
+  logDecision("fact", { tvdbId, title: s.title, why: `You confirmed: ${s.title}${season !== null ? ` season ${season}` : ""} ${kind === "burned_in" ? `has burned-in ${lang} subtitles` : "has no release in your language"}${note ? ` (${note})` : ""}`, undo: { action: "delete-fact", args: { id: r.id } } });
   return { ok: true };
 });
 app.delete<{ Params: { id: string } }>("/api/facts/:id", async (req) => {
@@ -384,6 +387,11 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
 app.get("/api/grabs", async () => listGrabs(100));
+app.post<{ Params: { id: string } }>("/api/grabs/:id/retry", async (req) => {
+  writable();
+  retryImport(id(req.params.id));
+  return { ok: true };
+});
 
 // ---------------------------------------------------------------- activity log + undo
 
@@ -454,7 +462,9 @@ app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", 
   setTimeout(() => process.exit(0), 500);
   return { ok: true, message: "Restored. AnimeArr is restarting; reload the page in a few seconds (start it again yourself if it isn't running in Docker)." };
 });
-app.post("/api/system/cache/reset", async () => {
+app.post("/api/system/cache/reset", async (req) => {
+  writable();
+  if (authState(req).via === "apikey") throw fail("Log in to rebuild the cache", 403);
   resetCache();
   invalidateIndex();
   void syncLibrary(true).catch(() => undefined);
@@ -491,6 +501,7 @@ async function startup() {
   const last = lastSync();
   if (getSettings().sonarr.url && (!last || Date.now() - last > getSettings().sync.intervalHours * 3_600_000)) await syncLibrary().then(() => refreshCovers()).catch(() => undefined);
 }
+recoverGrabs();
 setTimeout(() => void startup(), 3_000);
 every(60 * 60_000, async () => {
   const s = getSettings();

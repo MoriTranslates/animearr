@@ -247,6 +247,11 @@ const USER_MIGRATIONS: string[] = [
    -- Managed-show search schedule per episode.
    CREATE TABLE search_state (episode_id INTEGER PRIMARY KEY, tvdb_id INTEGER NOT NULL, air_utc INTEGER, next_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
      last_at INTEGER, state TEXT NOT NULL DEFAULT 'waiting', last_why TEXT NOT NULL DEFAULT '');`,
+  // 2: retry/timeout bookkeeping on grabs; link a scheduled episode to its grab
+  `ALTER TABLE grabs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1;
+   ALTER TABLE grabs ADD COLUMN progress REAL;
+   ALTER TABLE grabs ADD COLUMN progress_at INTEGER;
+   ALTER TABLE search_state ADD COLUMN grab_id INTEGER;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

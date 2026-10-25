@@ -142,3 +142,11 @@ test("Chinese 內嵌 (embedded) releases are flagged burned-in Chinese and rejec
   assert.deepEqual(p.absolute, [4]);
   assert.equal(r.accept, false);
 });
+
+test("'2nd Season - 08' is one episode, not a batch (seen live on 2026-10-25)", () => {
+  const p = parseRelease("[Erai-raws].Seirei.Gensouki.2nd.Season.-.08.[1080p.CR.WEBRip.HEVC.EAC3][MultiSub][792FACFC].mkv-[N-Z-B]-xpost");
+  assert.equal(p.season, 2);
+  assert.deepEqual(p.absolute, [8]);
+  assert.equal(p.batch, false);
+  assert.equal(p.fullSeason, false);
+});
