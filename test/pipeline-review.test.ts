@@ -147,7 +147,7 @@ test("a successful import ends with a clear 'Imported ✓' entry and refreshes t
   assert.equal(refreshed, 1);
   const last = db.prepare("SELECT kind, why FROM decisions ORDER BY id DESC LIMIT 1").get() as { kind: string; why: string };
   assert.equal(last.kind, "import");
-  assert.match(last.why, /^Imported ✓ as S01E01: has en subtitles/);
+  assert.match(last.why, /^Imported ✓ as S01E01: has full en subtitles/);
 });
 
 test("queue: remove a download (deletes it from the client), blocklist it with undo, and try the next candidate", async () => {

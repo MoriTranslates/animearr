@@ -239,19 +239,21 @@ export function learnFromVerify(group: string | null, source: string, subs: stri
 }
 
 /** Learned languages for a (group, source), combining library and verification counts; falls back to the group overall. */
-export function learnedFor(group: string | null, source: string | null): { total: number; subs: Record<string, number>; origin: string } | null {
+export function learnedFor(group: string | null, source: string | null): { total: number; subs: Record<string, number>; audio: Record<string, number>; origin: string } | null {
   const grp = (group ?? "").toLowerCase();
   if (!grp) return null;
   for (const src of [source ?? "any", "*"]) {
-    const rows = db.prepare("SELECT origin, total, subs FROM group_langs WHERE grp = ? AND source = ?").all(grp, src) as { origin: string; total: number; subs: string }[];
+    const rows = db.prepare("SELECT origin, total, subs, audio FROM group_langs WHERE grp = ? AND source = ?").all(grp, src) as { origin: string; total: number; subs: string; audio: string }[];
     if (!rows.length) continue;
     const subs: Record<string, number> = {};
+    const audio: Record<string, number> = {};
     let total = 0;
     for (const r of rows) {
       total += r.total;
       for (const [l, n] of Object.entries(JSON.parse(r.subs) as Record<string, number>)) subs[l] = (subs[l] ?? 0) + n;
+      for (const [l, n] of Object.entries(JSON.parse(r.audio) as Record<string, number>)) audio[l] = (audio[l] ?? 0) + n;
     }
-    if (total >= 3) return { total, subs, origin: rows.map((r) => (r.origin === "verify" ? "verified" : "in your library")).join(" + ") };
+    if (total >= 3) return { total, subs, audio, origin: rows.map((r) => (r.origin === "verify" ? "verified" : "in your library")).join(" + ") };
   }
   return null;
 }

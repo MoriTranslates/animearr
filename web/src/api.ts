@@ -128,7 +128,7 @@ export interface Settings {
   remotePathMappings: PathMapping[];
   localPathMappings: PathMapping[];
   allowedRoots: string[];
-  profile: { name: string; watchMode: "sub"; subLangs: string[]; audioLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; resolution: number };
+  defaultProfileId: string;
   managed: { dryRun: boolean; searchDelayMin: number; backoffMin: number[]; maxAttempts: number; rssMin: number; minConfidence: number };
   sync: { intervalHours: number };
   externalUrl: string;

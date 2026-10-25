@@ -21,7 +21,10 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [ ] "Export as Anime-Lists PR" for inferred mappings — §6.6
 
 ### Watch modes
-- [ ] Dub only / Dual audio preferred / Either, with dub-status tracking and "wait for dub" — §5.4
+- [x] Sub / Dub / Dual / Either watch modes with named profiles and per-show overrides — §5.4 (0.1)
+- [ ] Dual mode: automatic upgrade of a sub-only placeholder when a dual-audio release appears
+- [ ] Dub-status tracking ("waiting for dub", dub announcements) — §5.4
+- [ ] Forced-only subtitle detection for files already in the library (ffprobe scan; Sonarr's mediaInfo has no forced flag)
 
 ### Absorbed glue apps
 - [ ] Queue Doctor (stalled/slow/failed imports, extraction, extension blocker) — §7.0 module 4

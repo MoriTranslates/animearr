@@ -12,16 +12,24 @@ export interface PathMapping {
   to: string;
 }
 
-/** The one language profile of 1.0 (PROPOSAL §5.4). Codes are BCP-47-style: en, es, pt, fr, ja ... */
+/**
+ * How a viewer watches (PROPOSAL §5.4): sub = original audio + full subtitles in a profile language;
+ * dub = audio in a profile dub language; dual = original + dub audio (a sub release is a placeholder until a dual
+ * one appears); either = whichever arrives first that meets the profile.
+ */
+export type WatchMode = "sub" | "dub" | "dual" | "either";
+export const WATCH_MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
+
+/** A language profile (PROPOSAL §5.4). Codes are BCP-47-style: en, es, pt, pt-br, fr, ar, ja ... */
 export interface LanguageProfile {
+  id: string;
   name: string;
-  /** "Sub only" is the 1.0 watch mode; dub/dual modes are 2.0 (BACKLOG.md). */
-  watchMode: "sub";
-  /** Subtitle languages that make a file watchable, best first. */
+  watchMode: WatchMode;
+  /** Subtitle languages that make a file watchable, best first. Forced/signs-only tracks never count. */
   subLangs: string[];
-  /** Preferred audio languages, best first (the original language is usually first). */
-  audioLangs: string[];
-  /** Avoid burned-in subs when a soft-sub alternative exists. */
+  /** Audio languages that count as a dub (dub/dual/either modes), best first. */
+  dubLangs: string[];
+  /** Avoid burned-in subs when a soft-sub alternative exists (burn-ins stay a last resort). */
   softOnly: boolean;
   preferUncensored: boolean;
   /** Protocol order, e.g. usenet before torrent. */
@@ -45,7 +53,9 @@ export interface Settings {
    * (e.g. /media/AnimeArr). Empty = nothing can be managed or imported until the user picks one.
    */
   allowedRoots: string[];
-  profile: LanguageProfile;
+  /** Language profiles; the default applies to every show without its own choice. */
+  profiles: LanguageProfile[];
+  defaultProfileId: string;
   managed: {
     /** Global DRY-RUN: when on, nothing is ever sent to a download client. Real grabs need this off AND the show's dry-run off. */
     dryRun: boolean;
@@ -70,10 +80,11 @@ export interface Settings {
 }
 
 export const DEFAULT_PROFILE: LanguageProfile = {
-  name: "Anime: JP audio + EN subs",
+  id: "default",
+  name: "English subs (default)",
   watchMode: "sub",
   subLangs: ["en"],
-  audioLangs: ["ja"],
+  dubLangs: ["en"],
   softOnly: true,
   preferUncensored: true,
   protocolOrder: ["usenet", "torrent"],
@@ -89,7 +100,8 @@ const DEFAULTS: Settings = {
   remotePathMappings: [],
   localPathMappings: [],
   allowedRoots: [],
-  profile: DEFAULT_PROFILE,
+  profiles: [DEFAULT_PROFILE],
+  defaultProfileId: "default",
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
   sync: { intervalHours: 6 },
   externalUrl: "",
@@ -101,7 +113,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "profile", "managed", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -111,13 +123,12 @@ const SECRET_FOR_URL: [string, string][] = [
   ["qbittorrent.url", "qbittorrent.password"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
-const ENUMS: Record<string, readonly string[]> = { "profile.watchMode": ["sub"] };
+const ENUMS: Record<string, readonly string[]> = {};
 const RANGES: Record<string, [number, number]> = {
   "managed.searchDelayMin": [0, 1440],
   "managed.maxAttempts": [1, 100],
   "managed.rssMin": [0, 1440],
   "managed.minConfidence": [50, 100],
-  "profile.resolution": [360, 2160],
   "sync.intervalHours": [1, 168],
 };
 
@@ -146,11 +157,7 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
       .filter((x) => x.from && x.to)
       .slice(0, 20);
   }
-  if (path === "profile.protocolOrder") {
-    if (!Array.isArray(patch)) return undefined;
-    const v = [...new Set(patch.map(String).filter((x) => x === "usenet" || x === "torrent"))];
-    return v.length ? v : undefined;
-  }
+  if (path === "profiles") return undefined; // edited through /api/profiles only
   if (Array.isArray(shape)) {
     if (!Array.isArray(patch)) return undefined;
     if (NUMERIC_ARRAYS.has(path)) return patch.map(Number).filter((x) => Number.isFinite(x) && x >= 0).slice(0, 50);
@@ -194,7 +201,18 @@ export function getSettings(): Settings {
     if (!dbState.corrupt) throw new Error(`Can't read settings (${(e as Error).message}). Was secret.key replaced? Put the original back, or restore a backup together with its key.`);
   }
   let s = merge(DEFAULTS, stored);
-  const missing = !s.apiKey || !s.secret;
+  // Migration: the single 0.1 "profile" becomes the seeded default profile.
+  const old = stored.profile as { subLangs?: string[]; softOnly?: boolean; preferUncensored?: boolean; protocolOrder?: ("usenet" | "torrent")[]; resolution?: number } | undefined;
+  let migrated = false;
+  if (old && !stored.profiles) {
+    const langs = (old.subLangs ?? []).map((x) => String(x).trim().toLowerCase()).filter((x) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(x));
+    s = { ...s, profiles: [{ ...DEFAULT_PROFILE, subLangs: langs.length ? langs : DEFAULT_PROFILE.subLangs, softOnly: old.softOnly ?? true, preferUncensored: old.preferUncensored ?? true, protocolOrder: old.protocolOrder ?? DEFAULT_PROFILE.protocolOrder, resolution: old.resolution ?? 1080 }], defaultProfileId: "default" };
+    delete (s as unknown as Record<string, unknown>).profile;
+    migrated = true;
+  }
+  if (!s.profiles.length) s = { ...s, profiles: [DEFAULT_PROFILE], defaultProfileId: "default" };
+  if (!s.profiles.some((p) => p.id === s.defaultProfileId)) s = { ...s, defaultProfileId: s.profiles[0].id };
+  const missing = !s.apiKey || !s.secret || migrated;
   if (missing) s = { ...s, apiKey: s.apiKey || rand(16), secret: s.secret || rand(32) };
   if (missing && !dbState.corrupt) write(s);
   cache = s;
@@ -244,9 +262,6 @@ export function updateSettings(patch: unknown) {
   for (const p of SECRET_PATHS) if (isMasked(getPath(next, p))) setPath(next as unknown as Record<string, unknown>, p, getPath(cur, p));
   for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent"] as const) next[k].url = trimUrl(next[k].url);
   next.allowedRoots = next.allowedRoots.map((r) => r.replace(/\/+$/, "")).filter(Boolean);
-  if (!next.profile.subLangs.length) next.profile.subLangs = cur.profile.subLangs;
-  next.profile.subLangs = next.profile.subLangs.map((x) => x.toLowerCase());
-  next.profile.audioLangs = next.profile.audioLangs.map((x) => x.toLowerCase());
   if (!next.managed.backoffMin.length) next.managed.backoffMin = DEFAULTS.managed.backoffMin;
   for (const [u, k] of SECRET_FOR_URL) {
     const [svc, field] = k.split(".");

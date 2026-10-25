@@ -11,7 +11,8 @@ import { db, cache } from "./db.js";
 import { compactKey } from "./core/normalize.js";
 import { sidecarLang } from "./core/langs.js";
 import { animeListEntries } from "./metadata.js";
-import { getSettings } from "./settings.js";
+import { profileFor } from "./profiles.js";
+import { judge } from "./verify.js";
 import { localPath } from "./paths.js";
 
 interface SeriesRow {
@@ -102,34 +103,38 @@ function sidecarFor(videoPath: string, langs: string[]): string | null {
 }
 
 export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
-  const prof = getSettings().profile;
-  const wanted = prof.subLangs;
+  const def = profileFor(null);
   const out: MissingGroup[] = [];
   let checked = 0;
   for (const s of seriesRows()) {
+    const prof = profileFor(s.tvdb_id);
     const files = cache.prepare("SELECT id, season, path, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; release_group: string | null; audio_langs: string; sub_langs: string }[];
     const bySeason = new Map<number, MissingGroup>();
     for (const f of files) {
       checked++;
       const subs = f.sub_langs.split("/").filter(Boolean);
       const audio = f.audio_langs.split("/").filter(Boolean);
-      if (subs.some((l) => wanted.includes(l)) || audio.some((l) => wanted.includes(l))) continue;
-      const sidecar = opts.checkSidecars ? sidecarFor(f.path, wanted) : null;
+      const v = judge({ subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null);
+      if (v.ok) continue;
+      const sidecar = opts.checkSidecars && prof.watchMode !== "dub" ? sidecarFor(f.path, prof.subLangs) : null;
       if (sidecar) continue;
-      const reason = !subs.length && !audio.length ? "no track languages recorded (MP4 with burned-in or sidecar subs?)" : !subs.length ? `no subtitle tracks; audio ${audio.join("/") || "unknown"}` : `subtitles ${subs.join("/")} only`;
-      const g = bySeason.get(f.season) ?? { seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: null, season: f.season, files: [], confirmedBurnedIn: wanted.some((l) => !!burnedInFact(s.tvdb_id, f.season, l)) };
+      const reason = !subs.length && !audio.length ? "no track languages recorded (MP4 with burned-in or sidecar subs?)" : v.why;
+      // (Sonarr's mediaInfo has no forced flag: a forced-only track can still look like full subtitles here.)
+      const g = bySeason.get(f.season) ?? { seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: null, season: f.season, files: [], confirmedBurnedIn: prof.subLangs.some((l) => !!burnedInFact(s.tvdb_id, f.season, l)) };
       g.files.push({ id: f.id, path: f.path, name: path.posix.basename(f.path), group: f.release_group, audio, subs, sidecar, reason });
       bySeason.set(f.season, g);
     }
     for (const g of bySeason.values()) out.push({ ...g, cover: coverFor(s) });
   }
-  // Movies (Radarr anime).
+  // Movies (Radarr anime), against the default profile.
   const movies = (cache.prepare("SELECT id, tmdb_id, title, year, file, poster FROM movies WHERE is_anime = 1 AND file IS NOT NULL ORDER BY title").all() as { id: number; tmdb_id: number; title: string; year: number; file: string; poster: string | null }[])
     .map((m) => ({ ...m, f: JSON.parse(m.file) as { path: string | null; audio: string[]; subs: string[]; releaseGroup: string | null } }))
-    .filter((m) => !m.f.subs.some((l) => wanted.includes(l)) && !m.f.audio.some((l) => wanted.includes(l)))
-    .map((m) => ({ movieId: m.id, tmdbId: m.tmdb_id, title: `${m.title} (${m.year})`, cover: m.poster, path: m.f.path, group: m.f.releaseGroup, audio: m.f.audio, subs: m.f.subs, reason: !m.f.subs.length && !m.f.audio.length ? "no track languages recorded" : !m.f.subs.length ? "no subtitle tracks" : `subtitles ${m.f.subs.join("/")} only` }));
+    .map((m) => ({ ...m, v: judge({ subs: m.f.subs, audio: m.f.audio, durationSec: null, sidecars: [], untagged: 0 }, def, null, null) }))
+    .filter((m) => !m.v.ok)
+    .map((m) => ({ movieId: m.id, tmdbId: m.tmdb_id, title: `${m.title} (${m.year})`, cover: m.poster, path: m.f.path, group: m.f.releaseGroup, audio: m.f.audio, subs: m.f.subs, reason: !m.f.subs.length && !m.f.audio.length ? "no track languages recorded" : m.v.why }));
   return {
-    profile: wanted,
+    profile: def.watchMode === "dub" ? def.dubLangs : def.subLangs,
+    mode: def.watchMode,
     checkedFiles: checked,
     series: out.filter((g) => !g.confirmedBurnedIn),
     confirmed: out.filter((g) => g.confirmedBurnedIn).map((g) => ({ seriesId: g.seriesId, tvdbId: g.tvdbId, title: g.title, season: g.season, files: g.files.length })),

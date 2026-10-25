@@ -121,7 +121,7 @@ const SUB_LANG: [string, RegExp][] = [
 ];
 /** Dubbed/audio tokens. */
 const AUDIO_LANG: [string, RegExp][] = [
-  ["en", /\b(English[ ._-]?Dub(?:bed)?|Eng[ ._-]?Dub|Dubbed)\b/i],
+  ["en", /\b(English[ ._-]?Dub(?:bed)?|Eng[ ._-]?Dub)\b/i],
   ["fr", /\b(VF|VFF|French[ ._-]?Dub)\b/],
   ["es", /\b(Audio[ ._-]?Latino|Spanish[ ._-]?Dub|Latino)\b/i],
   ["de", /\b(German(?![ ._-]?Subs?)|GerDub|Deutsch(?![ ._-]?Sub))\b/i],
@@ -168,6 +168,8 @@ function detectHints(raw: string, group: string | null, platform: string | null)
   if (ZH_RE.test(raw) || ZH_GROUPS.some((z) => g === z || g.split(/\s*[&+x×]\s*/).includes(z))) subs.add("zh");
   const audio = new Set<string>();
   for (const [lang, re] of AUDIO_LANG) if (re.test(raw)) audio.add(lang);
+  // A bare "Dubbed" means an English dub only when no other dub language is named ("German Dubbed" is German).
+  if (!audio.size && /\bDubbed\b/i.test(raw)) audio.add("en");
   const multiSubs = /\bmulti[ ._-]?subs?\b|\bmultiple[ ._-]?subtitles?\b|\bmultisubs?\b|\bmulti[ ._-]?sub\b/i.test(raw) || /\bMULTi\b/.test(raw);
   const dualAudio = /\bdual[ ._-]?audio\b|\bDUAL\b|\b(?:JP|JPN|JAP)[ ._+&-]+(?:EN|ENG)\b|\bMulti[ ._-]?Audio\b/i.test(raw);
   if (dualAudio) {

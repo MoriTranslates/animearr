@@ -5,6 +5,7 @@ import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow 
 import { t } from "../i18n";
 import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
+import { WatchAs, type WatchMode } from "../profiles";
 
 interface Header {
   seriesId: number;
@@ -22,12 +23,14 @@ interface Header {
   counts: { have: number; aired: number; missing: number; downloading: number; total: number };
   language: { lang: string; withLang: number; have: number };
   links: { anilist: string | null; anidb: string | null; tvdb: string };
+  profile: { id: string; name: string; watchMode: WatchMode; profileMode: WatchMode; source: string; original: string[] };
   managed: { dryRun: boolean } | null;
   allowed: boolean;
 }
 
 interface ShowData {
   header: Header;
+  prefs: { profile_id: string | null; watch_mode: WatchMode | null };
   rows: EpisodeRow[];
   anidb: { aid: number; season: number | "a" | null; offset: number; title: string | null }[];
   aliases: { id: number; title: string; season: number | null; source: string }[];
@@ -112,6 +115,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               {h.language.withLang === h.language.have ? t("series.langAll", { lang: h.language.lang.toUpperCase() }) : t("series.langSome", { lang: h.language.lang.toUpperCase(), n: h.language.withLang, have: h.language.have })}
             </p>
           )}
+          <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
           <div className="row small">
             {h.links.anilist && (
               <a href={h.links.anilist} target="_blank" rel="noreferrer">

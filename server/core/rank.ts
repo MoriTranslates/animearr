@@ -1,17 +1,27 @@
 /**
- * Stage 1 (FIND): score a release before downloading it, against the language profile.
+ * Stage 1 (FIND): score a release before downloading it, against the language profile and its watch mode.
  *
- * The core number is P(profile subtitle language) — the chance the file carries subtitles the viewer can read. It comes
- * from explicit title hints, then the learned per-(group, source) language table (backfilled from the user's library and
- * updated by every verification), then seed knowledge of well-known groups. Preference points (Usenet, uncensored,
- * resolution, size sanity) and penalties (burn-in) order the accepted releases. Hard rejections: raws, Chinese-only,
- * foreign-only, Japanese-market releases without the profile language.
+ * Two probabilities come from title hints, the learned per-(group, source) language table (backfilled from the user's
+ * library and updated by every verification) and seed knowledge of well-known groups:
+ * - P(sub): the file carries full subtitles in a profile subtitle language;
+ * - P(dub): the file carries audio in a profile dub language.
+ * The watch mode decides which matters: sub → P(sub) (a dub without the original audio is rejected); dub → P(dub);
+ * dual → dual audio wanted, a sub-only release is a placeholder; either → whichever is higher.
+ * Preference points (Usenet, uncensored, resolution, dual audio, size sanity) and penalties (burn-in) order the
+ * accepted releases. Hard rejections: raws, Chinese-only, foreign-only and JP-market releases (in sub modes), dubs
+ * without the original audio (sub mode), releases without a dub (dub mode).
  */
 import { EN_GROUPS, type ParsedRelease } from "./parser.js";
 
+export type WatchMode = "sub" | "dub" | "dual" | "either";
+
 export interface Profile {
   subLangs: string[];
-  audioLangs: string[];
+  /** Audio languages that count as a dub (dub/dual/either). */
+  dubLangs?: string[];
+  watchMode?: WatchMode;
+  /** Original audio language(s) of the show (ja; zh for donghua). */
+  originalLangs?: string[];
   softOnly: boolean;
   preferUncensored: boolean;
   protocolOrder: ("usenet" | "torrent")[];
@@ -30,6 +40,7 @@ export interface ReleaseInfo {
 export interface LearnedLang {
   total: number;
   subs: Record<string, number>;
+  audio?: Record<string, number>;
   /** "library" (backfilled from your files) or "verify" (checked after download) or both. */
   origin: string;
 }
@@ -53,7 +64,7 @@ export interface Flag {
 export interface Ranked {
   accept: boolean;
   score: number;
-  /** P(best profile subtitle language), 0..1. */
+  /** P(the profile is met), 0..1: subtitles in sub mode, dub audio in dub mode, the better of both in either mode. */
   langProb: number;
   lang: string;
   langSource: string;
@@ -63,67 +74,114 @@ export interface Ranked {
   reject: string | null;
 }
 
-const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", pt: "Portuguese", fr: "French", de: "German", it: "Italian", ru: "Russian", ar: "Arabic", zh: "Chinese", ja: "Japanese", id: "Indonesian", vi: "Vietnamese", th: "Thai", pl: "Polish", tr: "Turkish", ko: "Korean" };
-export const langName = (l: string) => LANG_NAMES[l] ?? l;
+const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", pt: "Portuguese", "pt-br": "Portuguese (Brazil)", fr: "French", de: "German", it: "Italian", ru: "Russian", ar: "Arabic", zh: "Chinese", ja: "Japanese", id: "Indonesian", vi: "Vietnamese", th: "Thai", pl: "Polish", tr: "Turkish", ko: "Korean" };
+export const langName = (l: string) => LANG_NAMES[l] ?? LANG_NAMES[l.split("-")[0]] ?? l;
+/** Release-name hints are base languages ("pt"); a profile may say "pt-br". */
+const base = (l: string) => l.split("-")[0];
 /** Languages a "Multi-Subs" release (CR/Netflix/Amazon rip) usually includes. */
 const MULTI_SET = new Set(["en", "es", "pt", "fr", "de", "it", "ar", "ru"]);
 
 /** Beta(1,1)-smoothed share of observed files that had `lang`. */
-function learnedProb(l: LearnedLang, lang: string) {
-  return ((l.subs[lang] ?? 0) + 1) / (l.total + 2);
+function learnedProb(counts: Record<string, number> | undefined, total: number, lang: string) {
+  return ((counts?.[lang] ?? 0) + 1) / (total + 2);
 }
+
+type Est = { lang: string; p: number; src: string };
 
 export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profile, learned: LearnedLang | null, known: Known = {}): Ranked {
   const flags: Flag[] = [];
   const h = p.hints;
   const group = (p.group ?? "").toLowerCase();
-  const wanted = profile.subLangs.length ? profile.subLangs : ["en"];
-  const primary = wanted[0];
+  const mode: WatchMode = profile.watchMode ?? "sub";
+  const subWanted = (profile.subLangs.length ? profile.subLangs : ["en"]).map(base);
+  const dubWanted = (profile.dubLangs ?? []).map(base);
+  // Unknown original language → no original-audio check (never assume Japanese for a show we know nothing about).
+  const original = (profile.originalLangs ?? ["ja"]).map(base);
 
   flags.push(info.protocol === "usenet" ? { key: "usenet", label: "Usenet", tone: "info" } : { key: "torrent", label: `Torrent${info.seeders != null ? ` · ${info.seeders} seeders` : ""}`, tone: info.seeders === 0 ? "warn" : "info" });
 
-  // ---- P(profile language)
-  let best = { lang: primary, p: 0.35, src: "no language info in the name" };
-  const consider = (lang: string, prob: number, src: string) => {
-    // A higher-ranked profile language wins ties; otherwise the higher probability.
-    if (prob > best.p + 0.001 || (Math.abs(prob - best.p) < 0.001 && wanted.indexOf(lang) < wanted.indexOf(best.lang))) best = { lang, p: prob, src };
+  // ---- P(sub)
+  let sub: Est = { lang: subWanted[0], p: 0.35, src: "no language info in the name" };
+  const considerSub = (lang: string, prob: number, src: string) => {
+    if (prob > sub.p + 0.001 || (Math.abs(prob - sub.p) < 0.001 && subWanted.indexOf(lang) < subWanted.indexOf(sub.lang))) sub = { lang, p: prob, src };
   };
-  const explicitOther = h.subs.filter((l) => !wanted.includes(l));
-  for (const lang of wanted) {
-    if (h.subs.includes(lang)) consider(lang, h.hardsub && h.hardsubLang === lang ? 0.92 : 0.97, "named in the title");
-    else if (h.multiSubs) consider(lang, MULTI_SET.has(lang) ? 0.9 : 0.45, "Multi-Subs");
-    if (learned && learned.total >= 3) consider(lang, learnedProb(learned, lang), `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}: ${learned.subs[lang] ?? 0}/${learned.total} ${learned.origin}`);
-    if (lang === "en" && EN_GROUPS.includes(group) && !h.jpMarket && !explicitOther.length) consider(lang, 0.88, `${p.group} usually has English subs`);
-    if (lang === "en" && h.dualAudio && !h.jpMarket) consider(lang, 0.85, "dual audio (usually with English subs)");
-    if (known.burnedIn && known.burnedIn.lang === lang && !h.subs.length && !h.multiSubs) consider(lang, 0.9, `burned in (${known.burnedIn.note})`);
+  const explicitOther = h.subs.filter((l) => !subWanted.includes(l));
+  for (const lang of subWanted) {
+    if (h.subs.includes(lang)) considerSub(lang, h.hardsub && h.hardsubLang === lang ? 0.92 : 0.97, "named in the title");
+    else if (h.multiSubs) considerSub(lang, MULTI_SET.has(lang) ? 0.9 : 0.45, "Multi-Subs");
+    if (learned && learned.total >= 3) considerSub(lang, learnedProb(learned.subs, learned.total, lang), `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}: ${learned.subs[lang] ?? 0}/${learned.total} ${learned.origin}`);
+    if (lang === "en" && EN_GROUPS.includes(group) && !h.jpMarket && !explicitOther.length) considerSub(lang, 0.88, `${p.group} usually has English subs`);
+    if (lang === "en" && h.dualAudio && !h.jpMarket) considerSub(lang, 0.85, "dual audio (usually with English subs)");
+    if (known.burnedIn && base(known.burnedIn.lang) === lang && !h.subs.length && !h.multiSubs) considerSub(lang, 0.9, `burned in (${known.burnedIn.note})`);
   }
-  // Negative evidence lowers the estimate unless the title names a profile language.
-  const namedWanted = wanted.some((l) => h.subs.includes(l)) || h.multiSubs;
-  let reject: string | null = null;
+  const namedWanted = subWanted.some((l) => h.subs.includes(l)) || h.multiSubs;
+  let subReject: string | null = null;
+  const subFlags: Flag[] = [];
   if (h.raw && !namedWanted) {
-    best = { lang: primary, p: 0.02, src: "raw (no subtitles)" };
-    reject = "raw release (no subtitles)";
-    flags.push({ key: "raw", label: "Raw", tone: "bad" });
+    sub = { lang: subWanted[0], p: 0.02, src: "raw (no subtitles)" };
+    subReject = "raw release (no subtitles)";
+    subFlags.push({ key: "raw", label: "Raw", tone: "bad" });
   }
-  if (h.jpMarket && !namedWanted && !wanted.includes("ja")) {
-    best = { lang: primary, p: 0.03, src: "Japanese-market release" };
-    reject ??= `Japanese-market release, no ${langName(primary)} subtitles`;
-    flags.push({ key: "jpMarket", label: `JP market · no ${langName(primary)}`, tone: "bad" });
+  if (h.jpMarket && !namedWanted && !subWanted.includes("ja")) {
+    sub = { lang: subWanted[0], p: 0.03, src: "Japanese-market release" };
+    subReject ??= `Japanese-market release, no ${langName(subWanted[0])} subtitles`;
+    subFlags.push({ key: "jpMarket", label: `JP market · no ${langName(subWanted[0])}`, tone: "bad" });
   }
-  if (h.subs.includes("zh") && !namedWanted && !wanted.includes("zh") && explicitOther.every((l) => l === "zh" || l === "ja")) {
-    best = { lang: primary, p: Math.min(best.p, 0.05), src: "Chinese subtitles only" };
-    reject ??= "Chinese subtitles only";
-    flags.push({ key: "chinese", label: "Chinese subs", tone: "bad" });
+  if (h.subs.includes("zh") && !namedWanted && !subWanted.includes("zh") && explicitOther.every((l) => l === "zh" || l === "ja")) {
+    sub = { lang: subWanted[0], p: Math.min(sub.p, 0.05), src: "Chinese subtitles only" };
+    subReject ??= "Chinese subtitles only";
+    subFlags.push({ key: "chinese", label: "Chinese subs", tone: "bad" });
   } else if (explicitOther.length && !namedWanted && !h.hardsub) {
-    best = { lang: primary, p: Math.min(best.p, 0.05), src: `${explicitOther.map(langName).join("/")} subtitles only` };
-    reject ??= `foreign subtitles only (${explicitOther.map(langName).join(", ")})`;
-    flags.push({ key: "foreign", label: `${explicitOther.map(langName).join("/")} only`, tone: "bad" });
+    sub = { lang: subWanted[0], p: Math.min(sub.p, 0.05), src: `${explicitOther.map(langName).join("/")} subtitles only` };
+    subReject ??= `foreign subtitles only (${explicitOther.map(langName).join(", ")})`;
+    subFlags.push({ key: "foreign", label: `${explicitOther.map(langName).join("/")} only`, tone: "bad" });
   }
-  // Sub-only watch mode: a dub without the original audio is not wanted.
-  const dubOnly = h.audio.length > 0 && !h.dualAudio && !h.audio.some((a) => profile.audioLangs.includes(a)) && h.audio.every((a) => a !== "ja");
-  if (dubOnly) {
-    reject ??= `${h.audio.map(langName).join("/")} dub without the original audio`;
-    flags.push({ key: "dub", label: `${h.audio.map(langName).join("/")} dub`, tone: "bad" });
+
+  // ---- audio: original present? dub present?
+  const hasOriginal = !h.audio.length || !original.length || h.audio.some((a) => original.includes(a)) || h.dualAudio;
+  let dub: Est = { lang: dubWanted[0] ?? "en", p: 0.05, src: "no dub named in the title" };
+  const considerDub = (lang: string, prob: number, src: string) => {
+    if (prob > dub.p + 0.001) dub = { lang, p: prob, src };
+  };
+  for (const lang of dubWanted) {
+    if (original.includes(lang)) continue;
+    if (h.audio.includes(lang)) considerDub(lang, h.dualAudio && lang !== "en" ? 0.6 : 0.95, h.dualAudio ? "dual audio" : "dub named in the title");
+    if (learned?.audio && learned.total >= 3) considerDub(lang, learnedProb(learned.audio, learned.total, lang), `${p.group ?? "no group"}: ${learned.audio[lang] ?? 0}/${learned.total} with ${langName(lang)} audio, ${learned.origin}`);
+  }
+  if (h.dualAudio) flags.push({ key: "dual", label: "Dual audio", tone: "info" });
+  const dubOnly = h.audio.length > 0 && !hasOriginal;
+
+  // ---- the watch mode decides what "meets the profile" means
+  let best: Est;
+  let reject: string | null = null;
+  let placeholder = false;
+  if (mode === "sub") {
+    best = sub;
+    reject = subReject ?? (dubOnly ? `${h.audio.map(langName).join("/")} dub without the original audio` : null);
+    flags.push(...subFlags);
+    if (dubOnly) flags.push({ key: "dub", label: `${h.audio.map(langName).join("/")} dub`, tone: "bad" });
+  } else if (mode === "dub") {
+    best = dub;
+    if (dub.p < 0.2) reject = `no ${langName(dub.lang)} dub`;
+  } else if (mode === "dual") {
+    if ((h.dualAudio || hasOriginal) && dub.p >= 0.5) best = dub;
+    else if (!subReject && !dubOnly) {
+      best = { ...sub, p: sub.p * 0.7, src: `${sub.src}; sub only for now (a placeholder until a dual-audio release)` };
+      placeholder = true;
+    } else {
+      best = dub;
+      reject = subReject ?? `no ${langName(dub.lang)} dub`;
+      flags.push(...subFlags);
+    }
+  } else {
+    best = dub.p > sub.p ? dub : sub;
+    if (subReject && dub.p < 0.2) reject = subReject;
+    if (subReject && dub.p < 0.2) flags.push(...subFlags);
+    // A dub in a language you didn't ask for, without the original audio, doesn't meet the profile either.
+    if (!reject && dubOnly && dub.p < 0.2) {
+      reject = `${h.audio.map(langName).join("/")} dub without the original audio`;
+      flags.push({ key: "dub", label: `${h.audio.map(langName).join("/")} dub`, tone: "bad" });
+    }
   }
   if (known.blocklisted) {
     reject = `blocklisted: ${known.blocklisted}`;
@@ -131,18 +189,20 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   }
 
   const pct = Math.round(best.p * 100);
-  const L = langName(best.lang);
+  const isDub = best === dub;
+  const L = `${langName(best.lang)}${isDub ? " dub" : ""}`;
   if (!reject) {
     if (best.p >= 0.8) flags.push({ key: "lang", label: `${L} ${pct}%`, tone: "good" });
     else if (best.p >= 0.5) flags.push({ key: "lang", label: `${L} likely (${pct}%)`, tone: "warn" });
     else flags.push({ key: "lang", label: `${L} unknown (${pct}%)`, tone: "warn" });
+    if (placeholder) flags.push({ key: "placeholder", label: "Sub only (placeholder)", tone: "warn" });
   }
 
-  // ---- burn-in
-  const burned = (h.hardsub && (h.hardsubLang === null || wanted.includes(h.hardsubLang))) || !!known.burnedIn;
+  // ---- burn-in (only matters when subtitles are what's being watched)
+  const burned = mode !== "dub" && ((h.hardsub && (h.hardsubLang === null || subWanted.includes(base(h.hardsubLang)))) || !!known.burnedIn);
   if (burned) {
     const res = known.burnedIn?.resolution ?? (p.resolution ? `${p.resolution}p` : null);
-    const lang = langName(known.burnedIn?.lang ?? h.hardsubLang ?? best.lang);
+    const lang = langName(known.burnedIn?.lang ?? h.hardsubLang ?? sub.lang);
     flags.push({ key: "burnIn", label: `${lang} burned-in${res ? ` (${res})` : ""}`, tone: "warn" });
   }
 
@@ -166,10 +226,11 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   } else if (h.censored && profile.preferUncensored) {
     score -= 8;
     flags.push({ key: "censored", label: "Censored", tone: "warn" });
-  }
+  } else if (profile.preferUncensored && p.source === "bluray") score += 3; // BDs are usually the uncensored version
+  // Dual audio is a bonus in every mode (never a penalty); in dual mode it's what's wanted.
   if (h.dualAudio) {
-    flags.push({ key: "dual", label: "Dual audio", tone: "info" });
-    score += 2;
+    score += mode === "dual" ? 20 : 2;
+    if (mode === "dual") why.push("dual audio");
   }
   if (p.resolution) {
     if (p.resolution === profile.resolution) score += 10;

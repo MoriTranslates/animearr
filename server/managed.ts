@@ -17,6 +17,7 @@ import { startGrab, type Candidate } from "./pipeline.js";
 import { decisionSummary, deepSearch, identifyContext, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { burnedInFact, coverFor } from "./audit.js";
+import { profileFor } from "./profiles.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -189,7 +190,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const season = res.targets[0]?.season ?? null;
-  const burnedOk = getSettings().profile.subLangs.some((l) => !!burnedInFact(st.tvdb_id, season, l));
+  const burnedOk = profileFor(st.tvdb_id).subLangs.some((l) => !!burnedInFact(st.tvdb_id, season, l));
   // Automatic grabs are stricter than manual ones: confident mapping, likely profile language, only this episode,
   // no burn-ins (unless the user confirmed that's all there is), and no dead torrents.
   const ok = res.results.filter(

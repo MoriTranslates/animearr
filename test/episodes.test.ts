@@ -70,7 +70,10 @@ test("series header: counts, next airing, language health", () => {
   assert.equal(h.counts.missing, 1);
   assert.equal(h.counts.downloading, 1);
   assert.equal(h.nextEpisode?.episode, 3);
-  assert.deepEqual(h.language, { lang: "en", withLang: 1, have: 1 });
+  assert.equal(h.language.lang, "en");
+  assert.equal(h.language.withLang, 1);
+  assert.equal(h.language.have, 1);
+  assert.equal(h.profile.watchMode, "sub");
   assert.equal(h.overview, "A show.");
 });
 

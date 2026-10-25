@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t } from "../i18n";
+import { ProfilesEditor } from "../profiles";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tab = "connections" | "profile" | "safety" | "paths" | "security" | "system";
@@ -47,12 +48,12 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
         ))}
       </div>
       {tab === "connections" && <Connections s={s} upd={upd} />}
-      {tab === "profile" && <Profile s={s} upd={upd} />}
+      {tab === "profile" && <ProfilesEditor />}
       {tab === "safety" && <Safety s={s} upd={upd} />}
       {tab === "paths" && <Paths s={s} upd={upd} />}
       {tab === "system" && <System status={status} />}
       {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-      {tab !== "system" && tab !== "security" && (
+      {tab !== "system" && tab !== "security" && tab !== "profile" && (
         <div className="sticky-actions">
           <button className="primary" disabled={!dirty} onClick={save}>
             {t("common.save")}
@@ -145,45 +146,6 @@ function Connections({ s, upd }: { s: S; upd: Upd }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function Profile({ s, upd }: { s: S; upd: Upd }) {
-  const p = s.profile;
-  const set = (fn: (x: S["profile"]) => S["profile"]) => upd((x) => ({ ...x, profile: fn(x.profile) }));
-  return (
-    <div className="card pad stack">
-      <p className="muted small">{t("settings.profile.help")}</p>
-      <div className="form">
-        <label>
-          {t("settings.profile.subs")}
-          <ListInput value={p.subLangs} onChange={(v) => set((x) => ({ ...x, subLangs: v }))} label={t("settings.profile.subs")} placeholder="en" />
-        </label>
-        <label>
-          {t("settings.profile.audio")}
-          <ListInput value={p.audioLangs} onChange={(v) => set((x) => ({ ...x, audioLangs: v }))} label={t("settings.profile.audio")} placeholder="ja" />
-        </label>
-        <label>
-          {t("settings.profile.protocol")}
-          <select value={p.protocolOrder.join(",")} onChange={(e) => set((x) => ({ ...x, protocolOrder: e.target.value.split(",") as ("usenet" | "torrent")[] }))}>
-            <option value="usenet,torrent">Usenet → Torrent</option>
-            <option value="torrent,usenet">Torrent → Usenet</option>
-          </select>
-        </label>
-        <label>
-          {t("settings.profile.resolution")}
-          <select value={p.resolution} onChange={(e) => set((x) => ({ ...x, resolution: Number(e.target.value) }))}>
-            {[2160, 1080, 720, 480].map((r) => (
-              <option key={r} value={r}>
-                {r}p
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <Toggle checked={p.softOnly} onChange={(v) => set((x) => ({ ...x, softOnly: v }))} label={t("settings.profile.softOnly")} />
-      <Toggle checked={p.preferUncensored} onChange={(v) => set((x) => ({ ...x, preferUncensored: v }))} label={t("settings.profile.uncensored")} />
     </div>
   );
 }

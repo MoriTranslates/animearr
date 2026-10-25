@@ -24,6 +24,7 @@ import { burnedInFact } from "./audit.js";
 import { learnFromVerify, refreshSeriesEpisodes, sourceKey } from "./library.js";
 import { clientToSonarr, localPath as realLocalPath } from "./paths.js";
 import { episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
+import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { ffprobe, judge, type ProbeResult } from "./verify.js";
 
@@ -291,7 +292,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (!plan.length) return attention("couldn't tell which file is which episode");
   if (new Set(mapped).size !== mapped.length) return attention("two files look like the same episode; import them by hand");
 
-  const prof = getSettings().profile;
+  const prof = profileFor(row.tvdb_id);
   const parsed = parseRelease(row.release);
   const eps = episodesFor(row.tvdb_id);
   const season = eps.find((e) => wanted.includes(e.id))?.season ?? null;

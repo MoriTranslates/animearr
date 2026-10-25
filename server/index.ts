@@ -13,6 +13,7 @@ import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
 import { gaps, listFacts, missingLanguage, specials } from "./audit.js";
+import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs } from "./profiles.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
 import { compactKey } from "./core/normalize.js";
@@ -24,7 +25,7 @@ import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView } from "./queue.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
-import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
+import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
 
 const WEB_DIR = path.join(ROOT_DIR, "dist", "web");
@@ -255,8 +256,32 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
     facts: listFacts(tvdbId),
     schedule: scheduleFor(tvdbId),
     header: seriesHeader(tvdbId),
+    prefs: seriesPrefs(tvdbId),
     rows: episodeRows(s.id),
   };
+});
+
+// ---------------------------------------------------------------- language profiles + per-show override
+
+app.get("/api/profiles", async () => ({ profiles: listProfiles(), defaultProfileId: getSettings().defaultProfileId }));
+app.post<{ Body: Record<string, unknown> & { makeDefault?: boolean } }>("/api/profiles", async (req) => {
+  writable();
+  return saveProfile(null, (req.body ?? {}) as Partial<LanguageProfile>, req.body?.makeDefault === true);
+});
+app.put<{ Params: { id: string }; Body: Record<string, unknown> & { makeDefault?: boolean } }>("/api/profiles/:id", async (req) => {
+  writable();
+  return saveProfile(String(req.params.id), (req.body ?? {}) as Partial<LanguageProfile>, req.body?.makeDefault === true);
+});
+app.delete<{ Params: { id: string } }>("/api/profiles/:id", async (req) => {
+  writable();
+  deleteProfile(String(req.params.id));
+  return { ok: true };
+});
+app.put<{ Params: { tvdbId: string }; Body: { profileId?: string | null; watchMode?: string | null } }>("/api/series/:tvdbId/prefs", async (req) => {
+  writable();
+  const tvdbId = id(req.params.tvdbId);
+  if (!seriesByTvdb(tvdbId)) throw fail("Unknown series", 404);
+  return setSeriesPrefs(tvdbId, req.body?.profileId || null, (req.body?.watchMode || null) as Parameters<typeof setSeriesPrefs>[2]);
 });
 
 // ---------------------------------------------------------------- episodes: detail, delete, re-grab, calendar
@@ -338,7 +363,7 @@ app.post<{ Body: { tvdbId?: number; season?: number | null; kind?: string; lang?
   if (!s) throw fail("Unknown series", 404);
   const kind = req.body?.kind === "no_release" ? "no_release" : "burned_in";
   const season = req.body?.season === null || req.body?.season === undefined ? null : Number(req.body.season);
-  const lang = String(req.body?.lang ?? getSettings().profile.subLangs[0]).slice(0, 10);
+  const lang = String(req.body?.lang ?? profileFor(tvdbId).subLangs[0] ?? "en").slice(0, 10);
   const note = String(req.body?.note ?? "").slice(0, 200);
   const r = db.prepare("INSERT INTO facts (tvdb_id, season, kind, lang, note, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET note = excluded.note, at = excluded.at RETURNING id").get(tvdbId, season, kind, lang, note, Date.now()) as { id: number };
   logDecision("fact", { tvdbId, title: s.title, why: `You confirmed: ${s.title}${season !== null ? ` season ${season}` : ""} ${kind === "burned_in" ? `has burned-in ${lang} subtitles` : "has no release in your language"}${note ? ` (${note})` : ""}`, undo: { action: "delete-fact", args: { id: r.id } } });

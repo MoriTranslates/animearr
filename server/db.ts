@@ -252,6 +252,8 @@ const USER_MIGRATIONS: string[] = [
    ALTER TABLE grabs ADD COLUMN progress REAL;
    ALTER TABLE grabs ADD COLUMN progress_at INTEGER;
    ALTER TABLE search_state ADD COLUMN grab_id INTEGER;`,
+  // 3: per-show language profile / watch-mode override
+  `CREATE TABLE series_prefs (tvdb_id INTEGER PRIMARY KEY, profile_id TEXT, watch_mode TEXT, updated_at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

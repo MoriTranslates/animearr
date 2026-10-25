@@ -14,7 +14,9 @@ import { listManaged } from "./managed.js";
 import { aliasIndex } from "./metadata.js";
 import { startGrab, type Candidate } from "./pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
+import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
+import { judge } from "./verify.js";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -120,8 +122,8 @@ export function seriesHeader(tvdbId: number) {
   const rows = episodeRows(s.id).filter((e) => e.season > 0);
   const aired = rows.filter((e) => e.status !== "unaired");
   const have = rows.filter((e) => e.status === "have");
-  const wanted = getSettings().profile.subLangs;
-  const withLang = have.filter((e) => e.file && (e.file.subs.some((l) => wanted.includes(l)) || e.file.audio.some((l) => wanted.includes(l))));
+  const prof = profileFor(tvdbId);
+  const withLang = have.filter((e) => e.file && judge({ subs: e.file.subs, audio: e.file.audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null).ok);
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
   const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
   const next = rows.filter((e) => e.status === "unaired" && e.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0] ?? null;
@@ -140,7 +142,8 @@ export function seriesHeader(tvdbId: number) {
     color: cov[0]?.color ?? null,
     nextEpisode: next ? { id: next.id, season: next.season, episode: next.episode, title: next.title, airUtc: next.airUtc } : null,
     counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing").length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
-    language: { lang: wanted[0] ?? "en", withLang: withLang.length, have: have.length },
+    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, have: have.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
+    profile: { id: prof.id, name: prof.name, watchMode: prof.watchMode, profileMode: prof.profileMode ?? prof.watchMode, source: prof.source, original: prof.originalLangs },
     links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
     managed: listManaged().find((m) => m.tvdbId === tvdbId) ?? null,
     allowed: underAllowedRoot(s.path),

@@ -12,7 +12,7 @@ import { burnedInFact, coverFor, seasonResolution } from "./audit.js";
 import { cache, db } from "./db.js";
 import { learnedFor, sourceKey } from "./library.js";
 import { aliasIndex } from "./metadata.js";
-import { getSettings } from "./settings.js";
+import { profileFor } from "./profiles.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
   const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
@@ -117,7 +117,7 @@ export function comboQueries(titles: string[], libraryTitle: string, max = 3): s
 /** Facts and library knowledge about one candidate. */
 function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean): Known {
   const k: Known = {};
-  const prof = getSettings().profile;
+  const prof = profileFor(series.tvdbId);
   for (const lang of prof.subLangs) {
     const f = burnedInFact(series.tvdbId, season, lang);
     if (f && groupLess) k.burnedIn = { lang, resolution: season !== null ? seasonResolution(series.id, season) : null, note: f.note || `you confirmed season ${season} has burned-in subs` };
@@ -180,7 +180,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const started = Date.now();
   const raw = new Map<string, ProwlarrRelease>();
   const errors: string[] = [];
-  const prof = getSettings().profile;
+  const prof = profileFor(tvdbId);
   const targetIds = new Set(targets.map((t) => t.id));
   const results: SearchResult[] = [];
   const skipped: Record<string, number> = {};
