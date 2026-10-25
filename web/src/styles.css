@@ -127,7 +127,7 @@ button.block { width: 100%; justify-content: flex-start; }
 
 input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 10px; width: 100%; min-width: 0; }
 select.auto, input.search { width: auto; }
-input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+input[type="checkbox"], input[type="radio"] { width: auto; flex: none; accent-color: var(--accent); margin-top: 3px; }
 .secret { display: flex; gap: 6px; }
 .form { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 10px 16px; width: 100%; }
 .form label, .field { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--muted); }
