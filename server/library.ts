@@ -32,7 +32,7 @@ export interface SyncResult {
 
 const sigOf = (s: SonarrSeries) => {
   const st = (s as { statistics?: Record<string, unknown> }).statistics ?? {};
-  return JSON.stringify([st.episodeFileCount, st.episodeCount, st.totalEpisodeCount, st.sizeOnDisk, s.previousAiring, s.nextAiring, s.seasons.map((x) => [x.seasonNumber, x.monitored, x.statistics?.episodeFileCount])]);
+  return JSON.stringify([s.path, st.episodeFileCount, st.episodeCount, st.totalEpisodeCount, st.sizeOnDisk, s.previousAiring, s.nextAiring, s.seasons.map((x) => [x.seasonNumber, x.monitored, x.statistics?.episodeFileCount])]);
 };
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
