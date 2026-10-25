@@ -6,7 +6,7 @@
 import path from "node:path";
 import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
-import { coverFor } from "./audit.js";
+import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
 import { refreshSeriesEpisodes } from "./library.js";
@@ -123,7 +123,8 @@ export function seriesHeader(tvdbId: number) {
   const aired = rows.filter((e) => e.status !== "unaired");
   const have = rows.filter((e) => e.status === "have");
   const prof = profileFor(tvdbId);
-  const withLang = have.filter((e) => e.file && judge({ subs: e.file.subs, audio: e.file.audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null).ok);
+  const burned = (season: number) => prof.subLangs.find((l) => !!burnedInFact(tvdbId, season, l)) ?? null;
+  const withLang = have.filter((e) => e.file && judge({ subs: e.file.subs, audio: e.file.audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, burned(e.season)).ok);
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
   const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
   const next = rows.filter((e) => e.status === "unaired" && e.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0] ?? null;
