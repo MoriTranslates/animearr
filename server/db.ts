@@ -271,6 +271,11 @@ const USER_MIGRATIONS: string[] = [
    ALTER TABLE grabs ADD COLUMN replace_file INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE blocklist ADD COLUMN movie_id INTEGER;
    CREATE INDEX grabs_movie ON grabs (movie_id);`,
+  // 7: dual-audio upgrades (one row per episode waiting for, or upgraded to, a dual-audio release)
+  `CREATE TABLE upgrade_state (episode_id INTEGER PRIMARY KEY, tvdb_id INTEGER NOT NULL, state TEXT NOT NULL, last_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
+     why TEXT NOT NULL DEFAULT '', grab_id INTEGER, release TEXT, file_id INTEGER, updated_at INTEGER NOT NULL);
+   CREATE TABLE upgrade_searches (at INTEGER NOT NULL);
+   ALTER TABLE grabs ADD COLUMN purpose TEXT;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

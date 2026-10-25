@@ -81,6 +81,8 @@ export interface GrabRequest {
   /** "manual" = Deep Search with confirmation (global dry-run applies); "managed" = scheduler (show dry-run applies too). */
   origin: "manual" | "managed";
   attempt?: number;
+  /** "dual-upgrade": replaces a sub-only placeholder, so the file must really have the dub (checked strictly). */
+  purpose?: "dual-upgrade" | null;
 }
 
 export interface GrabRow {
@@ -105,6 +107,7 @@ export interface GrabRow {
   movie_id?: number | null;
   /** The user asked to replace the file the movie already has. */
   replace_file?: number;
+  purpose?: "dual-upgrade" | null;
   attempt?: number;
   progress?: number | null;
   progress_at?: number | null;
@@ -161,8 +164,8 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const target = eps.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")} (episode id ${e.id})`).join(", ");
   const now = Date.now();
   const ins = db
-    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now);
+    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.purpose ?? null);
   const id = Number(ins.lastInsertRowid);
   if (dryRun) {
     const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${c.why}. Would import into Sonarr as ${target}.`;
@@ -318,7 +321,7 @@ function rowTitle(row: GrabRow): string | undefined {
 
 function rowRequest(row: GrabRow): GrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
-  return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1 };
+  return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: row.purpose ?? null };
 }
 
 /** Imports a finished download through Sonarr's ManualImport with explicit episode IDs, verifying before and after. */
@@ -395,6 +398,16 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (new Set(mapped).size !== mapped.length) return attention("two files look like the same episode; import them by hand");
 
   const prof = profileFor(row.tvdb_id);
+  // A dual-audio upgrade replaces a placeholder: only a file with the original audio AND the dub counts.
+  const strictUpgrade = (v: ReturnType<typeof judge>): ReturnType<typeof judge> => {
+    if (row.purpose !== "dual-upgrade" || !v.ok) return v;
+    const original = prof.originalLangs ?? ["ja"];
+    const dub = (prof.dubLangs ?? []).filter((l) => !original.includes(l));
+    const base = v.audio.map((a) => a.split("-")[0]);
+    const hasDub = dub.find((l) => base.includes(l));
+    const hasOriginal = !original.length || base.some((a) => original.includes(a));
+    return hasDub && hasOriginal ? v : { ...v, ok: false, why: `no ${hasDub ? "original" : dub.join("/")} audio (audio: ${v.audio.join("/") || "unknown"}): not the dual-audio release it claimed to be` };
+  };
   const parsed = parseRelease(row.release);
   const eps = episodesFor(row.tvdb_id);
   const season = eps.find((e) => wanted.includes(e.id))?.season ?? null;
@@ -409,7 +422,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const local = deps.localPath(p.item.path);
     if (!local) continue;
     const probe = await deps.probe(local);
-    const v = judge(probe, prof, expectedMin, burned);
+    const v = strictUpgrade(judge(probe, prof, expectedMin, burned));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
     if (!v.ok) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
     preVerified.add(p.item.path);
@@ -451,7 +464,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       const audio = langList(ef.mediaInfo?.audioLanguages);
       // No track info yet (media analysis off or not finished): can't judge, so don't blame the release.
       if (!subs.length && !audio.length) return attention(`Sonarr has no track information for ${path.posix.basename(ef.path)} yet, so the language couldn't be checked; check the file, then retry`);
-      const v = judge({ subs, audio, durationSec: runTimeSec(ef.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, expectedMin, burned);
+      const v = strictUpgrade(judge({ subs, audio, durationSec: runTimeSec(ef.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, expectedMin, burned));
       learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
       if (!v.ok) return fail(`${path.posix.basename(ef.path)}: ${v.why}`, true);
       verdicts.push(v.why);

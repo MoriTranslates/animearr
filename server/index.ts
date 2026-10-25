@@ -26,6 +26,7 @@ import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGr
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
+import { upgradeList, upgradeTick } from "./upgrade.js";
 import { listMovies, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -501,6 +502,7 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 });
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
+app.get("/api/upgrades", async () => upgradeList());
 app.get("/api/movies", async () => listMovies());
 app.get<{ Params: { id: string } }>("/api/movies/:id", async (req) => movieDetail(id(req.params.id)));
 // Grabs pick from the server's own last results (never a download URL sent by the browser).
@@ -686,6 +688,7 @@ every(60 * 60_000, async () => {
 }, "hourly");
 every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
+every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;
 every(60_000, async () => {

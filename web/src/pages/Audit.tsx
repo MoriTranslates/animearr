@@ -5,12 +5,12 @@ import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
-type Tab = "language" | "gaps" | "specials" | "checks" | "recycle";
+type Tab = "language" | "gaps" | "specials" | "checks" | "upgrades" | "recycle";
 
 export function Audit() {
   usePageTitle(t("audit.title"));
   const initial = (query().get("tab") as Tab) || "gaps";
-  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks", "recycle"].includes(initial) ? initial : "gaps");
+  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks", "upgrades", "recycle"].includes(initial) ? initial : "gaps");
   const pick = (x: Tab) => {
     setTab(x);
     history.replaceState(null, "", `/audit?tab=${x}`);
@@ -18,9 +18,9 @@ export function Audit() {
   return (
     <section>
       <h1>{t("audit.title")}</h1>
-      <p className="muted small">{t(tab === "checks" ? "repair.notReadOnly" : "audit.readOnly")}</p>
+      <p className="muted small">{t(tab === "checks" || tab === "upgrades" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       <div className="tabs" role="tablist">
-        {(["gaps", "language", "specials", "checks", "recycle"] as Tab[]).map((x) => (
+        {(["gaps", "language", "specials", "checks", "upgrades", "recycle"] as Tab[]).map((x) => (
           <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
             {t(`audit.tab.${x}`)}
           </button>
@@ -31,6 +31,7 @@ export function Audit() {
       {tab === "specials" && <Specials />}
       {tab === "checks" && <Checks />}
       {tab === "recycle" && <Recycle />}
+      {tab === "upgrades" && <Upgrades />}
     </section>
   );
 }
@@ -315,6 +316,44 @@ function Recycle() {
             <p className="muted small">
               {t("recycle.item", { size: fmtSize(i.size), when: dateTime(i.deletedAt) })}
               {i.purgeAt ? ` · ${t("recycle.purge", { when: dateTime(i.purgeAt) })}` : ""}
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface Upgrade { episodeId: number; tvdbId: number; title: string; label: string; audio: string[]; dub: string[]; state: string; lastAt: number | null; why: string; release: string | null }
+const UPGRADE_TONE: Record<string, "good" | "accent" | "info" | "warn"> = { waiting: "info", found: "accent", grabbed: "good", upgraded: "good" };
+
+/** Sub-only placeholders in dual-mode shows, waiting for a dual-audio release. */
+function Upgrades() {
+  const d = useLoad(() => api<{ mode: string; items: Upgrade[] }>("/upgrades"), []);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return <Spinner label={t("app.loading")} />;
+  return (
+    <div className="stack">
+      <p className="muted">{t("dual.intro", { mode: t(d.data.mode === "auto" ? "dual.auto" : (`repair.mode.${d.data.mode}` as I18nKey)) })}</p>
+      {d.data.mode === "off" && <p className="warn-text">{t("dual.offNote")}</p>}
+      {!d.data.items.length && <Empty>{t("dual.empty")}</Empty>}
+      <div className="list">
+        {d.data.items.map((u) => (
+          <article key={u.episodeId} className="card pad stack">
+            <ShowLink tvdbId={u.tvdbId} title={u.title}>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <strong className="clamp2">{u.title}</strong>
+                <span className="muted small">{u.label}</span>
+              </span>
+            </ShowLink>
+            <div className="row">
+              <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
+              <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
+            </div>
+            {u.release && <p className="mono small">{u.release}</p>}
+            <p className="small">
+              {u.why}
+              {u.lastAt ? ` · ${dateTime(u.lastAt)}` : ""}
             </p>
           </article>
         ))}

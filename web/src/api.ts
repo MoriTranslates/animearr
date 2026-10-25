@@ -134,6 +134,7 @@ export interface Settings {
   backlog: { enabled: boolean; perHour: number; retryDays: number };
   queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
   extraction: { enabled: boolean };
+  dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
   sync: { intervalHours: number };
   externalUrl: string;
   ui: { language: string };

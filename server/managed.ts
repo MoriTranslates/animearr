@@ -180,7 +180,7 @@ export function scheduleFor(tvdbId?: number, limit = 500) {
   });
 }
 
-function toCandidate(r: SearchResult): Candidate {
+export function toCandidate(r: SearchResult): Candidate {
   return { guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds };
 }
 

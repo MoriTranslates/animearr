@@ -91,6 +91,11 @@ export interface Settings {
    * (the container's /data mount) and 7-Zip; off by default.
    */
   extraction: { enabled: boolean };
+  /**
+   * Dual-audio upgrades for shows watched in "dual" mode: an episode whose file is sub-only (the placeholder) is
+   * searched now and then for a dual-audio release, which replaces it. off / log (report only; default) / auto.
+   */
+  dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -129,6 +134,7 @@ const DEFAULTS: Settings = {
   backlog: { enabled: false, perHour: 4, retryDays: 7 },
   queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
   extraction: { enabled: false },
+  dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -139,7 +145,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -149,7 +155,7 @@ const SECRET_FOR_URL: [string, string][] = [
   ["qbittorrent.url", "qbittorrent.password"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
-const ENUMS: Record<string, readonly string[]> = { "repair.mode": ["off", "log", "auto"] };
+const ENUMS: Record<string, readonly string[]> = { "repair.mode": ["off", "log", "auto"], "dualUpgrade.mode": ["off", "log", "auto"] };
 const RANGES: Record<string, [number, number]> = {
   "managed.searchDelayMin": [0, 1440],
   "managed.maxAttempts": [1, 100],
@@ -160,6 +166,9 @@ const RANGES: Record<string, [number, number]> = {
   "backlog.perHour": [1, 24],
   "backlog.retryDays": [1, 60],
   "queueHealth.stallHours": [1, 72],
+  "dualUpgrade.perHour": [1, 24],
+  "dualUpgrade.recheckDays": [1, 60],
+  "dualUpgrade.maxAgeDays": [7, 3650],
   "queueHealth.metadataMin": [10, 1440],
 };
 

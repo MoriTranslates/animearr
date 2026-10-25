@@ -180,6 +180,32 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
       </div>
       <Backlog s={s} upd={upd} />
       <div className="card pad stack">
+        <h2>{t("dual.title")}</h2>
+        <p className="muted small">{t("dual.help")}</p>
+        <div className="form">
+          <label>
+            {t("repair.mode")}
+            <select value={s.dualUpgrade.mode} onChange={(e) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, mode: e.target.value as "off" | "log" | "auto" } }))}>
+              <option value="off">{t("repair.mode.off")}</option>
+              <option value="log">{t("repair.mode.log")}</option>
+              <option value="auto">{t("dual.auto")}</option>
+            </select>
+          </label>
+          <label>
+            {t("backlog.perHour")}
+            <NumberInput value={s.dualUpgrade.perHour} min={1} max={24} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, perHour: v } }))} label={t("backlog.perHour")} />
+          </label>
+          <label>
+            {t("dual.recheckDays")}
+            <NumberInput value={s.dualUpgrade.recheckDays} min={1} max={60} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, recheckDays: v } }))} label={t("dual.recheckDays")} />
+          </label>
+          <label>
+            {t("dual.maxAgeDays")}
+            <NumberInput value={s.dualUpgrade.maxAgeDays} min={7} max={3650} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, maxAgeDays: v } }))} label={t("dual.maxAgeDays")} />
+          </label>
+        </div>
+      </div>
+      <div className="card pad stack">
         <h2>{t("qh.title")}</h2>
         <p className="muted small">{t("qh.help")}</p>
         <div className="form">

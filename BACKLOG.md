@@ -5,7 +5,8 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 
 ## Must-have before tagging 1.0
 
-- [ ] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path)
+- [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
+- [ ] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies
 
 ## 0.x steps to 1.0
 
