@@ -106,9 +106,9 @@ export function MoviePage({ id }: { id: number }) {
       <p className="small">
         <Link to="/movies">← {t("movies.title")}</Link>
       </p>
-      <div className="row top">
+      <header className="series-hero card">
         <Cover src={m.cover} alt={m.title} size="lg" />
-        <div className="stack grow">
+        <div className="stack hero-body">
           <h1 className="clamp2">
             {m.title}
             {m.year ? ` (${m.year})` : ""}
@@ -120,7 +120,7 @@ export function MoviePage({ id }: { id: number }) {
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
           </div>
         </div>
-      </div>
+      </header>
       <div className="card pad stack">
         <h2>{t("movies.file")}</h2>
         {m.file ? (
