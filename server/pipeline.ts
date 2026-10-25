@@ -324,6 +324,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     releaseGroup: p.item.releaseGroup ?? parsed.group ?? undefined,
     indexerFlags: p.item.indexerFlags ?? 0,
     releaseType: p.episodeIds.length > 1 ? "multiEpisode" : "singleEpisode",
+    downloadId: row.client_ref ?? undefined,
   }));
   const startedImport = Date.now();
   const cmd = await deps.sonarr.importFiles(files, "auto");

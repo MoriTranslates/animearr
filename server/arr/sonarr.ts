@@ -124,6 +124,23 @@ export const manualImportPreview = (folder: string, downloadId?: string, seriesI
     180_000,
   );
 
+export interface HistoryItem {
+  id: number;
+  episodeId: number;
+  seriesId: number;
+  sourceTitle: string;
+  date: string;
+  downloadId?: string;
+  eventType: string;
+  data: Record<string, string | undefined>;
+}
+/** Import (and other) history since a date (read-only). */
+export const getHistorySince = (date: Date, eventType: "downloadFolderImported" | "grabbed") =>
+  call<HistoryItem[]>("GET", `/history/since?date=${encodeURIComponent(date.toISOString())}&eventType=${eventType}`, undefined, conn(), 120_000);
+/** The grab history of one episode, newest first (to find the grab behind an import). */
+export const getEpisodeGrabs = async (episodeId: number) =>
+  (await call<{ records: HistoryItem[] }>("GET", `/history?episodeId=${episodeId}&eventType=1&sortKey=date&sortDirection=descending&pageSize=20`)).records;
+
 // ---------------------------------------------------------------- WRITE calls (pipeline only)
 
 /** Import specific files as specific episodes (explicit episode IDs: works even if the series is unmonitored). */
@@ -134,6 +151,11 @@ export async function manualImport(files: { path: string; seriesId: number; epis
 /** Deletes an episode file through Sonarr (Sonarr's recycle bin applies if one is set). User-confirmed only. */
 export async function deleteEpisodeFile(id: number) {
   await call<void>("DELETE", `/episodefile/${id}`);
+}
+
+/** Marks a grab as failed in Sonarr (Sonarr blocklists it and, if the episode is monitored, searches again). */
+export async function markHistoryFailed(historyId: number) {
+  await call<void>("POST", `/history/failed/${historyId}`);
 }
 
 /** Sets a series' monitored flag (only after the user confirms in the Managed screen). */

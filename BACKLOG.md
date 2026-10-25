@@ -3,6 +3,10 @@
 Ideas that are **not** in the current step, so they aren't lost. The release plan is at the top of [PROPOSAL.md](PROPOSAL.md#release-plan-authoritative-updated-2026-10-25).
 Rule: each step is complete, tested and in daily use, then hardened, before the next one starts.
 
+## Must-have before tagging 1.0
+
+- [ ] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path)
+
 ## 0.x steps to 1.0
 
 **v1.0 = AnimeArr does everything Sonarr does for anime; Sonarr is no longer needed.**
@@ -22,7 +26,6 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 
 ### Watch modes
 - [x] Sub / Dub / Dual / Either watch modes with named profiles and per-show overrides — §5.4 (0.1)
-- [ ] Dual mode: automatic upgrade of a sub-only placeholder when a dual-audio release appears
 - [ ] Dub-status tracking ("waiting for dub", dub announcements) — §5.4
 - [ ] Forced-only subtitle detection for files already in the library (ffprobe scan; Sonarr's mediaInfo has no forced flag)
 

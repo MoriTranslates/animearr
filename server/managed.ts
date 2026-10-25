@@ -156,7 +156,7 @@ export function planSchedule(now = Date.now()) {
     const eps = cache.prepare("SELECT id, air_utc, has_file FROM episodes WHERE series_id = ? AND season > 0 AND air_utc IS NOT NULL AND air_utc <= ? AND air_utc >= ?").all(m.seriesId, now + DAY, now - 30 * DAY) as { id: number; air_utc: number; has_file: number }[];
     for (const e of eps) {
       if (e.has_file) {
-        db.prepare("UPDATE search_state SET state = 'done', last_why = 'Sonarr has a file' WHERE episode_id = ? AND state NOT IN ('done')").run(e.id);
+        db.prepare("UPDATE search_state SET state = 'done', last_why = 'Sonarr has a file' WHERE episode_id = ? AND state NOT IN ('done', 'replace')").run(e.id);
         continue;
       }
       const r = db.prepare("INSERT INTO search_state (episode_id, tvdb_id, air_utc, next_at, state) VALUES (?, ?, ?, ?, 'waiting') ON CONFLICT(episode_id) DO NOTHING").run(e.id, m.tvdbId, e.air_utc, e.air_utc + s.searchDelayMin * 60_000);
@@ -233,7 +233,7 @@ export async function managedTick(now = Date.now()) {
   ticking = true;
   try {
     planSchedule(now);
-    const due = db.prepare("SELECT * FROM search_state WHERE state IN ('waiting', 'retry') AND next_at <= ? ORDER BY next_at LIMIT 3").all(now) as unknown as StateRow[];
+    const due = db.prepare("SELECT * FROM search_state WHERE state IN ('waiting', 'retry', 'replace') AND next_at <= ? ORDER BY next_at LIMIT 3").all(now) as unknown as StateRow[];
     for (const st of due) {
       try {
         await decideEpisode(st, now);
@@ -254,7 +254,7 @@ export async function managedTick(now = Date.now()) {
 /** RSS-like pass: Prowlarr's recent releases; a release that maps to a waiting episode makes it due now. */
 export async function rssTick(now = Date.now()) {
   if (dbState.corrupt || !prowlarrConfigured() || !listManaged().length) return;
-  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry')").all() as { episode_id: number; tvdb_id: number }[];
+  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace')").all() as { episode_id: number; tvdb_id: number }[];
   if (!waiting.length) return;
   const wanted = new Map(waiting.map((w) => [w.episode_id, w.tvdb_id]));
   const recent = await prowlarrSearch("", { limit: 100 });

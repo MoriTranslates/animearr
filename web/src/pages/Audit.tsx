@@ -2,15 +2,15 @@ import { useState } from "react";
 import { api, sxe } from "../api";
 import { navigate, query } from "../App";
 import { ShowLink } from "../episodes";
-import { t } from "../i18n";
-import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { t, type I18nKey } from "../i18n";
+import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
-type Tab = "language" | "gaps" | "specials";
+type Tab = "language" | "gaps" | "specials" | "checks";
 
 export function Audit() {
   usePageTitle(t("audit.title"));
   const initial = (query().get("tab") as Tab) || "gaps";
-  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials"].includes(initial) ? initial : "gaps");
+  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks"].includes(initial) ? initial : "gaps");
   const pick = (x: Tab) => {
     setTab(x);
     history.replaceState(null, "", `/audit?tab=${x}`);
@@ -18,9 +18,9 @@ export function Audit() {
   return (
     <section>
       <h1>{t("audit.title")}</h1>
-      <p className="muted small">{t("audit.readOnly")}</p>
+      <p className="muted small">{t(tab === "checks" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       <div className="tabs" role="tablist">
-        {(["gaps", "language", "specials"] as Tab[]).map((x) => (
+        {(["gaps", "language", "specials", "checks"] as Tab[]).map((x) => (
           <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
             {t(`audit.tab.${x}`)}
           </button>
@@ -29,6 +29,7 @@ export function Audit() {
       {tab === "gaps" && <Gaps />}
       {tab === "language" && <Language />}
       {tab === "specials" && <Specials />}
+      {tab === "checks" && <Checks />}
     </section>
   );
 }
@@ -209,6 +210,61 @@ function Specials() {
               </div>
             </article>
           ))}
+      </div>
+    </div>
+  );
+}
+
+interface Check { history_id: number; tvdb_id: number; episode_id: number; release: string; ok: number; action: string; why: string; at: number; title: string | null; label: string | null }
+
+const CHECK_TONE: Record<string, "good" | "accent" | "info" | "warn" | "bad"> = { none: "good", skipped: "info", unchecked: "info", suspected: "info", "would-repair": "warn", capped: "warn", "gave-up": "bad", error: "bad", repaired: "accent" };
+
+/** After-import checks: every file that landed in the allowed root folders, checked against its show's profile. */
+function Checks() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const d = useLoad(() => api<{ mode: string; checks: Check[] }>("/repair/recent"), []);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return <Spinner label={t("app.loading")} />;
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ done: boolean; reason?: string; checked?: number; bad?: number }>("/repair/run", { body: {} });
+      if (r.done) toast(t("repair.ran", { n: r.checked ?? 0, bad: r.bad ?? 0 }));
+      else toast(t(`repair.notRun.${r.reason ?? "error"}` as I18nKey), r.reason !== "running");
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="stack">
+      <p className="muted">{t("repair.intro", { mode: t(`repair.mode.${d.data.mode}` as I18nKey) })}</p>
+      <button className="small self-start" disabled={busy || d.data.mode === "off"} onClick={() => void run()}>
+        {busy ? t("common.working") : t("repair.runNow")}
+      </button>
+      {!d.data.checks.length && <Empty>{t("repair.empty")}</Empty>}
+      <div className="list">
+        {d.data.checks.map((c) => (
+          <article key={c.history_id} className="card pad stack">
+            <div className="row between">
+              <Chip tone={CHECK_TONE[c.action] ?? "info"}>
+                {c.action === "none" ? "✓ " : c.action === "repaired" ? "↻ " : c.ok ? "" : "✕ "}
+                {t(`repair.action.${c.action}` as I18nKey)}
+              </Chip>
+              <span className="muted small">{dateTime(c.at)}</span>
+            </div>
+            {c.title && (
+              <ShowLink tvdbId={c.tvdb_id} title={c.title}>
+                <strong className="clamp2">{c.title}</strong> {c.label && <span className="muted">{c.label}</span>}
+              </ShowLink>
+            )}
+            <p className="mono small">{c.release}</p>
+            <p className="small">{c.why}</p>
+          </article>
+        ))}
       </div>
     </div>
   );

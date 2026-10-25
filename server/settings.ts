@@ -69,6 +69,11 @@ export interface Settings {
     /** Automatic grabs only above this identification confidence (0-100). */
     minConfidence: number;
   };
+  /**
+   * After-import check of files that arrive in the allowed root folders (Sonarr's own imports included):
+   * off, log (report only; the default), or auto (blocklist + re-search when two signals agree), capped per day.
+   */
+  repair: { mode: "off" | "log" | "auto"; maxPerDay: number };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -103,6 +108,7 @@ const DEFAULTS: Settings = {
   profiles: [DEFAULT_PROFILE],
   defaultProfileId: "default",
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
+  repair: { mode: "log", maxPerDay: 10 },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -113,7 +119,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -123,13 +129,14 @@ const SECRET_FOR_URL: [string, string][] = [
   ["qbittorrent.url", "qbittorrent.password"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
-const ENUMS: Record<string, readonly string[]> = {};
+const ENUMS: Record<string, readonly string[]> = { "repair.mode": ["off", "log", "auto"] };
 const RANGES: Record<string, [number, number]> = {
   "managed.searchDelayMin": [0, 1440],
   "managed.maxAttempts": [1, 100],
   "managed.rssMin": [0, 1440],
   "managed.minConfidence": [50, 100],
   "sync.intervalHours": [1, 168],
+  "repair.maxPerDay": [1, 100],
 };
 
 export const MASK = "••••••••";

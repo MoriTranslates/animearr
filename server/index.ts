@@ -24,6 +24,7 @@ import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, 
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView } from "./queue.js";
+import { recentChecks, repairTick } from "./repair.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -494,6 +495,17 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
 app.get("/api/grabs", async () => listGrabs(100));
+app.get("/api/repair/recent", async () => ({ mode: getSettings().repair.mode, checks: recentChecks(100) }));
+app.post("/api/repair/run", async () => {
+  writable();
+  const run = repairTick();
+  if (!run) return { done: false, reason: getSettings().repair.mode === "off" ? "off" : "no-sonarr" };
+  // Wait up to 20 s; a long first run keeps going in the background.
+  const r = await Promise.race([run.then((x) => x, () => null), new Promise<undefined>((res) => setTimeout(res, 20_000))]);
+  if (r === undefined) return { done: false, reason: "running" };
+  if (r === null) return { done: false, reason: "error" };
+  return { done: true, checked: r.length, bad: r.filter((x) => !x.ok && x.action !== "skipped").length };
+});
 app.get("/api/queue", async () => queueView());
 app.get<{ Querystring: { before?: string; state?: string } }>("/api/history", async (req) => grabHistory({ before: req.query.before ? Number(req.query.before) : undefined, state: req.query.state || undefined }));
 app.post<{ Params: { id: string }; Body: { blocklist?: boolean; searchNext?: boolean; confirm?: boolean } }>("/api/queue/:id/remove", async (req) => {
@@ -630,6 +642,7 @@ every(60 * 60_000, async () => {
   pruneDecisions();
 }, "hourly");
 every(30_000, () => pipelineTick(), "pipeline");
+every(10 * 60_000, () => repairTick(), "after-import check");
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;
 every(60_000, async () => {

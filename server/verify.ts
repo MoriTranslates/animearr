@@ -82,6 +82,8 @@ export interface VerifyVerdict {
   why: string;
   subs: string[];
   audio: string[];
+  /** Machine-readable reason (the after-import check only acts alone on explicit evidence: forced-only or dub-only). */
+  code?: "ok" | "short" | "forced-only" | "dub-only" | "untagged" | "wrong-subs" | "no-subs" | "no-dub";
 }
 
 export interface VerifyProfile {
@@ -104,17 +106,18 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
   const dubWanted = (profile.dubLangs ?? []).map(base);
   const original = (profile.originalLangs ?? ["ja"]).map(base);
   const anyOriginal = !original.length; // original language unknown: don't judge the audio
-  const out = (ok: boolean, why: string): VerifyVerdict => ({ ok, why, subs, audio: p.audio });
+  const out = (ok: boolean, why: string, code: VerifyVerdict["code"] = ok ? "ok" : undefined): VerifyVerdict => ({ ok, why, subs, audio: p.audio, code });
   if (p.durationSec !== null && expectedMin) {
     const min = p.durationSec / 60;
-    if (min < expectedMin * 0.6) return out(false, `only ${min.toFixed(1)} min long (expected about ${expectedMin}): a sample or a broken file`);
-  } else if (p.durationSec !== null && p.durationSec < 240) return out(false, `only ${Math.round(p.durationSec)} s long: a sample?`);
+    if (min < expectedMin * 0.6) return out(false, `only ${min.toFixed(1)} min long (expected about ${expectedMin}): a sample or a broken file`, "short");
+  } else if (p.durationSec !== null && p.durationSec < 240) return out(false, `only ${Math.round(p.durationSec)} s long: a sample?`, "short");
   const haveSub = subWanted.find((l) => subs.includes(l));
   const haveDub = dubWanted.find((l) => p.audio.includes(l) && !original.includes(l));
   const knownAudio = p.audio.filter((a) => a !== "und");
   const haveOriginal = anyOriginal || !knownAudio.length || knownAudio.some((a) => original.includes(a));
   const subWhy = haveSub ? `has full ${haveSub} subtitles${p.sidecars.includes(haveSub) ? " (sidecar file)" : ""}` : "";
   const forcedOnly = (p.forced ?? []).filter((l) => subWanted.includes(l));
+  const noSubCode: VerifyVerdict["code"] = forcedOnly.length ? "forced-only" : p.untagged ? "untagged" : subs.length ? "wrong-subs" : "no-subs";
   const noSubWhy = forcedOnly.length
     ? `only a forced/signs ${forcedOnly.join("/")} track (not full dialogue subtitles)`
     : p.untagged
@@ -122,22 +125,22 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
       : subs.length
         ? `subtitles ${subs.join("/")} only`
         : "no subtitles at all";
-  if (mode === "dub") return haveDub ? out(true, `has ${haveDub} audio`) : out(false, `no ${dubWanted.join("/")} audio (audio: ${p.audio.join("/") || "unknown"})`);
+  if (mode === "dub") return haveDub ? out(true, `has ${haveDub} audio`) : out(false, `no ${dubWanted.join("/")} audio (audio: ${p.audio.join("/") || "unknown"})`, "no-dub");
   if (mode === "dual") {
     if (haveDub && haveOriginal) return out(true, `dual audio: original + ${haveDub}${haveSub ? `, and ${haveSub} subtitles` : ""}`);
     if (haveSub) return out(true, `${subWhy}; sub only for now (a dual-audio release will replace it)`);
     if (burnedIn) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
-    return out(false, `no ${dubWanted.join("/")} audio and ${noSubWhy}`);
+    return out(false, `no ${dubWanted.join("/")} audio and ${noSubWhy}`, noSubCode);
   }
   if (mode === "either") {
     if (haveSub) return out(true, subWhy);
     if (haveDub) return out(true, `has ${haveDub} audio`);
     if (burnedIn) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
-    return out(false, noSubWhy);
+    return out(false, noSubWhy, noSubCode);
   }
   // sub: original audio + full subtitles. A dub alone is not enough.
   if (haveSub && haveOriginal) return out(true, subWhy);
-  if (haveSub && !haveOriginal) return out(false, `${knownAudio.join("/")} audio only (a dub, without the original audio)`);
+  if (haveSub && !haveOriginal) return out(false, `${knownAudio.join("/")} audio only (a dub, without the original audio)`, "dub-only");
   if (burnedIn) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
-  return out(false, noSubWhy);
+  return out(false, noSubWhy, noSubCode);
 }

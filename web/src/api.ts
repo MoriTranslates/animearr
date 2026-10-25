@@ -130,6 +130,7 @@ export interface Settings {
   allowedRoots: string[];
   defaultProfileId: string;
   managed: { dryRun: boolean; searchDelayMin: number; backoffMin: number[]; maxAttempts: number; rssMin: number; minConfidence: number };
+  repair: { mode: "off" | "log" | "auto"; maxPerDay: number };
   sync: { intervalHours: number };
   externalUrl: string;
   ui: { language: string };

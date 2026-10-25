@@ -177,6 +177,24 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
           ))}
         </div>
       </div>
+      <div className="card pad stack">
+        <h2>{t("repair.title")}</h2>
+        <p className="muted small">{t("repair.help")}</p>
+        <div className="form">
+          <label>
+            {t("repair.mode")}
+            <select value={s.repair.mode} onChange={(e) => upd((x) => ({ ...x, repair: { ...x.repair, mode: e.target.value as "off" | "log" | "auto" } }))}>
+              <option value="off">{t("repair.mode.off")}</option>
+              <option value="log">{t("repair.mode.log")}</option>
+              <option value="auto">{t("repair.mode.auto")}</option>
+            </select>
+          </label>
+          <label>
+            {t("repair.maxPerDay")}
+            <NumberInput value={s.repair.maxPerDay} min={1} max={100} onChange={(v) => upd((x) => ({ ...x, repair: { ...x.repair, maxPerDay: v } }))} label={t("repair.maxPerDay")} />
+          </label>
+        </div>
+      </div>
       <div className="card pad form">
         <label>
           {t("settings.safety.delay")}

@@ -254,6 +254,12 @@ const USER_MIGRATIONS: string[] = [
    ALTER TABLE search_state ADD COLUMN grab_id INTEGER;`,
   // 3: per-show language profile / watch-mode override
   `CREATE TABLE series_prefs (tvdb_id INTEGER PRIMARY KEY, profile_id TEXT, watch_mode TEXT, updated_at INTEGER NOT NULL);`,
+  // 4: after-import checks (one row per Sonarr import history entry, so each file is checked once)
+  `CREATE TABLE checked_imports (history_id INTEGER PRIMARY KEY, tvdb_id INTEGER, episode_id INTEGER, release TEXT, ok INTEGER NOT NULL, action TEXT NOT NULL DEFAULT '', why TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL,
+     download_id TEXT, title TEXT, label TEXT, imported_at INTEGER);
+   CREATE INDEX checked_imports_at ON checked_imports (at);
+   CREATE INDEX checked_imports_dl ON checked_imports (download_id);
+   CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

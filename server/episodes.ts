@@ -250,15 +250,17 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
 }
 
 /** Puts episodes of a managed show back on the search schedule, due now. */
-export function searchAgainSoon(tvdbId: number, episodeIds: number[]) {
+export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { why?: string; replace?: boolean } = {}) {
   const s = guard(tvdbId);
   const own = new Set(episodesFor(tvdbId).map((e) => e.id));
   const ids = episodeIds.filter((e) => own.has(e));
   if (!ids.length) throw Object.assign(new Error("Those aren't episodes of this show"), { statusCode: 400 });
-  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: `You asked AnimeArr to search again for ${ids.length} episode(s) now` });
+  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode(s) now` });
   const now = Date.now();
+  // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
+  const state = opts.replace ? "replace" : "waiting";
   for (const e of ids)
-    db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, 'waiting') ON CONFLICT(episode_id) DO UPDATE SET state = 'waiting', next_at = excluded.next_at, attempts = 0, last_why = 'search requested'").run(e, tvdbId, now);
+    db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, next_at = excluded.next_at, attempts = 0, last_why = ?").run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
 }
 
 const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });
