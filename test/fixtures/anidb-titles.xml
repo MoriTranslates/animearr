@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<animetitles>
+	<anime aid="11370">
+		<title xml:lang="x-jat" type="short">Re Zero kara Hajimeru Isekai Seikatsu</title>
+		<title type="syn" xml:lang="en">Re: Life in a Different World from Zero</title>
+		<title xml:lang="pl" type="syn">Re: Życie od zera w innym świecie</title>
+		<title type="syn" xml:lang="ko">Re: 제로부터 시작하는 이세계 생활</title>
+		<title xml:lang="zh-Hans" type="official">Re: 从零开始的异世界生活</title>
+		<title xml:lang="ja" type="short">Re:Zero</title>
+		<title xml:lang="es" type="official">Re:Zero - Empezar de cero en un mundo diferente</title>
+		<title xml:lang="en" type="official">Re:Zero - Starting Life in Another World</title>
+		<title type="official" xml:lang="de">Re:Zero - Starting Life in Another World</title>
+		<title type="official" xml:lang="vi">Re:Zero – Bắt đầu lại ở thế giới khác</title>
+		<title type="official" xml:lang="fr">Re:Zero –Starting Life in Another World–</title>
+		<title type="official" xml:lang="ru">Re:Zero — жизнь с нуля в другом мире</title>
+		<title type="syn" xml:lang="ru">Re:Zero — жизнь с нуля в другом мире. Режиссёрская версия</title>
+		<title xml:lang="x-jat" type="main">Re:Zero kara Hajimeru Isekai Seikatsu</title>
+		<title xml:lang="x-jat" type="syn">Re:Zero kara Hajimeru Isekai Seikatsu Shin Henshuuban</title>
+		<title xml:lang="ja" type="official">Re:ゼロから始める異世界生活</title>
+		<title xml:lang="ja" type="syn">Re:ゼロから始める異世界生活 新編集版</title>
+		<title type="official" xml:lang="zh-Hant">Re：從零開始的異世界生活</title>
+		<title xml:lang="x-jat" type="short">rezero</title>
+		<title type="short" xml:lang="x-jat">rizero</title>
+		<title xml:lang="he" type="syn">רי:זירו</title>
+		<title xml:lang="he" type="syn">רי:זירו - התחלת החיים בעולם אחר</title>
+		<title xml:lang="ar" type="syn">بدء الحياة من الصفر في عالم آخر</title>
+		<title type="official" xml:lang="th">รี:ซีโร่ รีเซทชีวิต ฝ่าวิกฤติต่างโลก</title>
+		<title type="short" xml:lang="ja">リゼロ</title>
+		<title type="syn" xml:lang="zh-Hans">从零开始的异世界</title>
+	</anime>
+	<anime aid="12200">
+		<title type="main" xml:lang="x-jat">Hitori no Shita: The Outcast</title>
+		<title type="official" xml:lang="en">Hitorinoshita: The Outcast</title>
+		<title xml:lang="x-zht" type="syn">Yi Ren Zhi Xia</title>
+		<title xml:lang="ko" type="official">일인지하 The Outcast</title>
+		<title type="official" xml:lang="zh-Hans">一人之下</title>
+		<title type="official" xml:lang="ja">一人之下 THE OUTCAST</title>
+	</anime>
+	<anime aid="12560">
+		<title xml:lang="en" type="syn">Full-Time Expert</title>
+		<title xml:lang="en" type="syn">Master of Skill</title>
+		<title type="main" xml:lang="x-zht">Quanzhi Gaoshou</title>
+		<title xml:lang="x-zht" type="short">qzgs</title>
+		<title type="official" xml:lang="en">The King`s Avatar</title>
+		<title xml:lang="en" type="syn">The Kings Avatar</title>
+		<title type="short" xml:lang="x-jat">TKA</title>
+		<title xml:lang="ru" type="official">Аватар короля</title>
+		<title xml:lang="zh-Hans" type="official">全职高手</title>
+		<title type="official" xml:lang="zh-Hant">全職高手</title>
+	</anime>
+	<anime aid="13068">
+		<title type="syn" xml:lang="x-jat">Hitori no Shita - The Outcast S2</title>
+		<title type="official" xml:lang="en">Hitori no Shita: The Outcast 2</title>
+		<title type="official" xml:lang="x-jat">Hitori no Shita: The Outcast 2</title>
+		<title xml:lang="x-zht" type="syn">Yi Ren Zhi Xia Di Er Ji</title>
+		<title xml:lang="x-zht" type="main">Yi Ren Zhixia 2</title>
+		<title xml:lang="ko" type="official">일인지하 The Outcast 2</title>
+		<title type="official" xml:lang="ja">一人之下 THE OUTCAST 2</title>
+		<title xml:lang="zh-Hans" type="syn">一人之下 第二季</title>
+		<title xml:lang="zh-Hans" type="official">一人之下2</title>
+	</anime>
+	<anime aid="13171">
+		<title xml:lang="en" type="syn">Full-Time Magister</title>
+		<title type="syn" xml:lang="x-zht">Quan Zhi Fa Shi</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Fashi</title>
+		<title xml:lang="x-zht" type="card">QUANZHIFASHI</title>
+		<title type="short" xml:lang="x-jat">qzfs</title>
+		<title xml:lang="en" type="syn">Versatile Mage</title>
+		<title xml:lang="zh-Hans" type="official">全职法师</title>
+	</anime>
+	<anime aid="13430">
+		<title xml:lang="ru" type="syn">Re: Жизнь в другом мире с нуля - Снежные воспоминания</title>
+		<title type="syn" xml:lang="ko">Re: 제로부터 시작하는 이세계 생활 (2018)</title>
+		<title xml:lang="zh-Hans" type="official">Re: 从零开始的异世界生活 剧场版</title>
+		<title xml:lang="en" type="official">Re:Zero - Starting Life in Another World (2018)</title>
+		<title type="syn" xml:lang="en">Re:ZERO -Starting Life in Another World- OVAs</title>
+		<title xml:lang="de" type="official">Re:ZERO -Starting Life in Another World- OVAs</title>
+		<title type="official" xml:lang="ru">Re:Zero — жизнь с нуля в другом мире OVA</title>
+		<title xml:lang="x-jat" type="main">Re:Zero kara Hajimeru Isekai Seikatsu (2018)</title>
+		<title type="short" xml:lang="x-jat">re:zero ova</title>
+		<title xml:lang="ja" type="official">Re:ゼロから始める異世界生活 (2018)</title>
+		<title type="official" xml:lang="zh-Hant">Re：從零開始的異世界生活 OVA</title>
+		<title xml:lang="x-jat" type="short">rezero movie</title>
+	</anime>
+	<anime aid="13469">
+		<title type="syn" xml:lang="en">Full-Time Magister Season 2</title>
+		<title xml:lang="x-zht" type="syn">Quan Zhi Fa Shi II</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Fashi II</title>
+		<title type="short" xml:lang="x-jat">qzfs s2</title>
+		<title xml:lang="zh-Hans" type="syn">全职法师 第2季</title>
+		<title type="syn" xml:lang="zh">全职法师 第二季</title>
+		<title type="official" xml:lang="zh-Hans">全职法师II</title>
+	</anime>
+	<anime aid="13950">
+		<title type="syn" xml:lang="en">Quanzhi Gaoshou Specials</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Gaoshou: Tebie Pian</title>
+		<title type="short" xml:lang="x-zht">qzgs special</title>
+		<title xml:lang="en" type="syn">The King`s Avatar - Specials</title>
+		<title xml:lang="en" type="syn">The King`s Avatar SP</title>
+		<title type="syn" xml:lang="en">The King`s Avatar Specials</title>
+		<title type="short" xml:lang="x-jat">TKA special</title>
+		<title xml:lang="zh" type="official">全职高手特别篇</title>
+	</anime>
+	<anime aid="14572">
+		<title xml:lang="en" type="syn">Full-Time Magister Season 3</title>
+		<title type="syn" xml:lang="x-zht">Quan Zhi Fa Shi 3</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Fashi III</title>
+		<title xml:lang="x-jat" type="short">qzfs s3</title>
+		<title xml:lang="zh" type="syn">全职法师 第3季</title>
+		<title type="official" xml:lang="zh-Hans">全职法师III</title>
+		<title type="syn" xml:lang="zh">全职法师第三季</title>
+	</anime>
+	<anime aid="14727">
+		<title type="official" xml:lang="en">Ascendance of a Bookworm</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm: I`ll Do Anything to Become a Librarian!</title>
+		<title type="main" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen</title>
+		<title type="official" xml:lang="ru">Власть книжного червя</title>
+		<title type="official" xml:lang="ar">هيمنة عثة كتب</title>
+		<title xml:lang="ko" type="official">책벌레의 하극상: 사서가 되기 위해서라면 뭐든지 할 수 있어</title>
+		<title type="official" xml:lang="zh-Hans">书虫的下克上～为了成为图书管理员而不择手段～</title>
+		<title xml:lang="zh-Hant" type="official">小書痴的下剋上：為了成為圖書管理員不擇手段！</title>
+		<title type="official" xml:lang="ja">本好きの下剋上 司書になるためには手段を選んでいられません</title>
+	</anime>
+	<anime aid="14792">
+		<title type="syn" xml:lang="he">(2020) רי:זירו - התחלת החיים בעולם אחר</title>
+		<title xml:lang="ko" type="official">Re: 제로부터 시작하는 이세계 생활 2기</title>
+		<title xml:lang="zh-Hans" type="official">Re: 从零开始的异世界生活 第二季</title>
+		<title xml:lang="es" type="syn">Re:Zero - Empezar de cero en un mundo diferente (2020)</title>
+		<title xml:lang="en" type="syn">Re:Zero - Starting Life in Another World - Season 2</title>
+		<title type="official" xml:lang="en">Re:Zero - Starting Life in Another World (2020)</title>
+		<title xml:lang="en" type="syn">Re:Zero - Starting Life in Another World 2nd Season</title>
+		<title xml:lang="de" type="official">Re:ZERO -Starting Life in Another World- 2</title>
+		<title xml:lang="th" type="official">Re:ZERO -รีเซทชีวิต ฝ่าวิกฤตต่างโลก- ภาคที่ 2</title>
+		<title xml:lang="fr" type="official">Re:Zero –Starting Life in Another World– (Saison 2 Partie 1)</title>
+		<title xml:lang="ru" type="official">Re:Zero — жизнь с нуля в другом мире. Второй сезон</title>
+		<title xml:lang="en" type="short">Re:Zero 2</title>
+		<title type="main" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu (2020)</title>
+		<title type="syn" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu 2</title>
+		<title xml:lang="x-jat" type="syn">Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season</title>
+		<title type="syn" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu S2</title>
+		<title xml:lang="x-jat" type="syn">Re:Zero kara Hajimeru Isekai Seikatsu Season 2 Part 1</title>
+		<title xml:lang="ja" type="official">Re:ゼロから始める異世界生活 (2020)</title>
+		<title type="syn" xml:lang="ja">Re:ゼロから始める異世界生活 2nd season</title>
+		<title type="official" xml:lang="zh-Hant">Re：從零開始的異世界生活 第二季</title>
+		<title xml:lang="x-jat" type="short">rezero s2</title>
+		<title xml:lang="x-jat" type="short">rezero s2p1</title>
+		<title xml:lang="x-jat" type="short">rezero2</title>
+		<title xml:lang="ar" type="official">بدء الحياة من الصفر في عالم آخر الموسم الثاني</title>
+	</anime>
+	<anime aid="14978">
+		<title type="syn" xml:lang="en">Full-Time Expert Season 2</title>
+		<title xml:lang="en" type="syn">Master of Skills Season 2</title>
+		<title type="syn" xml:lang="x-zht">Quan Zhi Gao Shou Season 2</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Gaoshou 2</title>
+		<title xml:lang="x-zht" type="short">qzgs s2</title>
+		<title type="syn" xml:lang="en">The King`s Avatar (2019)</title>
+		<title xml:lang="en" type="official">The King`s Avatar 2</title>
+		<title type="short" xml:lang="x-jat">TKA s2</title>
+		<title type="official" xml:lang="zh-Hans">全职高手2</title>
+	</anime>
+	<anime aid="15035">
+		<title xml:lang="x-zht" type="syn">Quanzhi Gaoshou Zhi Dianfeng Rongyao</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Gaoshou: Dianfeng Rongyao</title>
+		<title type="short" xml:lang="x-zht">qzgs movie</title>
+		<title type="official" xml:lang="de">The King`s Avatar: For the Glory</title>
+		<title xml:lang="en" type="syn">The King`s Avatar: For the Glory</title>
+		<title type="short" xml:lang="x-jat">TKA movie</title>
+		<title type="official" xml:lang="zh-Hans">全职高手之巅峰荣耀</title>
+	</anime>
+	<anime aid="15293">
+		<title xml:lang="en" type="official">Ascendance of a Bookworm (2020)</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm 2</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm S2</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm Season 2</title>
+		<title type="short" xml:lang="x-jat">Honzuki 2</title>
+		<title xml:lang="x-jat" type="short">Honzuki no Gekokujou 2</title>
+		<title type="main" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen (2020)</title>
+		<title xml:lang="x-jat" type="syn">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen 2</title>
+		<title xml:lang="x-jat" type="syn">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen Dainibu</title>
+		<title xml:lang="x-jat" type="syn">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen Part 2</title>
+		<title type="syn" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen Season 2</title>
+		<title type="syn" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erande Iraremasen</title>
+		<title xml:lang="x-jat" type="syn">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan wo Erande Iraremasen Part 2</title>
+		<title xml:lang="x-jat" type="short">Honzuki s2</title>
+		<title type="syn" xml:lang="ru">Власть книжного червя 2</title>
+		<title type="official" xml:lang="ar">هيمنة عثة كتب (2020)</title>
+		<title xml:lang="ko" type="official">책벌레의 하극상: 사서가 되기 위해서라면 뭐든지 할 수 있어 (2020)</title>
+		<title type="official" xml:lang="zh-Hans">小书痴的下克上～为了成为图书管理员而不择手段～ 第2部</title>
+		<title xml:lang="ja" type="official">本好きの下剋上 司書になるためには手段を選んでいられません (2020)</title>
+		<title type="syn" xml:lang="ja">本好きの下剋上 司書になるためには手段を選んでいられません 第二部</title>
+	</anime>
+	<anime aid="15300">
+		<title type="official" xml:lang="en">Ascendance of a Bookworm: Eustachius`s Incognito Operation Downtown / Visiting Missus Corinna</title>
+		<title xml:lang="x-jat" type="main">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Eustachius no Shitamachi Sennyuu Daisakusen / Corinna-sama no Otaku Houmon</title>
+		<title type="short" xml:lang="x-jat">Honzuki OVA</title>
+		<title xml:lang="ru" type="syn">ласть книжного червя, в гости к миссис Корине</title>
+		<title type="official" xml:lang="ar">هيمنة عثة كتب: عمليّة إيوستاكيوس السرّية في مركز المدينة \ زيارة السيّدة كورينا</title>
+		<title type="syn" xml:lang="ko">책벌레의 하극상: 사서가 되기 위해서라면 뭐든지 할 수 있어 - 유스톡스의 평민촌 잠입 대작전 / 코린나 댁을 방문하다</title>
+		<title xml:lang="ja" type="official">本好きの下剋上 司書になるためには手段を選んでいられません ユストクスの下町潜入大作戦 / コリンナ様のお宅訪問</title>
+	</anime>
+	<anime aid="15397">
+		<title type="syn" xml:lang="en">Full-Time Magister 4</title>
+		<title type="syn" xml:lang="en">Full-Time Magister IV</title>
+		<title type="syn" xml:lang="en">Full-Time Magister Season 4</title>
+		<title xml:lang="x-zht" type="syn">Quan Zhi Fa Shi 4</title>
+		<title xml:lang="x-zht" type="syn">Quan Zhi Fa Shi IV</title>
+		<title type="main" xml:lang="x-zht">Quanzhi Fashi IV</title>
+		<title xml:lang="x-zht" type="syn">Quanzhi Fashi Season 4</title>
+		<title xml:lang="x-zht" type="short">qzf4</title>
+		<title xml:lang="x-jat" type="short">qzfs s4</title>
+		<title xml:lang="zh" type="syn">全职法师 第4季</title>
+		<title type="official" xml:lang="zh-Hans">全职法师IV</title>
+	</anime>
+	<anime aid="15593">
+		<title xml:lang="he" type="syn">(2021) רי:זירו - התחלת החיים בעולם אחר</title>
+		<title type="official" xml:lang="ko">Re: 제로부터 시작하는 이세계 생활 2기 Part2</title>
+		<title type="official" xml:lang="zh-Hans">Re: 从零开始的异世界生活 第二季 Part 2</title>
+		<title type="syn" xml:lang="zh-Hans">Re: 从零开始的异世界生活 第二季 后半部分</title>
+		<title xml:lang="es" type="syn">Re:Zero - Empezar de cero en un mundo diferente (2021)</title>
+		<title xml:lang="en" type="official">Re:Zero - Starting Life in Another World (2021)</title>
+		<title type="official" xml:lang="de">Re:ZERO -Starting Life in Another World- 2 Cour 2</title>
+		<title xml:lang="th" type="official">Re:ZERO -รีเซทชีวิต ฝ่าวิกฤตต่างโลก- ภาคที่ 2 พาร์ท 2</title>
+		<title type="official" xml:lang="fr">Re:Zero –Starting Life in Another World– (Saison 2 Partie 2)</title>
+		<title xml:lang="ru" type="official">Re:Zero — жизнь с нуля в другом мире. Второй сезон (2021)</title>
+		<title type="short" xml:lang="en">Re:Zero (2021)</title>
+		<title xml:lang="en" type="short">Re:Zero 2 part 2</title>
+		<title xml:lang="x-jat" type="main">Re:Zero kara Hajimeru Isekai Seikatsu (2021)</title>
+		<title xml:lang="x-jat" type="syn">Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season (2021)</title>
+		<title type="syn" xml:lang="en">Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season 2nd Part</title>
+		<title type="syn" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2</title>
+		<title type="syn" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu Season 2 Part 2</title>
+		<title type="official" xml:lang="ja">Re:ゼロから始める異世界生活 (2021)</title>
+		<title xml:lang="ja" type="syn">Re:ゼロから始める異世界生活 2nd season 後半クール</title>
+		<title xml:lang="x-jat" type="short">rezero s2.5</title>
+		<title type="short" xml:lang="x-jat">rezero s2p2</title>
+	</anime>
+	<anime aid="15599">
+		<title type="syn" xml:lang="en">Hitori no Shita: The Outcast 3</title>
+		<title xml:lang="en" type="syn">The Outcast 3</title>
+		<title xml:lang="x-zht" type="syn">Yi Ren Zhi Xia 3: Rushi Pian</title>
+		<title xml:lang="x-zht" type="syn">Yi Ren Zhi Xia Di 3 Ji</title>
+		<title type="main" xml:lang="x-zht">Yi Ren Zhixia 3: Rushi Pian</title>
+		<title xml:lang="zh" type="syn">一人之下 第三季</title>
+		<title type="syn" xml:lang="zh">一人之下3 入世篇</title>
+		<title xml:lang="zh-Hans" type="official">一人之下3入世篇</title>
+	</anime>
+	<anime aid="15634">
+		<title xml:lang="en" type="official">Ascendance of a Bookworm (2022)</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm S3</title>
+		<title xml:lang="en" type="syn">Ascendance of a Bookworm Season 3</title>
+		<title xml:lang="x-jat" type="short">Honzuki 3</title>
+		<title type="syn" xml:lang="x-jat">Honzuki no Gekokujou 3</title>
+		<title type="main" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen (2022)</title>
+		<title type="short" xml:lang="x-jat">Honzuki s3</title>
+		<title xml:lang="ru" type="official">Власть книжного червя (2022)</title>
+		<title type="official" xml:lang="ko">책벌레의 하극상: 사서가 되기 위해서라면 뭐든지 할 수 있어 3기</title>
+		<title xml:lang="zh-Hans" type="syn">小书痴的下克上：为了成为图书管理员不择手段！ 第三季</title>
+		<title xml:lang="zh-Hans" type="official">小书痴的下克上～为了成为图书管理员而不择手段～ 第3部</title>
+		<title type="syn" xml:lang="zh-Hant">小書痴的下剋上：為了成為圖書管理員不擇手段！第三季</title>
+		<title type="official" xml:lang="ja">本好きの下剋上 司書になるためには手段を選んでいられません (2022)</title>
+	</anime>
+	<anime aid="16490">
+		<title xml:lang="en" type="syn">Full-Time Magister Season 5</title>
+		<title xml:lang="x-zht" type="main">Quanzhi Fashi V</title>
+		<title xml:lang="x-jat" type="short">qzfs s5</title>
+		<title xml:lang="zh-Hans" type="official">全职法师V</title>
+	</anime>
+	<anime aid="16579">
+		<title type="syn" xml:lang="en">Full-Time Magister Season 6</title>
+		<title type="main" xml:lang="x-zht">Quanzhi Fashi VI</title>
+		<title xml:lang="x-jat" type="short">qzfs s6</title>
+		<title type="official" xml:lang="zh-Hans">全职法师VI</title>
+	</anime>
+	<anime aid="16589">
+		<title xml:lang="x-zht" type="main">Quanzhi Gaoshou 3</title>
+		<title xml:lang="x-zht" type="syn">Quanzhi Gaoshou Di San Ji</title>
+		<title xml:lang="en" type="syn">The King`s Avatar 3</title>
+		<title type="syn" xml:lang="en">The King`s Avatar Ⅲ</title>
+		<title type="syn" xml:lang="zh-Hans">全职高手 第三季</title>
+		<title type="official" xml:lang="zh-Hans">全职高手3</title>
+	</anime>
+	<anime aid="16719">
+		<title type="syn" xml:lang="x-jat">Hitori no Shita: The Outcast 4</title>
+		<title type="syn" xml:lang="en">Hitorinoshita: The Outcast 4</title>
+		<title xml:lang="en" type="syn">The Outcast 4</title>
+		<title type="main" xml:lang="x-zht">Yi Ren Zhixia 4</title>
+		<title xml:lang="zh" type="syn">一人之下 第四季</title>
+		<title xml:lang="zh-Hans" type="official">一人之下4</title>
+	</anime>
+	<anime aid="17095">
+		<title xml:lang="x-jat" type="syn">Hitori no Shita: The Outcast 5</title>
+		<title type="syn" xml:lang="en">The Outcast 5</title>
+		<title xml:lang="x-zht" type="main">Yi Ren Zhixia 5 Juezhan! Bi You Cun</title>
+		<title type="official" xml:lang="zh-Hans">一人之下5 决战! 碧游村</title>
+	</anime>
+	<anime aid="17617">
+		<title type="official" xml:lang="fr">Frieren</title>
+		<title type="official" xml:lang="it">Frieren - Oltre la Fine del Viaggio</title>
+		<title xml:lang="pt-BR" type="official">Frieren e a Jornada para o Além</title>
+		<title xml:lang="pt" type="official">Frieren e a Jornada para o Além</title>
+		<title type="official" xml:lang="en">Frieren: Beyond Journey`s End</title>
+		<title type="official" xml:lang="es-419">Frieren: Más allá del final del viaje</title>
+		<title type="official" xml:lang="de">Frieren: Nach dem Ende der Reise</title>
+		<title xml:lang="es" type="official">Frieren: Tras finalizar el viaje</title>
+		<title type="official" xml:lang="pl">Frieren. U kresu drogi</title>
+		<title type="main" xml:lang="x-jat">Sousou no Frieren</title>
+		<title type="official" xml:lang="ru">Фрирен, провожающая в последний путь</title>
+		<title xml:lang="uk" type="official">Фрірен кінця шляху</title>
+		<title xml:lang="uk" type="syn">Фрірен, що проводжає в останню путь</title>
+		<title xml:lang="uk" type="syn">Фрірен: після кінця пригоди</title>
+		<title type="syn" xml:lang="uk">Фрірен: продовження подорожі</title>
+		<title type="official" xml:lang="he">פרירן: מעבר לסוף המסע</title>
+		<title xml:lang="th" type="official">คำอธิษฐานในวันที่จากลา FRIEREN</title>
+		<title type="official" xml:lang="ja">葬送のフリーレン</title>
+		<title xml:lang="zh-Hans" type="official">葬送的芙莉莲</title>
+		<title type="official" xml:lang="zh-Hant">葬送的芙莉蓮</title>
+	</anime>
+	<anime aid="17947">
+		<title xml:lang="zh-Hans" type="syn">Re: 从零开始的异世界生活 第三季</title>
+		<title xml:lang="es" type="syn">Re:Zero - Empezar de cero en un mundo diferente (2024)</title>
+		<title type="official" xml:lang="en">Re:Zero - Starting Life in Another World (2024)</title>
+		<title xml:lang="en" type="syn">Re:Zero - Starting Life in Another World Season 3</title>
+		<title xml:lang="de" type="official">Re:ZERO -Starting Life in Another World- 3</title>
+		<title type="official" xml:lang="th">Re:ZERO -รีเซทชีวิต ฝ่าวิกฤตต่างโลก- ภาคที่ 3</title>
+		<title xml:lang="x-jat" type="main">Re:Zero kara Hajimeru Isekai Seikatsu (2024)</title>
+		<title xml:lang="x-jat" type="syn">Re:Zero kara Hajimeru Isekai Seikatsu 3rd Season</title>
+		<title type="syn" xml:lang="en">Re:Zero Season 3</title>
+		<title xml:lang="ru" type="official">Re:Zero. Жизнь с нуля в альтернативном мире 3</title>
+		<title xml:lang="ja" type="official">Re:ゼロから始める異世界生活 (2024)</title>
+		<title xml:lang="zh-Hans" type="official">Re：从零开始的异世界生活 第三季</title>
+		<title xml:lang="x-jat" type="short">rezero s3</title>
+		<title xml:lang="x-jat" type="short">rezero3</title>
+	</anime>
+	<anime aid="18302">
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm S4</title>
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm Season 4</title>
+		<title type="official" xml:lang="de">Ascendance of a Bookworm: Adopted Daughter of an Archduke</title>
+		<title type="official" xml:lang="en">Ascendance of a Bookworm: Adopted Daughter of an Archduke</title>
+		<title type="syn" xml:lang="x-jat">Honzuki no Gekokujou S4</title>
+		<title xml:lang="x-jat" type="main">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Ryoushu no Youjo</title>
+		<title type="syn" xml:lang="ru">Революция книжного червя: Приёмная дочь лорда</title>
+		<title type="official" xml:lang="ar">هيمنة عثة كتب: ابنة أرشيدوق بالتبني</title>
+		<title type="official" xml:lang="ko">책벌레의 하극상: 사서가 되기 위해서라면 뭐든지 할 수 있어 영주의 양녀</title>
+		<title type="official" xml:lang="zh-Hans">小书痴的下克上 〜为了成为图书管理员而不择手段〜 第四季</title>
+		<title xml:lang="zh-Hant" type="official">小書痴的下剋上 為了成為圖書管理員不擇手段！領主的養女</title>
+		<title xml:lang="ja" type="official">本好きの下剋上 司書になるためには手段を選んでいられません 領主の養女</title>
+	</anime>
+	<anime aid="18886">
+		<title xml:lang="it" type="official">Frieren - Oltre la fine del viaggio (2026)</title>
+		<title type="syn" xml:lang="en">Frieren 2</title>
+		<title type="official" xml:lang="pt">Frieren e a Jornada para o Além (2026)</title>
+		<title type="official" xml:lang="en">Frieren: Beyond Journey`s End (2026)</title>
+		<title type="syn" xml:lang="en">Frieren: Beyond Journey`s End Season 2</title>
+		<title type="official" xml:lang="de">Frieren: Nach dem Ende der Reise Staffel 2</title>
+		<title type="main" xml:lang="x-jat">Sousou no Frieren (2026)</title>
+		<title xml:lang="x-jat" type="syn">Sousou no Frieren S2</title>
+		<title type="syn" xml:lang="ru">Фрирен, провожающая в последний путь (2026)</title>
+		<title xml:lang="ja" type="official">葬送のフリーレン (2026)</title>
+		<title xml:lang="zh-Hans" type="official">葬送的芙莉莲 第二季</title>
+	</anime>
+	<anime aid="19122">
+		<title type="main" xml:lang="x-zht">Quanzhi Gaoshou Q</title>
+		<title xml:lang="x-zht" type="syn">Quanzhi Gaoshou: Rongyao Xiao Juchang</title>
+		<title type="syn" xml:lang="zh-Hans">全职高手·荣耀小剧场</title>
+		<title type="official" xml:lang="zh-Hans">全职高手Q</title>
+	</anime>
+	<anime aid="19242">
+		<title xml:lang="es" type="syn">Re:Zero - Empezar de cero en un mundo diferente (2026)</title>
+		<title xml:lang="en" type="official">Re:Zero - Starting Life in Another World (2026)</title>
+		<title type="syn" xml:lang="en">Re:Zero - Starting Life in Another World Season 4</title>
+		<title type="official" xml:lang="de">Re:ZERO -Starting Life in Another World- 4</title>
+		<title type="main" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu (2026)</title>
+		<title type="syn" xml:lang="x-jat">Re:Zero kara Hajimeru Isekai Seikatsu 4th Season</title>
+		<title type="syn" xml:lang="en">Re:Zero Season 4</title>
+		<title type="official" xml:lang="ja">Re:ゼロから始める異世界生活 (2026)</title>
+		<title xml:lang="zh-Hans" type="official">Re：从零开始的异世界生活 第四季</title>
+		<title xml:lang="zh-Hant" type="official">Re：從零開始的異世界生活 第四季</title>
+		<title xml:lang="x-jat" type="short">rezero4</title>
+	</anime>
+	<anime aid="19503">
+		<title xml:lang="x-zht" type="main">Quanzhi Fashi Tebie Pian: Shenmi Weituo</title>
+		<title xml:lang="zh-Hans" type="official">全职法师 特别篇 神秘委托</title>
+	</anime>
+	<anime aid="19808">
+		<title type="syn" xml:lang="x-jat">Hitori no Shita - The Outcast S6</title>
+		<title xml:lang="x-jat" type="syn">Hitori no Shita: The Outcast 6</title>
+		<title type="syn" xml:lang="en">The Outcast 6</title>
+		<title xml:lang="en" type="official">The Outcast Season 6</title>
+		<title xml:lang="x-zht" type="main">Yi Ren Zhixia 6</title>
+		<title xml:lang="zh-Hans" type="official">一人之下 第六季</title>
+	</anime>
+	<anime aid="19824">
+		<title type="official" xml:lang="ja">Hitori no Shita: The Outcast - Rust Iron Returns</title>
+		<title xml:lang="zh" type="main">Yi Ren Zhi Xia: Xiu Tie Chong Xian</title>
+	</anime>
+	<anime aid="19840">
+		<title xml:lang="en" type="official">Hitori no Shita - The Outcast - Rust Iron Returns</title>
+		<title xml:lang="x-zht" type="main">Yi Ren Zhixia: Xiu Tie Chong Xian</title>
+		<title xml:lang="zh-Hans" type="official">一人之下 锈铁重现</title>
+	</anime>
+	<anime aid="19858">
+		<title xml:lang="en" type="syn">Click Me All Over</title>
+		<title type="main" xml:lang="x-jat">Mouse Cursor de Genjitsu o Sousa Dekiru You ni Natta no de, Onnanoko o Ippai Click Shima~su</title>
+		<title type="syn" xml:lang="x-jat">Mouse Cursor de Genjitsu wo Sousa Dekiru You ni Natta node, Onnanoko wo Ippai Click Shimasu</title>
+		<title type="syn" xml:lang="en">Now That I Can Control Reality With A Mouse Cursor, I’m Gonna Click Away On The Girls!</title>
+		<title type="syn" xml:lang="en">Now That I Can Control the Real World With My Mouse Cursor, I Click On a Lot of Girls.</title>
+		<title type="official" xml:lang="ja">マウスカーソルで現実を操作できるようになったので, 女の子をいっぱいクリックしまーす</title>
+		<title xml:lang="zh-Hant" type="syn">滑鼠游標好像變得能操控現實，那我要點瘋狂點擊女孩子</title>
+	</anime>
+	<anime aid="19859">
+		<title xml:lang="x-jat" type="syn">Dragon Ball Super - Beerus</title>
+		<title xml:lang="de" type="official">Dragon Ball Super: Beerus</title>
+		<title xml:lang="x-jat" type="main">Dragon Ball Super: Beerus</title>
+		<title xml:lang="ja" type="official">ドラゴンボール超 ビルス</title>
+		<title type="official" xml:lang="zh-Hant">七龍珠超：比魯斯</title>
+	</anime>
+	<anime aid="19920">
+		<title type="syn" xml:lang="en">Almighty Mage 7th Season</title>
+		<title type="syn" xml:lang="en">Full-Time Magister 7th Season</title>
+		<title xml:lang="en" type="syn">Full-Time Magister S7</title>
+		<title type="syn" xml:lang="en">Full-Time Magister Season 7</title>
+		<title type="syn" xml:lang="x-zht">Quanzhi Fashi 7th Season</title>
+		<title type="syn" xml:lang="x-zht">Quanzhi Fashi S7</title>
+		<title type="main" xml:lang="x-zht">Quanzhi Fashi VII</title>
+		<title xml:lang="x-zht" type="short">qzfs s7</title>
+		<title xml:lang="en" type="official">Versatile Mage (2026)</title>
+		<title xml:lang="en" type="syn">Versatile Mage 7th Season</title>
+		<title xml:lang="zh-Hans" type="syn">全职法师 第7季</title>
+		<title type="syn" xml:lang="zh-Hans">全职法师 第七季</title>
+		<title xml:lang="zh-Hans" type="official">全职法师VII</title>
+	</anime>
+	<anime aid="19977">
+		<title xml:lang="en" type="syn">Frieren 3</title>
+		<title type="official" xml:lang="pt">Frieren e a Jornada para o Além (2027)</title>
+		<title type="syn" xml:lang="en">Frieren: Beyond Journey`s End (2027)</title>
+		<title xml:lang="x-jat" type="main">Sousou no Frieren (2027)</title>
+		<title type="syn" xml:lang="x-jat">Sousou no Frieren: Ougonkyou Hen</title>
+		<title xml:lang="x-jat" type="syn">Sousou no Frieren: Ougonkyou-hen</title>
+		<title xml:lang="ja" type="official">葬送のフリーレン (2027)</title>
+		<title xml:lang="ja" type="syn">葬送のフリーレン 黄金郷編</title>
+	</anime>
+	<anime aid="20078">
+		<title type="main" xml:lang="x-zht">Quanzhi Gaoshou 4</title>
+		<title xml:lang="en" type="syn">The King`s Avatar 4</title>
+		<title type="syn" xml:lang="zh-Hans">全职高手 第四季</title>
+		<title type="official" xml:lang="zh-Hans">全职高手4</title>
+	</anime>
+	<anime aid="20253">
+		<title xml:lang="en" type="syn">Full-Time Magister S8</title>
+		<title type="syn" xml:lang="x-zht">Quanzhi Fashi S8</title>
+		<title type="main" xml:lang="x-zht">Quanzhi Fashi VIII</title>
+		<title xml:lang="x-zht" type="short">qzfs s8</title>
+		<title xml:lang="en" type="syn">Versatile Mage S8</title>
+		<title xml:lang="zh-Hans" type="syn">全职法师 第八季</title>
+		<title xml:lang="zh-Hans" type="official">全职法师VIII</title>
+	</anime>
+	<anime aid="20443">
+		<title type="syn" xml:lang="en">Ascendance of a Bookworm S5</title>
+		<title xml:lang="en" type="syn">Ascendance of a Bookworm: Founder of the Royal Academy`s So-Called Library Committee</title>
+		<title type="main" xml:lang="x-jat">Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Kizoku-in no Jishou Tosho Iin</title>
+		<title xml:lang="ja" type="official">本好きの下剋上 司書になるためには手段を選んでいられません 貴族院の自称図書委員</title>
+	</anime>
+</animetitles>

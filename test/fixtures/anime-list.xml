@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<anime-list>
+  <anime anidbid="11370" tvdbid="305089" defaulttvdbseason="1" episodeoffset="" tmdbtv="65942" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu</name>
+    <mapping-list>
+      <mapping anidbseason="0" tvdbseason="0">;1-0;</mapping>
+      <mapping anidbseason="0" tvdbseason="0" start="2" end="26" offset="-1"/>
+    </mapping-list>
+  </anime>
+  <anime anidbid="12200" tvdbid="313488" defaulttvdbseason="1" episodeoffset="" tmdbtv="67063" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Hitori no Shita: The Outcast</name>
+  </anime>
+  <anime anidbid="12560" tvdbid="326270" defaulttvdbseason="1" episodeoffset="" tmdbtv="71194" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou</name>
+  </anime>
+  <anime anidbid="13068" tvdbid="313488" defaulttvdbseason="2" episodeoffset="" tmdbtv="67063" tmdbseason="2" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia 2</name>
+  </anime>
+  <anime anidbid="13171" tvdbid="328670" defaulttvdbseason="1" episodeoffset="" tmdbtv="70311" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi</name>
+  </anime>
+  <anime anidbid="13430" tvdbid="305089" defaulttvdbseason="0" episodeoffset="" tmdbtv="65942" tmdbseason="0" tmdboffset="" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu (2018)</name>
+    <mapping-list>
+      <mapping anidbseason="0" tvdbseason="0">;1-27;2-29;</mapping>
+      <mapping anidbseason="1" tvdbseason="0">;1-26;2-28;</mapping>
+    </mapping-list>
+  </anime>
+  <anime anidbid="13469" tvdbid="328670" defaulttvdbseason="2" episodeoffset="" tmdbtv="70311" tmdbseason="2" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi II</name>
+  </anime>
+  <anime anidbid="13950" tvdbid="326270" defaulttvdbseason="0" episodeoffset="" tmdbtv="71194" tmdbseason="0" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou: Tebie Pian</name>
+  </anime>
+  <anime anidbid="14572" tvdbid="328670" defaulttvdbseason="3" episodeoffset="" tmdbtv="70311" tmdbseason="3" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi III</name>
+  </anime>
+  <anime anidbid="14727" tvdbid="366263" defaulttvdbseason="1" episodeoffset="" tmdbtv="91768" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen</name>
+  </anime>
+  <anime anidbid="14792" tvdbid="305089" defaulttvdbseason="2" episodeoffset="" tmdbtv="65942" tmdbseason="1" tmdboffset="26" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu (2020)</name>
+    <mapping-list>
+      <mapping anidbseason="0" tvdbseason="0" start="1" end="13" offset="29"/>
+    </mapping-list>
+  </anime>
+  <anime anidbid="14978" tvdbid="326270" defaulttvdbseason="2" episodeoffset="" tmdbtv="71194" tmdbseason="2" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou 2</name>
+  </anime>
+  <anime anidbid="15035" tvdbid="326270" defaulttvdbseason="0" episodeoffset="3" tmdbtv="71194" tmdbseason="0" tmdboffset="3" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou: Dianfeng Rongyao</name>
+  </anime>
+  <anime anidbid="15293" tvdbid="366263" defaulttvdbseason="1" episodeoffset="14" tmdbtv="91768" tmdbseason="1" tmdboffset="14" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen (2020)</name>
+  </anime>
+  <anime anidbid="15300" tvdbid="366263" defaulttvdbseason="0" episodeoffset="" tmdbtv="91768" tmdbseason="0" tmdboffset="" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Eustachius no Shitamachi Sennyuu Daisakusen / Corinna-sama no Otaku Houmon</name>
+    <mapping-list>
+      <mapping anidbseason="1" tvdbseason="0">;1-1;1-2;</mapping>
+    </mapping-list>
+  </anime>
+  <anime anidbid="15397" tvdbid="328670" defaulttvdbseason="4" episodeoffset="" tmdbtv="70311" tmdbseason="4" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi IV</name>
+  </anime>
+  <anime anidbid="15593" tvdbid="305089" defaulttvdbseason="2" episodeoffset="13" tmdbtv="65942" tmdbseason="1" tmdboffset="38" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu (2021)</name>
+    <mapping-list>
+      <mapping anidbseason="0" tvdbseason="0" start="1" end="12" offset="42"/>
+    </mapping-list>
+  </anime>
+  <anime anidbid="15599" tvdbid="313488" defaulttvdbseason="3" episodeoffset="" tmdbtv="67063" tmdbseason="3" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia 3: Rushi Pian</name>
+  </anime>
+  <anime anidbid="15634" tvdbid="366263" defaulttvdbseason="1" episodeoffset="26" tmdbtv="91768" tmdbseason="1" tmdboffset="26" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen (2022)</name>
+    <mapping-list>
+      <mapping anidbseason="0" tvdbseason="0" start="1" end="2" offset="2"/>
+    </mapping-list>
+  </anime>
+  <anime anidbid="16490" tvdbid="328670" defaulttvdbseason="5" episodeoffset="" tmdbtv="70311" tmdbseason="5" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi V</name>
+  </anime>
+  <anime anidbid="16579" tvdbid="328670" defaulttvdbseason="6" episodeoffset="" tmdbtv="70311" tmdbseason="6" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi VI</name>
+  </anime>
+  <anime anidbid="16589" tvdbid="326270" defaulttvdbseason="3" episodeoffset="" tmdbtv="71194" tmdbseason="3" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou 3</name>
+  </anime>
+  <anime anidbid="16719" tvdbid="313488" defaulttvdbseason="4" episodeoffset="" tmdbtv="67063" tmdbseason="4" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia 4</name>
+  </anime>
+  <anime anidbid="17095" tvdbid="313488" defaulttvdbseason="5" episodeoffset="" tmdbtv="67063" tmdbseason="5" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia 5 Juezhan! Bi You Cun</name>
+  </anime>
+  <anime anidbid="17617" tvdbid="424536" defaulttvdbseason="1" episodeoffset="" tmdbtv="209867" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Sousou no Frieren</name>
+  </anime>
+  <anime anidbid="17947" tvdbid="305089" defaulttvdbseason="3" episodeoffset="" tmdbtv="65942" tmdbseason="1" tmdboffset="50" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu (2024)</name>
+  </anime>
+  <anime anidbid="18302" tvdbid="366263" defaulttvdbseason="1" episodeoffset="36" tmdbtv="91768" tmdbseason="2" tmdboffset="" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Ryoushu no Youjo</name>
+  </anime>
+  <anime anidbid="18886" tvdbid="424536" defaulttvdbseason="2" episodeoffset="" tmdbtv="209867" tmdbseason="1" tmdboffset="28" tmdbid="" imdbid="">
+    <name>Sousou no Frieren (2026)</name>
+  </anime>
+  <anime anidbid="19122" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou Q</name>
+  </anime>
+  <anime anidbid="19242" tvdbid="305089" defaulttvdbseason="4" episodeoffset="" tmdbtv="65942" tmdbseason="1" tmdboffset="66" tmdbid="" imdbid="">
+    <name>Re:Zero kara Hajimeru Isekai Seikatsu (2026)</name>
+  </anime>
+  <anime anidbid="19503" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi Tebie Pian: Shenmi Weituo</name>
+  </anime>
+  <anime anidbid="19808" tvdbid="313488" defaulttvdbseason="6" episodeoffset="" tmdbtv="67063" tmdbseason="6" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia 6</name>
+  </anime>
+  <anime anidbid="19824" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhi Xia: Xiu Tie Chong Xian</name>
+  </anime>
+  <anime anidbid="19840" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Yi Ren Zhixia: Xiu Tie Chong Xian</name>
+  </anime>
+  <anime anidbid="19858" tvdbid="473125" defaulttvdbseason="1" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Mouse Cursor de Genjitsu o Sousa Dekiru You ni Natta no de, Onnanoko o Ippai Click Shima~su</name>
+  </anime>
+  <anime anidbid="19859" tvdbid="473154" defaulttvdbseason="1" episodeoffset="" tmdbtv="312359" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
+    <name>Dragon Ball Super: Beerus</name>
+  </anime>
+  <anime anidbid="19920" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi VII</name>
+  </anime>
+  <anime anidbid="19977" tvdbid="424536" defaulttvdbseason="3" episodeoffset="" tmdbtv="209867" tmdbseason="1" tmdboffset="38" tmdbid="" imdbid="">
+    <name>Sousou no Frieren (2027)</name>
+  </anime>
+  <anime anidbid="20078" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Gaoshou 4</name>
+  </anime>
+  <anime anidbid="20253" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Quanzhi Fashi VIII</name>
+  </anime>
+  <anime anidbid="20443" tvdbid="" defaulttvdbseason="" episodeoffset="" tmdbtv="" tmdbseason="" tmdboffset="" tmdbid="" imdbid="">
+    <name>Honzuki no Gekokujou: Shisho ni Naru Tame ni wa Shudan o Erande Iraremasen - Kizoku-in no Jishou Tosho Iin</name>
+  </anime>
+</anime-list>

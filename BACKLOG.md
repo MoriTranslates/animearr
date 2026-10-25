@@ -1,0 +1,71 @@
+# AnimeArr backlog
+
+Ideas that are **not** in the current step, so they aren't lost. The release plan is at the top of [PROPOSAL.md](PROPOSAL.md#release-plan-authoritative-updated-2026-10-25).
+Rule: each step is complete, tested and in daily use, then hardened, before the next one starts.
+
+## 0.x steps to 1.0
+
+**v1.0 = AnimeArr does everything Sonarr does for anime; Sonarr is no longer needed.**
+
+### Smarter picking and auto-repair
+- [ ] Auto-fail and re-search without asking (with caps and two-signal rule) — PROPOSAL §7 Phase 1
+- [ ] SeaDex "best release" input and SeaDex-first learned scoring — §7.0 module 3
+- [ ] Burn-in frame check (and which language is burned in) after download — §7.1
+- [ ] "Language coverage beats quality" upgrades — §7 Phase 1
+- [ ] LLM fallback parser for names no rule parses — §6.3
+
+### Model and data
+- [ ] The AniDB franchise model (entries, relations, mainline index) — §5.3, §6
+- [ ] Plex/Jellyfin output layer (naming/layout as a rendering target) — §5.6
+- [ ] Bangumi and cedya77 AOD as extra alias sources; Simplified/Traditional and kana folding — §6.1–6.2
+- [ ] "Export as Anime-Lists PR" for inferred mappings — §6.6
+
+### Watch modes
+- [ ] Dub only / Dual audio preferred / Either, with dub-status tracking and "wait for dub" — §5.4
+
+### Absorbed glue apps
+- [ ] Queue Doctor (stalled/slow/failed imports, extraction, extension blocker) — §7.0 module 4
+- [ ] Backlog hunter (rate-limited missing/upgrade searches) — module 7
+- [ ] Lists and watchlists (AniList/MAL, Plex watchlist, follow-a-group rules) — module 10
+- [ ] Collections — module 14
+- [ ] Retention and watch-driven monitoring — module 15
+
+### Library audit
+- [ ] Unmanaged-folder audit with suggested matches (the 176 folders) — §7 Phase 0
+- [ ] Duplicate audit (`Movies/` vs `Movies/Anime`, Sonarr S0 vs Radarr), empty Specials folders, mistyped series and wrong roots — §7 Phase 0
+
+### Notifications
+- [ ] Push notifications (Apprise/ntfy) with rich anime cards — §10
+- [ ] Weekly digest — module 11
+
+### Database
+- [ ] Weekly deep integrity check (`PRAGMA integrity_check`)
+- [ ] Off-site backups (copy to another share or cloud)
+
+### Takeover (= 1.0)
+- [ ] Own download/import engine for anime — §5.2, §7 Phase 3
+- [ ] Sonarr-compatible `/api/v3` shims and Torznab feed, so Prowlarr and other tools keep working — §5.7
+- [ ] Full migration from Sonarr/Radarr (AnimeArr owns the library; 0.1 only imports/syncs for companion mode)
+
+## After 1.0 (extras)
+
+### Subtitles (needs AnimeArr to own the files; MoriSubs keeps working standalone until then)
+- [ ] "Machine Sub → [language]" button — §8.3
+- [ ] Full subtitle engine with modes: transcribe-only, human-in-the-loop, local, cloud — §8.1–8.2
+- [ ] Right-to-left scripts and per-script fonts — §8.6
+
+### Discover
+- [ ] Tastearr merged as Discover: For You, charts, share target, bookmarklet, franchise-aware add — §5.5
+
+### Other sources
+- [ ] Muse Asia and other official free-stream links
+
+### Themes
+- [ ] Themes engine with presets: "server/compact" dense view, "pretty" poster-heavy view, colour themes, community theme files. Builds on 0.1's design tokens.
+- [ ] "Theme it after your favourite anime": pick a show; AnimeArr takes an accent palette from its AniList art (`coverImage.color`), uses its banner as the header/background, and lets users share theme files.
+
+### Database
+- [ ] Postgres option
+
+### App family
+- [ ] A TV sibling app ("ShowArr") reusing the core — §7 Phase 4

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.devconfig*/
+*.db
+*.db-shm
+*.db-wal
+*.key
+*.log
+.env
+*-key
+.sab
+.radarr
+.prowlarr
+.git

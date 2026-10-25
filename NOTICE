@@ -1,0 +1,15 @@
+AnimeArr
+Copyright (C) 2026 MoriTranslates
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+License version 3 (see LICENSE).
+
+Portions ported from Sonarr (github.com/Sonarr/Sonarr), (C) Sonarr team, GPL-3.0.
+  - test/sonarr-anime.test.ts: a subset of Sonarr's anime parser test cases
+    (src/NzbDrone.Core.Test/ParserTests/AbsoluteEpisodeNumberParserFixture.cs).
+  - The release parser's behaviour is modelled on Sonarr's parser (src/NzbDrone.Core/Parser), with documented deviations.
+
+Based on Tastearr by MoriTranslates (github.com/MoriTranslates/tastearr), GPL-3.0.
+
+Data sources (not bundled; downloaded at runtime and cached): AniDB anime titles dump (anidb.net), Anime-Lists
+(github.com/Anime-Lists/anime-lists), Fribb anime-lists (github.com/Fribb/anime-lists), AniList (anilist.co).
