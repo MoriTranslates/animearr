@@ -11,6 +11,7 @@ export function Home({ status, onChanged }: { status: Status; onChanged: () => v
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
   const recent = useLoad(() => api<Decision[]>("/activity"), []);
+  const queue = useLoad(() => api<{ items: { state: string }[] }>("/queue"), []);
   const c = status.connected!;
   const steps = [
     { done: c.sonarr && c.prowlarr && (c.sabnzbd || c.qbittorrent), label: t("home.step.connect"), to: "/settings" },
@@ -56,6 +57,10 @@ export function Home({ status, onChanged }: { status: Status; onChanged: () => v
             {syncing || status.syncing ? t("home.syncing") : t("home.syncNow")}
           </button>
         </div>
+        <Link to="/queue" className="card pad tile link-tile">
+          <strong>{t("home.queue", { n: queue.data?.items.filter((x) => x.state === "downloading" || x.state === "sending").length ?? 0 })}</strong>
+          <span className="muted small">{t("nav.queue")} →</span>
+        </Link>
         <Link to="/managed" className="card pad tile link-tile">
           <strong>{t("home.managedCount", { n: status.managed ?? 0 })}</strong>
           <span className="muted small">{t("nav.managed")} →</span>

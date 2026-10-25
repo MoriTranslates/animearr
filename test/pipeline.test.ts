@@ -35,6 +35,7 @@ function mockDeps(subsAfterImport: string[]) {
     clients: {
       addNzb: async () => ({ client: "sabnzbd", ref: `SABnzbd_nzo_${++n}` }),
       addTorrent: async () => ({ client: "qbittorrent", ref: "abc" }),
+      remove: async () => undefined,
       status: async (job) => ({ state: "completed", progress: 1, path: `/data/completed/animearr/${job.ref}` }),
     },
     fetchRelease: async (r) => {

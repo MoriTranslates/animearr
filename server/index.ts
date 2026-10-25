@@ -21,7 +21,8 @@ import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
-import { listGrabs, pipelineTick, recoverGrabs, retryImport, startGrab, type Candidate } from "./pipeline.js";
+import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
+import { grabHistory, queueView } from "./queue.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -468,6 +469,14 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
 app.get("/api/grabs", async () => listGrabs(100));
+app.get("/api/queue", async () => queueView());
+app.get<{ Querystring: { before?: string; state?: string } }>("/api/history", async (req) => grabHistory({ before: req.query.before ? Number(req.query.before) : undefined, state: req.query.state || undefined }));
+app.post<{ Params: { id: string }; Body: { blocklist?: boolean; searchNext?: boolean; confirm?: boolean } }>("/api/queue/:id/remove", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm first");
+  const next = await removeGrab(id(req.params.id), { blocklist: req.body?.blocklist === true, searchNext: req.body?.searchNext === true });
+  return { ok: true, next };
+});
 app.post<{ Params: { id: string } }>("/api/grabs/:id/retry", async (req) => {
   writable();
   retryImport(id(req.params.id));

@@ -16,6 +16,12 @@ export interface ClientStatus {
   /** Folder or file path as the client sees it, once completed. */
   path?: string;
   message?: string;
+  /** Live details for the Queue page (when the client reports them). */
+  etaSec?: number | null;
+  speed?: number | null;
+  sizeBytes?: number | null;
+  clientStatus?: string;
+  seeders?: number | null;
 }
 
 /** Narrow interface so the pipeline can be tested with a mock. */
@@ -23,6 +29,8 @@ export interface DownloadClients {
   addNzb(data: Buffer, name: string): Promise<ClientJob>;
   addTorrent(src: { data?: Buffer; magnet?: string }, name: string): Promise<ClientJob>;
   status(job: ClientJob): Promise<ClientStatus>;
+  /** Removes the job from the client and deletes its downloaded data (never library files). */
+  remove(job: ClientJob): Promise<void>;
 }
 
 // ---------------------------------------------------------------- SABnzbd
@@ -122,9 +130,22 @@ export const realClients: DownloadClients = {
   },
   async status(job) {
     if (job.client === "sabnzbd") {
-      const q = await sab<{ queue: { slots: { nzo_id: string; percentage: string; status: string }[] } }>({ mode: "queue", nzo_ids: job.ref });
+      const q = await sab<{ queue: { kbpersec?: string; slots: { nzo_id: string; percentage: string; status: string; timeleft?: string; mb?: string; mbleft?: string }[] } }>({ mode: "queue", nzo_ids: job.ref });
       const slot = q.queue.slots.find((x) => x.nzo_id === job.ref);
-      if (slot) return { state: slot.status === "Queued" || slot.status === "Paused" ? "queued" : "downloading", progress: Number(slot.percentage) / 100 };
+      if (slot) {
+        // timeleft is [d:]hh:mm:ss; read it from the right.
+        const parts = (slot.timeleft ?? "").split(":").map(Number).reverse();
+        const eta = parts.length >= 3 && parts.every(Number.isFinite) ? parts[0] + parts[1] * 60 + parts[2] * 3600 + (parts[3] ?? 0) * 86400 : null;
+        return {
+          state: slot.status === "Queued" || slot.status === "Paused" ? "queued" : "downloading",
+          progress: Number(slot.percentage) / 100,
+          etaSec: eta,
+          // SABnzbd only reports its total speed; show it only while this job is the one downloading.
+          speed: slot.status === "Downloading" && q.queue.kbpersec ? Number(q.queue.kbpersec) * 1024 : null,
+          sizeBytes: slot.mb ? Number(slot.mb) * 1024 * 1024 : null,
+          clientStatus: slot.status,
+        };
+      }
       const h = await sab<{ history: { slots: { nzo_id: string; status: string; storage: string; fail_message: string }[] } }>({ mode: "history", nzo_ids: job.ref });
       const hs = h.history.slots.find((x) => x.nzo_id === job.ref);
       if (!hs) return { state: "missing", progress: 0 };
@@ -132,11 +153,37 @@ export const realClients: DownloadClients = {
       if (hs.status === "Failed") return { state: "failed", progress: 0, message: hs.fail_message };
       return { state: "downloading", progress: 0.99, message: hs.status };
     }
-    const list = (await (await qbit(`/torrents/info?hashes=${job.ref}`)).json()) as { hash: string; progress: number; state: string; content_path: string }[];
+    const list = (await (await qbit(`/torrents/info?hashes=${job.ref}`)).json()) as { hash: string; progress: number; state: string; content_path: string; eta: number; dlspeed: number; size: number; num_seeds: number }[];
     const t = list[0];
     if (!t) return { state: "missing", progress: 0 };
-    if (/error|missingFiles/.test(t.state)) return { state: "failed", progress: t.progress, message: t.state };
-    if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path };
-    return { state: /queued|metaDL|checking/i.test(t.state) ? "queued" : "downloading", progress: t.progress };
+    const live = { etaSec: t.eta >= 8640000 ? null : t.eta, speed: t.dlspeed, sizeBytes: t.size, clientStatus: t.state, seeders: t.num_seeds };
+    if (/error|missingFiles/.test(t.state)) return { state: "failed", progress: t.progress, message: t.state, ...live };
+    if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path, ...live };
+    return { state: /queued|metaDL|checking/i.test(t.state) ? "queued" : "downloading", progress: t.progress, ...live };
+  },
+  async remove(job) {
+    // Only ever AnimeArr's own jobs: the job must still be in AnimeArr's category. Not found = already gone (fine).
+    if (job.client === "sabnzbd") {
+      const cat = getSettings().sabnzbd.category;
+      const q = await sab<{ queue: { slots: { nzo_id: string; cat: string }[] } }>({ mode: "queue", nzo_ids: job.ref });
+      const slot = q.queue.slots.find((x) => x.nzo_id === job.ref);
+      if (slot) {
+        if (slot.cat !== cat) throw new Error(`that SABnzbd job is in category "${slot.cat}", not "${cat}"; leaving it alone`);
+        await sab({ mode: "queue", name: "delete", value: job.ref, del_files: "1" });
+        return;
+      }
+      const h = await sab<{ history: { slots: { nzo_id: string; category: string }[] } }>({ mode: "history", nzo_ids: job.ref });
+      const hs = h.history.slots.find((x) => x.nzo_id === job.ref);
+      if (!hs) return;
+      if (hs.category !== cat) throw new Error(`that SABnzbd job is in category "${hs.category}", not "${cat}"; leaving it alone`);
+      await sab({ mode: "history", name: "delete", value: job.ref, del_files: "1" });
+      return;
+    }
+    const cat = getSettings().qbittorrent.category;
+    const list = (await (await qbit(`/torrents/info?hashes=${job.ref}`)).json()) as { hash: string; category: string }[];
+    const tor = list[0];
+    if (!tor) return;
+    if (tor.category !== cat) throw new Error(`that torrent is in category "${tor.category}", not "${cat}"; leaving it alone`);
+    await qbit("/torrents/delete", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ hashes: job.ref, deleteFiles: "true" }) });
   },
 };

@@ -12,11 +12,13 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
-const { startGrab, pipelineTick, STALL_MS, recoverGrabs } = await import("../server/pipeline.js");
+const { startGrab, pipelineTick, STALL_MS, recoverGrabs, removeGrab } = await import("../server/pipeline.js");
+const { queueView, grabHistory } = await import("../server/queue.js");
 const { releaseDryRunDecisions } = await import("../server/managed.js");
 type Deps = import("../server/pipeline.js").PipelineDeps;
 
 const TVDB = 500001;
+const removed: string[] = [];
 before(() => {
   cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (1, ?, 'Test Show', '/media/AnimeArr/Test Show', 0, 0)").run(TVDB);
   // E1-E3: E1 already has a file, E2/E3 are missing.
@@ -34,6 +36,7 @@ function deps(opts: { status?: Deps["clients"]["status"]; preview?: Deps["sonarr
     clients: {
       addNzb: async () => ({ client: "sabnzbd", ref: `nzo_${++n}` }),
       addTorrent: async () => ({ client: "qbittorrent", ref: `hash${++n}` }),
+      remove: async (job) => void removed.push(job.ref),
       status: opts.status ?? (async (job) => ({ state: "completed", progress: 1, path: `/data/completed/animearr/${job.ref}` })),
     },
     fetchRelease: async (r) => {
@@ -145,4 +148,40 @@ test("a successful import ends with a clear 'Imported ✓' entry and refreshes t
   const last = db.prepare("SELECT kind, why FROM decisions ORDER BY id DESC LIMIT 1").get() as { kind: string; why: string };
   assert.equal(last.kind, "import");
   assert.match(last.why, /^Imported ✓ as S01E01: has en subtitles/);
+});
+
+test("queue: remove a download (deletes it from the client), blocklist it with undo, and try the next candidate", async () => {
+  cache.prepare("UPDATE episodes SET has_file = 0 WHERE id = 104").run();
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state IN ('sending', 'downloading', 'importing')").run();
+  const { d, calls } = deps({ status: async () => ({ state: "downloading", progress: 0.3, etaSec: 120, speed: 5e6 }) });
+  const r = await startGrab({ tvdbId: TVDB, episodeIds: [104], candidate: cand("Test Show - 04 [slow]", "q1", [104]), fallbacks: [cand("Test Show - 04 [next]", "q2", [104])], origin: "manual" }, d);
+  const q = await queueView(d);
+  const item = q.items.find((x) => x.id === r.id)!;
+  assert.equal(item.live?.etaSec, 120);
+  assert.deepEqual(item.episodes, ["S01E04"]);
+  await removeGrab(r.id, { blocklist: true, searchNext: true }, d);
+  assert.equal(removed.length, 1, "removed from the client");
+  assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "failed");
+  assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 04 [slow]'").get());
+  assert.deepEqual(calls.fetched.slice(-1), ["Test Show - 04 [next]"]);
+  assert.ok(grabHistory().some((h) => h.id === r.id && h.error === "removed by you"));
+  await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /only downloading or needs-attention/);
+});
+
+test("queue: if the client refuses (not AnimeArr's category, or unreachable) the row is restored and nothing else happens", async () => {
+  cache.prepare("UPDATE episodes SET has_file = 0 WHERE id = 105").run();
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state IN ('sending', 'downloading', 'importing')").run();
+  const { d, calls } = deps({ status: async () => ({ state: "downloading", progress: 0.3 }) });
+  d.clients.remove = async () => {
+    throw new Error('that torrent is in category "sonarr", not "animearr"; leaving it alone');
+  };
+  const r = await startGrab({ tvdbId: TVDB, episodeIds: [105], candidate: cand("Test Show - 05 [x]", "c1", [105]), fallbacks: [cand("Test Show - 05 [y]", "c2", [105])], origin: "manual" }, d);
+  const fetched = calls.fetched.length;
+  await assert.rejects(removeGrab(r.id, { blocklist: true, searchNext: true }, d), /leaving it alone/);
+  assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "downloading");
+  assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 05 [x]'").get(), undefined);
+  assert.equal(calls.fetched.length, fetched, "no next candidate grabbed");
+  db.prepare("UPDATE grabs SET state = 'sending' WHERE id = ?").run(r.id);
+  await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /still being sent/);
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(r.id);
 });

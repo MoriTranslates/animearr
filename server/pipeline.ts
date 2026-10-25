@@ -157,7 +157,11 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
       if (!file.data) throw new Error("No NZB data");
       job = await deps.clients.addNzb(file.data, c.title);
     } else job = await deps.clients.addTorrent(file, c.title);
-    setState(id, "downloading", null, { client: job.client, ref: job.ref });
+    if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
+      // Closed while it was being sent: take it back out of the client.
+      await deps.clients.remove(job).catch(() => undefined);
+      return { id, dryRun: false, message: "Cancelled", failed: true };
+    }
     logDecision("grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Sent ${c.title} to ${job.client === "sabnzbd" ? "SABnzbd" : "qBittorrent"} (category ${job.client === "sabnzbd" ? getSettings().sabnzbd.category : getSettings().qbittorrent.category}) for ${series.title} ${c.label}: ${c.why}`, detail: { grabId: id } });
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
@@ -368,4 +372,39 @@ export function retryImport(id: number) {
 
 export function listGrabs(limit = 50) {
   return (db.prepare("SELECT * FROM grabs ORDER BY id DESC LIMIT ?").all(limit) as unknown as GrabRow[]).map((g) => ({ ...g, episode_ids: JSON.parse(g.episode_ids) as number[], candidates: undefined, fallbacks: (JSON.parse(g.candidates) as unknown[]).length }));
+}
+
+/**
+ * Queue action: removes one of AnimeArr's own downloads from its client (deleting the downloaded data, never library
+ * files). Optionally blocklists the release and tries the next candidate. User-confirmed in the UI.
+ */
+export async function removeGrab(id: number, opts: { blocklist: boolean; searchNext: boolean }, deps: PipelineDeps = realDeps) {
+  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
+  const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
+  if (!row) throw Object.assign(new Error("Unknown download"), { statusCode: 404 });
+  // Claim it atomically, so the pipeline can't start importing it meanwhile ("sending" rows are not removable yet).
+  if (!db.prepare("UPDATE grabs SET state = 'removing', updated_at = ? WHERE id = ? AND state IN ('downloading', 'needs-attention')").run(Date.now(), id).changes)
+    throw Object.assign(new Error(`This download is ${row.state === "sending" ? "still being sent to the client; try again in a moment" : row.state}; only downloading or needs-attention ones can be removed`), { statusCode: 409 });
+  // A row that may have been mid-import keeps its files (Sonarr could be moving them right now).
+  const mayBeImporting = row.state === "needs-attention" && /^(Sonarr import|AnimeArr restarted during the import|import error)/.test(row.error ?? "");
+  if (row.client && row.client_ref && !mayBeImporting) {
+    try {
+      await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
+    } catch (e) {
+      // The download is still there (client unreachable, or it isn't AnimeArr's): put the row back and say so.
+      db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
+      throw Object.assign(new Error(`Couldn't remove it from the download client: ${(e as Error).message}`), { statusCode: 502 });
+    }
+  }
+  setState(row.id, "failed", mayBeImporting ? "closed by you (downloaded files kept: an import may have been in progress)" : "removed by you");
+  const eps = JSON.parse(row.episode_ids) as number[];
+  let undo = null;
+  if (opts.blocklist) {
+    const r = db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at) VALUES (?, ?, ?, ?, ?)").run(row.guid, row.release, row.tvdb_id, "removed from the queue by you", Date.now());
+    undo = { action: "unblock" as const, args: { id: Number(r.lastInsertRowid), release: row.release } };
+  }
+  logDecision("info", { tvdbId: row.tvdb_id, episodeIds: eps, release: row.release, why: `${mayBeImporting ? "Closed" : "Removed"} ${row.release}${mayBeImporting ? " without deleting its files (an import may have been in progress)" : " from the queue"}${opts.blocklist ? " and blocklisted it" : ""}${opts.searchNext ? "; trying the next candidate" : ""} (you confirmed)`, detail: { grabId: row.id }, undo });
+  if (opts.searchNext) return tryNext(row.id, rowRequest(row), deps, "removed by you");
+  scheduleAfter(eps, "retry", "download removed by you");
+  return null;
 }

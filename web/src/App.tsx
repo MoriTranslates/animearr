@@ -4,6 +4,7 @@ import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
 import { Audit } from "./pages/Audit";
 import { Calendar } from "./pages/Calendar";
+import { Queue } from "./pages/Queue";
 import { Home } from "./pages/Home";
 import { Login, Setup } from "./pages/Login";
 import { Managed } from "./pages/Managed";
@@ -20,6 +21,7 @@ const NAV: { path: string; label: I18nKey; icon: string; phone: boolean }[] = [
   { path: "/shows", label: "nav.shows", icon: "▦", phone: false },
   { path: "/audit", label: "nav.audit", icon: "✓", phone: true },
   { path: "/search", label: "nav.search", icon: "⌕", phone: false },
+  { path: "/queue", label: "nav.queue", icon: "↓", phone: false },
   { path: "/activity", label: "nav.activity", icon: "≡", phone: false },
   { path: "/settings", label: "nav.settings", icon: "⚙", phone: true },
 ];
@@ -137,6 +139,7 @@ export function App() {
           {section === "/shows" && <Shows status={status} />}
           {section === "/show" && <Show tvdbId={Number(path.split("/")[2])} />}
           {section === "/calendar" && <Calendar />}
+          {section === "/queue" && <Queue />}
           {section === "/audit" && <Audit />}
           {section === "/search" && <Search />}
           {section === "/activity" && <Activity />}
