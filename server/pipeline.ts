@@ -27,6 +27,7 @@ import { episodesFor, identifyContext, seriesByTvdb, type SearchResult } from ".
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { ffprobe, judge, type ProbeResult } from "./verify.js";
+import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
 
 export interface PipelineDeps {
   clients: DownloadClients;
@@ -43,6 +44,8 @@ export interface PipelineDeps {
   sleep(ms: number): Promise<void>;
   /** Re-reads the series from Sonarr into the cache after an import (so the UI shows the new file at once). */
   refreshSeries?(seriesId: number): Promise<void>;
+  /** Unpacks a download that arrived as archives (Settings → extraction); polled, "pending" while it runs. */
+  extract?(localDir: string, key: string, only?: string[]): Promise<ExtractOutcome> | ExtractOutcome;
 }
 
 export const realDeps: PipelineDeps = {
@@ -53,6 +56,7 @@ export const realDeps: PipelineDeps = {
   localPath: realLocalPath,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   refreshSeries: (id) => refreshSeriesEpisodes(id),
+  extract: (dir, key, only) => extractIfNeeded(dir, key, { only }),
 };
 
 export type Candidate = Pick<SearchResult, "guid" | "title" | "indexerId" | "indexer" | "protocol" | "size" | "downloadUrl" | "magnetUrl" | "label" | "group"> & { why: string; episodeIds: number[] };
@@ -286,7 +290,15 @@ function rowRequest(row: GrabRow): GrabRequest {
 export async function importAndVerify(row: GrabRow, clientPath: string, deps: PipelineDeps = realDeps) {
   const series = seriesByTvdb(row.tvdb_id);
   const wanted = JSON.parse(row.episode_ids) as number[];
+  let unpacked: string | null = null;
   const fail = async (why: string, imported: boolean) => {
+    if (unpacked) {
+      try {
+        cleanUnpacked(unpacked);
+      } catch {
+        /* leftovers are harmless */
+      }
+    }
     setState(row.id, "failed", why);
     blocklist(row, why);
     logDecision("verify-fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `${row.release} failed verification: ${why}${imported ? " (already imported; it will be replaced if a better release is found)" : ""}. Blocklisted it.`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
@@ -298,13 +310,37 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     logDecision("fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `Downloaded ${row.release} but couldn't import it: ${why}. The download is kept; fix the cause and press "Retry import".`, detail: { grabId: row.id } });
   };
   if (!series || !underAllowedRoot(series.path)) return attention("the series is outside the allowed root folders");
-  const sonarrPath = clientToSonarr(clientPath);
+  const sonarrPath0 = clientToSonarr(clientPath);
+  const singleArchive = /\.(rar|zip|7z)$/i.test(sonarrPath0);
+  // A single-file torrent that is an archive: its folder is the shared category folder.
+  const sonarrPath = singleArchive ? path.posix.dirname(sonarrPath0) : sonarrPath0;
   const single = VIDEO.test(sonarrPath);
   const folder = single ? path.posix.dirname(sonarrPath) : sonarrPath;
+  // Torrents that arrive as archives: unpack (in the background) into the grab's own subfolder first; Sonarr then
+  // MOVES the unpacked files, so the archives keep seeding and nothing is left behind. SABnzbd unpacks by itself.
+  let unpackRel: string | null = null;
+  if (!single && row.client === "qbittorrent" && getSettings().extraction.enabled && deps.extract) {
+    const local = deps.localPath(folder);
+    if (!local) return attention(`can't reach ${folder} from AnimeArr to unpack it (check Settings → Paths)`);
+    const x = await deps.extract(local, String(row.id), singleArchive ? [path.posix.basename(sonarrPath0)] : undefined);
+    if (x.kind === "pending") {
+      // Hand the row back to the tick; it polls again next round.
+      db.prepare("UPDATE grabs SET state = 'downloading', error = 'unpacking…', updated_at = ?, progress_at = ? WHERE id = ? AND state = 'importing'").run(Date.now(), Date.now(), row.id);
+      return;
+    }
+    if (x.kind === "unavailable") return attention(x.why);
+    if (x.kind === "broken") return fail(x.why, false);
+    if (x.kind === "extracted") {
+      unpacked = x.dest;
+      unpackRel = `${folder}/${UNPACK_DIR}/${row.id}/`;
+      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: wanted, release: row.release, why: `Unpacked ${row.release}: ${x.files.length} video file(s)`, detail: { grabId: row.id } });
+    }
+  } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Safety, or unpack it by hand`);
   // Folder only: given a seriesId, Sonarr's preview ignores the folder and lists the series' library files instead.
   const items = (await deps.sonarr.preview(folder)).filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 30e6);
   // A single-file torrent's folder is the shared category folder: only that one file belongs to this grab.
-  const inThis = items.filter((x) => (single ? x.path === sonarrPath : x.path.startsWith(`${folder}/`)));
+  // Unpacked: only the unpacked files (they are moved; the torrent's own files must keep seeding).
+  const inThis = items.filter((x) => (unpackRel ? x.path.startsWith(unpackRel) : single ? x.path === sonarrPath : x.path.startsWith(`${folder}/`) && !x.path.startsWith(`${folder}/${UNPACK_DIR}/`)));
   if (!inThis.length) return attention(`no video files found in ${single ? sonarrPath : folder}`);
 
   // Map each file to episodes: single file + single episode is direct; otherwise identify each file name confidently.
@@ -358,7 +394,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     downloadId: row.client_ref ?? undefined,
   }));
   const startedImport = Date.now();
-  const cmd = await deps.sonarr.importFiles(files, "auto");
+  const cmd = await deps.sonarr.importFiles(files, unpacked ? "move" : "auto");
   logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file(s) as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
   let status = "queued";
   for (let i = 0; i < 120 && !["completed", "failed", "aborted"].includes(status); i++) {
@@ -387,6 +423,13 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     }
   }
   setState(row.id, "done");
+  if (unpacked) {
+    try {
+      cleanUnpacked(unpacked);
+    } catch {
+      /* leftovers are harmless; the next import of this folder reuses them */
+    }
+  }
   for (const e of mapped) cache.prepare("UPDATE episodes SET has_file = 1 WHERE id = ?").run(e);
   scheduleAfter(mapped, "done", `imported ${row.release}`);
   const labels = eps.filter((e) => mapped.includes(e.id)).map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`);

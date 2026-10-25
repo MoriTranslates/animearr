@@ -194,6 +194,9 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
         <Toggle checked={s.queueHealth.removeFailed} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, removeFailed: v } }))} label={t("qh.removeFailed")} help={t("qh.removeFailedHelp")} />
       </div>
       <div className="card pad stack">
+        <Toggle checked={s.extraction.enabled} onChange={(v) => upd((x) => ({ ...x, extraction: { enabled: v } }))} label={t("extract.enabled")} help={t("extract.help")} />
+      </div>
+      <div className="card pad stack">
         <h2>{t("repair.title")}</h2>
         <p className="muted small">{t("repair.help")}</p>
         <div className="form">

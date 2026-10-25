@@ -133,6 +133,7 @@ export interface Settings {
   repair: { mode: "off" | "log" | "auto"; maxPerDay: number };
   backlog: { enabled: boolean; perHour: number; retryDays: number };
   queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
+  extraction: { enabled: boolean };
   sync: { intervalHours: number };
   externalUrl: string;
   ui: { language: string };

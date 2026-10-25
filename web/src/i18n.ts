@@ -124,6 +124,8 @@ const en = {
   "managed.state.done": "In library",
   "managed.state.backlog": "Missing: searched now and then",
   "managed.state.replace": "Replacing a bad file",
+  "extract.enabled": "Unpack downloads that arrive as archives (RAR, 7z, ZIP)",
+  "extract.help": "For torrents only (SABnzbd unpacks by itself). The video files are unpacked into a subfolder of the download, moved into the library by Sonarr, and the subfolder is removed; the archives keep seeding. Needs write access to the download folder: AnimeArr's /data mount must not be read-only. 7z and ZIP work; RAR needs a RAR-capable unpacker, which this image doesn't have yet, so RAR downloads are flagged for you instead.",
   "qh.title": "Stalled and failed downloads",
   "qh.help": "For AnimeArr's own downloads: a download that makes no progress for this long, or a torrent that can't even get its metadata, counts as failed. It is blocklisted and the next candidate is tried. Waiting in the client's queue behind other downloads doesn't count.",
   "qh.stallHours": "No progress for (hours)",

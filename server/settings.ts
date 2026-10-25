@@ -86,6 +86,11 @@ export interface Settings {
    * also takes failed downloads out of the download client (AnimeArr's own category only; never library files).
    */
   queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
+  /**
+   * Unpack torrents that arrive as RAR/7z/ZIP archives (Unpackerr-style). Needs write access to the download folder
+   * (the container's /data mount) and 7-Zip; off by default.
+   */
+  extraction: { enabled: boolean };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -123,6 +128,7 @@ const DEFAULTS: Settings = {
   repair: { mode: "log", maxPerDay: 10 },
   backlog: { enabled: false, perHour: 4, retryDays: 7 },
   queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
+  extraction: { enabled: false },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -133,7 +139,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],

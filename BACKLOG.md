@@ -12,11 +12,17 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 **v1.0 = AnimeArr does everything Sonarr does for anime; Sonarr is no longer needed.**
 
 ### Smarter picking and auto-repair
-- [ ] Auto-fail and re-search without asking (with caps and two-signal rule) — PROPOSAL §7 Phase 1
+- [x] Auto-fail and re-search without asking (with caps and two-signal rule) — PROPOSAL §7 Phase 1 (after-import check, 0.x)
 - [ ] SeaDex "best release" input and SeaDex-first learned scoring — §7.0 module 3
 - [ ] Burn-in frame check (and which language is burned in) after download — §7.1
 - [ ] "Language coverage beats quality" upgrades — §7 Phase 1
 - [ ] LLM fallback parser for names no rule parses — §6.3
+
+### Downloads
+- [x] Missing-episode search for managed shows (rate-limited) · [x] queue health (stalls, metadata, client errors, Sonarr queue report)
+- [ ] RAR unpacking: Alpine's 7-Zip has no RAR codec. Options: a RAR-capable unpacker in the image (unrar freeware binary, or a Debian base with 7zip-rar), or libarchive's bsdtar (RAR4/partial RAR5). Needs a user decision (licence/image size)
+- [ ] Unpacking needs the container's /data mount writable (currently read-only on the server)
+- [ ] Missing-episode search for non-managed shows via Sonarr's search command (opt-in; Sonarr is read-only today)
 
 ### Model and data
 - [ ] The AniDB franchise model (entries, relations, mainline index) — §5.3, §6

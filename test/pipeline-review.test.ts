@@ -246,3 +246,41 @@ test("queue health: a client error needs your attention (no blocklist, no delete
   assert.equal(removed.length, before, "kept in the client");
   patchSettings((s) => ({ ...s, queueHealth: { ...s.queueHealth, removeFailed: true } }));
 });
+
+test("extraction: an archive-only download is unpacked, imported with move, and a broken archive fails the release", async () => {
+  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime, air_utc) VALUES (125, 1, 1, 25, 0, 0, 24, 0), (126, 1, 1, 26, 0, 0, 24, 0)").run();
+  patchSettings((s) => ({ ...s, extraction: { enabled: true } }));
+  let gid = 0;
+  const { d, calls } = deps({
+    preview: async (folder) =>
+      [
+        { path: `${folder}/_animearr_unpacked/${gid}/Test Show - 25.mkv`, size: 4e8, quality: {}, languages: [] },
+        { path: `${folder}/Test Show - 25 original.mkv`, size: 4e8, quality: {}, languages: [] },
+      ] as never,
+  });
+  const modes: string[] = [];
+  const importFiles = d.sonarr.importFiles;
+  d.sonarr.importFiles = async (files, mode) => (modes.push(mode), importFiles(files, mode));
+  d.localPath = (p) => p;
+  d.probe = async () => ({ subs: ["en"], audio: ["ja"], durationSec: 1420, sidecars: [], untagged: 0 });
+  let polls = 0;
+  d.extract = async (dir, key) => (++polls === 1 ? { kind: "pending" } : { kind: "extracted", dest: `${dir}/_animearr_unpacked/${key}`, files: [`_animearr_unpacked/${key}/Test Show - 25.mkv`] });
+  const r = await startGrab({ tvdbId: TVDB, episodeIds: [125], candidate: cand("Test Show - 25 [rar]", "x1", [125], "torrent"), fallbacks: [], origin: "manual" }, d);
+  gid = r.id;
+  await pipelineTick(d);
+  assert.equal(state(r.id).state, "downloading", "unpacking in the background");
+  assert.equal(state(r.id).error, "unpacking…");
+  await pipelineTick(d);
+  assert.equal(state(r.id).state, "done", state(r.id).error ?? "");
+  assert.deepEqual(modes, ["move"]);
+  assert.deepEqual(calls.imports.at(-1)!.map((f) => f.path.includes(`_animearr_unpacked/${r.id}/`)), [true], "only the unpacked file is moved; the torrent's own file keeps seeding");
+
+  const broken = deps();
+  broken.d.localPath = (p) => p;
+  broken.d.extract = async () => ({ kind: "broken", why: "couldn't unpack x.rar: it is password-protected" });
+  const b = await startGrab({ tvdbId: TVDB, episodeIds: [126], candidate: cand("Test Show - 26 [pw]", "x2", [126], "torrent"), fallbacks: [], origin: "manual" }, broken.d);
+  await pipelineTick(broken.d);
+  assert.equal(state(b.id).state, "failed");
+  assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 26 [pw]'").get());
+  patchSettings((s) => ({ ...s, extraction: { enabled: false } }));
+});
