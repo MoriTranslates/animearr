@@ -152,7 +152,13 @@ export interface Settings {
    * Who imports finished downloads: "sonarr" (ManualImport through Sonarr/Radarr; today) or "animearr" (AnimeArr's own
    * importer). allowReal stays false until the first real import plan was reviewed; renames likewise.
    */
-  importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean };
+  importer: {
+    engine: "sonarr" | "animearr";
+    allowReal: boolean;
+    allowRename: boolean;
+    /** Real imports left before AnimeArr's importer pauses for a review (-1 = no limit). Imports beyond it go through Sonarr. */
+    realBudget: number;
+  };
   /** Optional metadata providers (AniList, Anime-Lists and the AniDB dump need nothing). */
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
@@ -239,7 +245,7 @@ const DEFAULTS: Settings = {
     renameAfterReencode: false,
     importedFromArr: false,
   },
-  importer: { engine: "sonarr", allowReal: false, allowRename: false },
+  importer: { engine: "sonarr", allowReal: false, allowRename: false, realBudget: 0 },
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },

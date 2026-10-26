@@ -60,7 +60,7 @@ test("plans an import: name from the naming settings, hardlink for torrents, sid
 });
 
 test("a real import hardlinks (torrent keeps seeding), brings the sidecar, and never overwrites another file", async () => {
-  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true } }));
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true, realBudget: -1 } }));
   const src = path.join(DL, "completed", "[SubsPlease] Sousou no Frieren - 01 (1080p).mkv");
   const plan = await planImport({ tvdbId: 424536, path: "/data/completed/[SubsPlease] Sousou no Frieren - 01 (1080p).mkv", episodeIds: [101], release: "[SubsPlease] Sousou no Frieren - 01 (1080p) [WEB]", client: "qbittorrent" }, { probe, minBytes: 0 });
   const res = await executeImport(plan);
@@ -75,7 +75,7 @@ test("a real import hardlinks (torrent keeps seeding), brings the sidecar, and n
 });
 
 test("an upgrade sends the old file to the recycle bin; Usenet moves", async () => {
-  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true } }));
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true, realBudget: -1 } }));
   const old = path.join(LIB, "Frieren (2023)", "Season 01", "old ep2.mkv");
   write(old, "old");
   cache.prepare("INSERT INTO files (id, series_id, season, path) VALUES (502, 10, 1, '/media/AnimeArr/Frieren (2023)/Season 01/old ep2.mkv')").run();
@@ -149,4 +149,16 @@ test("Sonarr/Radarr settings map onto media management (int or string enums)", (
   assert.equal(m.minimumFreeSpaceMb, 200);
   assert.equal(m.movieFormat, "{Movie Title} ({Release Year})");
   assert.equal(mapArrMedia(m, { colonReplacementFormat: "smart" }, null, null).colonReplacement, "smart");
+});
+
+test("the real-import budget: one import, then a review pause", async () => {
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true, realBudget: 1 } }));
+  write(path.join(DL, "z", "Frieren.S01E03.budget.mkv"));
+  cache.prepare("UPDATE episodes SET file_id = NULL WHERE id IN (103, 104)").run();
+  const plan = await planImport({ tvdbId: 424536, path: "/data/z/Frieren.S01E03.budget.mkv", episodeIds: [103], client: "sabnzbd" }, { probe, minBytes: 0 });
+  const res = await executeImport(plan);
+  assert.equal(res[0].done, true, res[0].why);
+  assert.equal(getSettings().importer.realBudget, 0);
+  await assert.rejects(executeImport(plan), /paused for a review/);
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: false } }));
 });

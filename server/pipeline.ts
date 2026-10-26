@@ -518,7 +518,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   const startedImport = Date.now();
   // AnimeArr's own importer (once switched on): only when every file was checked here before import.
   const imp = getSettings().importer;
-  if (imp.engine === "animearr" && imp.allowReal && plan.every((p) => preVerified.has(p.item.path))) {
+  if (imp.engine === "animearr" && imp.allowReal && (imp.realBudget ?? 0) !== 0 && plan.every((p) => preVerified.has(p.item.path))) {
     for (const p of plan) {
       try {
         const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client });

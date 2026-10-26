@@ -178,6 +178,7 @@ function ImporterCard({ s }: { s: S }) {
       <div className="chips">
         <Chip tone={imp.engine === "animearr" ? "accent" : "info"}>{imp.engine === "animearr" ? t("media.engine.animearr") : t("media.engine.sonarr")}</Chip>
         <Chip tone={imp.allowReal ? "good" : "warn"}>{imp.allowReal ? t("media.realOn") : t("media.realOff")}</Chip>
+        {imp.allowReal && imp.realBudget >= 0 && <Chip tone="warn">{t("media.budget", { n: imp.realBudget })}</Chip>}
         <Chip tone={imp.allowRename ? "good" : "warn"}>{imp.allowRename ? t("media.renameOn") : t("media.renameOff")}</Chip>
       </div>
       <p className="muted small">{t("media.importerHelp")}</p>

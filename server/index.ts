@@ -585,13 +585,13 @@ app.get("/api/media/rename-all", async () => {
 app.post<{ Body: Record<string, unknown> }>("/api/media/preview", async (req) => previewNaming((req.body ?? {}) as never));
 app.get("/api/media/status", async () => ({ importer: getSettings().importer, importedFromArr: getSettings().media.importedFromArr }));
 /** Who imports, and whether real imports/renames are on (switched on after the first plans were reviewed). */
-app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean } }>("/api/media/importer", async (req) => {
+app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean; realBudget?: number } }>("/api/media/importer", async (req) => {
   writable();
   const b = req.body ?? {};
   const cur = getSettings().importer;
-  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename };
+  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0) };
   patchSettings((x) => ({ ...x, importer: next }));
-  logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? "on" : "off"}; renames ${next.allowRename ? "on" : "off"}` });
+  logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? (next.realBudget < 0 ? "on" : `on for ${next.realBudget} more`) : "off"}; renames ${next.allowRename ? "on" : "off"}` });
   return next;
 });
 app.post("/api/media/import-defaults", async () => {

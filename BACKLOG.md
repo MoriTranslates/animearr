@@ -15,7 +15,10 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Importer: stays "through Sonarr/Radarr" with real imports and renames OFF until the first plans are approved; then the switch is Settings → Media management → Importer (each change confirmed)
 - Media management starts from Sonarr's/Radarr's own naming + media-management values (copied once at startup, "Copy settings from Sonarr/Radarr" redoes it), so the takeover renames nothing just because defaults differ. AnimeArr's recycling bin stays its own: /media/Recycle/animearr/, 14 days
 - Recycling-bin retention purge (deleting files older than 14 days from /media/Recycle/animearr/) is NOT active yet: its first run is a cleanup deletion, so it waits for a dry-run report
-- Hardlinks: on the server the download folder and the library are separate container mounts, so a hardlink falls back to a copy (the torrent keeps seeding either way). Real hardlinks need one shared /mnt/user mount (later, with the user)
+- Hardlinks are impossible on the server: Downloads live on the cache pool and Anime on the array (different filesystems under Unraid's /mnt/user), so torrent imports are COPIES. A copy doubles cache usage until the torrent's seeding is done — the download-folder rules' leftover/seeding cleanup must count and remove these imported-and-copied payloads (folder-size metric excludes them while seeding; cleanup removes them after the seeding rules)
+- Real imports by AnimeArr's own importer run on a budget (Settings → Media management → Importer): 1 for the first one, then a review pause; beyond it, imports go through Sonarr
+- Bulk rename (4,800 files in 378 shows) waits for the user: a taste decision that also touches Plex (rescans) and Tdarr (path-keyed records). Only the Absolute Duo test batch was approved
+- Recycling-bin auto-empty stays OFF until the user confirms
 - Usenet imports MOVE out of /data/completed/animearr (that one folder is mounted read-write); everything else under /data stays read-only
 - UMASK 002 (folders 775, files 664, owner 99:100) like the *arr images; chmod/chown on import stay off unless "Set permissions" is on
 - Upgrades: a file that also holds other episodes (multi-episode file) is never replaced automatically; it becomes "import by hand"

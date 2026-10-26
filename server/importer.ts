@@ -28,7 +28,7 @@ import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafi
 import { renderEpisode, renderSeasonFolder, type NamingOptions } from "./naming.js";
 import { localPath, mappedPath } from "./paths.js";
 import { identifyContext, seriesByTvdb } from "./search.js";
-import { getSettings, underAllowedRoot } from "./settings.js";
+import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
 
 const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;
 const MAX_NAME_BYTES = 250;
@@ -414,6 +414,7 @@ function setPerms(dir: string) {
 export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; only?: string[] } = {}) {
   const real = !opts.dryRun;
   if (real && !getSettings().importer.allowReal) throw err("Real imports by AnimeArr's own importer aren't switched on yet (the first plan is being reviewed)", 409);
+  if (real && (getSettings().importer.realBudget ?? 0) === 0) throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
   const series = seriesRow(plan.tvdbId);
   if (!series) throw err("Unknown series", 404);
   const seriesLocal = mappedPath(series.path);
@@ -429,7 +430,7 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
       continue;
     }
     // Defence in depth: the plan is re-checked here.
-    if (!getSettings().importer.allowReal || !underAllowedRoot(series.path) || !under(it.dest, seriesLocal)) {
+    if (!getSettings().importer.allowReal || (getSettings().importer.realBudget ?? 0) === 0 || !underAllowedRoot(series.path) || !under(it.dest, seriesLocal)) {
       out.push({ label: it.label, done: false, why: "refused: outside the allowed root folders or real imports are off" });
       continue;
     }
@@ -463,6 +464,7 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
       setPerms(path.dirname(it.dest));
       const verb = did === "move" ? "moved" : did === "hardlink" ? "hardlinked" : "copied";
       out.push({ label: it.label, done: true, why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}` });
+      if ((getSettings().importer.realBudget ?? 0) > 0) patchSettings((x) => ({ ...x, importer: { ...x.importer, realBudget: x.importer.realBudget - 1 } }));
       logDecision("import", { tvdbId: plan.tvdbId, title: series.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}` });
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).

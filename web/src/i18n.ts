@@ -757,6 +757,7 @@ const en = {
   "media.engine.sonarr": "Imports through Sonarr/Radarr",
   "media.engine.animearr": "AnimeArr's own importer",
   "media.realOn": "Real imports on",
+  "media.budget": "{n} real import(s) left before a review pause",
   "media.realOff": "Real imports off (plans only)",
   "media.renameOn": "Renames on",
   "media.renameOff": "Renames off (previews only)",
