@@ -93,7 +93,7 @@ export function StatusLine({ st, loading }: { st?: ConnStatus; loading?: boolean
   if (loading && !st) return <span className="quiet-status"><span className="dot off" aria-hidden="true" />{t("conn.checking")}</span>;
   if (!st || !st.configured) return <span className="quiet-status"><span className="dot off" aria-hidden="true" />{t("conn.notSetUp")}</span>;
   if (st.ok === false) return <span className="quiet-status bad-text"><span className="dot bad" aria-hidden="true" />{t("conn.cantReach", { why: st.error ?? "" })}</span>;
-  return <span className="quiet-status"><span className="dot good" aria-hidden="true" />{st.version ? t("conn.connectedV", { version: st.version }) : t("conn.connected")}</span>;
+  return <span className="quiet-status"><span className="dot good" aria-hidden="true" />{st.version ? t("conn.connectedV", { version: st.version.replace(/^v/i, "") }) : t("conn.connected")}</span>;
 }
 
 function ConnCard({ k, st, loading, extra, onEdit }: { k: Key; st?: ConnStatus; loading: boolean; extra?: ReactNode; onEdit: () => void }) {

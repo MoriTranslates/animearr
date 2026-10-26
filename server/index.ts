@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { applyArrPreview, arrPreview, createCategory, listFolders, saveWizard, wizardState } from "./wizard.js";
 import { addJackettTracker, deleteClient, deleteIndexer, indexerCatalog, jackettTrackers, listClients, listIndexers, saveClient, saveIndexer, setClientPrefs, testExtraClient, testIndexer } from "./connectionsAdmin.js";
 import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
@@ -157,6 +158,7 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     // Shows in dry-run (the global switch, or their own), so the UI only mentions dry-run when something is in it.
     dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
+    wizardDone: wizardState().done,
     // The season card: shows with an episode airing this week or last.
     airingShows: airingShowCount(),
     // The nav's Queue badge: what's downloading, and what needs a look.
@@ -270,6 +272,13 @@ app.get<{ Querystring: { from?: string; managed?: string } }>("/api/home", async
 
 // ---------------------------------------------------------------- indexers & download clients (Settings cards)
 app.get("/api/catalog/indexers", async () => indexerCatalog());
+// ---------------------------------------------------------------- setup wizard
+app.get("/api/wizard", async () => wizardState());
+app.put<{ Body: Record<string, unknown> }>("/api/wizard", async (req) => (writable(), saveWizard(req.body ?? {})));
+app.get<{ Querystring: { path?: string } }>("/api/fs/folders", async (req) => listFolders(String(req.query.path ?? "/")));
+app.post<{ Body: { client?: string } }>("/api/wizard/category", async (req) => (writable(), createCategory(req.body?.client === "qbittorrent" ? "qbittorrent" : "sabnzbd")));
+app.get("/api/wizard/arr-preview", async () => arrPreview());
+app.post<{ Body: { roots?: string[]; sab?: { url: string; category: string } | null; qbit?: { url: string; category: string } | null } }>("/api/wizard/arr-apply", async (req) => (writable(), invalidateConnections(), applyArrPreview(req.body ?? {})));
 app.get("/api/indexers", async () => ({ indexers: listIndexers() }));
 app.post<{ Body: Record<string, unknown> }>("/api/indexers", async (req) => (writable(), invalidateConnections(), saveIndexer(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), saveIndexer(req.params.id, req.body ?? {})));

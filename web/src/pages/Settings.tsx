@@ -27,12 +27,15 @@ const ALIAS: Record<string, Tab> = { connections: "indexers", cutover: "migratio
 /** Tabs whose fields save with the page's Save button (the connection tabs save in their own dialogs). */
 const FORM_TABS: Tab[] = ["notifications", "media", "downloads", "safety", "paths", "metadata"];
 
-export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
+export type SettingsTab = Tab;
+
+/** `only`: one section without the Settings frame (the setup wizard embeds them). */
+export function Settings({ status, onSaved, only }: { status: Status; onSaved: () => void; only?: Tab }) {
   usePageTitle(t("settings.title"));
   const toast = useToast();
   const q = query().get("tab") ?? "";
   const initial = (ALIAS[q] ?? q) as Tab;
-  const [tab, setTabState] = useState<Tab | null>(TABS.includes(initial) ? initial : null);
+  const [tab, setTabState] = useState<Tab | null>(only ?? (TABS.includes(initial) ? initial : null));
   const loaded = useLoad(() => api<S>("/settings"), []);
   const [s, setS] = useState<S | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -40,6 +43,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
     if (loaded.data) setS(loaded.data);
   }, [loaded.data]);
   useEffect(() => {
+    if (only) return;
     const onPop = () => {
       const x = query().get("tab") ?? "";
       const t2 = (ALIAS[x] ?? x) as Tab;
@@ -52,6 +56,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const setTab = (x: Tab | null) => {
     if (dirty && !window.confirm(t("settings.unsavedLeave"))) return;
@@ -93,6 +98,53 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
   };
   if (loaded.error) return <ErrorBox error={loaded.error} retry={loaded.reload} />;
   if (!s) return <Spinner label={t("app.loading")} />;
+  const cur = s;
+  function body(x: Tab) {
+    const s = cur;
+    return (
+      <>
+          {x === "indexers" && <Indexers s={s} saveNow={saveNow} />}
+          {x === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
+          {x === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} />}
+          {x === "notifications" && (
+            <>
+              <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
+              <NotifyCard s={s} upd={upd} />
+            </>
+          )}
+          {x === "migration" && (
+            <Migration s={s} saveNow={saveNow}>
+              <Cutover />
+            </Migration>
+          )}
+          {x === "profile" && <ProfilesEditor />}
+          {x === "media" && <MediaManagement s={s} upd={upd} />}
+          {x === "downloads" && <DownloadRules s={s} upd={upd} />}
+          {x === "safety" && <Safety s={s} upd={upd} />}
+          {x === "paths" && <Paths s={s} upd={upd} />}
+          {x === "metadata" && <Metadata s={s} upd={upd} />}
+          {x === "appearance" && <Appearance />}
+          {x === "system" && <System status={status} />}
+          {x === "security" && <Security s={s} status={status} onChanged={onSaved} />}
+          {FORM_TABS.includes(x) && (
+            <div className="sticky-actions row">
+              <button className="primary" disabled={!dirty} onClick={save}>
+                {t("common.save")}
+              </button>
+              {dirty && (
+                <>
+                  <span className="muted small">{t("settings.unsaved")}</span>
+                  <button className="ghost small" onClick={() => (loaded.data && setS(loaded.data), setDirty(false))}>
+                    {t("settings.discard")}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+      </>
+    );
+  }
+
   const nav = (
     <nav className="settings-nav" aria-label={t("settings.title")}>
       {SECTIONS.map((g) => (
@@ -122,6 +174,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       ))}
     </nav>
   );
+  if (only) return <div className="settings-only stack">{body(only)}</div>;
   return (
     <section className={`settings${tab ? " has-tab" : ""}`}>
       <div className="row between settings-title">
@@ -136,44 +189,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
         {nav}
         <div className="settings-body stack">
           {!tab && <p className="muted small settings-pick">{t("settings.pick")}</p>}
-          {tab === "indexers" && <Indexers s={s} saveNow={saveNow} />}
-          {tab === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
-          {tab === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} />}
-          {tab === "notifications" && (
-            <>
-              <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
-              <NotifyCard s={s} upd={upd} />
-            </>
-          )}
-          {tab === "migration" && (
-            <Migration s={s} saveNow={saveNow}>
-              <Cutover />
-            </Migration>
-          )}
-          {tab === "profile" && <ProfilesEditor />}
-          {tab === "media" && <MediaManagement s={s} upd={upd} />}
-          {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
-          {tab === "safety" && <Safety s={s} upd={upd} />}
-          {tab === "paths" && <Paths s={s} upd={upd} />}
-          {tab === "metadata" && <Metadata s={s} upd={upd} />}
-          {tab === "appearance" && <Appearance />}
-          {tab === "system" && <System status={status} />}
-          {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-          {tab && FORM_TABS.includes(tab) && (
-            <div className="sticky-actions row">
-              <button className="primary" disabled={!dirty} onClick={save}>
-                {t("common.save")}
-              </button>
-              {dirty && (
-                <>
-                  <span className="muted small">{t("settings.unsaved")}</span>
-                  <button className="ghost small" onClick={() => (loaded.data && setS(loaded.data), setDirty(false))}>
-                    {t("settings.discard")}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+          {tab && body(tab)}
         </div>
       </div>
     </section>
@@ -800,6 +816,15 @@ function System({ status }: { status: Status }) {
         <p className="muted small">
           AnimeArr v{x.version} · {status.via}
         </p>
+        <button
+          className="self-start"
+          onClick={async () => {
+            await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
+            location.href = "/welcome";
+          }}
+        >
+          {t("wiz.runAgain")}
+        </button>
         <button
           className="self-start"
           onClick={async () => {

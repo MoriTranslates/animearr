@@ -58,6 +58,7 @@ export interface Status {
   bypassLocal?: boolean;
   queue?: { active: number; attention: number };
   airingShows?: number;
+  wizardDone?: boolean;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";

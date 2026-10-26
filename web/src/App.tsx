@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
 import { BellButton } from "./notify";
 import { api, store, type Status } from "./api";
@@ -129,6 +130,12 @@ export function App() {
   if (!status) return <div className="center-msg">{t("app.loading")}</div>;
   if (status.setupRequired) return <Setup onDone={refreshStatus} />;
   if (!status.loggedIn) return <Login onDone={refreshStatus} />;
+  // A fresh install (nothing connected yet, setup not finished) opens the setup wizard.
+  const c0 = status.connected;
+  if (status.wizardDone === false && path === "/" && c0 && !c0.sonarr && !c0.radarr && !c0.prowlarr && !c0.sabnzbd && !c0.qbittorrent) {
+    history.replaceState(null, "", "/welcome");
+    setTimeout(() => window.dispatchEvent(new PopStateEvent("popstate")), 0);
+  }
 
   const section = "/" + (path.split("/")[1] ?? "");
   const active = (p: string) =>
@@ -223,6 +230,7 @@ export function App() {
               </p>
             )}
             {path === "/" && <Home status={status} onChanged={refreshStatus} />}
+            {section === "/welcome" && <Wizard status={status} onChanged={refreshStatus} />}
             {section === "/managed" && <Managed status={status} />}
             {section === "/shows" && <Shows status={status} />}
             {(section === "/add" || section === "/find") && <Add />}
