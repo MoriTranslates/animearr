@@ -619,3 +619,6 @@ button.conn-card:hover { border-color: var(--accent-2); }
   @keyframes bubble-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
 }
 .menu-pop.up { top: auto; bottom: calc(100% + 4px); }
+/* Covers fade in when loaded instead of popping in. */
+.cover img { opacity: 0; transition: opacity 0.2s; }
+.cover.loaded img { opacity: 1; }

@@ -332,11 +332,24 @@ export function Why({ summary, lines }: { summary?: string; lines: string[] }) {
   );
 }
 
-export function Cover({ src, alt, size = "md" }: { src: string | null | undefined; alt: string; size?: "sm" | "md" | "lg" }) {
+const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|image\.tmdb\.org|artworks\.thetvdb\.com|thetvdb\.com)\//;
+/** A cover at the size it's shown: AnimeArr's thumbnail cache (the provider's smaller rendition), else the URL as is. */
+export const thumbUrl = (src: string, size: "sm" | "md" | "lg" | "xl") => (IMG_HOSTS.test(src) ? `/api/img?s=${size}&u=${encodeURIComponent(src)}` : src);
+const COVER_PX: Record<string, [number, number]> = { sm: [48, 68], md: [84, 120], lg: [200, 300] };
+
+export function Cover({ src, alt, size = "md", hero = false }: { src: string | null | undefined; alt: string; size?: "sm" | "md" | "lg"; hero?: boolean }) {
   const [broken, setBroken] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [w, h] = COVER_PX[size];
   return (
-    <div className={`cover ${size}`}>
-      {src && !broken ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} /> : <div className="noimg" aria-hidden="true">{alt.slice(0, 1)}</div>}
+    <div className={`cover ${size}${loaded ? " loaded" : ""}`}>
+      {src && !broken ? (
+        <img src={thumbUrl(src, hero ? "xl" : size)} alt="" width={w} height={h} loading={hero ? "eager" : "lazy"} decoding="async" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />
+      ) : (
+        <div className="noimg" aria-hidden="true">
+          {alt.slice(0, 1)}
+        </div>
+      )}
     </div>
   );
 }

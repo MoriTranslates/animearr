@@ -3,7 +3,7 @@ import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
@@ -134,8 +134,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   return (
     <section>
       {/* ---------------- header: what the show is, how complete it is, and its one main action */}
-      <header className="series-hero card" style={h.banner ? { backgroundImage: `linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, transparent), var(--panel) 85%), url(${h.banner})` } : undefined}>
-        <Cover src={h.cover} alt={h.title} size="lg" />
+      <header className="series-hero card" style={h.banner ? { backgroundImage: `linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, transparent), var(--panel) 85%), url(${thumbUrl(h.banner, "xl")})` } : undefined}>
+        <Cover src={h.cover} alt={h.title} size="lg" hero />
         <div className="stack hero-body">
           <div className="row between hero-title">
             <h1 className="clamp2 grow">{h.title}</h1>

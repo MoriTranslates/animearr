@@ -203,7 +203,7 @@ export function MoviePage({ id }: { id: number }) {
         <Link to="/movies">{t("nav.library")} · {t("lib.movies")}</Link>
       </nav>
       <header className="series-hero card">
-        <Cover src={m.cover} alt={m.title} size="lg" />
+        <Cover src={m.cover} alt={m.title} size="lg" hero />
         <div className="stack hero-body">
           <div className="row between hero-title">
             <h1 className="clamp2 grow">

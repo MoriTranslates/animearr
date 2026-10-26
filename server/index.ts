@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview } from "./connections.js";
 import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
@@ -251,6 +252,16 @@ app.post<{ Body: { key?: string } }>("/api/test/tmdb", async (req) => {
   if (!key) throw fail("Enter a TMDB API key or Read Access Token", 400);
   return testTmdb(key);
 });
+/** Poster thumbnails (see server/img.ts): the provider's smaller rendition, cached on disk, cached by browsers for a year. */
+app.get<{ Querystring: { u?: string; s?: string } }>("/api/img", async (req, reply) => {
+  const size = (["sm", "md", "lg", "xl"].includes(req.query.s ?? "") ? req.query.s : "md") as ThumbSize;
+  const r = await thumb(String(req.query.u ?? ""), size);
+  if (!r) return reply.code(404).send({ error: "No such image" });
+  if (req.headers["if-none-match"] === r.etag) return reply.code(304).send();
+  reply.header("Cache-Control", "private, max-age=31536000, immutable").header("ETag", r.etag).type(r.type);
+  return reply.send(fs.createReadStream(r.file));
+});
+
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
