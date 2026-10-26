@@ -83,6 +83,9 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
   }
   // AniDB (when fetched): fills episodes AniList's entries don't cover (e.g. a season mapped only on AniDB), missing
   // titles and air dates, and season 0 — specials placed by Anime-Lists' mapping lists.
+  // AniDB entries already represented by an AniList entry (or any absolute-numbered entry) only fill titles/dates.
+  const covered = new Set(entries.map((e) => e.anidb_id).filter((x): x is number => !!x));
+  const absoluteEntry = entries.some((e) => e.tvdb_season === "a");
   if (!n.synthetic)
     for (const a of anidbForTvdb(n.tvdb_id)) {
       const key = `${a.season}x${a.episode}`;
@@ -94,6 +97,7 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
         continue;
       }
       if (a.episode <= 0 || a.episode >= 10_000) continue;
+      if (a.season > 0 && (covered.has(a.aid) || absoluteEntry)) continue;
       byKey.set(key, { id: episodeId(n.id, a.season, a.episode), season: a.season, episode: a.episode, absolute: 0, title: a.title, air: a.air, runtime: a.length });
     }
   // Absolute numbers: in (season, episode) order, regular seasons only; "a" entries already are absolute.
@@ -151,7 +155,7 @@ export function materialize(n: NativeRow, now = Date.now()) {
   for (const f of files) for (const e of f.eps) fileOf.set(e, f.id);
   const seasons = [...new Set(eps.map((e) => e.season))].map((s) => {
     const inS = eps.filter((e) => e.season === s);
-    return { season: s, monitored: true, files: inS.filter((e) => fileOf.has(e.id)).length, episodes: inS.length, total: inS.length };
+    return { season: s, monitored: s > 0, files: inS.filter((e) => fileOf.has(e.id)).length, episodes: inS.length, total: inS.length };
   });
   const alt = new Set<string>();
   for (const e of entries) for (const t of [e.title_english, e.title_romaji, e.title_native, ...(JSON.parse(e.synonyms) as string[])]) if (t && t !== n.title) alt.add(t);
@@ -171,8 +175,9 @@ export function materialize(n: NativeRow, now = Date.now()) {
         JSON.stringify(entries.filter((e) => e.anidb_id).map((e) => ({ aid: e.anidb_id, season: e.season, offset: e.offset }))), entries.some((e) => e.anidb_id) ? "matched" : "review",
         first?.cover ?? null, new Date(n.added_at).toISOString(), first?.description ?? null, first?.genres ?? "[]", now,
       );
-    const insE = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
-    for (const e of eps) insE.run(e.id, sid, e.season, e.episode, e.season > 0 ? e.absolute : null, e.title, e.air ? new Date(e.air).toISOString().slice(0, 10) : null, e.air, e.runtime, fileOf.has(e.id) ? 1 : 0, fileOf.get(e.id) ?? null);
+    // Specials are only monitored when there's a file (AniDB-placed specials shouldn't trigger searches).
+    const insE = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const e of eps) insE.run(e.id, sid, e.season, e.episode, e.season > 0 ? e.absolute : null, e.title, e.air ? new Date(e.air).toISOString().slice(0, 10) : null, e.air, e.runtime, e.season > 0 || fileOf.has(e.id) ? 1 : 0, fileOf.has(e.id) ? 1 : 0, fileOf.get(e.id) ?? null);
     const insF = cache.prepare("INSERT OR REPLACE INTO files (id, series_id, season, path, size, audio_langs, sub_langs, resolution, date_added, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const f of files) {
       // Release info kept from Sonarr's records (cutover), so upgrades and learning still know the release.

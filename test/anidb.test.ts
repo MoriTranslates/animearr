@@ -50,3 +50,12 @@ test("one request at a time, gzip handled, and a ban stops everything for a day 
   await assert.rejects(fetchAnime(4, { fetch: ok }), /paused/);
   assert.equal(calls, before, "no request while blocked");
 });
+
+test("the daily counter starts again on a new day", async () => {
+  const { db } = await import("../server/db.js");
+  db.prepare("DELETE FROM anidb_state").run();
+  db.prepare("INSERT INTO anidb_state (key, value) VALUES ('day', '2000-01-01'), ('count', '400')").run();
+  const zlib = await import("node:zlib");
+  await fetchAnime(9, { fetch: (async () => new Response(zlib.gzipSync(Buffer.from(XML)), { status: 200 })) as unknown as typeof fetch });
+  assert.equal(anidbStatus().today, 1);
+});

@@ -302,7 +302,7 @@ export function catalogStatus() {
  * Read Access Token (a JWT, "eyJ…" → Authorization: Bearer). Never logged; errors never include the URL.
  */
 export function tmdbFetch(pathAndQuery: string, key: string, fetcher: typeof fetch = fetch) {
-  const k = key.trim();
+  const k = key.trim().replace(/^Bearer\s+/i, "");
   const bearer = /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
   const sep = pathAndQuery.includes("?") ? "&" : "?";
   const url = `https://api.themoviedb.org/3${pathAndQuery}${bearer ? "" : `${sep}api_key=${encodeURIComponent(k)}`}`;
@@ -310,7 +310,10 @@ export function tmdbFetch(pathAndQuery: string, key: string, fetcher: typeof fet
 }
 
 /** What kind of TMDB credential this looks like (for the settings page). */
-export const tmdbKeyKind = (key: string) => (/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(key.trim()) ? "token" : /^[0-9a-f]{32}$/i.test(key.trim()) ? "apiKey" : "unknown");
+export const tmdbKeyKind = (key: string) => {
+  const k = key.trim().replace(/^Bearer\s+/i, "");
+  return /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(k) ? "token" : /^[0-9a-f]{32}$/i.test(k) ? "apiKey" : "unknown";
+};
 
 /** Settings → Metadata test: /3/configuration with the given (or saved) credential. */
 export async function testTmdb(key: string, fetcher: typeof fetch = fetch) {

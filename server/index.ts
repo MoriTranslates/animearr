@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { anidbStatus, anidbTick } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
-import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
+import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, showCut, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -59,7 +59,7 @@ async function catalogTick(force = false) {
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, executeImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
-import { addMovie, addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
+import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -1039,7 +1039,10 @@ every(5 * 60_000, () => managedTick(), "managed");
 every(5 * 60_000, () => downloadsTick(), "download rules");
 // AniDB: a few library entries every 15 minutes (never a crawl); shows blocked in the cutover first.
 every(15 * 60_000, async () => {
-  const blocked = (await cutoverPlan().catch(() => null))?.shows.filter((s) => s.blockers.length).map((s) => s.tvdbId) ?? [];
+  const st = anidbStatus();
+  if (!st.configured || st.blockedUntil || st.today >= st.dailyCap) return; // nothing to do: no planning either
+  const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE}`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
+  const blocked = series.filter((s) => showCut(s).blockers.length).map((s) => s.tvdb_id);
   const aids = blocked.flatMap((t) => (JSON.parse((cache.prepare("SELECT anidb_ids FROM series WHERE tvdb_id = ?").get(t) as { anidb_ids: string } | undefined)?.anidb_ids ?? "[]") as { aid: number }[]).map((x) => x.aid));
   const r = await anidbTick(aids);
   if (r.fetched) materializeAll(); // native shows pick up AniDB's episodes

@@ -73,7 +73,7 @@ export function anidbStatus(now = Date.now()) {
     lastError: state("lastError"),
     today: state("day") === day ? Number(state("count") ?? 0) : 0,
     dailyCap: DAILY_CAP,
-    known: (db.prepare("SELECT COUNT(*) AS n FROM anidb_anime").get() as { n: number }).n,
+    known: (db.prepare("SELECT COUNT(*) AS n FROM anidb_anime WHERE missing = 0").get() as { n: number }).n,
   };
 }
 
@@ -89,12 +89,17 @@ export function fetchAnime(aid: number, deps = { fetch }): Promise<AnidbAnime> {
     const st = anidbStatus(now);
     if (st.blockedUntil) throw new Error(`AniDB paused until ${new Date(st.blockedUntil).toISOString()} (${st.lastError ?? "earlier error"})`);
     if (st.today >= DAILY_CAP) throw new Error("AniDB daily cap reached");
+    last = Math.max(last, Number(state("lastAt") ?? 0)); // spacing survives a restart
     const wait = Math.max(0, last + SPACING_MS - now);
     if (wait) await new Promise((r) => setTimeout(r, wait));
     last = Date.now();
     const day = new Date(last).toISOString().slice(0, 10);
-    setState("day", day);
-    setState("count", String((state("day") === day ? Number(state("count") ?? 0) : 0) + 1));
+    const prev = state("day") === day ? Number(state("count") ?? 0) : 0; // read before writing: a new day starts at 0
+    tx(db, () => {
+      setState("day", day);
+      setState("count", String(prev + 1));
+      setState("lastAt", String(last));
+    });
     const url = `${ANIDB_URL}?request=anime&client=${encodeURIComponent(s.anidbClient)}&clientver=${s.anidbClientVer}&protover=1&aid=${aid}`;
     const block = (why: string, ms: number) => {
       setState("blockedUntil", String(Date.now() + ms));
@@ -109,12 +114,19 @@ export function fetchAnime(aid: number, deps = { fetch }): Promise<AnidbAnime> {
       throw block(`unreachable (${(e as Error).message})`, 3_600_000);
     }
     if (!res.ok) throw block(`HTTP ${res.status}`, res.status === 503 || res.status === 429 ? 6 * 3_600_000 : 3_600_000);
-    let buf = Buffer.from(await res.arrayBuffer());
-    if (buf[0] === 0x1f && buf[1] === 0x8b) buf = zlib.gunzipSync(buf); // gzip (when fetch didn't already decode it)
-    const xml = buf.toString("utf8");
+    let xml: string;
+    try {
+      let buf = Buffer.from(await res.arrayBuffer());
+      // fetch decodes "Content-Encoding: gzip" itself; raw gzip bytes (magic 1f 8b) are decoded here — never twice.
+      if (buf[0] === 0x1f && buf[1] === 0x8b) buf = zlib.gunzipSync(buf);
+      xml = buf.toString("utf8");
+    } catch (e) {
+      throw block(`bad response (${(e as Error).message})`, 3_600_000);
+    }
     const err = /<error[^>]*>([^<]*)<\/error>/i.exec(xml)?.[1];
     if (err) {
       if (/banned/i.test(err)) throw block(`banned (${err})`, DAY);
+      if (/client/i.test(err)) throw block(`client problem (${err}); check Settings → Metadata`, DAY);
       if (/no such anime|anime not found/i.test(err)) {
         db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, 1, NULL, NULL, 1)").run(aid, Date.now());
         throw new Error(`AniDB: ${err}`);
@@ -195,7 +207,8 @@ export function anidbForTvdb(tvdbId: number) {
     for (const ep of anidbEpisodes(e.aid)) {
       if (ep.type !== "regular" && ep.type !== "special") continue;
       const t = anidbToTvdb(e, ep.number, ep.type === "regular" ? 1 : 0);
-      if (!t || t.absolute || t.season < 0 || (ep.type === "special") !== (t.season === 0)) continue;
+      // A special never lands on a regular season; a regular episode may be a TVDB special (OVA entries mapped to S0).
+      if (!t || t.absolute || t.season < 0 || (ep.type === "special" && t.season !== 0)) continue;
       out.push({ season: t.season, episode: t.episode, title: ep.title_en ?? ep.title_xjat ?? ep.title_ja, air: ep.airdate ? Date.parse(`${ep.airdate}T00:00:00Z`) : null, length: ep.length, type: ep.type, aid: e.aid, epno: ep.epno });
     }
   }
@@ -205,6 +218,6 @@ export function anidbForTvdb(tvdbId: number) {
 /** For the specials list: AniDB's type of a TVDB S0 episode (OP/ED/trailer/… come from AniDB's own episode types). */
 export function anidbSpecialKind(tvdbId: number) {
   const m = new Map<number, { type: AnidbEpType; title: string | null; length: number | null }>();
-  for (const x of anidbForTvdb(tvdbId)) if (x.season === 0) m.set(x.episode, { type: x.type, title: x.title, length: x.length });
+  for (const x of anidbForTvdb(tvdbId)) if (x.season === 0 && !m.has(x.episode)) m.set(x.episode, { type: x.type, title: x.title, length: x.length }); // first wins, as in native shows
   return m;
 }
