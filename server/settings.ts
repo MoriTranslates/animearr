@@ -501,7 +501,7 @@ export function updateSettings(patch: unknown) {
   // Arrays replace rather than merge (merge() already replaces arrays; this keeps it explicit).
   for (const p of ["remotePathMappings", "localPathMappings", "allowedRoots"] as const) if (allowed[p]) (next as unknown as Record<string, unknown>)[p] = allowed[p];
   for (const p of SECRET_PATHS) if (isMasked(getPath(next, p))) setPath(next as unknown as Record<string, unknown>, p, getPath(cur, p));
-  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent"] as const) next[k].url = trimUrl(next[k].url);
+  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex"] as const) next[k].url = trimUrl(next[k].url);
   next.allowedRoots = next.allowedRoots.map((r) => r.replace(/\/+$/, "")).filter(Boolean);
   if (!next.managed.backoffMin.length) next.managed.backoffMin = DEFAULTS.managed.backoffMin;
   for (const [u, k] of SECRET_FOR_URL) {

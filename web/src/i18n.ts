@@ -724,7 +724,7 @@ const en = {
   "plex.token": "Plex token",
   "plex.enabled": "Ask Plex to scan after AnimeArr's imports and renames",
   "plex.paths": "Plex path mappings",
-  "plex.pathsHelp": "When Plex sees the library under another path (e.g. AnimeArr /media/Anime → Plex /data/Anime).",
+  "plex.pathsHelp": "When Plex sees the library under another path than Sonarr/Radarr do (e.g. Sonarr /media/Anime → Plex /data/Anime).",
   "plex.testOk": "Connected to {name} (Plex {version}). Libraries: {libs}",
   "dl.now": "AnimeArr's download folders now",
   "dl.counts": "{size} GB in {items} item(s) (shows {shows} GB, movies {movies} GB)",

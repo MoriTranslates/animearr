@@ -67,8 +67,10 @@ export function mountOf(p: string, mounts: string): { point: string; type: strin
   for (const line of mounts.split("\n")) {
     const [, point, type] = line.split(" ");
     if (!point || !type) continue;
-    const pt = point.replace(/\\040/g, " ");
-    if ((p === pt || p.startsWith(pt === "/" ? "/" : `${pt}/`)) && (!best || pt.length > best.point.length)) best = { point: pt, type };
+    const pt = point.replace(/\\(\d{3})/g, (_m, o: string) => String.fromCharCode(parseInt(o, 8)));
+    // The last mount at a point wins (as in the kernel). Any FUSE union counts as "not the real disk", which only
+    // matters when a cache pool is mounted at /unraid/cache.
+    if ((p === pt || p.startsWith(pt === "/" ? "/" : `${pt}/`)) && (!best || pt.length >= best.point.length)) best = { point: pt, type };
   }
   return best;
 }
@@ -191,8 +193,15 @@ export async function measure(opts: { fresh?: boolean } = {}, deps: MeasureDeps 
     if (!fs.existsSync(r.local)) continue;
     try {
       const share = stat(r.local);
-      const target = freeSpaceTarget(r.local, deps.mounts?.());
-      const at = target ? stat(target.path) : share;
+      let target = freeSpaceTarget(r.local, deps.mounts?.());
+      let at = share;
+      if (target)
+        try {
+          at = stat(target.path);
+        } catch (e) {
+          errors.push(`free space at ${target.path}: ${(e as Error).message}; measuring the download folder instead`);
+          target = null;
+        }
       if (!disk || at.freeGb < disk.freeGb)
         disk = { totalGb: at.totalGb, freeGb: at.freeGb, animearrGb: ours, otherGb: Math.max(0, at.totalGb - at.freeGb - ours), label: target?.label ?? "download disk", share: target ? { freeGb: share.freeGb, totalGb: share.totalGb } : null };
     } catch (e) {

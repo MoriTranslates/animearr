@@ -422,30 +422,40 @@ const rssSeen = new Map<string, number>(); // guid → first seen (each release 
 export async function rssTick(now = Date.now(), deps = { search: prowlarrSearch }) {
   if (dbState.corrupt || !prowlarrConfigured()) return { checked: 0, hits: 0 };
   const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog', 'gave-up')").all() as { episode_id: number; tvdb_id: number }[];
-  const movies = db.prepare("SELECT movie_id FROM movie_search WHERE state NOT IN ('grabbed', 'done')").all() as { movie_id: number }[];
+  const movies = db.prepare("SELECT movie_id FROM movie_search WHERE state IN ('waiting', 'retry', 'unreleased')").all() as { movie_id: number }[];
   if (!waiting.length && !movies.length) return { checked: 0, hits: 0 };
   const wanted = new Map(waiting.map((w) => [w.episode_id, w.tvdb_id]));
-  const recent = (await deps.search("", { limit: 300, fresh: true })).filter((r) => !rssSeen.has(r.guid));
-  for (const r of recent) rssSeen.set(r.guid, now);
-  if (rssSeen.size > 20_000) for (const [k, at] of rssSeen) if (now - at > 7 * DAY) rssSeen.delete(k);
+  const recent = (await deps.search("", { limit: 300 })).filter((r) => !rssSeen.has(r.guid));
+  // Remembered releases: the newest 20,000 (insertion order).
+  while (rssSeen.size > 20_000) rssSeen.delete(rssSeen.keys().next().value!);
   const ctx = identifyContext();
   let hits = 0;
-  const movieRows = movies.length ? (cache.prepare(`SELECT id, title, original_title, alt_titles, year FROM movies WHERE id IN (${movies.map(() => "?").join(",")})`).all(...movies.map((m) => m.movie_id)) as { id: number; title: string; original_title: string | null; alt_titles: string; year: number | null }[]) : [];
+  const parseAlt = (s: string) => {
+    try {
+      return JSON.parse(s) as string[];
+    } catch {
+      return [];
+    }
+  };
+  const movieRows = movies.length
+    ? (cache.prepare(`SELECT id, title, original_title, alt_titles, year FROM movies WHERE id IN (${movies.map(() => "?").join(",")})`).all(...movies.map((m) => m.movie_id)) as { id: number; title: string; original_title: string | null; alt_titles: string; year: number | null }[]).map((m) => ({ ...m, alts: parseAlt(m.alt_titles) }))
+    : [];
   for (const r of recent) {
+    rssSeen.set(r.guid, now);
     const id = identify(r.title, ctx, { publishDate: r.publishDate ? Date.parse(r.publishDate) : null });
     for (const e of id.resolution?.ok ? id.resolution.episodes : []) {
       if (!wanted.has(e.id)) continue;
-      hits++;
       // A given-up episode gets one more search when a new release for it shows up.
-      db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, state = CASE state WHEN 'gave-up' THEN 'retry' ELSE state END WHERE episode_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, e.id, now);
+      hits += Number(db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, state = CASE state WHEN 'gave-up' THEN 'retry' ELSE state END WHERE episode_id = ? AND (next_at > ? OR state = 'gave-up')").run(now, `New release seen: ${r.title}`, e.id, now).changes);
     }
     if (movieRows.length && !id.resolution?.ok) {
       const p = parseRelease(r.title);
+      if (p.episodes.length) continue; // an episode release, not a movie
       for (const m of movieRows) {
-        const mm = matchMovie(p, { title: m.title, original_title: m.original_title, alt_titles: JSON.parse(m.alt_titles) as string[], year: m.year });
+        const mm = matchMovie(p, { title: m.title, original_title: m.original_title, alt_titles: m.alts, year: m.year });
         if (mm.confidence < 82) continue; // title + year match
-        hits++;
-        db.prepare("UPDATE movie_search SET next_at = ?, last_why = ? WHERE movie_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, m.id, now);
+        // An "unreleased" movie with a release out early is wanted now.
+        hits += Number(db.prepare("UPDATE movie_search SET next_at = ?, last_why = ?, state = CASE state WHEN 'unreleased' THEN 'waiting' ELSE state END WHERE movie_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, m.id, now).changes);
       }
     }
   }
