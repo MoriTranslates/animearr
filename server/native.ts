@@ -97,7 +97,8 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
         continue;
       }
       if (a.episode <= 0 || a.episode >= 10_000) continue;
-      if (a.season > 0 && (covered.has(a.aid) || absoluteEntry)) continue;
+      // AniList already numbers that entry's regular episodes; AniDB's specials mapped onto a season (bonus episodes) still count.
+      if (a.type === "regular" && a.season > 0 && (covered.has(a.aid) || absoluteEntry)) continue;
       byKey.set(key, { id: episodeId(n.id, a.season, a.episode), season: a.season, episode: a.episode, absolute: 0, title: a.title, air: a.air, runtime: a.length });
     }
   // Absolute numbers: in (season, episode) order, regular seasons only; "a" entries already are absolute.
