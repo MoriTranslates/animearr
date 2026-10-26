@@ -1,5 +1,9 @@
 # AnimeArr
 
+<p>
+  <a href="https://ko-fi.com/moritranslates"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi"></a>
+</p>
+
 **Status: pre-1.0, in development (v0.1.0-dev). Not ready for general use.**
 
 An anime-first, phone-first companion for Sonarr, Radarr and Prowlarr. v0.1 is the "smart download layer":
@@ -35,3 +39,7 @@ tick "No password on my local network" (applies to private LAN addresses only; a
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) (portions ported from Sonarr; based on Tastearr).
+
+## Support
+
+AnimeArr is free and open source. If it's useful to you, you can support development on [Ko-fi](https://ko-fi.com/moritranslates).

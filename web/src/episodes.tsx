@@ -156,6 +156,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
 // ---------------------------------------------------------------- the episode sheet (bottom sheet on phones, side panel on desktop)
 
 interface Detail extends EpisodeRow {
+  own?: { audio: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; channels: number | null }[]; subs: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; partial: boolean }[]; sidecars: { file: string; lang: string | null }[] } | null;
   tvdbId: number;
   seriesTitle: string;
   grabs: { id: number; at: number; release: string; protocol: string; state: string; dry_run: number; why: string; error: string | null; progress: number | null }[];
@@ -287,6 +288,22 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               </dl>
             ) : (
               <p className="muted">{t("ep.noFile")}</p>
+            )}
+            {d.own && (
+              <details>
+                <summary className="small">{t("files.ownTracks")}</summary>
+                <ul className="plain small">
+                  {d.own.audio.map((a) => (
+                    <li key={`a${a.index}`}>🔊 {a.lang ?? "?"} · {a.codec}{a.channels ? ` ${a.channels}ch` : ""}{a.title ? ` · ${a.title}` : ""}{a.default ? ` · ${t("files.default")}` : ""}</li>
+                  ))}
+                  {d.own.subs.map((s) => (
+                    <li key={`s${s.index}`} className={s.partial ? "warn-text" : undefined}>💬 {s.lang ?? "?"} · {s.codec}{s.title ? ` · ${s.title}` : ""}{s.partial ? ` · ${t("files.partial")}` : ""}{s.default ? ` · ${t("files.default")}` : ""}</li>
+                  ))}
+                  {d.own.sidecars.map((s) => (
+                    <li key={s.file}>📄 {s.lang ?? "?"} · {s.file}</li>
+                  ))}
+                </ul>
+              </details>
             )}
             {d.verify && (
               <p className={d.verify.ok ? "good-text small" : "warn-text small"}>

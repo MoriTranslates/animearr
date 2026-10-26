@@ -8,6 +8,7 @@ import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
+import { recordFor } from "./mediafiles.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -167,7 +168,8 @@ export function episodeDetail(episodeId: number) {
     .all(episodeId);
   const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 }).filter((d) => d.episodeIds.includes(episodeId)).slice(0, 30);
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
-  return { ...row, tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
+  const own = row.file ? recordFor(row.file.path, row.file.size) : null;
+  return { ...row, own, tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
 }
 
 /**

@@ -149,7 +149,12 @@ export function App() {
           {section === "/activity" && <Activity />}
           {section === "/settings" && <Settings status={status} onSaved={refreshStatus} />}
         </main>
-        <footer className="foot">{t("app.footer", { version: status.version })}</footer>
+        <footer className="foot">
+          {t("app.footer", { version: status.version })} ·{" "}
+          <a href="https://ko-fi.com/moritranslates" target="_blank" rel="noreferrer">
+            {t("app.support")}
+          </a>
+        </footer>
         <nav className="tabbar" aria-label="Main">
           {NAV.filter((n) => n.phone).map((n) => (
             <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>

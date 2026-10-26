@@ -6,6 +6,7 @@
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
 import { movieSpecials } from "./franchise.js";
+import { probeOf, recordFor } from "./mediafiles.js";
 import fs from "node:fs";
 import path from "node:path";
 import { db, cache } from "./db.js";
@@ -109,18 +110,21 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
   let checked = 0;
   for (const s of seriesRows()) {
     const prof = profileFor(s.tvdb_id);
-    const files = cache.prepare("SELECT id, season, path, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; release_group: string | null; audio_langs: string; sub_langs: string }[];
+    const files = cache.prepare("SELECT id, season, path, size, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; size: number | null; release_group: string | null; audio_langs: string; sub_langs: string }[];
     const bySeason = new Map<number, MissingGroup>();
     for (const f of files) {
       checked++;
-      const subs = f.sub_langs.split("/").filter(Boolean);
-      const audio = f.audio_langs.split("/").filter(Boolean);
-      const v = judge({ subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null);
+      // AnimeArr's own scan first (it sees forced flags and sidecars); Sonarr's mediaInfo otherwise.
+      const own = recordFor(f.path, f.size);
+      const p = own ? probeOf(own) : null;
+      const subs = p ? p.subs : f.sub_langs.split("/").filter(Boolean);
+      const audio = p ? p.audio : f.audio_langs.split("/").filter(Boolean);
+      const v = judge(p ? { ...p, durationSec: null } : { subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null);
       if (v.ok) continue;
       const sidecar = opts.checkSidecars && prof.watchMode !== "dub" ? sidecarFor(f.path, prof.subLangs) : null;
       if (sidecar) continue;
       const reason = !subs.length && !audio.length ? "no track languages recorded (MP4 with burned-in or sidecar subs?)" : v.why;
-      // (Sonarr's mediaInfo has no forced flag: a forced-only track can still look like full subtitles here.)
+      // (Without our own scan, Sonarr's mediaInfo has no forced flag: a forced-only track can look like full subtitles.)
       const g = bySeason.get(f.season) ?? { seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: null, season: f.season, files: [], confirmedBurnedIn: prof.subLangs.some((l) => !!burnedInFact(s.tvdb_id, f.season, l)) };
       g.files.push({ id: f.id, path: f.path, name: path.posix.basename(f.path), group: f.release_group, audio, subs, sidecar, reason });
       bySeason.set(f.season, g);

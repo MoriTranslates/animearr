@@ -8,9 +8,20 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
 - [x] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies, series ↔ movie links (S0 double-download guard)
 
-## 0.x steps to 1.0
+## 1.0 = takeover (binding)
 
-**v1.0 = AnimeArr does everything Sonarr does for anime; Sonarr is no longer needed.**
+AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, library, metadata). Afterwards Sonarr and Radarr have no anime libraries. Build order (PROPOSAL "1.0 takeover checklist"):
+
+- [ ] 1. Own file records (scan + ffprobe every file; incremental; nightly; after Tdarr rewrites)
+- [ ] 2. Own importer (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts
+- [ ] 3. Plex (partial scans, path mapping, .plexmatch)
+- [ ] 4. Own metadata (AniDB/AniList-first franchise model; TVDB/TMDB as mappings; donghua/ONAs)
+- [ ] 5. Add series/movies UI (AniList/AniDB search)
+- [ ] 6. RSS/new-release monitoring via Prowlarr feeds
+- [ ] 7. Migration/cutover tool (import, parallel mode, final removal checklist; never deletes without confirmation)
+- [ ] 8. Notifications (Discord, ntfy/Gotify)
+
+## 0.x steps to 1.0
 
 ### Smarter picking and auto-repair
 - [x] Auto-fail and re-search without asking (with caps and two-signal rule) — PROPOSAL §7 Phase 1 (after-import check, 0.x)

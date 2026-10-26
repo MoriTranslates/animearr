@@ -29,6 +29,7 @@ import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick } from "./movieSearch.js";
+import { fileScanTick, fileSummary, scanLibrary, scanRunning } from "./mediafiles.js";
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -512,6 +513,13 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.get("/api/files/summary", async () => fileSummary());
+app.post<{ Body: { full?: boolean } }>("/api/files/scan", async (req) => {
+  writable();
+  if (scanRunning()) return { started: false, running: true };
+  void scanLibrary({ full: req.body?.full === true }).catch(() => undefined);
+  return { started: true };
+});
 app.get("/api/movies-search", async () => movieSearchSummary());
 app.get("/api/movies", async () => listMovies());
 app.get<{ Params: { id: string } }>("/api/movies/:id", async (req) => movieDetail(id(req.params.id)));
@@ -706,6 +714,8 @@ every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
+every(30 * 60_000, () => fileScanTick(), "file scan");
+setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;
 every(60_000, async () => {

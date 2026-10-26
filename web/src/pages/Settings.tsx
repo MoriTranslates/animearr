@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, store, type PathMapping, type Settings as S, type Status } from "../api";
+import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t } from "../i18n";
 import { ProfilesEditor } from "../profiles";
@@ -383,6 +383,68 @@ interface SystemInfo {
   memoryMb: number;
 }
 
+/** AnimeArr's own file records: what was scanned, problems found, scan now. */
+function LibraryFiles() {
+  const toast = useToast();
+  const d = useLoad(() => api<{ roots: string[]; byRoot: { root: string; n: number; bytes: number }[]; total: number; probed: number; errors: number; errorSamples: { path: string; error: string }[]; forcedOnlyEnglish: number; forcedSamples: string[]; lastScan: { state: string; detail: string } | null; progress: { phase: string; done: number; total: number; running: boolean } }>("/files/summary"), []);
+  useEffect(() => {
+    if (!d.data?.progress.running) return;
+    const id = setInterval(() => void d.reload(), 5000);
+    return () => clearInterval(id);
+  }, [d.data?.progress.running, d.reload]);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return null;
+  const x = d.data;
+  return (
+    <div className="card pad stack">
+      <h2>{t("files.title")}</h2>
+      <p className="muted small">{t("files.help")}</p>
+      {x.lastScan && <p className="small muted">{t("files.last", { detail: x.lastScan.detail })}</p>}
+      <p className="small">{t("files.counts", { total: x.total, probed: x.probed, errors: x.errors })}</p>
+      {x.progress.running && <p className="small">{x.progress.phase === "walking" ? t("files.walking") : t("files.probing", { done: x.progress.done, total: x.progress.total })}</p>}
+      <ul className="plain small">
+        {x.roots.map((r) => {
+          const b = x.byRoot.find((y) => y.root === r);
+          return (
+            <li key={r}>
+              <span className="mono">{r}</span> · {b ? `${b.n} · ${fmtSize(b.bytes ?? 0)}` : t("files.notScanned")}
+            </li>
+          );
+        })}
+      </ul>
+      {x.forcedOnlyEnglish > 0 && (
+        <details>
+          <summary className="warn-text small">{t("files.forcedOnly", { n: x.forcedOnlyEnglish })}</summary>
+          <ul className="plain small mono">{x.forcedSamples.map((p) => <li key={p}>{p}</li>)}</ul>
+        </details>
+      )}
+      {x.errors > 0 && (
+        <details>
+          <summary className="small">{t("files.errors", { n: x.errors })}</summary>
+          <ul className="plain small">{x.errorSamples.map((e) => <li key={e.path}><span className="mono">{e.path}</span> · {e.error}</li>)}</ul>
+        </details>
+      )}
+      <div className="row">
+        <button
+          className="small"
+          disabled={x.progress.running}
+          onClick={async () => {
+            try {
+              await api("/files/scan", { body: {} });
+              toast(t("files.started"));
+              setTimeout(() => void d.reload(), 1500);
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          {t("files.scanNow")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function System({ status }: { status: Status }) {
   const toast = useToast();
   const d = useLoad(() => api<SystemInfo>("/system"), []);
@@ -404,6 +466,16 @@ function System({ status }: { status: Status }) {
   return (
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
+      <LibraryFiles />
+      <div className="card pad stack">
+        <h2>{t("support.title")}</h2>
+        <p className="small">{t("support.body")}</p>
+        <p>
+          <a className="button-link" href="https://ko-fi.com/moritranslates" target="_blank" rel="noreferrer">
+            {t("app.support")}
+          </a>
+        </p>
+      </div>
       <div className="card pad stack">
         <h2>{t("settings.system.jobs")}</h2>
         <ul className="plain">

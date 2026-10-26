@@ -287,6 +287,10 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE indexer_failures (indexer_id INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');
    CREATE INDEX indexer_failures_at ON indexer_failures (indexer_id, at);
    CREATE TABLE franchise_links (tvdb_id INTEGER NOT NULL, movie_id INTEGER NOT NULL, action TEXT NOT NULL CHECK (action IN ('link', 'unlink')), at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, movie_id));`,
+  // 9: AnimeArr's own file records (scan + ffprobe of every library file)
+  `CREATE TABLE media_files (path TEXT PRIMARY KEY, root TEXT NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL, probed_at INTEGER, duration REAL, container TEXT,
+     video TEXT NOT NULL DEFAULT 'null', audio TEXT NOT NULL DEFAULT '[]', subs TEXT NOT NULL DEFAULT '[]', sidecars TEXT NOT NULL DEFAULT '[]', error TEXT, seen_at INTEGER NOT NULL);
+   CREATE INDEX media_files_root ON media_files (root, seen_at);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
