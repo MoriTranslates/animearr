@@ -3,6 +3,7 @@
  * mapped to Sonarr episodes by the numbering resolver and ranked against the language profile.
  * Read-only: searching never grabs anything.
  */
+import { indexerHealth } from "./health.js";
 import { prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { identify, type IdentifyContext } from "./core/identify.js";
 import { normalizeTitle, splitSeason } from "./core/normalize.js";
@@ -126,6 +127,7 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   if (bl) k.blocklisted = bl.reason;
   const scene = cache.prepare("SELECT 1 FROM files WHERE series_id = ? AND scene_name = ? LIMIT 1").get(series.id, r.title.replace(/-xpost$/i, ""));
   if (scene) k.inLibrary = true;
+  k.indexerHealth = indexerHealth(r.indexerId);
   return k;
 }
 

@@ -108,7 +108,14 @@ export function metadataStatus() {
   };
 }
 
-export const animeListEntries = () => animeList;
+let animeListTried = false;
+export const animeListEntries = () => {
+  if (!animeList.size && !animeListTried) {
+    animeListTried = true;
+    if (fs.existsSync(ANIMELIST_FILE)) animeList = parseAnimeList(fs.readFileSync(ANIMELIST_FILE, "utf8"));
+  }
+  return animeList;
+};
 
 // ---------------------------------------------------------------- alias index over the synced library
 

@@ -5,6 +5,7 @@
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
+import { movieSpecials } from "./franchise.js";
 import fs from "node:fs";
 import path from "node:path";
 import { db, cache } from "./db.js";
@@ -192,22 +193,25 @@ export function specials() {
   const movieKeys = new Map<string, (typeof movies)[number]>();
   for (const m of movies) for (const t of [m.title, m.original_title ?? "", ...(JSON.parse(m.alt_titles) as string[])]) if (t) movieKeys.set(compactKey(t), m);
   const byTmdb = new Map(movies.filter((m) => m.tmdb_id).map((m) => [m.tmdb_id!, m]));
-  const out: { seriesId: number; tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; monitored: boolean; cls: SpecialClass; why: string; radarr: { inRadarr: boolean; title?: string; hasFile?: boolean } | null }[] }[] = [];
+  const out: { seriesId: number; tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; monitored: boolean; cls: SpecialClass; why: string; radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null }[] }[] = [];
   const totals = { movie: 0, real: 0, junk: 0, unknown: 0, movieInRadarr: 0 };
+  const allSpecials = movieSpecials();
   for (const s of seriesRows()) {
     const eps = cache.prepare("SELECT id, episode, title, runtime, has_file, monitored FROM episodes WHERE series_id = ? AND season = 0 ORDER BY episode").all(s.id) as { id: number; episode: number; title: string | null; runtime: number | null; has_file: number; monitored: number }[];
     if (!eps.length) continue;
     const s0Movies = [...animeListEntries().values()].filter((e) => e.tvdbId === s.tvdb_id && e.tmdbMovie);
+    const linked = allSpecials;
     const items = eps.map((e) => {
-      const c = classifySpecial(e.title, e.runtime);
+      const fm = linked.get(e.id);
+      const c = fm ? { cls: "movie" as SpecialClass, why: "a movie of this franchise (handled by Radarr)" } : classifySpecial(e.title, e.runtime);
       totals[c.cls]++;
-      let radarr: { inRadarr: boolean; title?: string; hasFile?: boolean } | null = null;
+      let radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null = null;
       if (c.cls === "movie") {
         const keys = [compactKey(e.title ?? ""), compactKey(`${s.title} ${e.title ?? ""}`)];
-        let m = keys.map((k) => movieKeys.get(k)).find(Boolean);
+        let m = fm?.movieId ? movies.find((x) => x.id === fm.movieId) : keys.map((k) => movieKeys.get(k)).find(Boolean);
         // Anime-Lists may know the TMDB movie id of this franchise's movies.
         if (!m) for (const al of s0Movies) if (byTmdb.has(al.tmdbMovie!) && compactKey(al.name).includes(compactKey(e.title ?? "").slice(0, 12))) m = byTmdb.get(al.tmdbMovie!);
-        radarr = m ? { inRadarr: true, title: `${m.title} (${m.year})`, hasFile: !!m.has_file } : { inRadarr: false };
+        radarr = m ? { inRadarr: true, title: `${m.title} (${m.year})`, hasFile: !!m.has_file, movieId: m.id } : { inRadarr: false };
         if (m) totals.movieInRadarr++;
       }
       return { id: e.id, episode: e.episode, title: e.title, runtime: e.runtime, hasFile: !!e.has_file, monitored: !!e.monitored, cls: c.cls, why: c.why, radarr };

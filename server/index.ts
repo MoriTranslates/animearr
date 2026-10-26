@@ -13,7 +13,7 @@ import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
 import { gaps, listFacts, missingLanguage, specials } from "./audit.js";
-import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs } from "./profiles.js";
+import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs, setMoviePrefs } from "./profiles.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
 import { compactKey } from "./core/normalize.js";
@@ -27,7 +27,9 @@ import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } fr
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
-import { listMovies, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
+import { moviesForSeries, setLink } from "./franchise.js";
+import { movieSearchSummary, movieTick } from "./movieSearch.js";
+import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -266,7 +268,13 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
     header: seriesHeader(tvdbId),
     prefs: seriesPrefs(tvdbId),
     rows: episodeRows(s.id),
+    movies: moviesForSeries(tvdbId),
   };
+});
+app.put<{ Body: { tvdbId?: number; movieId?: number; on?: boolean } }>("/api/franchise/link", async (req) => {
+  writable();
+  setLink(id(req.body?.tvdbId), id(req.body?.movieId), req.body?.on !== false);
+  return { ok: true };
 });
 
 // ---------------------------------------------------------------- language profiles + per-show override
@@ -330,7 +338,7 @@ app.get<{ Querystring: { from?: string; to?: string; managed?: string } }>("/api
   const from = Number(req.query.from) || Date.now() - 7 * day;
   const to = Number(req.query.to) || Date.now() + 14 * day;
   if (to - from > 120 * day) throw fail("Pick a shorter range");
-  return { from, to, entries: calendar(from, to, req.query.managed === "1") };
+  return { from, to, entries: calendar(from, to, req.query.managed === "1"), movies: movieCalendar(from, to, req.query.managed === "1") };
 });
 
 app.post<{ Body: { tvdbIds?: number[]; on?: boolean } }>("/api/managed", async (req) => {
@@ -504,8 +512,15 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.get("/api/movies-search", async () => movieSearchSummary());
 app.get("/api/movies", async () => listMovies());
 app.get<{ Params: { id: string } }>("/api/movies/:id", async (req) => movieDetail(id(req.params.id)));
+app.put<{ Params: { id: string }; Body: { profileId?: string | null; watchMode?: string | null } }>("/api/movies/:id/prefs", async (req) => {
+  writable();
+  const movieId = id(req.params.id);
+  movieDetail(movieId); // 404 when unknown
+  return setMoviePrefs(movieId, req.body?.profileId || null, (req.body?.watchMode || null) as Parameters<typeof setMoviePrefs>[2]);
+});
 // Grabs pick from the server's own last results (never a download URL sent by the browser).
 const lastMovieResults = new Map<number, { at: number; results: Awaited<ReturnType<typeof searchMovie>>["results"] }>();
 app.post<{ Params: { id: string } }>("/api/movies/:id/search", async (req) => {
@@ -690,6 +705,7 @@ every(60 * 60_000, async () => {
 every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
+every(10 * 60_000, () => movieTick(), "movie search");
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;
 every(60_000, async () => {

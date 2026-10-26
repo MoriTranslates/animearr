@@ -135,6 +135,7 @@ export interface Settings {
   queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
   extraction: { enabled: boolean };
   dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
+  movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   sync: { intervalHours: number };
   externalUrl: string;
   ui: { language: string };

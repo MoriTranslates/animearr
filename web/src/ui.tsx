@@ -265,15 +265,20 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Only the latest request may set state (fast navigation must never show an older response).
+  const seq = useRef(0);
   const run = useCallback(async () => {
+    const mine = ++seq.current;
     setLoading(true);
     try {
-      setData(await fn());
+      const v = await fn();
+      if (mine !== seq.current) return;
+      setData(v);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      if (mine === seq.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (mine === seq.current) setLoading(false);
     }
   }, deps);
   useEffect(() => {

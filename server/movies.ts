@@ -15,13 +15,15 @@ import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
 import { cache, db, dbState } from "./db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
-import { ACTIVE, blocklist, importModeFor, isBlocked, MAX_ATTEMPTS, realDeps, runTimeSec, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, MAX_ATTEMPTS, realDeps, runTimeSec, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./paths.js";
-import { profileFor } from "./profiles.js";
+import { moviePrefs, profileForMovie } from "./profiles.js";
+import { seriesForMovie } from "./franchise.js";
 import type { SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
+import { indexerHealth } from "./health.js";
 
 export interface MovieRow {
   id: number;
@@ -37,20 +39,38 @@ export interface MovieRow {
   alt_titles: string;
   file: string | null;
   poster: string | null;
+  status?: string | null;
+  is_available?: number;
+  in_cinemas?: number | null;
+  digital_release?: number | null;
+  physical_release?: number | null;
 }
-interface MovieFile { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; runTime: string | null; resolution: string | null }
+export interface MovieFile { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; runTime: string | null; resolution: string | null }
 
 export function movieById(id: number): MovieRow | null {
   return (cache.prepare("SELECT * FROM movies WHERE id = ? AND is_anime = 1").get(id) as MovieRow | undefined) ?? null;
 }
 
-/** Profile verdict for a movie file (default profile; anime movies are Japanese originals). */
-function verdictOf(f: MovieFile | null) {
+/** Profile verdict for a movie file (the movie's profile; anime movies are Japanese originals). */
+function verdictOf(f: MovieFile | null, movieId: number) {
   if (!f) return null;
   if (!f.subs.length && !f.audio.length) return { ok: null as boolean | null, why: "no track languages recorded" };
-  const v = judge({ subs: f.subs, audio: f.audio, durationSec: null, sidecars: [], untagged: 0 }, profileFor(null), null, null);
+  const v = judge({ subs: f.subs, audio: f.audio, durationSec: null, sidecars: [], untagged: 0 }, profileForMovie(movieId), null, null);
   return { ok: v.ok as boolean | null, why: v.why };
 }
+
+/** When a movie can be downloaded: its digital or physical release (the earlier known one), or "available" in Radarr. */
+export function releaseAt(m: Pick<MovieRow, "digital_release" | "physical_release" | "is_available" | "in_cinemas">): number | null {
+  const d = [m.digital_release, m.physical_release].filter((x): x is number => !!x);
+  if (d.length) return Math.min(...d);
+  // No home-release date: only count it as released long after the cinema date (Radarr's "available" can mean
+  // "in cinemas", when only cams exist).
+  return m.is_available && m.in_cinemas && m.in_cinemas < Date.now() - 90 * 86_400_000 ? m.in_cinemas + 90 * 86_400_000 : null;
+}
+export const isReleased = (m: Parameters<typeof releaseAt>[0], now = Date.now()) => {
+  const r = releaseAt(m);
+  return r !== null && r <= now;
+};
 
 const activeGrab = (movieId: number) =>
   db.prepare(`SELECT id, state, progress, release FROM grabs WHERE movie_id = ? AND state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id DESC LIMIT 1`).get(movieId) as { id: number; state: string; progress: number | null; release: string } | undefined;
@@ -68,9 +88,10 @@ export function listMovies() {
       year: m.year,
       cover: m.poster,
       monitored: !!m.monitored,
-      status: g ? (g.state === "needs-attention" ? "attention" : "downloading") : m.has_file ? "have" : "missing",
+      status: g ? (g.state === "needs-attention" ? "attention" : "downloading") : m.has_file ? "have" : isReleased(m) ? "missing" : "unreleased",
+      releaseAt: releaseAt(m),
       allowed: underAllowedRoot(m.path),
-      verdict: verdictOf(f),
+      verdict: verdictOf(f, m.id),
       quality: f?.quality ?? null,
     };
   });
@@ -95,9 +116,16 @@ export function movieDetail(id: number) {
     monitored: !!m.monitored,
     allowed: underAllowedRoot(m.path),
     file: f,
-    verdict: verdictOf(f),
+    verdict: verdictOf(f, m.id),
     active: activeGrab(m.id) ?? null,
     grabs,
+    released: isReleased(m),
+    dates: { inCinemas: m.in_cinemas ?? null, digital: m.digital_release ?? null, physical: m.physical_release ?? null },
+    series: seriesForMovie(m.id),
+    prefs: moviePrefs(m.id),
+    profile: (({ name, watchMode, profileMode }) => ({ name, watchMode, profileMode }))(profileForMovie(m.id)),
+    search: db.prepare("SELECT state, next_at AS nextAt, last_at AS lastAt, attempts, last_why AS why FROM movie_search WHERE movie_id = ?").get(m.id) ?? null,
+    upgrade: db.prepare("SELECT state, last_at AS lastAt, why, release FROM movie_upgrade WHERE movie_id = ?").get(m.id) ?? null,
   };
 }
 
@@ -188,7 +216,7 @@ export async function searchMovie(id: number, search: typeof prowlarrSearch = pr
   if (!m) throw Object.assign(new Error("That movie isn't in the synced Radarr library (or isn't anime)"), { statusCode: 404 });
   const info = { title: m.title, original_title: m.original_title, alt_titles: JSON.parse(m.alt_titles) as string[], year: m.year };
   const queries = movieQueries(info);
-  const prof = profileFor(null);
+  const prof = profileForMovie(id);
   const raw = new Map<string, ProwlarrRelease>();
   const errors: string[] = [];
   const skipped: Record<string, number> = {};
@@ -215,7 +243,7 @@ export async function searchMovie(id: number, search: typeof prowlarrSearch = pr
     const learned = learnedFor(p.group, p.platform ?? sourceKey(r.title, null, p.source));
     const blocked = isBlocked({ guid: r.guid, title: r.title });
     // Size sanity: a movie is worth several episodes.
-    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime ?? 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null });
+    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime ?? 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId) });
     const pub = r.publishDate ? Date.parse(r.publishDate) : null;
     results.push({
       guid: r.guid,
@@ -251,6 +279,7 @@ export interface MovieGrabRequest {
   attempt?: number;
   /** The movie has a file and the user confirmed replacing it (it goes to Radarr's recycle bin, if one is set). */
   replace?: boolean;
+  purpose?: "dual-upgrade" | null;
 }
 
 /** Sends a movie release to the download client (or logs it in dry-run). */
@@ -272,8 +301,8 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   const now = Date.now();
   const id = Number(
     db
-      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0).lastInsertRowid,
+      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file, purpose) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0, req.purpose ?? null).lastInsertRowid,
   );
   const label = m.year ? `${m.title} (${m.year})` : m.title;
   if (dryRun) {
@@ -282,7 +311,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
     return { id, dryRun: true, message: msg };
   }
   try {
-    const file = await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+    const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
     const job = c.protocol === "usenet" ? await deps.clients.addNzb(file.data!, c.title) : await deps.clients.addTorrent(file, c.title);
     if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
@@ -301,7 +330,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
 
 function movieRequest(row: GrabRow): MovieGrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
-  return { movieId: row.movie_id!, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, replace: !!row.replace_file };
+  return { movieId: row.movie_id!, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, replace: !!row.replace_file, purpose: row.purpose ?? null };
 }
 
 /** Tries the next candidate of a failed movie grab (skipping blocklisted ones). */
@@ -357,14 +386,24 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   const bySize = [...inThis].sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
   const main = bySize[0];
   if (bySize[1] && (bySize[1].size ?? 0) > (main.size ?? 0) * 0.4) return attention(`the download has several large video files (${bySize.slice(0, 3).map((x) => path.posix.basename(x.path)).join(", ")}); import the right one by hand`);
-  const prof = profileFor(null);
+  const prof = profileForMovie(m.id);
   const parsed = parseRelease(row.release);
   const learnKey = parsed.platform ?? sourceKey(row.release, null, parsed.source);
+  // A dual-audio upgrade replaces a placeholder: only a file with the original audio AND the dub counts.
+  const strictMovie = (v: ReturnType<typeof judge>): ReturnType<typeof judge> => {
+    if (row.purpose !== "dual-upgrade" || !v.ok) return v;
+    const original = prof.originalLangs ?? ["ja"];
+    const dub = (prof.dubLangs ?? []).filter((l) => !original.includes(l));
+    const base = v.audio.map((a) => a.split("-")[0]);
+    const hasDub = dub.find((l) => base.includes(l));
+    const hasOriginal = !original.length || base.some((a) => original.includes(a));
+    return hasDub && hasOriginal ? v : { ...v, ok: false, why: `no ${hasDub ? "original" : dub.join("/")} audio (audio: ${v.audio.join("/") || "unknown"}): not the dual-audio release it claimed to be` };
+  };
   let preVerified = false;
   const local = deps.localPath(main.path);
   if (local) {
     const probe = await deps.probe(local);
-    const v = judge(probe, prof, live.runtime ?? m.runtime ?? null, null);
+    const v = strictMovie(judge(probe, prof, live.runtime ?? m.runtime ?? null, null));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
     if (!v.ok) return fail(`${path.posix.basename(main.path)}: ${v.why}`, false);
     preVerified = true;
@@ -386,11 +425,27 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     const subs = langList(mf.mediaInfo?.subtitles);
     const audio = langList(mf.mediaInfo?.audioLanguages);
     if (!subs.length && !audio.length) return attention(`Radarr has no track information for ${path.posix.basename(mf.path ?? main.path)} yet, so the language couldn't be checked; check the file, then retry`);
-    const v = judge({ subs, audio, durationSec: runTimeSec(mf.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, after.runtime ?? m.runtime ?? null, null);
+    const v = strictMovie(judge({ subs, audio, durationSec: runTimeSec(mf.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, after.runtime ?? m.runtime ?? null, null));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
     if (!v.ok) return fail(`${path.posix.basename(mf.path ?? main.path)}: ${v.why}`, true);
   }
   setState(row.id, "done");
   cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(mf)), m.id);
   logDecision("import", { title: label, release: row.release, why: `Imported ✓ ${label}`, detail: { grabId: row.id, movieId: m.id, final: true } });
+}
+
+/** Movie release dates in a range, for the calendar (in cinemas, digital, physical). */
+export function movieCalendar(fromMs: number, toMs: number, wantedOnly: boolean) {
+  const rows = cache
+    .prepare("SELECT * FROM movies WHERE is_anime = 1 AND ((in_cinemas BETWEEN ? AND ?) OR (digital_release BETWEEN ? AND ?) OR (physical_release BETWEEN ? AND ?))")
+    .all(fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000) as unknown as MovieRow[];
+  const out: { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }[] = [];
+  for (const m of rows) {
+    if (wantedOnly && (!m.monitored || !underAllowedRoot(m.path))) continue;
+    const g = activeGrab(m.id);
+    const status = g ? (g.state === "needs-attention" ? "attention" : "downloading") : m.has_file ? "have" : isReleased(m) ? "missing" : "unreleased";
+    for (const [kind, at] of [["cinema", m.in_cinemas], ["digital", m.digital_release], ["physical", m.physical_release]] as const)
+      if (at && at >= fromMs - 86_400_000 && at <= toMs + 86_400_000) out.push({ movieId: m.id, title: m.title, year: m.year, cover: m.poster, kind, at, status, monitored: !!m.monitored });
+  }
+  return out.sort((a, b) => a.at - b.at);
 }

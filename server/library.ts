@@ -8,6 +8,7 @@
  * - Each series is matched to AniDB through Anime-Lists; unmatched series are marked for review.
  * - Radarr: movies under the anime root folders/profiles (or Japanese animation).
  */
+import { invalidateFranchise } from "./franchise.js";
 import { getEpisodeFiles, getEpisodes, getSeries, getTags, sonarrConfigured, type SonarrSeries } from "./arr/sonarr.js";
 import { getMovies, radarrConfigured } from "./arr/radarr.js";
 import { logDecision } from "./activity.js";
@@ -63,6 +64,7 @@ async function doSync(full: boolean): Promise<SyncResult> {
     }
     if (!dbState.corrupt) backfillLearning();
     invalidateIndex();
+    invalidateFranchise();
     const detail = `${res.series} anime series (${res.refreshed} refreshed), ${res.movies} anime movies, ${res.unmatched} need an AniDB match`;
     setJob("sync", res.errors.length ? "error" : "done", res.errors.length ? `${detail}. Problems: ${res.errors.slice(0, 3).join("; ")}` : detail);
     if (res.refreshed || res.removed) logDecision("sync", { why: `Synced from Sonarr/Radarr: ${detail}${res.removed ? `, ${res.removed} removed` : ""}` });
@@ -164,8 +166,9 @@ async function syncRadarr() {
   let n = 0;
   tx(cache, () => {
     cache.prepare("DELETE FROM movies").run();
-    const ins = cache.prepare(`INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = cache.prepare(`INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ms = (d?: string) => (d && Number.isFinite(Date.parse(d)) ? Date.parse(d) : null);
     for (const m of movies) {
       const anime = isAnime(m);
       if (anime) n++;
@@ -173,7 +176,8 @@ async function syncRadarr() {
       const file = mf ? { path: mf.path ?? null, sceneName: mf.sceneName ?? null, releaseGroup: mf.releaseGroup ?? null, quality: mf.quality?.quality?.name ?? null, audio: langList(mf.mediaInfo?.audioLanguages), subs: langList(mf.mediaInfo?.subtitles), runTime: mf.mediaInfo?.runTime ?? null, resolution: mf.mediaInfo?.resolution ?? null } : null;
       const poster = (m as { images?: { coverType: string; remoteUrl?: string }[] }).images?.find((i) => i.coverType === "poster")?.remoteUrl ?? null;
       ins.run(m.id, m.tmdbId ?? null, m.imdbId ?? null, m.title, m.originalTitle ?? null, m.year ?? null, m.path, m.rootFolderPath ?? null, m.monitored ? 1 : 0, m.hasFile ? 1 : 0, m.runtime ?? null,
-        m.qualityProfileId, JSON.stringify(m.tags ?? []), JSON.stringify((m.alternateTitles ?? []).map((a) => a.title)), file ? JSON.stringify(file) : null, anime ? 1 : 0, poster, Date.now());
+        m.qualityProfileId, JSON.stringify(m.tags ?? []), JSON.stringify((m.alternateTitles ?? []).map((a) => a.title)), file ? JSON.stringify(file) : null, anime ? 1 : 0, poster, Date.now(),
+        m.status ?? null, m.isAvailable ? 1 : 0, ms(m.inCinemas), ms(m.digitalRelease), ms(m.physicalRelease));
     }
   });
   return n;

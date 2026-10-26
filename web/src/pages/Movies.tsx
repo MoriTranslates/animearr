@@ -4,11 +4,14 @@ import { Link } from "../App";
 import { t } from "../i18n";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 import { ResultCard } from "./Search";
+import { WatchAs, type WatchMode } from "../profiles";
 
-interface MovieItem { id: number; tmdbId: number | null; title: string; year: number | null; cover: string | null; monitored: boolean; status: "have" | "missing" | "downloading" | "attention"; allowed: boolean; verdict: { ok: boolean | null; why: string } | null; quality: string | null }
+interface MovieItem { id: number; tmdbId: number | null; title: string; year: number | null; cover: string | null; monitored: boolean; status: "have" | "missing" | "downloading" | "attention" | "unreleased"; releaseAt: number | null; allowed: boolean; verdict: { ok: boolean | null; why: string } | null; quality: string | null }
 
 type Filter = "all" | "missing" | "problems";
-const STATUS_TONE = { have: "good", missing: "warn", downloading: "accent", attention: "warn" } as const;
+/** Radarr's release dates are date-only (UTC midnight). */
+const dateOnly = (ms: number) => new Date(ms).toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
+const STATUS_TONE = { have: "good", missing: "warn", downloading: "accent", attention: "warn", unreleased: "info" } as const;
 
 /** Anime movies from Radarr, Sonarr-style poster grid. */
 export function Movies() {
@@ -77,6 +80,13 @@ interface MovieDetail {
   verdict: { ok: boolean | null; why: string } | null;
   active: { id: number; state: string; progress: number | null; release: string } | null;
   grabs: { id: number; at: number; release: string; state: string; error: string | null }[];
+  released: boolean;
+  dates: { inCinemas: number | null; digital: number | null; physical: number | null };
+  series: { tvdbId: number; title: string; cover: string | null; source: string }[];
+  prefs: { profile_id: string | null; watch_mode: WatchMode | null };
+  profile: { name: string; watchMode: WatchMode; profileMode?: WatchMode };
+  search: { state: string; nextAt: number; lastAt: number | null; attempts: number; why: string } | null;
+  upgrade: { state: string; lastAt: number | null; why: string; release: string | null } | null;
 }
 interface MovieSearch { queries: string[]; found: number; matched: number; skipped: Record<string, number>; errors: string[]; tookMs: number; results: SearchResult[]; dryRun: boolean }
 
@@ -114,7 +124,22 @@ export function MoviePage({ id }: { id: number }) {
             {m.year ? ` (${m.year})` : ""}
           </h1>
           {m.originalTitle && m.originalTitle !== m.title && <p className="muted small">{m.originalTitle}</p>}
+          {!!m.series.length && (
+            <p className="small">
+              {t("movies.partOf")}{" "}
+              {m.series.map((s, i) => (
+                <span key={s.tvdbId}>
+                  {i > 0 && ", "}
+                  <Link to={`/show/${s.tvdbId}`}>{s.title}</Link>
+                </span>
+              ))}
+            </p>
+          )}
+          <WatchAs tvdbId={m.id} endpoint={`/movies/${m.id}/prefs`} prefs={m.prefs} effective={m.profile} onChanged={() => void d.reload()} />
           <div className="chips">
+            {m.dates.digital ? <Chip>{t("movies.digital", { date: dateOnly(m.dates.digital) })}</Chip> : null}
+            {m.dates.physical ? <Chip>{t("movies.physical", { date: dateOnly(m.dates.physical) })}</Chip> : null}
+            {!m.released && <Chip tone="info">{t("movies.status.unreleased")}</Chip>}
             {m.runtime ? <Chip>{t("movies.runtime", { min: m.runtime })}</Chip> : null}
             {!m.monitored && <Chip tone="info">{t("movies.unmonitored")}</Chip>}
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
@@ -135,6 +160,13 @@ export function MoviePage({ id }: { id: number }) {
         ) : (
           <p className="warn-text">{t("movies.noFile")}</p>
         )}
+        {m.search && m.search.state !== "done" && (
+          <p className="small muted">
+            {t("movies.autoSearch", { state: t(`movies.search.${m.search.state}` as never), why: m.search.why })}
+            {m.search.state !== "grabbed" && m.search.nextAt > Date.now() ? ` · ${t("movies.nextSearch", { when: dateTime(m.search.nextAt) })}` : ""}
+          </p>
+        )}
+        {m.upgrade && <p className="small muted">{t("movies.upgrade", { why: m.upgrade.why })}</p>}
         {m.active && (
           <p className="small">
             {t("movies.active", { release: m.active.release, state: t(`grab.${m.active.state}` as never) })} · <Link to="/queue">{t("nav.queue")}</Link>

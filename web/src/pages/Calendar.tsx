@@ -1,54 +1,107 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, store, sxe } from "../api";
+import { navigate } from "../App";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
-import { t } from "../i18n";
-import { Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
+import { t, type I18nKey } from "../i18n";
+import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
 
-interface Entry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; managed: boolean }
+interface EpEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; managed: boolean }
+interface MovieEntry { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }
+type Entry = ({ type: "episode" } & EpEntry & { at: number }) | ({ type: "movie" } & MovieEntry);
+type View = "month" | "week" | "agenda";
 
-const DAY = 86_400_000;
-const dayKey = (ms: number) => {
+const startOfDay = (ms: number) => {
   const d = new Date(ms);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
+const addDays = (ms: number, n: number) => {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
+};
+const startOfWeek = (ms: number) => addDays(startOfDay(ms), -new Date(ms).getDay()); // Sunday first, like Sonarr
+const isPhone = () => {
+  try {
+    return window.matchMedia("(max-width: 760px)").matches;
+  } catch {
+    return false;
+  }
+};
+const time = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+/** Radarr dates are date-only (UTC midnight): the local day with that calendar date. */
+const utcDay = (ms: number) => {
+  const u = new Date(ms);
+  return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()).getTime();
+};
+const dayOf = (e: Entry) => (e.type === "movie" ? utcDay(e.at) : startOfDay(e.at));
+const keyOf = (e: Entry) => (e.type === "episode" ? `e${e.episodeId}` : `m${e.movieId}${e.kind}`);
 
 function dayTitle(key: number) {
-  const today = dayKey(Date.now());
+  const today = startOfDay(Date.now());
   if (key === today) return t("cal.today");
-  if (key === today + DAY) return t("cal.tomorrow");
-  if (key === today - DAY) return t("cal.yesterday");
+  if (key === addDays(today, 1)) return t("cal.tomorrow");
+  if (key === addDays(today, -1)) return t("cal.yesterday");
   return new Date(key).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 
-/** Vertical agenda calendar (Sonarr-style): days down the page, today highlighted, tap an entry for its sheet. */
+/** The range a view shows around an anchor date. */
+function rangeOf(view: View, anchor: number, compact: boolean): [number, number] {
+  if (compact) return [addDays(startOfDay(Date.now()), -2), addDays(startOfDay(Date.now()), 4)];
+  if (view === "week") {
+    const s = startOfWeek(anchor);
+    return [s, addDays(s, 7)];
+  }
+  if (view === "month") {
+    const a = new Date(anchor);
+    const s = startOfWeek(new Date(a.getFullYear(), a.getMonth(), 1).getTime());
+    return [s, addDays(s, 42)];
+  }
+  const s = startOfDay(anchor);
+  return [addDays(s, -7), addDays(s, 21)];
+}
+
+/** Sonarr-style calendar, cleaner: Month / Week / Agenda; episodes and anime movie releases; tap for details. */
 export function Calendar({ compact = false }: { compact?: boolean }) {
   usePageTitle(t("cal.title"));
   const [managedOnly, setManagedOnly] = useState(() => store.get("calManagedOnly", false));
+  const [view, setView] = useState<View>(() => {
+    if (compact) return "agenda";
+    const v = store.get<string>("calView", isPhone() ? "agenda" : "week");
+    return v === "month" || v === "week" || v === "agenda" ? v : isPhone() ? "agenda" : "week";
+  });
+  const [anchor, setAnchor] = useState(() => Date.now());
   const [open, setOpen] = useState<number | null>(null);
-  const from = compact ? Date.now() - 2 * DAY : Date.now() - 7 * DAY;
-  const to = compact ? Date.now() + 3 * DAY : Date.now() + 14 * DAY;
-  const d = useLoad(() => api<{ entries: Entry[] }>(`/calendar?from=${from}&to=${to}${managedOnly ? "&managed=1" : ""}`), [managedOnly, compact]);
+  const [from, to] = rangeOf(view, anchor, compact);
+  const d = useLoad(() => api<{ from: number; to: number; entries: EpEntry[]; movies?: MovieEntry[] }>(`/calendar?from=${from}&to=${to}${managedOnly ? "&managed=1" : ""}`), [managedOnly, from, to]);
   const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
-  const days = useMemo(() => {
+  const current = d.data && d.data.from === from && d.data.to === to ? d.data : null;
+  const entries = useMemo<Entry[]>(
+    () => [...(current?.entries ?? []).map((e) => ({ ...e, type: "episode" as const, at: e.airUtc })), ...(current?.movies ?? []).map((m) => ({ ...m, type: "movie" as const }))].sort((a, b) => a.at - b.at),
+    [current],
+  );
+  const byDay = useMemo(() => {
     const map = new Map<number, Entry[]>();
-    for (const e of d.data?.entries ?? []) map.set(dayKey(e.airUtc), [...(map.get(dayKey(e.airUtc)) ?? []), e]);
-    return [...map].sort((a, b) => a[0] - b[0]);
-  }, [d.data]);
+    for (const e of entries) map.set(dayOf(e), [...(map.get(dayOf(e)) ?? []), e]);
+    return map;
+  }, [entries]);
   // Keep "downloading" moving.
-  const busy = d.data?.entries.some((e) => e.status === "downloading");
+  const busy = entries.some((e) => e.status === "downloading");
   useEffect(() => {
     if (!busy) return;
     const id = setInterval(() => void d.reload(), 15_000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy]);
-  const scrolled = useRef(false);
-  useEffect(() => {
-    // Scroll today into view once on the full page (not again on every refresh).
-    if (compact || !d.data || scrolled.current) return;
-    scrolled.current = true;
-    document.getElementById("cal-today")?.scrollIntoView({ block: "start" });
-  }, [d.data, compact]);
+  }, [busy, d.reload]);
+
+  const pick = (v: View) => {
+    setView(v);
+    store.set("calView", v);
+    if (v === "agenda") setAnchor(Date.now());
+  };
+  const step = (dir: -1 | 1) => setAnchor((a) => (view === "month" ? new Date(new Date(a).getFullYear(), new Date(a).getMonth() + dir, 1).getTime() : addDays(a, dir * 7)));
+  const openEntry = (e: Entry) => (e.type === "episode" ? setOpen(e.episodeId) : navigate(`/movie/${e.movieId}`));
+  const title =
+    view === "month"
+      ? new Date(anchor).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+      : `${new Date(from).toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${new Date(addDays(to, -1)).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
 
   return (
     <section>
@@ -56,6 +109,29 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
         <>
           <h1>{t("cal.title")}</h1>
           <p className="muted">{t("cal.intro")}</p>
+          <div className="cal-toolbar">
+            <div className="seg" role="group" aria-label={t("cal.view")}>
+              {(["month", "week", "agenda"] as View[]).map((v) => (
+                <button key={v} className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => pick(v)}>
+                  {t(`cal.view.${v}` as I18nKey)}
+                </button>
+              ))}
+            </div>
+            {view !== "agenda" && (
+              <div className="row cal-nav">
+                <button className="small" aria-label={t("cal.prev")} onClick={() => step(-1)}>
+                  ‹
+                </button>
+                <button className="small" onClick={() => setAnchor(Date.now())}>
+                  {t("cal.today")}
+                </button>
+                <button className="small" aria-label={t("cal.next")} onClick={() => step(1)}>
+                  ›
+                </button>
+                <strong className="cal-title">{title}</strong>
+              </div>
+            )}
+          </div>
         </>
       )}
       <label className="check">
@@ -70,36 +146,167 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
         {t("cal.managed")}
       </label>
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
-      {!d.data && !d.error && <Spinner label={t("app.loading")} />}
-      {d.data && !days.length && <Empty>{t("cal.empty")}</Empty>}
-      <div className="agenda">
-        {days.map(([key, entries]) => (
-          <div key={key} className={`agenda-day${key === dayKey(Date.now()) ? " today" : ""}`} id={key === dayKey(Date.now()) ? "cal-today" : undefined}>
-            <h2 className="agenda-date">{dayTitle(key)}</h2>
+      {!current && !d.error && <Spinner label={t("app.loading")} />}
+      {current && view === "agenda" && <Agenda byDay={byDay} compact={compact} onOpen={openEntry} />}
+      {current && view === "week" && <Week from={from} byDay={byDay} onOpen={openEntry} />}
+      {current && view === "month" && <Month key={from} from={from} anchor={anchor} byDay={byDay} onOpen={openEntry} />}
+      {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.data?.dryRun ?? true} />}
+    </section>
+  );
+}
+
+const GLYPH: Record<string, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠", unreleased: "◷" };
+const MOVIE_STATUS: Record<string, "good" | "bad" | "accent" | "info" | "warn"> = { have: "good", missing: "bad", downloading: "accent", attention: "warn", unreleased: "info" };
+
+/** One entry: poster thumb, show (or movie), SxxEyy (or release kind), time, worded status. */
+function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) => void; dense?: boolean }) {
+  return (
+    <button className={`agenda-entry card${dense ? " dense" : ""}${e.type === "movie" ? " movie" : ""}`} onClick={() => onOpen(e)}>
+      <Cover src={e.cover} alt={e.type === "episode" ? e.series : e.title} size="sm" />
+      <span className="agenda-text">
+        <span className="strong clamp2">
+          {e.type === "movie" && <span aria-hidden="true">🎬 </span>}
+          {e.type === "episode" ? e.series : `${e.title}${e.year ? ` (${e.year})` : ""}`}
+        </span>
+        <span className="small">
+          {e.type === "episode" ? (
+            <>
+              <span className="mono">{sxe(e.season, e.episode)}</span>
+              {e.title && !dense ? ` · ${e.title}` : ""}
+            </>
+          ) : (
+            t(`cal.movie.${e.kind}` as I18nKey)
+          )}
+        </span>
+        {e.type === "episode" && <span className="muted small">{time(e.at)}</span>}
+      </span>
+      <span className="agenda-status">
+        {e.type === "episode" ? <StatusPill e={{ status: e.status, progress: e.progress, file: null }} /> : <Chip tone={MOVIE_STATUS[e.status] ?? "info"}>{t(`movies.status.${e.status}` as I18nKey)}</Chip>}
+      </span>
+    </button>
+  );
+}
+
+function Agenda({ byDay, compact, onOpen }: { byDay: Map<number, Entry[]>; compact: boolean; onOpen: (e: Entry) => void }) {
+  const days = [...byDay].sort((a, b) => a[0] - b[0]);
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (compact || scrolled.current || !days.length) return;
+    scrolled.current = true;
+    document.getElementById("cal-today")?.scrollIntoView({ block: "start" });
+  }, [days.length, compact]);
+  if (!days.length) return <Empty>{t("cal.empty")}</Empty>;
+  const today = startOfDay(Date.now());
+  return (
+    <div className="agenda">
+      {days.map(([key, list]) => (
+        <div key={key} className={`agenda-day${key === today ? " today" : ""}`} id={key === today ? "cal-today" : undefined}>
+          <h2 className="agenda-date">{dayTitle(key)}</h2>
+          <ul className="plain">
+            {list.map((e) => (
+              <li key={keyOf(e)}>
+                <EntryCard e={e} onOpen={onOpen} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 7 columns on desktop; a horizontally swipeable day strip on phones (the strip scrolls, not the page). */
+function Week({ from, byDay, onOpen }: { from: number; byDay: Map<number, Entry[]>; onOpen: (e: Entry) => void }) {
+  const today = startOfDay(Date.now());
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // On phones, start the strip at today.
+    const el = strip.current?.querySelector<HTMLElement>(".week-day.today");
+    if (strip.current) strip.current.scrollLeft = el ? el.offsetLeft - strip.current.offsetLeft : 0;
+  }, [from]);
+  return (
+    <div className="week" ref={strip}>
+      {Array.from({ length: 7 }, (_, i) => addDays(from, i)).map((day) => {
+        const list = byDay.get(day) ?? [];
+        return (
+          <div key={day} className={`week-day${day === today ? " today" : ""}`}>
+            <h2 className="agenda-date">
+              {new Date(day).toLocaleDateString(undefined, { weekday: "short" })} <span className="week-num">{new Date(day).getDate()}</span>
+            </h2>
+            {!list.length && <p className="muted small">—</p>}
             <ul className="plain">
-              {entries.map((e) => (
-                <li key={e.episodeId}>
-                  <button className="agenda-entry card" onClick={() => setOpen(e.episodeId)}>
-                    <Cover src={e.cover} alt={e.series} size="sm" />
-                    <span className="agenda-text">
-                      <span className="strong clamp2">{e.series}</span>
-                      <span className="small">
-                        <span className="mono">{sxe(e.season, e.episode)}</span>
-                        {e.title ? ` · ${e.title}` : ""}
-                      </span>
-                      <span className="muted small">{new Date(e.airUtc).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
-                    </span>
-                    <span className="agenda-status">
-                      <StatusPill e={{ status: e.status, progress: e.progress, file: null }} />
-                    </span>
-                  </button>
+              {list.map((e) => (
+                <li key={keyOf(e)}>
+                  <EntryCard e={e} onOpen={onOpen} dense />
                 </li>
               ))}
             </ul>
           </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Month grid: entries in the cells on desktop; on phones dot counts, and tapping a day lists it below. */
+function Month({ from, anchor, byDay, onOpen }: { from: number; anchor: number; byDay: Map<number, Entry[]>; onOpen: (e: Entry) => void }) {
+  const today = startOfDay(Date.now());
+  const month = new Date(anchor).getMonth();
+  const [picked, setPicked] = useState<number | null>(null);
+  const days = Array.from({ length: 42 }, (_, i) => addDays(from, i));
+  const pickedList = picked !== null ? (byDay.get(picked) ?? []) : [];
+  return (
+    <div className="stack">
+      <div className="month">
+        {days.slice(0, 7).map((d) => (
+          <div key={`h${d}`} className="month-head" aria-hidden="true">
+            {new Date(d).toLocaleDateString(undefined, { weekday: "short" })}
+          </div>
         ))}
+        {days.map((day) => {
+          const list = byDay.get(day) ?? [];
+          const other = new Date(day).getMonth() !== month;
+          return (
+            <button
+              key={day}
+              className={`month-day${day === today ? " today" : ""}${other ? " other" : ""}${picked === day ? " picked" : ""}`}
+              onClick={() => setPicked(picked === day ? null : day)}
+              aria-pressed={picked === day}
+              aria-current={day === today ? "date" : undefined}
+              aria-label={`${new Date(day).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}: ${t(list.length === 1 ? "cal.countOne" : "cal.count", { n: list.length })}`}
+            >
+              <span className="month-num">{new Date(day).getDate()}</span>
+              <span className="month-items" aria-hidden="true">
+                {list.slice(0, 3).map((e) => (
+                  <span key={keyOf(e)} className={`month-item ${e.status}`}>
+                    {GLYPH[e.status] ?? ""} {e.type === "movie" ? "🎬 " : ""}
+                    {e.type === "episode" ? `${e.series} ${sxe(e.season, e.episode)}` : e.title}
+                  </span>
+                ))}
+                {list.length > 3 && <span className="month-more muted small">+{list.length - 3}</span>}
+              </span>
+              {!!list.length && (
+                <span className="month-dots" aria-hidden="true">
+                  {list.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
-      {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.data?.dryRun ?? true} />}
-    </section>
+      {picked !== null && (
+        <div className="agenda-day">
+          <h2 className="agenda-date">{dayTitle(picked)}</h2>
+          {!pickedList.length && <p className="muted small">{t("cal.empty")}</p>}
+          <ul className="plain">
+            {pickedList.map((e) => (
+              <li key={keyOf(e)}>
+                <EntryCard e={e} onOpen={onOpen} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

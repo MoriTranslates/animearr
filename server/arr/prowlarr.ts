@@ -69,7 +69,16 @@ export async function fetchReleaseFile(r: ProwlarrRelease): Promise<{ data?: Buf
   if (r.magnetUrl?.startsWith("magnet:")) return { magnet: r.magnetUrl, filename: r.title };
   if (r.guid.startsWith("magnet:") && !r.downloadUrl) return { magnet: r.guid, filename: r.title };
   if (!r.downloadUrl) throw new Error("This release has no download link");
-  const res = await fetch(r.downloadUrl, { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+  let res = await fetch(r.downloadUrl, { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+  // Prowlarr's download proxy can fail (HTTP 500) on a non-ASCII file name: retry once with an ASCII one.
+  if (res.status === 500 && /[^\x20-\x7e]/.test(r.title)) {
+    const u = new URL(r.downloadUrl);
+    if (u.searchParams.has("file")) {
+      await res.body?.cancel().catch(() => undefined);
+      u.searchParams.set("file", r.title.normalize("NFKD").replace(/[^\x20-\x7e]/g, "_"));
+      res = await fetch(u.toString(), { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+    }
+  }
   const loc = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && loc) {
     if (loc.startsWith("magnet:")) return { magnet: loc, filename: r.title };

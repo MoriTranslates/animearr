@@ -19,6 +19,11 @@ export interface RadarrMovie {
   tags: number[];
   originalLanguage?: { name: string };
   genres?: string[];
+  status?: string;
+  isAvailable?: boolean;
+  inCinemas?: string;
+  digitalRelease?: string;
+  physicalRelease?: string;
   alternateTitles?: { title: string }[];
   movieFile?: { relativePath?: string; path?: string; sceneName?: string; releaseGroup?: string; quality?: { quality: { name: string } }; mediaInfo?: { audioLanguages?: string; subtitles?: string; runTime?: string; resolution?: string } };
 }
@@ -67,3 +72,7 @@ export const radarrImportPreview = (folder: string) =>
 export async function radarrManualImport(files: { path: string; movieId: number; quality: unknown; languages?: unknown[]; releaseGroup?: string; downloadId?: string; indexerFlags?: number }[], importMode: "auto" | "move" | "copy") {
   return call<{ id: number }>("POST", "/command", { name: "ManualImport", files, importMode });
 }
+
+/** Radarr's own queue for one movie (to avoid a second download when Radarr is already getting it). */
+export const radarrQueueFor = async (movieId: number) =>
+  ((await call<{ records: { id: number; movieId?: number; title: string; status: string }[] }>("GET", `/queue?movieIds=${movieId}&pageSize=200`)).records ?? []).filter((r) => r.movieId === movieId);

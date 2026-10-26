@@ -7,6 +7,7 @@ import path from "node:path";
 import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
+import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -94,6 +95,8 @@ export interface EpisodeRow {
   status: EpisodeStatus;
   progress: number | null;
   file: FileInfo | null;
+  /** This S0 "episode" is really a movie, handled by Radarr (never grabbed as an episode). */
+  movie?: { movieId: number | null; title: string } | null;
 }
 
 export function episodeRows(seriesId: number): EpisodeRow[] {
@@ -103,6 +106,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
   const eps = cache.prepare("SELECT id, season, episode, absolute, title, air_utc, runtime, monitored, has_file, file_id FROM episodes WHERE series_id = ? ORDER BY season DESC, episode DESC").all(seriesId) as {
     id: number; season: number; episode: number; absolute: number | null; title: string | null; air_utc: number | null; runtime: number | null; monitored: number; has_file: number; file_id: number | null;
   }[];
+  const asMovie = radarrMovieSpecials(seriesId);
   const byFile = new Map<number, string[]>();
   for (const e of [...eps].reverse()) if (e.file_id) byFile.set(e.file_id, [...(byFile.get(e.file_id) ?? []), sxe(e.season, e.episode)]);
   return eps.map((e) => {
@@ -110,7 +114,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null };
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null };
   });
 }
 
@@ -261,6 +265,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const own = new Set(episodesFor(tvdbId).map((e) => e.id));
   const ids = episodeIds.filter((e) => own.has(e));
   if (!ids.length) throw Object.assign(new Error("Those aren't episodes of this show"), { statusCode: 400 });
+  refuseMovieSpecials(s.id, ids);
   logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode(s) now` });
   const now = Date.now();
   // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
@@ -293,6 +298,7 @@ export async function regrabEpisodes(tvdbId: number, episodeIds: number[], deps:
         const f = await deps.episodeFile(ep.episodeFileId);
         current = currentRelease(eid, f.sceneName ?? null);
       }
+      refuseMovieSpecials(s.id, [eid]);
       const res = await deps.search(tvdbId, [eid]);
       const norm = (x: string) => x.replace(/-xpost$/i, "").replace(/\.(mkv|mp4)$/i, "").toLowerCase();
       const ok = res.results.filter((r) => r.rank.accept && r.coversTarget && r.extra <= 0 && (!current || norm(r.title) !== norm(current)));

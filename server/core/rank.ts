@@ -52,6 +52,8 @@ export interface Known {
   /** The release name equals a file already in the library (its scene name). */
   inLibrary?: boolean;
   blocklisted?: string | null;
+  /** Recent download-link failures of the release's indexer (learned; see health.ts). */
+  indexerHealth?: { failures: number; ok: number; lastWhy: string };
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -247,6 +249,14 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   if (info.protocol === "torrent" && info.seeders === 0) {
     score -= 25;
     why.push("no seeders");
+  }
+  // An indexer whose download links keep failing goes behind equivalent releases elsewhere (still usable as a fallback).
+  const ih = known.indexerHealth;
+  if (ih && ih.failures > 0) {
+    const bad = ih.failures >= 2 && ih.failures > ih.ok;
+    score -= bad ? 40 : 10;
+    flags.push({ key: "indexerHealth", label: `${info.indexer ?? "Indexer"} failing lately (${ih.failures})`, tone: bad ? "bad" : "warn" });
+    why.push(`${info.indexer ?? "its indexer"}'s downloads failed ${ih.failures}× lately`);
   }
   if (known.inLibrary) flags.push({ key: "inLibrary", label: "Same as your library copy", tone: "info" });
   if (p.batch) flags.push({ key: "batch", label: "Batch", tone: "info" });

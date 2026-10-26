@@ -145,12 +145,12 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
 }
 
 /** Per-show "Watch as" control: profile + watch mode override (empty = follow the default). */
-export function WatchAs({ tvdbId, prefs, effective, onChanged }: { tvdbId: number; prefs: { profile_id: string | null; watch_mode: WatchMode | null }; effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode }; onChanged: () => void }) {
+export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvdbId: number; prefs: { profile_id: string | null; watch_mode: WatchMode | null }; effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode }; onChanged: () => void; endpoint?: string }) {
   const toast = useToast();
   const d = useLoad(() => api<{ profiles: LanguageProfile[]; defaultProfileId: string }>("/profiles"), []);
   const save = async (profileId: string | null, watchMode: WatchMode | null) => {
     try {
-      await api(`/series/${tvdbId}/prefs`, { method: "PUT", body: { profileId, watchMode } });
+      await api(endpoint ?? `/series/${tvdbId}/prefs`, { method: "PUT", body: { profileId, watchMode } });
       toast(t("common.saved"));
       onChanged();
     } catch (e) {

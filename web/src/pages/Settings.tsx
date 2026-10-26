@@ -179,6 +179,7 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
         </div>
       </div>
       <Backlog s={s} upd={upd} />
+      <MovieSearch s={s} upd={upd} />
       <div className="card pad stack">
         <h2>{t("dual.title")}</h2>
         <p className="muted small">{t("dual.help")}</p>
@@ -261,6 +262,42 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
         <label>
           {t("settings.safety.confidence")}
           <NumberInput value={m.minConfidence} min={50} max={100} onChange={(v) => setM((x) => ({ ...x, minConfidence: v }))} label={t("settings.safety.confidence")} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/** Automatic movie search (release watching + missing movies): off by default, confirmed, rate-limited. */
+function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
+  const sum = useLoad(() => api<{ wanted: number; released: number; states: Record<string, number> }>("/movies-search"), []);
+  const [confirm, setConfirm] = useState(false);
+  const m = s.movieSearch;
+  const setM = (fn: (x: S["movieSearch"]) => S["movieSearch"]) => upd((x) => ({ ...x, movieSearch: fn(x.movieSearch) }));
+  return (
+    <div className="card pad stack">
+      <h2>{t("msearch.title")}</h2>
+      <p className="muted small">{t("msearch.help")}</p>
+      <Toggle checked={m.enabled} onChange={(v) => (v ? setConfirm(true) : setM((x) => ({ ...x, enabled: false })))} label={t("msearch.enabled")} help={t("msearch.enabledHelp")} />
+      {confirm && (
+        <Confirm title={t("msearch.confirmTitle")} confirmLabel={t("backlog.confirmOk")} onClose={() => setConfirm(false)} onConfirm={() => (setM((x) => ({ ...x, enabled: true })), setConfirm(false))}>
+          <p>{sum.data ? t("msearch.confirmBody", { released: sum.data.released, wanted: sum.data.wanted, perHour: m.perHour }) : t("app.loading")}</p>
+          <p className="muted small">{t("backlog.confirmSave")}</p>
+        </Confirm>
+      )}
+      {sum.data && <p className="small">{t("msearch.summary", { wanted: sum.data.wanted, released: sum.data.released })}</p>}
+      <div className="form">
+        <label>
+          {t("msearch.delay")}
+          <NumberInput value={m.delayHours} min={0} max={168} onChange={(v) => setM((x) => ({ ...x, delayHours: v }))} label={t("msearch.delay")} />
+        </label>
+        <label>
+          {t("backlog.perHour")}
+          <NumberInput value={m.perHour} min={1} max={12} onChange={(v) => setM((x) => ({ ...x, perHour: v }))} label={t("backlog.perHour")} />
+        </label>
+        <label>
+          {t("backlog.retryDays")}
+          <NumberInput value={m.retryDays} min={1} max={60} onChange={(v) => setM((x) => ({ ...x, retryDays: v }))} label={t("backlog.retryDays")} />
         </label>
       </div>
     </div>

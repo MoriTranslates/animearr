@@ -25,6 +25,7 @@ import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState, setJob } from "./db.js";
 import { searchAgainSoon } from "./episodes.js";
+import { radarrMovieSpecials } from "./franchise.js";
 import { learnFromVerify, sourceKey } from "./library.js";
 import { listManaged } from "./managed.js";
 import { localPath } from "./paths.js";
@@ -181,6 +182,9 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
       } else if (!sameRelease && budget <= 0) {
         action = "capped";
         note = `the daily limit (${settings.repair.maxPerDay}) is reached`;
+      } else if (radarrMovieSpecials(series.id).has(h.episodeId)) {
+        action = "suspected";
+        note = "this special is a movie Radarr handles, so it isn't repaired as an episode";
       } else {
         // Record first: if anything below fails, this import is not tried again (no repeated blocklisting).
         record({ ok: false, action: "error", why: `${v.why}; repair started but didn't finish` });

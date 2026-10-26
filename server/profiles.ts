@@ -114,3 +114,28 @@ export function profileFor(tvdbId: number | null = null): EffectiveProfile {
   const prof = chosen ?? base;
   return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, originalLangs: originalLangs(tvdbId), source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
 }
+
+// ---------------------------------------------------------------- movies
+
+export function moviePrefs(movieId: number) {
+  return (db.prepare("SELECT profile_id, watch_mode FROM movie_prefs WHERE movie_id = ?").get(movieId) as { profile_id: string | null; watch_mode: WatchMode | null } | undefined) ?? { profile_id: null, watch_mode: null };
+}
+
+/** Per-movie override, like a show's. null = follow the default. */
+export function setMoviePrefs(movieId: number, profileId: string | null, watchMode: WatchMode | null) {
+  guard();
+  if (profileId && !getSettings().profiles.some((p) => p.id === profileId)) throw Object.assign(new Error("Unknown profile"), { statusCode: 400 });
+  if (watchMode && !WATCH_MODES.includes(watchMode)) throw Object.assign(new Error("Unknown watch mode"), { statusCode: 400 });
+  if (!profileId && !watchMode) db.prepare("DELETE FROM movie_prefs WHERE movie_id = ?").run(movieId);
+  else db.prepare("INSERT INTO movie_prefs (movie_id, profile_id, watch_mode, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(movie_id) DO UPDATE SET profile_id = excluded.profile_id, watch_mode = excluded.watch_mode, updated_at = excluded.updated_at").run(movieId, profileId, watchMode, Date.now());
+  return moviePrefs(movieId);
+}
+
+/** The profile that applies to a movie (anime movies are Japanese originals). */
+export function profileForMovie(movieId: number): EffectiveProfile {
+  const base = defaultProfile();
+  const prefs = moviePrefs(movieId);
+  const chosen = prefs.profile_id ? getSettings().profiles.find((p) => p.id === prefs.profile_id) : undefined;
+  const prof = chosen ?? base;
+  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, originalLangs: ["ja"], source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
-import { navigate } from "../App";
+import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { t } from "../i18n";
 import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
@@ -36,7 +36,10 @@ interface ShowData {
   aliases: { id: number; title: string; season: number | null; source: string }[];
   rules: { id: number; grp: string | null; mode: string; season: number | null; offset: number }[];
   facts: { id: number; season: number | null; kind: string; lang: string; note: string }[];
+  movies: FranchiseMovie[];
 }
+
+interface FranchiseMovie { movieId: number | null; tmdbId: number | null; title: string; year: number | null; cover: string | null; inRadarr: boolean; hasFile: boolean; s0Episode: number | null; source: "anime-lists" | "title" | "manual" }
 
 export function Show({ tvdbId }: { tvdbId: number }) {
   const d = useLoad(() => api<ShowData>(`/series/${tvdbId}`), [tvdbId]);
@@ -67,7 +70,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
     // Newest season first; specials last.
     return [...map].sort((a, b) => (a[0] === 0 ? 1 : b[0] === 0 ? -1 : b[0] - a[0]));
   }, [d.data]);
-  const selected = (d.data?.rows ?? []).filter((r) => sel.has(r.id));
+  const selected = (d.data?.rows ?? []).filter((r) => sel.has(r.id) && !r.movie);
   const bulk = useEpisodeActions({
     tvdbId,
     episodes: selected.map((r) => ({ id: r.id, label: sxe(r.season, r.episode), release: r.file?.sceneName ?? null, file: r.file?.name ?? null, fileEpisodes: r.file?.episodes })),
@@ -141,6 +144,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       )}
       {!h.allowed && <p className="banner warn">{t("series.outsideRoot")}</p>}
 
+      {/* ---------------- movies & specials (the franchise's movies live in Radarr) */}
+      <FranchiseMovies tvdbId={tvdbId} movies={s.movies} onChanged={() => void d.reload()} />
+
       {/* ---------------- episodes */}
       <div className="row between episodes-toolbar">
         <h2>{t("show.episodes")}</h2>
@@ -159,7 +165,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </div>
       </div>
       {seasons.map(([season, rows], i) => {
-        const missing = rows.filter((r) => r.status === "missing");
+        const missing = rows.filter((r) => r.status === "missing" && !r.movie);
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
         return (
           <details key={season} className="season card" open={i === 0}>
@@ -201,6 +207,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                       <span className="ep-text">
                         <span className="ep-title clamp2">
                           {r.title ?? t("ep.tba")} {r.id === nextId && <Chip tone="accent">{t("ep.next")}</Chip>}
+                          {r.movie && <Chip tone="info">🎬 {t("ep.movieChip")}</Chip>}
                         </span>
                         <span className="ep-meta muted small">
                           {airLabel(r.airUtc)}
@@ -403,5 +410,83 @@ function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number;
         </div>
       </div>
     </details>
+  );
+}
+
+/** The franchise's movies (Radarr keeps the files; AnimeArr shows them with their show). Links can be corrected. */
+function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies: FranchiseMovie[]; onChanged: () => void }) {
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const all = useLoad(() => (adding ? api<{ id: number; title: string; year: number | null }[]>("/movies") : Promise.resolve([])), [adding]);
+  const link = async (movieId: number, on: boolean) => {
+    try {
+      await api("/franchise/link", { method: "PUT", body: { tvdbId, movieId, on } });
+      toast(t("common.saved"));
+      setAdding(false);
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  return (
+    <div className="stack">
+      <div className="row between">
+        <h2>{t("franchise.title")}</h2>
+        <button className="small ghost" onClick={() => setAdding(!adding)}>
+          {adding ? t("common.cancel") : `+ ${t("franchise.link")}`}
+        </button>
+      </div>
+      {adding && (
+        <select
+          defaultValue=""
+          aria-label={t("franchise.link")}
+          onChange={(e) => e.target.value && void link(Number(e.target.value), true)}
+        >
+          <option value="">{t("franchise.pick")}</option>
+          {(all.data ?? [])
+            .filter((m) => !movies.some((x) => x.movieId === m.id))
+            .map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+                {m.year ? ` (${m.year})` : ""}
+              </option>
+            ))}
+        </select>
+      )}
+      {!movies.length && !adding && <p className="muted small">{t("franchise.none")}</p>}
+      {!!movies.length && (
+        <div className="poster-grid small-posters">
+          {movies.map((m) => (
+            <article key={`${m.movieId ?? "t"}${m.tmdbId}`} className="poster-card">
+              {m.movieId ? (
+                <Link to={`/movie/${m.movieId}`} className="poster-link card-link">
+                  <Cover src={m.cover} alt={m.title} size="md" />
+                  <span className="poster-title clamp2">
+                    {m.title}
+                    {m.year ? ` (${m.year})` : ""}
+                  </span>
+                </Link>
+              ) : (
+                <div className="poster-link">
+                  <Cover src={null} alt={m.title} size="md" />
+                  <span className="poster-title clamp2">{m.title}</span>
+                </div>
+              )}
+              <div className="poster-body">
+                <div className="chips">
+                  {!m.inRadarr ? <Chip tone="warn">{t("franchise.notInRadarr")}</Chip> : m.hasFile ? <Chip tone="good">✓ {t("ep.status.have")}</Chip> : <Chip tone="bad">! {t("ep.status.missing")}</Chip>}
+                  {m.s0Episode !== null && <Chip>{t("franchise.s0", { n: m.s0Episode })}</Chip>}
+                </div>
+                {m.movieId && (
+                  <button className="small ghost" onClick={() => window.confirm(t("franchise.unlinkConfirm", { title: m.title })) && void link(m.movieId!, false)} title={t("franchise.unlinkHelp")} aria-label={`${m.title}: ${t("franchise.unlink")}`}>
+                    {t("franchise.unlink")}
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

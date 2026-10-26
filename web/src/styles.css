@@ -350,3 +350,48 @@ dl.facts .wide { grid-column: 1 / -1; }
 .mode-option.on { border-color: var(--accent-2); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .mode-option span { display: flex; flex-direction: column; gap: 2px; }
 .watch-as select { width: auto; max-width: 100%; }
+
+/* ---------------------------------------------------------------- calendar: toolbar, week, month */
+.cal-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.cal-nav { gap: var(--space-2); align-items: center; }
+.cal-title { font-size: var(--text-md); }
+.agenda-entry.movie { border-style: dashed; }
+.agenda-entry.dense { grid-template-columns: auto 1fr; padding: var(--space-2); gap: var(--space-2); }
+.agenda-entry.dense .agenda-status { grid-column: 1 / -1; }
+.agenda-entry.dense .cover.sm { width: 32px; height: 45px; }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-2); align-items: start; }
+.week-day { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.week-day ul { display: flex; flex-direction: column; gap: var(--space-2); }
+.week-day.today .agenda-date { color: var(--accent-2); }
+.week-num { font-variant-numeric: tabular-nums; }
+.month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.month-head { text-align: center; color: var(--muted); font-size: var(--text-sm); padding: var(--space-1) 0; }
+.month-day { min-height: 96px; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: var(--space-1); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm, 6px); text-align: left; justify-content: flex-start; color: inherit; font-weight: normal; }
+.month-day.other { opacity: 0.5; }
+.month-day.today { border-color: var(--accent-2); }
+.month-day.picked { outline: 2px solid var(--accent-2); }
+.month-num { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.month-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.month-item { font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid var(--line); padding-left: 4px; }
+.month-item.have { border-left-color: var(--good); }
+.month-item.missing { border-left-color: var(--bad); }
+.month-item.downloading { border-left-color: var(--accent-2); }
+.month-dots { display: none; }
+@media (max-width: 760px) {
+  /* Week: a swipeable day strip (the strip scrolls sideways, never the page). */
+  .week { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 82%; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; padding-bottom: var(--space-2); }
+  .week-day { scroll-snap-align: start; }
+  /* Month: compact grid with counts; tap a day to list it below. */
+  .month-day { min-height: 48px; align-items: center; padding: var(--space-1) 0; }
+  .month-items { display: none; }
+  .month-dots { display: inline-flex; min-width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 0.75rem; }
+}
+
+[hidden] { display: none !important; }
+/* Segmented control (view switchers): the selected one is bold and checked, not just coloured. */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--panel-2); font-weight: 700; color: var(--text, inherit); }
+.seg button.on::before { content: "✓ "; }
+.small-posters { padding-bottom: 0; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }

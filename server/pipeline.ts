@@ -30,6 +30,8 @@ import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { ffprobe, judge, type ProbeResult } from "./verify.js";
 import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
 import { importMovie, movieNextForRow } from "./movies.js";
+import { isTitleEncodingError, recordIndexerFailure } from "./health.js";
+import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 
 export interface PipelineDeps {
   clients: DownloadClients;
@@ -138,6 +140,22 @@ function scheduleAfter(episodeIds: number[], outcome: "done" | "retry", why: str
     db.prepare("UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'").run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
 }
 
+/**
+ * Fetches the NZB/torrent; a failing download link counts against the indexer's health (learned ranking penalty),
+ * except Prowlarr's HTTP 500 on non-ASCII titles, which isn't the indexer's fault. Either way the caller just moves
+ * on to the next candidate (no blocklist: the release itself may be fine).
+ */
+export async function fetchOrNote(deps: PipelineDeps, c: Candidate) {
+  try {
+    return await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (isTitleEncodingError(msg, c.title)) throw new Error(`Prowlarr couldn't serve this release (HTTP 500 on its non-ASCII name); trying the next one`);
+    recordIndexerFailure(c.indexerId, msg);
+    throw e;
+  }
+}
+
 /** Starts a grab (or records what it would do in dry-run). */
 export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps): Promise<{ id: number; dryRun: boolean; message: string; failed?: boolean }> {
   if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
@@ -151,8 +169,12 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const dryRun = req.origin === "manual" ? getSettings().managed.dryRun : isDryRun(managedDryRun(req.tvdbId));
   // Import only what was asked for, plus episodes of the release that have no file yet: a pack must never replace
   // files the library already has (the user's rule: never delete library files).
+  // S0 "episodes" that are really movies belong to Radarr: never grab them as episodes (double download).
+  refuseMovieSpecials(series.id, req.episodeIds);
+  const asMovie = radarrMovieSpecials(series.id);
   const all = episodesFor(req.tvdbId);
-  const importIds = c.episodeIds.filter((id) => req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile));
+  // A pack that also contains a movie special: the special is left to Radarr (not imported as an episode).
+  const importIds = c.episodeIds.filter((id) => !asMovie.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
   if (!importIds.length) throw Object.assign(new Error("This release doesn't cover the episodes asked for"), { statusCode: 400 });
   // Never two downloads for the same episode at once (manual + scheduled, or a double click).
   if (!dryRun) {
@@ -173,7 +195,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     return { id, dryRun: true, message: msg };
   }
   try {
-    const file = await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+    const file = await fetchOrNote(deps, c);
     let job: ClientJob;
     if (c.protocol === "usenet") {
       if (!file.data) throw new Error("No NZB data");

@@ -6,7 +6,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 ## Must-have before tagging 1.0
 
 - [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
-- [ ] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies
+- [x] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies, series ↔ movie links (S0 double-download guard)
 
 ## 0.x steps to 1.0
 
@@ -61,6 +61,9 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [ ] Full migration from Sonarr/Radarr (AnimeArr owns the library; 0.1 only imports/syncs for companion mode)
 
 ## After 1.0 (extras)
+
+- [ ] Plex collections created automatically (show + its movies)
+- [ ] The full franchise graph (AniDB relations: sequels, prequels, side stories, OVAs across shows)
 
 ### Subtitles (needs AnimeArr to own the files; MoriSubs keeps working standalone until then)
 - [ ] "Machine Sub → [language]" button — §8.3

@@ -276,6 +276,17 @@ const USER_MIGRATIONS: string[] = [
      why TEXT NOT NULL DEFAULT '', grab_id INTEGER, release TEXT, file_id INTEGER, updated_at INTEGER NOT NULL);
    CREATE TABLE upgrade_searches (at INTEGER NOT NULL);
    ALTER TABLE grabs ADD COLUMN purpose TEXT;`,
+  // 8: movies: automatic search on release / missing-movie search, per-movie watch mode, dual upgrades
+  `CREATE TABLE movie_search (movie_id INTEGER PRIMARY KEY, state TEXT NOT NULL, next_at INTEGER NOT NULL, last_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
+     last_why TEXT NOT NULL DEFAULT '', grab_id INTEGER, release_at INTEGER);
+   CREATE INDEX movie_search_due ON movie_search (state, next_at);
+   CREATE TABLE movie_searches (at INTEGER NOT NULL);
+   CREATE TABLE movie_prefs (movie_id INTEGER PRIMARY KEY, profile_id TEXT, watch_mode TEXT, updated_at INTEGER NOT NULL);
+   CREATE TABLE movie_upgrade (movie_id INTEGER PRIMARY KEY, state TEXT NOT NULL, last_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, why TEXT NOT NULL DEFAULT '',
+     release TEXT, file_path TEXT, updated_at INTEGER NOT NULL);
+   CREATE TABLE indexer_failures (indexer_id INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');
+   CREATE INDEX indexer_failures_at ON indexer_failures (indexer_id, at);
+   CREATE TABLE franchise_links (tvdb_id INTEGER NOT NULL, movie_id INTEGER NOT NULL, action TEXT NOT NULL CHECK (action IN ('link', 'unlink')), at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, movie_id));`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
@@ -299,7 +310,8 @@ const CACHE_SCHEMA = `
   CREATE INDEX files_series ON files (series_id);
   CREATE TABLE movies (id INTEGER PRIMARY KEY, tmdb_id INTEGER, imdb_id TEXT, title TEXT NOT NULL, original_title TEXT, year INTEGER, path TEXT,
     root_folder TEXT, monitored INTEGER NOT NULL, has_file INTEGER NOT NULL, runtime INTEGER, quality_profile_id INTEGER, tags TEXT NOT NULL DEFAULT '[]',
-    alt_titles TEXT NOT NULL DEFAULT '[]', file TEXT, is_anime INTEGER NOT NULL DEFAULT 0, poster TEXT, synced_at INTEGER NOT NULL);
+    alt_titles TEXT NOT NULL DEFAULT '[]', file TEXT, is_anime INTEGER NOT NULL DEFAULT 0, poster TEXT, synced_at INTEGER NOT NULL,
+    status TEXT, is_available INTEGER NOT NULL DEFAULT 0, in_cinemas INTEGER, digital_release INTEGER, physical_release INTEGER);
   -- AniList art per AniDB entry (via the Fribb mapping), for poster-forward lists.
   CREATE TABLE covers (anidb_id INTEGER PRIMARY KEY, anilist_id INTEGER, cover TEXT, banner TEXT, color TEXT, fetched_at INTEGER NOT NULL);
 `;
@@ -340,6 +352,12 @@ function migrateCache() {
 
 migrateUser();
 migrateCache();
+// Additive cache columns (no version bump, so the cache — covers included — isn't wiped).
+{
+  const cols = new Set((cache.prepare("PRAGMA table_info(movies)").all() as { name: string }[]).map((c) => c.name));
+  for (const [c, type] of [["status", "TEXT"], ["is_available", "INTEGER NOT NULL DEFAULT 0"], ["in_cinemas", "INTEGER"], ["digital_release", "INTEGER"], ["physical_release", "INTEGER"]] as const)
+    if (!cols.has(c)) cache.exec(`ALTER TABLE movies ADD COLUMN ${c} ${type}`);
+}
 
 /** Runs fn in one write transaction on the given database. */
 export function tx<T>(d: { exec(sql: string): void }, fn: () => T): T {

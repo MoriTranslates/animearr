@@ -7,7 +7,7 @@ import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
 export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[] }
-export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null }
+export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
@@ -234,6 +234,12 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 {d.airUtc && d.airUtc > Date.now() ? t("ep.airs") : t("ep.aired")} {d.airUtc ? dateTime(d.airUtc) : "—"}
               </span>
             </div>
+            {d.movie && (
+              <p className="banner info">
+                🎬 {t("ep.isMovie", { title: d.movie.title })} {d.movie.movieId ? <Link to={`/movie/${d.movie.movieId}`}>{t("ep.openMovie")} →</Link> : t("ep.addInRadarr")}
+              </p>
+            )}
+            {!d.movie && (
             <div className="row sheet-actions">
               <button className="primary" onClick={actions.search}>
                 ⌕ {t("ep.search")}
@@ -245,6 +251,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 </button>
               )}
             </div>
+            )}
             {d.file ? (
               <dl className="facts">
                 <div className="wide">

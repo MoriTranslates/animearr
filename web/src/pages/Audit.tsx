@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, fmtSize, sxe } from "../api";
-import { navigate, query } from "../App";
+import { Link, navigate, query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
@@ -169,7 +169,7 @@ function Language() {
   );
 }
 
-interface SpecialSeries { tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; cls: "movie" | "real" | "junk" | "unknown"; why: string; radarr: { inRadarr: boolean; title?: string } | null }[] }
+interface SpecialSeries { tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; cls: "movie" | "real" | "junk" | "unknown"; why: string; radarr: { inRadarr: boolean; title?: string; movieId?: number } | null }[] }
 
 function Specials() {
   const [junk, setJunk] = useState(false);
@@ -205,6 +205,7 @@ function Specials() {
                       <span className="clamp2">{i.title ?? "—"}</span>
                       {i.hasFile && <Chip tone="good">✓</Chip>}
                       {i.radarr && <Chip tone={i.radarr.inRadarr ? "good" : "warn"}>{i.radarr.inRadarr ? t("audit.specials.inRadarr", { title: i.radarr.title }) : t("audit.specials.notInRadarr")}</Chip>}
+                      {i.radarr?.movieId && <Link to={`/movie/${i.radarr.movieId}`}>🎬 {t("ep.openMovie")}</Link>}
                       <Why lines={[i.why]} />
                     </li>
                   ))}
@@ -329,14 +330,29 @@ const UPGRADE_TONE: Record<string, "good" | "accent" | "info" | "warn"> = { wait
 
 /** Sub-only placeholders in dual-mode shows, waiting for a dual-audio release. */
 function Upgrades() {
-  const d = useLoad(() => api<{ mode: string; items: Upgrade[] }>("/upgrades"), []);
+  const d = useLoad(() => api<{ mode: string; items: Upgrade[]; movies: { movieId: number; title: string; audio: string[]; dub: string[]; state: string; lastAt: number | null; why: string; release: string | null }[] }>("/upgrades"), []);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
     <div className="stack">
       <p className="muted">{t("dual.intro", { mode: t(d.data.mode === "auto" ? "dual.auto" : (`repair.mode.${d.data.mode}` as I18nKey)) })}</p>
       {d.data.mode === "off" && <p className="warn-text">{t("dual.offNote")}</p>}
-      {!d.data.items.length && <Empty>{t("dual.empty")}</Empty>}
+      {!d.data.items.length && !d.data.movies.length && <Empty>{t("dual.empty")}</Empty>}
+      <div className="list" hidden={!d.data.movies.length}>
+        {d.data.movies.map((u) => (
+          <article key={`m${u.movieId}`} className="card pad stack">
+            <Link to={`/movie/${u.movieId}`} className="card-link">
+              <strong className="clamp2">🎬 {u.title}</strong>
+            </Link>
+            <div className="row">
+              <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
+              <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
+            </div>
+            {u.release && <p className="mono small">{u.release}</p>}
+            <p className="small">{u.why}</p>
+          </article>
+        ))}
+      </div>
       <div className="list">
         {d.data.items.map((u) => (
           <article key={u.episodeId} className="card pad stack">
