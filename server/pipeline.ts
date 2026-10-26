@@ -11,7 +11,8 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
-import { executeImport, planImport } from "./importer.js";
+import { executeImport, listVideos, planImport } from "./importer.js";
+import { isNativeSeriesId } from "./native.js";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
@@ -449,7 +450,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     }
   } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Safety, or unpack it by hand`);
   // Folder only: given a seriesId, Sonarr's preview ignores the folder and lists the series' library files instead.
-  const items = (await deps.sonarr.preview(folder)).filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 30e6);
+  // A native show (added in AnimeArr) has no Sonarr: the folder is listed here.
+  const native = isNativeSeriesId(series.id);
+  let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];
+  if (native) {
+    const localFolder = deps.localPath(folder);
+    if (!localFolder) return attention(`can't reach ${folder} from AnimeArr (check Settings → Paths)`);
+    listed = listVideos(localFolder).map((f) => ({ path: `${folder}/${path.relative(localFolder, f.path).split(path.sep).join("/")}`, size: f.size }));
+  } else listed = await deps.sonarr.preview(folder);
+  const items = listed.filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 30e6) as Awaited<ReturnType<PipelineDeps["sonarr"]["preview"]>>;
   // A single-file torrent's folder is the shared category folder: only that one file belongs to this grab.
   // Unpacked: only the unpacked files (they are moved; the torrent's own files must keep seeding).
   const inThis = items.filter((x) => (unpackRel ? x.path.startsWith(unpackRel) : single ? x.path === sonarrPath : x.path.startsWith(`${folder}/`) && !x.path.startsWith(`${folder}/${UNPACK_DIR}/`)));
@@ -518,7 +527,10 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   const startedImport = Date.now();
   // AnimeArr's own importer (once switched on): only when every file was checked here before import.
   const imp = getSettings().importer;
-  if (imp.engine === "animearr" && imp.allowReal && (imp.realBudget ?? 0) !== 0 && plan.every((p) => preVerified.has(p.item.path))) {
+  const budgetOk = (imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= plan.length; // never half a batch
+  if (native && (!imp.allowReal || !budgetOk)) return attention("this show was added in AnimeArr, so AnimeArr imports it itself, and its real imports are paused for a review (Settings → Media management → Importer)");
+  if (native && !plan.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
+  if ((native || imp.engine === "animearr") && imp.allowReal && budgetOk && plan.every((p) => preVerified.has(p.item.path))) {
     for (const p of plan) {
       try {
         const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client });

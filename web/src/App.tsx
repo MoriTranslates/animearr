@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, store, type Status } from "./api";
 import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
+import { Add } from "./pages/Add";
 import { Audit } from "./pages/Audit";
 import { Calendar } from "./pages/Calendar";
 import { FillIn } from "./pages/FillIn";
@@ -20,6 +21,7 @@ const NAV: { path: string; label: I18nKey; icon: string; phone: boolean }[] = [
   { path: "/", label: "nav.home", icon: "⌂", phone: true },
   { path: "/calendar", label: "nav.calendar", icon: "▤", phone: true },
   { path: "/managed", label: "nav.managed", icon: "★", phone: true },
+  { path: "/add", label: "nav.add", icon: "+", phone: true },
   { path: "/shows", label: "nav.shows", icon: "▦", phone: false },
   { path: "/movies", label: "nav.movies", icon: "▶", phone: false },
   { path: "/audit", label: "nav.audit", icon: "✓", phone: true },
@@ -143,6 +145,7 @@ export function App() {
           {path === "/" && <Home status={status} onChanged={refreshStatus} />}
           {section === "/managed" && <Managed status={status} />}
           {section === "/shows" && <Shows status={status} />}
+          {section === "/add" && <Add />}
           {section === "/show" && <Show tvdbId={Number(path.split("/")[2])} />}
           {section === "/movies" && <Movies />}
           {section === "/movie" && <MoviePage id={Number(path.split("/")[2])} />}

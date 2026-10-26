@@ -26,6 +26,7 @@ import { cache, CONFIG_DIR, db } from "./db.js";
 import { catalogLookup } from "./catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderSeasonFolder, type NamingOptions } from "./naming.js";
+import { isNativeSeriesId, rematerializeSeries } from "./native.js";
 import { localPath, mappedPath } from "./paths.js";
 import { identifyContext, seriesByTvdb } from "./search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
@@ -175,6 +176,11 @@ function forbiddenSource(real: string) {
       return under(real, r);
     }
   });
+}
+
+/** Video files in a download folder, with sizes (for native shows, which have no Sonarr to list them). */
+export function listVideos(dir: string) {
+  return videosIn(dir, 0).map((f) => ({ path: f, size: fs.statSync(f).size }));
 }
 
 /** Video files in a folder: no symlinks, no samples, at most 4 levels and 2000 entries (never the whole disk). */
@@ -480,8 +486,9 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
     }
   }
   if (real && out.some((x) => x.done)) {
-    await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
-    void scanFolder(series.path).catch(() => undefined);
+    if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
+    await scanFolder(series.path).catch(() => undefined);
+    if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
   }
   return out;
 }
@@ -547,7 +554,7 @@ export type RenameRoute = "sonarr" | "animearr";
  */
 export function renameRoute(tvdbId: number, deps = { sonarrOn: sonarr.sonarrConfigured }): RenameRoute {
   const s = seriesRow(tvdbId);
-  return s && deps.sonarrOn() ? "sonarr" : "animearr";
+  return s && !isNativeSeriesId(s.id) && deps.sonarrOn() ? "sonarr" : "animearr";
 }
 
 /** The rename preview by route: Sonarr's own preview, or AnimeArr's plan. */
@@ -627,8 +634,9 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
     }
   }
   if (out.some((x) => x.done)) {
-    await sonarr.rescanSeries(s.id).catch(() => undefined);
-    void scanFolder(s.path).catch(() => undefined);
+    if (!isNativeSeriesId(s.id)) await sonarr.rescanSeries(s.id).catch(() => undefined);
+    await scanFolder(s.path).catch(() => undefined);
+    if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
   }
   return out;
 }
@@ -650,6 +658,7 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
       /* keep going */
     }
   }
-  await sonarr.rescanSeries(s.id).catch(() => undefined);
-  void scanFolder(s.path).catch(() => undefined);
+  if (!isNativeSeriesId(s.id)) await sonarr.rescanSeries(s.id).catch(() => undefined);
+  await scanFolder(s.path).catch(() => undefined);
+  if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
 }

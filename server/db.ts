@@ -311,6 +311,9 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE catalog_missing (anilist_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);`,
   // 12: per-show size preset override
   `ALTER TABLE series_prefs ADD COLUMN size_preset TEXT;`,
+  // 13: native shows (added in AnimeArr, no Sonarr)
+  `CREATE TABLE native_series (id INTEGER PRIMARY KEY AUTOINCREMENT, tvdb_id INTEGER NOT NULL UNIQUE, anilist_id INTEGER NOT NULL, synthetic INTEGER NOT NULL, title TEXT NOT NULL, year INTEGER,
+     path TEXT NOT NULL, root_folder TEXT NOT NULL, added_at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

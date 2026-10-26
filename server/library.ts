@@ -17,6 +17,7 @@ import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { animeListEntries, invalidateIndex } from "./metadata.js";
+import { isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries } from "./native.js";
 import { getSettings } from "./settings.js";
 
 let running: Promise<SyncResult> | null = null;
@@ -63,6 +64,7 @@ async function doSync(full: boolean): Promise<SyncResult> {
       }
     }
     if (!dbState.corrupt) backfillLearning();
+    materializeAll(); // native shows (added in AnimeArr) next to Sonarr's
     invalidateIndex();
     invalidateFranchise();
     const detail = `${res.series} anime series (${res.refreshed} refreshed), ${res.movies} anime movies, ${res.unmatched} need an AniDB match`;
@@ -82,7 +84,7 @@ async function syncSonarr(full: boolean, res: SyncResult) {
   if (s.sonarr.animeTag) animeTagId = (await getTags()).find((t) => t.label.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
   const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && x.tags.includes(animeTagId)));
   res.series = anime.length;
-  const prev = new Map((cache.prepare("SELECT id, sig, synced_at FROM series").all() as { id: number; sig: string | null; synced_at: number }[]).map((r) => [r.id, r]));
+  const prev = new Map((cache.prepare(`SELECT id, sig, synced_at FROM series WHERE id < ${NATIVE_BASE}`).all() as { id: number; sig: string | null; synced_at: number }[]).map((r) => [r.id, r]));
   const byTvdb = new Map<number, { aid: number; season: number | "a" | null; offset: number }[]>();
   for (const e of animeListEntries().values()) if (e.tvdbId !== null) byTvdb.set(e.tvdbId, [...(byTvdb.get(e.tvdbId) ?? []), { aid: e.aid, season: e.defaultSeason, offset: e.offset }]);
 
@@ -139,6 +141,7 @@ async function syncSonarr(full: boolean, res: SyncResult) {
 
 /** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
+  if (isNativeSeriesId(seriesId)) return rematerializeSeries(seriesId);
   const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
   tx(cache, () => {
     cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);

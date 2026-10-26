@@ -31,7 +31,7 @@ import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
-import { scopeFor, scopePreview, setScope, validateScope } from "./scope.js";
+import { scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
 
@@ -43,6 +43,7 @@ async function catalogTick(force = false) {
   try {
     await refreshCatalog({ force });
     await tmdbEpisodes();
+    materializeAll(); // native shows pick up new episodes/titles
   } catch (e) {
     setJob("catalog", "error", (e as Error).message);
   } finally {
@@ -52,6 +53,7 @@ async function catalogTick(force = false) {
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, executeImport, planImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
+import { addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeShow, searchAdd } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -283,7 +285,7 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
   if (!s) throw fail("Not in the synced library", 404);
   const eps = episodesFor(tvdbId).sort((a, b) => a.season - b.season || a.episode - b.episode);
   // Opening a series page re-checks its folder in the background (at most every 10 minutes).
-  if (getSettings().library.scan && Date.now() - lastFolderScan(s.path) > 10 * 60_000) void scanFolder(s.path).catch(() => undefined);
+  if (getSettings().library.scan && Date.now() - lastFolderScan(s.path) > 10 * 60_000) void scanFolder(s.path).then(() => isNativeSeriesId(s.id) && rematerializeSeries(s.id)).catch(() => undefined);
   const idx = aliasIndex();
   return {
     ...s,
@@ -550,6 +552,46 @@ app.post("/api/catalog/refresh", async () => {
   return { started: true };
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/catalog", async (req) => entriesForSeries(id(req.params.tvdbId)));
+// ---------------------------------------------------------------- native Add (no Sonarr/Radarr)
+
+app.get<{ Querystring: { q?: string } }>("/api/add/search", async (req) => searchAdd(String(req.query.q ?? "").slice(0, 200)));
+app.post<{ Body: { anilistId: number; rootFolder: string; profileId?: string | null; sizePreset?: string | null; scope?: Scope | null; then?: "search" | "queue" | "none"; live?: boolean } }>("/api/add", async (req) => {
+  writable();
+  const b = req.body ?? ({} as never);
+  if (!id(b.anilistId)) throw fail("anilistId is required", 400);
+  if (b.profileId && !getSettings().profiles.some((p) => p.id === b.profileId)) throw fail("Unknown profile", 400);
+  if (b.sizePreset && !["lean", "balanced", "best"].includes(b.sizePreset)) throw fail("Unknown size preset", 400);
+  if (b.then && !["search", "queue", "none"].includes(b.then)) throw fail("Unknown next step", 400);
+  const scope = b.scope ? validateScope(b.scope) : null;
+  const added = await addShow({ anilistId: Number(b.anilistId), rootFolder: String(b.rootFolder ?? "") });
+  if (b.profileId || b.sizePreset) setSeriesPrefs(added.tvdbId, b.profileId || null, null, (b.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]);
+  if (scope) setScope([added.tvdbId], scope);
+  const managed = setManaged([added.tvdbId], true, { live: b.live !== false && !getSettings().managed.dryRun });
+  let then: unknown = null;
+  if (b.then === "queue") then = addToQueue([added.tvdbId]);
+  else if (b.then === "search") {
+    const ids = [...scopedEpisodeIds(added.tvdbId, (cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(added.tvdbId) as { id: number }).id)];
+    const now = Date.now();
+    const missing = ids.filter((e) => {
+      const r = cache.prepare("SELECT has_file, air_utc FROM episodes WHERE id = ?").get(e) as { has_file: number; air_utc: number | null } | undefined;
+      return r?.has_file === 0 && r.air_utc !== null && r.air_utc <= now; // aired, no file
+    });
+    // ⚡ handles at most 26 episodes at once; a longer backlog goes to the fill-in queue instead.
+    if (missing.length > 26) then = { searching: 0, queued: addToQueue([added.tvdbId]).added, missing: missing.length };
+    else {
+      then = { searching: missing.length };
+      if (missing.length)
+        void autoSearchEpisodes(added.tvdbId, missing).catch((e) => logDecision("fail", { tvdbId: added.tvdbId, title: added.title, why: `Search after adding ${added.title} failed: ${(e as Error).message}` }));
+    }
+  }
+  return { ...added, managed, then };
+});
+
+app.delete<{ Params: { tvdbId: string } }>("/api/add/:tvdbId", async (req) => {
+  writable();
+  return removeShow(id(req.params.tvdbId));
+});
+
 // ---------------------------------------------------------------- AnimeArr's own importer + renamer (plans first)
 
 app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null } }>("/api/import/plan", async (req) => {
@@ -602,7 +644,9 @@ app.post("/api/media/import-defaults", async () => {
 app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/scan", async (req) => {
   const s = seriesByTvdb(id(req.params.tvdbId));
   if (!s) throw fail("Unknown series", 404);
-  return scanFolder(s.path);
+  const r = await scanFolder(s.path);
+  if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
+  return r;
 });
 app.post<{ Params: { id: string } }>("/api/movies/:id/scan", async (req) => {
   const m = cache.prepare("SELECT path FROM movies WHERE id = ?").get(id(req.params.id)) as { path: string } | undefined;
@@ -834,6 +878,7 @@ async function startup() {
   if (getSettings().sonarr.url && (!last || Date.now() - last > getSettings().sync.intervalHours * 3_600_000)) await syncLibrary().then(() => refreshCovers()).catch(() => undefined);
 }
 recoverGrabs();
+materializeAll(); // native shows into the (rebuildable) cache
 setTimeout(() => void startup(), 3_000);
 every(60 * 60_000, async () => {
   const s = getSettings();
@@ -849,7 +894,7 @@ every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
-every(30 * 60_000, () => fileScanTick(), "file scan");
+every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "file scan");
 every(30 * 60_000, () => fillInTick(), "fill-in");
 every(6 * 3_600_000, () => catalogTick(), "catalog");
 setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);

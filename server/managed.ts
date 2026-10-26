@@ -8,6 +8,7 @@
  *   P(profile language) ≥ 50%.
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
+import { NATIVE_BASE } from "./native.js";
 import { logDecision } from "./activity.js";
 import { prowlarrConfigured, prowlarrSearch } from "./arr/prowlarr.js";
 import { setSeriesMonitored } from "./arr/sonarr.js";
@@ -130,6 +131,7 @@ export function setShowDryRun(tvdbId: number, dryRun: boolean) {
 export async function unmonitorInSonarr(tvdbId: number, monitored: boolean) {
   const m = listManaged().find((x) => x.tvdbId === tvdbId);
   if (!m) throw Object.assign(new Error("That show isn't managed"), { statusCode: 404 });
+  if (m.seriesId >= NATIVE_BASE) throw Object.assign(new Error("This show was added in AnimeArr; Sonarr doesn't have it"), { statusCode: 409 });
   const s = cache.prepare("SELECT path FROM series WHERE tvdb_id = ?").get(tvdbId) as { path: string } | undefined;
   if (!underAllowedRoot(s?.path)) throw Object.assign(new Error("Outside the allowed root folders"), { statusCode: 403 });
   await setSeriesMonitored(m.seriesId, monitored);

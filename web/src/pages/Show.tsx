@@ -8,6 +8,7 @@ import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
 import { ManualImport, RenamePreview } from "../media";
+import { RemoveNative } from "./Add";
 import { query } from "../App";
 
 interface Header {
@@ -25,7 +26,8 @@ interface Header {
   nextEpisode: { id: number; season: number; episode: number; title: string | null; airUtc: number | null } | null;
   counts: { have: number; aired: number; missing: number; downloading: number; total: number };
   language: { lang: string; withLang: number; have: number };
-  links: { anilist: string | null; anidb: string | null; tvdb: string };
+  links: { anilist: string | null; anidb: string | null; tvdb: string | null };
+  native?: boolean;
   profile: { id: string; name: string; watchMode: WatchMode; profileMode: WatchMode; source: string; original: string[] };
   managed: { dryRun: boolean } | null;
   allowed: boolean;
@@ -123,6 +125,11 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             </p>
           )}
           <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
+          {h.native && (
+            <p className="small muted row">
+              {t("add.nativeNote")} <RemoveNative tvdbId={tvdbId} title={h.title} />
+            </p>
+          )}
           <div className="row small">
             {h.links.anilist && (
               <a href={h.links.anilist} target="_blank" rel="noreferrer">
@@ -134,9 +141,11 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 AniDB ↗
               </a>
             )}
-            <a href={h.links.tvdb} target="_blank" rel="noreferrer">
+            {h.links.tvdb && (
+              <a href={h.links.tvdb} target="_blank" rel="noreferrer">
               TVDB ↗
             </a>
+            )}
           </div>
         </div>
       </header>

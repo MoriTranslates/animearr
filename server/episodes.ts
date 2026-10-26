@@ -3,6 +3,7 @@
  * delete file, re-grab, the series header and the agenda calendar.
  * Destructive actions are user-confirmed in the UI, guarded by the allowed root folders, and logged.
  */
+import { NATIVE_BASE } from "./native.js";
 import path from "node:path";
 import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
@@ -196,7 +197,8 @@ export function seriesHeader(tvdbId: number) {
     counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing").length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
     language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, have: have.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
     profile: { id: prof.id, name: prof.name, watchMode: prof.watchMode, profileMode: prof.profileMode ?? prof.watchMode, source: prof.source, original: prof.originalLangs },
-    links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
+    links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : s.tvdb_id >= NATIVE_BASE ? `https://anilist.co/anime/${s.tvdb_id - NATIVE_BASE}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: s.tvdb_id >= NATIVE_BASE ? null : `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
+    native: s.id >= NATIVE_BASE,
     managed: listManaged().find((m) => m.tvdbId === tvdbId) ?? null,
     allowed: underAllowedRoot(s.path),
     monitoredInSonarr: !!s.monitored,
@@ -259,6 +261,7 @@ function guard(tvdbId: number) {
 /** Deletes the files of the given episodes through Sonarr. Returns whether a managed, live show should search again. */
 export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], deps: EpisodeDeps = realEpisodeDeps) {
   const s = guard(tvdbId);
+  if (s.id >= NATIVE_BASE) throw Object.assign(new Error("Deleting files of a show added in AnimeArr comes with AnimeArr's own clean-up (next steps); nothing was deleted"), { statusCode: 409 });
   const all = episodesFor(tvdbId);
   const own = new Set(all.map((e) => e.id));
   const deleted: { episodeId: number; file: string; episodes: string[] }[] = [];

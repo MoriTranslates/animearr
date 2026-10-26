@@ -177,6 +177,8 @@ button.chip { cursor: pointer; font-size: var(--text-sm); }
 .cover.lg { width: 100%; aspect-ratio: 2 / 3; }
 .hero-row .cover.lg { width: 140px; }
 .hero-row { display: flex; gap: var(--space-4); align-items: flex-start; }
+.add-search { font-size: 1.1rem; padding: 12px 14px; width: 100%; }
+.poster-select.ghost { padding: 0; border: 0; background: none; width: 100%; }
 .poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); padding-bottom: 80px; }
 .poster-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
 .poster-card.selected { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }

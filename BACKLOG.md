@@ -19,6 +19,10 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Real imports by AnimeArr's own importer run on a budget (Settings → Media management → Importer): 1 for the first one, then a review pause; beyond it, imports go through Sonarr
 - Bulk rename (4,800 files in 378 shows) waits for the user: a taste decision that also touches Plex (rescans) and Tdarr (path-keyed records). Only the Absolute Duo test batch was approved
 - Recycling-bin auto-empty stays OFF until the user confirms
+- Native Add (shows): a show whose AniList entry maps to a TVDB series becomes that TVDB series (TVDB numbering, all entries mapped to it); anything TVDB doesn't have is added on its own as season 1 under a synthetic id. Specials (TVDB season 0) and "a" (absolute) mappings aren't split into TVDB seasons yet. If Sonarr later has the same series, Sonarr's copy is used and the native one is parked
+- Native Add: ⚡ "search now" searches up to 26 aired, missing episodes; a longer backlog goes to the fill-in queue instead
+- Native shows: deleting files from the Show page waits for AnimeArr's own clean-up; renames go through AnimeArr's renamer; removing a show from AnimeArr never touches its files
+- Native Add (movies): next sub-step, together with AnimeArr's own movie importer
 - Absolute Duo test rename (12 files, 2026-10-26): on disk ✓, Sonarr picked up the new paths ✓ (but as delete + new file: 12 "episodeFileDeleted" history events, new file IDs, dateAdded reset, sceneName empty; monitoring and quality kept), Plex kept the same items (ratingKeys 103–114) with the new paths ✓, undo + redo on S01E01 ✓. Proposal: while Sonarr still owns a show (parallel mode), a bulk rename should go through Sonarr's own RenameFiles command so its file records and history stay intact; AnimeArr's own renamer after cutover
 - Rename route (agreed): the rename UI picks it automatically and says which — Sonarr's RenameFiles while Sonarr still owns the show (no undo; Sonarr keeps its records), AnimeArr's own renamer after cutover or for AnimeArr-native shows (undo in Activity)
 - Usenet imports MOVE out of /data/completed/animearr (that one folder is mounted read-write); everything else under /data stays read-only
@@ -37,7 +41,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [~] 2. Own importer (built; real imports/renames wait for the first reviewed plan; movie import/rename still through Radarr) (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts. Renamer can refresh {Quality}/{MediaInfo} tokens after a re-encode (optional "Rename after Tdarr re-encode", default off)
 - [ ] 3. Plex (partial scans, path mapping, .plexmatch)
 - [ ] 4. Own metadata (AniDB/AniList-first franchise model; TVDB/TMDB as mappings; donghua/ONAs)
-- [ ] 5. Add series/movies UI (AniList/AniDB search)
+- [~] 5. Add series/movies UI (AniList/AniDB search) — native show Add done (no Sonarr); movies next
 - [ ] 6. RSS/new-release monitoring via Prowlarr feeds
 - [ ] 7. Migration/cutover tool (import, parallel mode, final removal checklist; never deletes without confirmation)
 - [ ] 8. Notifications, minimal for 1.0: Discord/ntfy for grabbed, imported, failed and paused-by-limit, plus the in-app bell. (Later: browser/desktop **Web Push** from the PWA as a first-class channel.) Web Push needs a secure context (plain http://192.168.1.13:8484 isn't one): detect it and explain in Settings (reverse proxy with HTTPS, Tailscale HTTPS, externalUrl); fall back to in-app toasts + a notification bell/inbox while the app is open. Per-event toggles: grabbed / imported / failed / needs attention / paused by a limit rule / new episode available
