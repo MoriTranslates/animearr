@@ -319,6 +319,8 @@ const USER_MIGRATIONS: string[] = [
      root_folder TEXT NOT NULL, added_at INTEGER NOT NULL);`,
   // 15: which episodes a file AnimeArr imported holds (by library path)
   `CREATE TABLE file_links (path TEXT PRIMARY KEY, tvdb_id INTEGER, episode_ids TEXT NOT NULL, at INTEGER NOT NULL);`,
+  // 16: release info of files AnimeArr took over from Sonarr (scene name, group, quality, revision)
+  `CREATE TABLE file_meta (path TEXT PRIMARY KEY, scene_name TEXT, release_group TEXT, quality TEXT, revision TEXT);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

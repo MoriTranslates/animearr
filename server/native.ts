@@ -95,9 +95,8 @@ export function materialize(n: NativeRow, now = Date.now()) {
   }
   const { entries, eps, byKey } = buildEpisodes(n);
   const first = entries[0];
-  // After a cutover the show's ids change: the managed row follows; Sonarr-era schedule rows go (re-planned).
+  // After a cutover the show's id changes: the managed row follows (the rest is moved by the cutover itself).
   db.prepare("UPDATE managed SET series_id = ? WHERE tvdb_id = ?").run(sid, n.tvdb_id);
-  db.prepare("DELETE FROM search_state WHERE tvdb_id = ? AND episode_id < ?").run(n.tvdb_id, NATIVE_BASE);
   // Files: AnimeArr's own records under the show's folder, matched by the SxxEyy in the name (season folder as a
   // fallback for the season), or a bare episode number for season-1-only shows.
   const base = n.path.replace(/\/+$/, "");
@@ -158,8 +157,12 @@ export function materialize(n: NativeRow, now = Date.now()) {
       );
     const insE = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
     for (const e of eps) insE.run(e.id, sid, e.season, e.episode, e.absolute, e.title, e.air ? new Date(e.air).toISOString().slice(0, 10) : null, e.air, e.runtime, fileOf.has(e.id) ? 1 : 0, fileOf.get(e.id) ?? null);
-    const insF = cache.prepare("INSERT OR REPLACE INTO files (id, series_id, season, path, size, audio_langs, sub_langs, resolution, date_added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    for (const f of files) insF.run(f.id, sid, f.season, f.path, f.size, f.audio, f.subs, f.resolution, null);
+    const insF = cache.prepare("INSERT OR REPLACE INTO files (id, series_id, season, path, size, audio_langs, sub_langs, resolution, date_added, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const f of files) {
+      // Release info kept from Sonarr's records (cutover), so upgrades and learning still know the release.
+      const meta = db.prepare("SELECT scene_name, release_group, quality, revision FROM file_meta WHERE path = ?").get(f.path) as { scene_name: string | null; release_group: string | null; quality: string | null; revision: string | null } | undefined;
+      insF.run(f.id, sid, f.season, f.path, f.size, f.audio, f.subs, f.resolution, null, meta?.scene_name ?? null, meta?.release_group ?? null, meta?.quality ?? null, meta?.revision ?? null);
+    }
     const insA = cache.prepare("INSERT INTO alt_titles (series_id, title, key, season, scene_season) VALUES (?, ?, ?, NULL, NULL)");
     for (const t of alt) insA.run(sid, t, compactKey(t));
   });

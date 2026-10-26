@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { adoptMovies, adoptShows, cutoverPlan, removeFromArrs, setArrWrites } from "./cutover.js";
+import { adoptMovies, adoptShows, cutoverPlan, setArrWrites, switchToAnimeArr } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -594,19 +594,19 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
 // ---------------------------------------------------------------- cutover (Sonarr/Radarr → AnimeArr)
 
 app.get("/api/cutover", async () => cutoverPlan());
-app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[] } }>("/api/cutover/adopt", async (req) => {
+app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; acceptSpecials?: boolean } }>("/api/cutover/adopt", async (req) => {
   writable();
   const b = req.body ?? {};
-  const shows = adoptShows((b.tvdbIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0));
+  const shows = adoptShows((b.tvdbIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0), { acceptSpecials: b.acceptSpecials === true });
   const movies = await adoptMovies((b.movieIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0));
   materializeAll();
   return { shows, movies };
 });
-app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[] } }>("/api/cutover/remove", async (req) => {
+app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; acceptSpecials?: boolean } }>("/api/cutover/remove", async (req) => {
   writable();
   const b = req.body ?? {};
-  const out = await removeFromArrs({ tvdbIds: (b.tvdbIds ?? []).map(Number), movieIds: (b.movieIds ?? []).map(Number) });
-  if (out.some((x) => x.ok)) void syncLibrary(true).catch(() => undefined); // their copy drops out; AnimeArr's takes over
+  const out = await switchToAnimeArr({ tvdbIds: (b.tvdbIds ?? []).map(Number), movieIds: (b.movieIds ?? []).map(Number), acceptSpecials: b.acceptSpecials === true });
+  invalidateIndex();
   return { results: out };
 });
 app.put<{ Body: { allowArrWrites?: boolean } }>("/api/cutover/allow", async (req) => {

@@ -379,7 +379,7 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
       .slice(0, 20);
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
-  if (path === "downloads.allowDelete") return undefined; // switched on through its own confirmed endpoint only
+  if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
   if (path === "downloads.rules") {
     if (!Array.isArray(patch)) return undefined;
     const pick = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);
