@@ -9,6 +9,7 @@ import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
 import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
+import { AnidbEntries } from "../anidb";
 import { query } from "../App";
 
 interface Header {
@@ -174,6 +175,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
 
       {/* ---------------- franchise (AnimeArr's own catalog) */}
       <Franchise tvdbId={tvdbId} />
+      <AnidbEntries tvdbId={tvdbId} onChanged={() => void d.reload()} />
 
       {/* ---------------- movies & specials (the franchise's movies live in Radarr) */}
       <FranchiseMovies tvdbId={tvdbId} movies={s.movies} onChanged={() => void d.reload()} />

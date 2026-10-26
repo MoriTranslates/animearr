@@ -203,12 +203,13 @@ export async function anidbTick(priority: number[] = [], deps = { fetch }, now =
 export function anidbForTvdb(tvdbId: number) {
   const out: { season: number; episode: number; title: string | null; air: number | null; length: number | null; type: AnidbEpType; aid: number; epno: string }[] = [];
   for (const e of animeListEntries().values()) {
-    if (e.tvdbId !== tvdbId) continue;
+    if ((anidbOverride(e.aid)?.tvdb_id ?? e.tvdbId) !== tvdbId) continue;
     for (const ep of anidbEpisodes(e.aid)) {
       if (ep.type !== "regular" && ep.type !== "special") continue;
-      const t = anidbToTvdb(e, ep.number, ep.type === "regular" ? 1 : 0);
-      // A special never lands on a regular season; a regular episode may be a TVDB special (OVA entries mapped to S0).
-      if (!t || t.absolute || t.season < 0 || (ep.type === "special" && t.season !== 0)) continue;
+      // Anime-Lists' placement (specials only through explicit mapping lists, e.g. bonus episodes on S01E25), or the
+      // user's override for the entry.
+      const t = placeOf(e, ep.number, ep.type === "regular" ? 1 : 0);
+      if (!t) continue;
       out.push({ season: t.season, episode: t.episode, title: ep.title_en ?? ep.title_xjat ?? ep.title_ja, air: ep.airdate ? Date.parse(`${ep.airdate}T00:00:00Z`) : null, length: ep.length, type: ep.type, aid: e.aid, epno: ep.epno });
     }
   }
@@ -220,4 +221,94 @@ export function anidbSpecialKind(tvdbId: number) {
   const m = new Map<number, { type: AnidbEpType; title: string | null; length: number | null }>();
   for (const x of anidbForTvdb(tvdbId)) if (x.season === 0 && !m.has(x.episode)) m.set(x.episode, { type: x.type, title: x.title, length: x.length }); // first wins, as in native shows
   return m;
+}
+
+// ---------------------------------------------------------------- per-show AniDB view (franchise page) + overrides
+
+/** The user's placement of an AniDB entry on TVDB numbering (wins over Anime-Lists' default season/offset). */
+export function anidbOverride(aid: number) {
+  return db.prepare("SELECT tvdb_id, season, offset FROM anidb_overrides WHERE aid = ?").get(aid) as { tvdb_id: number; season: number; offset: number } | undefined;
+}
+
+export function setAnidbOverride(aid: number, tvdbId: number, season: number | null, offset = 0) {
+  if (season === null) db.prepare("DELETE FROM anidb_overrides WHERE aid = ?").run(aid);
+  else db.prepare("INSERT OR REPLACE INTO anidb_overrides (aid, tvdb_id, season, offset, at) VALUES (?, ?, ?, ?, ?)").run(aid, tvdbId, season, offset, Date.now());
+}
+
+/** Queues this show's AniDB entries now (still through the one slow queue, the cache and the daily cap). */
+export async function fetchForTvdb(tvdbId: number, deps = { fetch }) {
+  const aids = [...animeListEntries().values()].filter((e) => e.tvdbId === tvdbId).map((e) => e.aid).filter((a) => due(a));
+  let fetched = 0;
+  for (const aid of aids) {
+    try {
+      storeAnime(await fetchAnime(aid, deps));
+      fetched++;
+    } catch (e) {
+      if (anidbStatus().blockedUntil || /cap/.test((e as Error).message)) break;
+    }
+  }
+  return { fetched, queued: aids.length };
+}
+
+const range = (xs: number[]) => (xs.length ? (xs[0] === xs[xs.length - 1] ? `${xs[0]}` : `${xs[0]}–${xs[xs.length - 1]}`) : "");
+
+/** anidbToTvdb, with the user's override for this entry (season + offset) taking precedence for regular episodes. */
+function placeOf(e: Parameters<typeof anidbToTvdb>[0], n: number, anidbSeason: number) {
+  const o = anidbOverride(e.aid);
+  if (o && anidbSeason === 1) return { season: o.season, episode: n + o.offset };
+  const t = anidbToTvdb(e, n, anidbSeason);
+  return t && !t.absolute && t.season >= 0 ? t : null;
+}
+
+/**
+ * Every AniDB entry Anime-Lists places on this TVDB series, in air order: type, episode count, how its episodes map
+ * onto TVDB numbering ("AniDB ep 1–22 → S02E01–E22"), and have/missing from the library.
+ */
+export function anidbView(tvdbId: number) {
+  const eps = cache.prepare("SELECT e.season, e.episode, e.has_file FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as { season: number; episode: number; has_file: number }[];
+  const have = new Map(eps.map((e) => [`${e.season}x${e.episode}`, !!e.has_file]));
+  const out = [];
+  for (const e of [...animeListEntries().values()].filter((x) => (anidbOverride(x.aid)?.tvdb_id ?? x.tvdbId) === tvdbId)) {
+    const a = db.prepare("SELECT fetched_at, type, episode_count, missing FROM anidb_anime WHERE aid = ?").get(e.aid) as { fetched_at: number; type: string | null; episode_count: number | null; missing: number } | undefined;
+    const list = anidbEpisodes(e.aid);
+    const firstAir = list.filter((x) => x.airdate).map((x) => x.airdate!).sort()[0] ?? null;
+    const mapped: { kind: "regular" | "special"; from: number; season: number; episode: number; have: boolean | null }[] = [];
+    for (const x of list) {
+      if (x.type !== "regular" && x.type !== "special") continue;
+      const t = placeOf(e, x.number, x.type === "regular" ? 1 : 0);
+      if (!t) continue;
+      mapped.push({ kind: x.type, from: x.number, season: t.season, episode: t.episode, have: have.has(`${t.season}x${t.episode}`) ? have.get(`${t.season}x${t.episode}`)! : null });
+    }
+    // Runs of consecutive episodes that land consecutively on one TVDB season.
+    const runs: string[] = [];
+    const pad = (n: number) => String(n).padStart(2, "0");
+    for (const kind of ["regular", "special"] as const) {
+      const ms = mapped.filter((m) => m.kind === kind).sort((p, q) => p.from - q.from);
+      let i = 0;
+      while (i < ms.length) {
+        let j = i;
+        while (j + 1 < ms.length && ms[j + 1].from === ms[j].from + 1 && ms[j + 1].season === ms[i].season && ms[j + 1].episode === ms[j].episode + 1) j++;
+        runs.push(`AniDB ${kind === "special" ? "S" : "ep "}${range(ms.slice(i, j + 1).map((m) => m.from))} → S${pad(ms[i].season)}E${pad(ms[i].episode)}${j > i ? `–E${pad(ms[j].episode)}` : ""}`);
+        i = j + 1;
+      }
+    }
+    const regular = list.filter((x) => x.type === "regular").length;
+    const placedRegular = mapped.filter((m) => m.kind === "regular");
+    out.push({
+      aid: e.aid,
+      name: e.name,
+      type: a?.type ?? null,
+      episodes: a?.episode_count ?? (regular || null),
+      firstAir,
+      fetched: !!a && !a.missing,
+      defaultMapping: e.defaultSeason === null ? "no TVDB season" : e.defaultSeason === "a" ? `absolute (offset ${e.offset})` : `season ${e.defaultSeason}${e.offset ? `, offset ${e.offset}` : ""}`,
+      override: anidbOverride(e.aid) ?? null,
+      mapping: runs,
+      have: placedRegular.filter((m) => m.have).length,
+      missing: placedRegular.filter((m) => m.have === false).length,
+      specialsHave: mapped.filter((m) => m.kind === "special" && m.have).length,
+      unplaced: list.filter((x) => (x.type === "regular" || x.type === "special") && !placeOf(e, x.number, x.type === "regular" ? 1 : 0)).length,
+    });
+  }
+  return out.sort((p, q) => (p.firstAir ?? "9999").localeCompare(q.firstAir ?? "9999") || p.aid - q.aid);
 }

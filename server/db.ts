@@ -332,6 +332,8 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE anidb_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
   // 20: AnimeArr owns "wanted" for movies (Radarr's monitored flag no longer counts)
   `CREATE TABLE movie_wanted (movie_id INTEGER PRIMARY KEY, wanted INTEGER NOT NULL, at INTEGER NOT NULL);`,
+  // 21: the user's placement of an AniDB entry on TVDB numbering (entry + season + offset)
+  `CREATE TABLE anidb_overrides (aid INTEGER PRIMARY KEY, tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, offset INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

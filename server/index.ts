@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { anidbStatus, anidbTick } from "./anidb.js";
+import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
 import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, showCut, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
@@ -1055,6 +1055,25 @@ every(15 * 60_000, async () => {
   if (r.fetched) materializeAll(); // native shows pick up AniDB's episodes
 }, "anidb");
 app.get("/api/anidb", async () => anidbStatus());
+app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/anidb", async (req) => ({ status: anidbStatus(), entries: anidbView(id(req.params.tvdbId)) }));
+app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/anidb/fetch", async (req) => {
+  writable();
+  const r = await fetchForTvdb(id(req.params.tvdbId));
+  if (r.fetched) materializeAll();
+  return r;
+});
+app.put<{ Params: { tvdbId: string }; Body: { aid: number; season?: number | null; offset?: number } }>("/api/series/:tvdbId/anidb/override", async (req) => {
+  writable();
+  const b = req.body ?? ({} as never);
+  const season = b.season === null || b.season === undefined ? null : Number(b.season);
+  if (season !== null && (!Number.isInteger(season) || season < 0 || season > 99)) throw fail("Season 0–99", 400);
+  const offset = Number(b.offset ?? 0);
+  if (!Number.isInteger(offset) || offset < -5000 || offset > 5000) throw fail("Offset −5000–5000", 400);
+  setAnidbOverride(id(b.aid), id(req.params.tvdbId), season, offset);
+  logDecision("info", { tvdbId: id(req.params.tvdbId), why: season === null ? `AniDB ${b.aid}: back to Anime-Lists' placement` : `AniDB ${b.aid} placed on season ${season}${offset ? ` (offset ${offset})` : ""} by you` });
+  materializeAll();
+  return { entries: anidbView(id(req.params.tvdbId)) };
+});
 setTimeout(() => void downloadsTick().catch(() => undefined), 30_000);
 let lastRss = 0;
 every(60_000, async () => {
