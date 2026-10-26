@@ -217,3 +217,15 @@ export async function setSeriesMonitored(id: number, monitored: boolean) {
   const s = await getOneSeries(id);
   return call<SonarrSeries>("PUT", `/series/${id}`, { ...s, monitored });
 }
+
+/** Sonarr's import lists (read-only): lists that could add anime back after the cutover. */
+export const getImportLists = () => call<{ id: number; name: string; enabled?: boolean; enableAutomaticAdd?: boolean }[]>("GET", "/importlist");
+/** Sonarr's connections (read-only), e.g. its own Plex notification. */
+export const getNotifications = () => call<{ id: number; name: string; implementation: string }[]>("GET", "/notification");
+/**
+ * Cutover only (confirmed by the user): removes a series from Sonarr. Never its files (deleteFiles=false); an import
+ * list exclusion stops lists from adding it back.
+ */
+export async function removeSeriesKeepFiles(seriesId: number) {
+  return call<unknown>("DELETE", `/series/${seriesId}?deleteFiles=false&addImportListExclusion=true`);
+}

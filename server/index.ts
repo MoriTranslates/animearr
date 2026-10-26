@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { adoptMovies, adoptShows, cutoverPlan, removeFromArrs, setArrWrites } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -588,6 +589,30 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
   patchSettings((x) => ({ ...x, downloads: { ...x.downloads, allowDelete: on } }));
   logDecision("info", { why: on ? "Download clean-up may now delete (leftovers, junk, finished torrents in AnimeArr's own folders)" : "Download clean-up deletions switched off" });
   return getSettings().downloads;
+});
+
+// ---------------------------------------------------------------- cutover (Sonarr/Radarr → AnimeArr)
+
+app.get("/api/cutover", async () => cutoverPlan());
+app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[] } }>("/api/cutover/adopt", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  const shows = adoptShows((b.tvdbIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0));
+  const movies = await adoptMovies((b.movieIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0));
+  materializeAll();
+  return { shows, movies };
+});
+app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[] } }>("/api/cutover/remove", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  const out = await removeFromArrs({ tvdbIds: (b.tvdbIds ?? []).map(Number), movieIds: (b.movieIds ?? []).map(Number) });
+  if (out.some((x) => x.ok)) void syncLibrary(true).catch(() => undefined); // their copy drops out; AnimeArr's takes over
+  return { results: out };
+});
+app.put<{ Body: { allowArrWrites?: boolean } }>("/api/cutover/allow", async (req) => {
+  writable();
+  setArrWrites(req.body?.allowArrWrites === true);
+  return getSettings().cutover;
 });
 
 // ---------------------------------------------------------------- native Add (no Sonarr/Radarr)

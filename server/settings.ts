@@ -168,6 +168,8 @@ export interface Settings {
      */
     sourceRoots: string[];
   };
+  /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
+  cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
   plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
@@ -240,6 +242,7 @@ const DEFAULTS: Settings = {
   library: { scan: true },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
+  cutover: { allowArrWrites: false },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,

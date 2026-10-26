@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
+import { Cutover } from "../cutover";
 import { DownloadRules } from "../downloads";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "connections" | "profile" | "media" | "downloads" | "safety" | "paths" | "metadata" | "security" | "system";
-const TABS: Tab[] = ["connections", "profile", "media", "downloads", "safety", "paths", "metadata", "security", "system"];
+type Tab = "connections" | "profile" | "media" | "downloads" | "safety" | "paths" | "metadata" | "cutover" | "security" | "system";
+const TABS: Tab[] = ["connections", "profile", "media", "downloads", "safety", "paths", "metadata", "cutover", "security", "system"];
 
 export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
   usePageTitle(t("settings.title"));
@@ -59,12 +60,13 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       {tab === "profile" && <ProfilesEditor />}
       {tab === "media" && <MediaManagement s={s} upd={upd} />}
       {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
+      {tab === "cutover" && <Cutover />}
       {tab === "safety" && <Safety s={s} upd={upd} />}
       {tab === "paths" && <Paths s={s} upd={upd} />}
       {tab === "metadata" && <Metadata s={s} upd={upd} />}
       {tab === "system" && <System status={status} />}
       {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-      {tab !== "system" && tab !== "security" && tab !== "profile" && (
+      {tab !== "system" && tab !== "security" && tab !== "profile" && tab !== "cutover" && (
         <div className="sticky-actions">
           <button className="primary" disabled={!dirty} onClick={save}>
             {t("common.save")}

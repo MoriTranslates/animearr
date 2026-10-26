@@ -82,3 +82,9 @@ export const getRadarrNaming = () => call<Record<string, unknown>>("GET", "/conf
 export async function rescanMovie(movieId: number) {
   return call<{ id: number }>("POST", "/command", { name: "RescanMovie", movieId });
 }
+
+export const getRadarrImportLists = () => call<{ id: number; name: string; enabled?: boolean; enableAuto?: boolean }[]>("GET", "/importlist");
+/** Cutover only (confirmed by the user): removes a movie from Radarr, never its files; excluded from import lists. */
+export async function removeMovieKeepFiles(movieId: number) {
+  return call<unknown>("DELETE", `/movie/${movieId}?deleteFiles=false&addImportExclusion=true`);
+}

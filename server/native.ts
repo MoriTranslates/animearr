@@ -62,15 +62,11 @@ const clearRows = (sid: number) =>
 /** Sonarr has this TVDB series too (added there after AnimeArr): Sonarr's copy is the one used; the native one is parked. */
 export const ownedBySonarr = (tvdbId: number) => !!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ? AND id < ?").get(tvdbId, NATIVE_BASE);
 
-export function materialize(n: NativeRow, now = Date.now()) {
-  const sid = NATIVE_BASE + n.id;
-  if (ownedBySonarr(n.tvdb_id)) {
-    clearRows(sid);
-    return { episodes: 0, files: 0, parked: true };
-  }
-  const entries = showEntries(n);
-  const first = entries[0];
-  type Ep = { id: number; season: number; episode: number; absolute: number; title: string | null; air: number | null; runtime: number | null };
+type Ep = { id: number; season: number; episode: number; absolute: number; title: string | null; air: number | null; runtime: number | null };
+
+/** A native show's episodes from the catalog (pure: nothing is written). */
+export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id" | "synthetic">) {
+  const entries = showEntries(n as NativeRow);
   const byKey = new Map<string, Ep>();
   for (const e of entries) {
     const list = new Map((db.prepare("SELECT number, title, air_utc FROM entry_episodes WHERE anilist_id = ?").all(e.anilist_id) as { number: number; title: string | null; air_utc: number | null }[]).map((x) => [x.number, x]));
@@ -88,6 +84,20 @@ export function materialize(n: NativeRow, now = Date.now()) {
   const eps = [...byKey.values()].sort((a, b) => a.season - b.season || a.episode - b.episode);
   let abs = 0;
   for (const e of eps) e.absolute = e.absolute || ++abs;
+  return { entries, eps, byKey };
+}
+
+export function materialize(n: NativeRow, now = Date.now()) {
+  const sid = NATIVE_BASE + n.id;
+  if (ownedBySonarr(n.tvdb_id)) {
+    clearRows(sid);
+    return { episodes: 0, files: 0, parked: true };
+  }
+  const { entries, eps, byKey } = buildEpisodes(n);
+  const first = entries[0];
+  // After a cutover the show's ids change: the managed row follows; Sonarr-era schedule rows go (re-planned).
+  db.prepare("UPDATE managed SET series_id = ? WHERE tvdb_id = ?").run(sid, n.tvdb_id);
+  db.prepare("DELETE FROM search_state WHERE tvdb_id = ? AND episode_id < ?").run(n.tvdb_id, NATIVE_BASE);
   // Files: AnimeArr's own records under the show's folder, matched by the SxxEyy in the name (season folder as a
   // fallback for the season), or a bare episode number for season-1-only shows.
   const base = n.path.replace(/\/+$/, "");
