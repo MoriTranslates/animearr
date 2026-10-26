@@ -51,7 +51,7 @@ async function catalogTick(force = false) {
   }
 }
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
-import { applyRenameRouted, executeImport, planImport, planRename, renameBack, renamePlan } from "./importer.js";
+import { applyRenameRouted, executeImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
@@ -620,6 +620,12 @@ app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
   const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
   return { plan, results: await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only }) };
+});
+/** Movie import plan (a dry run; nothing is changed). */
+app.post<{ Body: { movieId: number; path: string; release?: string; client?: string | null } }>("/api/import/movie-plan", async (req) => {
+  const b = req.body ?? ({} as never);
+  if (!id(b.movieId) || !b.path) throw fail("movieId and path are required", 400);
+  return planMovieImport({ movieId: Number(b.movieId), path: String(b.path), release: b.release, client: b.client ?? null });
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/rename", async (req) => renamePlan(id(req.params.tvdbId)));
 app.post<{ Params: { tvdbId: string }; Body: { fileIds: number[] } }>("/api/series/:tvdbId/rename", async (req) => {
