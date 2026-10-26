@@ -8,6 +8,8 @@
  *   P(profile language) ≥ 50%.
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
+import { parseRelease } from "./core/parser.js";
+import { matchMovie } from "./movies.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { NATIVE_BASE } from "./native.js";
 import { logDecision } from "./activity.js";
@@ -410,23 +412,45 @@ export async function managedTick(now = Date.now()) {
 }
 
 /** RSS-like pass: Prowlarr's recent releases; a release that maps to a waiting episode makes it due now. */
-export async function rssTick(now = Date.now()) {
-  if (dbState.corrupt || !prowlarrConfigured() || !listManaged().length) return;
-  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog')").all() as { episode_id: number; tvdb_id: number }[];
-  if (!waiting.length) return;
+const rssSeen = new Map<string, number>(); // guid → first seen (each release is looked at once)
+
+/**
+ * RSS-style new-release watch: Prowlarr's newest releases (every indexer, AnimeArr's categories). A release for a
+ * wanted episode (managed show, any state that still wants a file) or a wanted movie brings that search forward at
+ * once; the search then ranks every candidate, so RSS never grabs a release blindly.
+ */
+export async function rssTick(now = Date.now(), deps = { search: prowlarrSearch }) {
+  if (dbState.corrupt || !prowlarrConfigured()) return { checked: 0, hits: 0 };
+  const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog', 'gave-up')").all() as { episode_id: number; tvdb_id: number }[];
+  const movies = db.prepare("SELECT movie_id FROM movie_search WHERE state NOT IN ('grabbed', 'done')").all() as { movie_id: number }[];
+  if (!waiting.length && !movies.length) return { checked: 0, hits: 0 };
   const wanted = new Map(waiting.map((w) => [w.episode_id, w.tvdb_id]));
-  const recent = await prowlarrSearch("", { limit: 100 });
+  const recent = (await deps.search("", { limit: 300, fresh: true })).filter((r) => !rssSeen.has(r.guid));
+  for (const r of recent) rssSeen.set(r.guid, now);
+  if (rssSeen.size > 20_000) for (const [k, at] of rssSeen) if (now - at > 7 * DAY) rssSeen.delete(k);
   const ctx = identifyContext();
   let hits = 0;
+  const movieRows = movies.length ? (cache.prepare(`SELECT id, title, original_title, alt_titles, year FROM movies WHERE id IN (${movies.map(() => "?").join(",")})`).all(...movies.map((m) => m.movie_id)) as { id: number; title: string; original_title: string | null; alt_titles: string; year: number | null }[]) : [];
   for (const r of recent) {
     const id = identify(r.title, ctx, { publishDate: r.publishDate ? Date.parse(r.publishDate) : null });
     for (const e of id.resolution?.ok ? id.resolution.episodes : []) {
       if (!wanted.has(e.id)) continue;
       hits++;
-      db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, e.id, now);
+      // A given-up episode gets one more search when a new release for it shows up.
+      db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, state = CASE state WHEN 'gave-up' THEN 'retry' ELSE state END WHERE episode_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, e.id, now);
+    }
+    if (movieRows.length && !id.resolution?.ok) {
+      const p = parseRelease(r.title);
+      for (const m of movieRows) {
+        const mm = matchMovie(p, { title: m.title, original_title: m.original_title, alt_titles: JSON.parse(m.alt_titles) as string[], year: m.year });
+        if (mm.confidence < 82) continue; // title + year match
+        hits++;
+        db.prepare("UPDATE movie_search SET next_at = ?, last_why = ? WHERE movie_id = ? AND next_at > ?").run(now, `New release seen: ${r.title}`, m.id, now);
+      }
     }
   }
-  setJob("rss", "done", `${recent.length} recent releases checked, ${hits} for waiting episodes`);
+  setJob("rss", "done", `${recent.length} new releases checked, ${hits} for wanted episodes/movies`);
+  return { checked: recent.length, hits };
 }
 
 /** For the "Manage selected" confirm: how many in-scope missing episodes these shows would search live. */
