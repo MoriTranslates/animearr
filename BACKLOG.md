@@ -21,6 +21,8 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Upgrades: a file that also holds other episodes (multi-episode file) is never replaced automatically; it becomes "import by hand"
 - Size presets: Lean is the default for every profile and is a strong penalty, not a rejection (a bigger release still gets grabbed when nothing smaller exists). Lean ceilings per minute: 2160p 170 MB, 1080p 85 MB, 720p 45 MB, 480p 25 MB
 - Episode Title Required "always" (Sonarr's value) also uses the catalog's titles before refusing an import
+- Renamer checked against Sonarr's own rename preview on the server: 4,779 of 4,781 planned renames identical; the 2 differences are titles starting with a censored word ("- - Is All You Need"), where AnimeArr drops the doubled dash
+- Movie import/rename stay with Radarr this round (movie naming settings and previews exist; the movie importer comes with native Add)
 
 ## 1.0 = takeover (binding)
 
