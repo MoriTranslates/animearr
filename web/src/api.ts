@@ -59,6 +59,8 @@ export interface Status {
   queue?: { active: number; attention: number };
   airingShows?: number;
   wizardDone?: boolean;
+  /** Setup not finished and nothing connected at all (download clients, indexers, Sonarr/Radarr). */
+  freshInstall?: boolean;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";

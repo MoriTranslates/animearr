@@ -86,6 +86,11 @@ export function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [dismissed, setDismissed] = useState(() => Date.now() - store.get("dismissDefaultPw", 0) < 86_400_000);
 
+  // A fresh install (nothing connected at all, setup not finished) opens the setup wizard.
+  useEffect(() => {
+    if (status?.loggedIn && status.freshInstall && location.pathname === "/") navigate("/welcome");
+  }, [status?.loggedIn, status?.freshInstall]);
+
   const refreshStatus = useCallback(async () => {
     try {
       const s = await api<Status>("/status");
@@ -130,12 +135,7 @@ export function App() {
   if (!status) return <div className="center-msg">{t("app.loading")}</div>;
   if (status.setupRequired) return <Setup onDone={refreshStatus} />;
   if (!status.loggedIn) return <Login onDone={refreshStatus} />;
-  // A fresh install (nothing connected yet, setup not finished) opens the setup wizard.
-  const c0 = status.connected;
-  if (status.wizardDone === false && path === "/" && c0 && !c0.sonarr && !c0.radarr && !c0.prowlarr && !c0.sabnzbd && !c0.qbittorrent) {
-    history.replaceState(null, "", "/welcome");
-    setTimeout(() => window.dispatchEvent(new PopStateEvent("popstate")), 0);
-  }
+
 
   const section = "/" + (path.split("/")[1] ?? "");
   const active = (p: string) =>

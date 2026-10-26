@@ -159,6 +159,7 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
     wizardDone: wizardState().done,
+    freshInstall: !wizardState().done && !s.sonarr.url && !s.radarr.url && !s.prowlarr.url && !s.sabnzbd.url && !s.qbittorrent.url && !(s.extraClients ?? []).length && !(s.indexers ?? []).length,
     // The season card: shows with an episode airing this week or last.
     airingShows: airingShowCount(),
     // The nav's Queue badge: what's downloading, and what needs a look.

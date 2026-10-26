@@ -67,7 +67,7 @@ export function creditlessOf(episodes: LibEpisode[]) {
 
 /** "Creditless Opening 2", "Clean Ending", "NCOP", "Non-Credit OP", "Textless ED", "Opening 1 (creditless)". */
 export function isCreditlessTitle(t: string | null) {
-  return !!t && (/\b(NCOP|NCED|creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) || /^\s*(opening|ending)(\s*(theme|\d+))?\s*$/i.test(t));
+  return !!t && (/\bNC(?:OP|ED)\d*\b|\b(creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) || /^\s*(opening|ending)(\s*(theme|\d+[a-z]?))?\s*(?:[:\-–].*)?$/i.test(t));
 }
 
 export function labelOf(eps: LibEpisode[]) {
@@ -106,7 +106,7 @@ export function resolveRelease(
   const aired = (e: LibEpisode) => e.airUtc !== null && e.airUtc <= now + DAY;
 
   // Creditless OP/ED: the show's own "Opening N"/"Ending N" special (by number, else the N-th of its kind).
-  if (p.creditless) {
+  if (p.creditless && !p.episodes.length && !p.absolute.filter((n) => n !== p.creditless!.n).length && !p.batch && !p.fullSeason) {
     const list = creditlessOf(episodes).filter((x) => x.kind === p.creditless!.kind);
     const n = p.creditless.n ?? 1;
     const hit = list.find((x) => x.n === n) ?? (list.every((x) => x.n === null) ? list[n - 1] : undefined);

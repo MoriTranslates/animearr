@@ -31,7 +31,7 @@ export type SettingsTab = Tab;
 
 /** `only`: one section without the Settings frame (the setup wizard embeds them). */
 export function Settings({ status, onSaved, only }: { status: Status; onSaved: () => void; only?: Tab }) {
-  usePageTitle(t("settings.title"));
+  usePageTitle(only ? t("wiz.title") : t("settings.title"));
   const toast = useToast();
   const q = query().get("tab") ?? "";
   const initial = (ALIAS[q] ?? q) as Tab;

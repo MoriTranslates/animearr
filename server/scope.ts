@@ -71,9 +71,9 @@ export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean 
   const aired = (e: ScopeEp) => e.air_utc !== null && e.air_utc <= now;
   const future = (e: ScopeEp) => e.air_utc === null || e.air_utc > since;
   return eps.filter((e) => {
-    // Creditless OP/ED: wanted on their own toggle (season 0 or not), whatever the season scope.
-    if (e.season === 0 && e.creditless && !scope.specials) return scope.creditless !== false && scope.episodes !== "none" && (scope.episodes === "existing" ? !!e.has_file : true);
-    if (!seasons.has(e.season)) return false;
+    // Creditless OP/ED join on their own toggle (whatever the season scope); the episode rules below still apply.
+    const creditlessIn = e.season === 0 && !!e.creditless && scope.creditless !== false;
+    if (!seasons.has(e.season) && !creditlessIn) return false;
     if (scope.honourSonarr && e.monitored === 0) return false;
     switch (scope.episodes) {
       case "none":
@@ -93,15 +93,28 @@ export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean 
 }
 
 let epsStmt: ReturnType<typeof cache.prepare> | null = null;
+/** AniDB special kinds per show, cached for 10 minutes (the managed tick asks for every show). */
+const kindsMemo = new Map<number, { at: number; v: Map<number, { type: string }> }>();
+function kindsFor(tvdbId: number) {
+  const hit = kindsMemo.get(tvdbId);
+  if (hit && Date.now() - hit.at < 600_000) return hit.v;
+  const v = anidbSpecialKind(tvdbId);
+  kindsMemo.set(tvdbId, { at: Date.now(), v });
+  return v;
+}
 /** A show's episodes for scoping, with season-0 creditless OP/EDs marked (by title or AniDB's "credit" type). */
 function scopeEps(tvdbId: number, seriesId: number): ScopeEp[] {
   epsStmt ??= cache.prepare("SELECT id, season, episode, title, air_utc, has_file, monitored FROM episodes WHERE series_id = ?");
   const rows = epsStmt.all(seriesId) as unknown as (ScopeEp & { episode: number; title: string | null })[];
+  // Creditless OP/EDs AnimeArr imported as Plex extras: they're there (Sonarr doesn't see extras).
+  const extras = new Set<number>();
+  for (const r of db.prepare("SELECT episode_ids FROM file_links WHERE tvdb_id = ? AND path LIKE '%/Other/%'").all(tvdbId) as { episode_ids: string }[]) for (const id of JSON.parse(r.episode_ids) as number[]) extras.add(id);
   let kinds: Map<number, { type: string }> | null = null;
   return rows.map((e) => {
     if (e.season !== 0) return e;
-    kinds ??= anidbSpecialKind(tvdbId);
-    return { ...e, creditless: isCreditlessTitle(e.title) || kinds.get(e.episode)?.type === "credit" };
+    if (!isCreditlessTitle(e.title)) kinds ??= kindsFor(tvdbId);
+    const creditless = isCreditlessTitle(e.title) || kinds?.get(e.episode)?.type === "credit";
+    return { ...e, creditless, has_file: e.has_file || (creditless && extras.has(e.id) ? 1 : 0) };
   });
 }
 

@@ -39,6 +39,9 @@ test("resolver: OP2 → the second creditless opening, ED → the ending; unknow
   assert.deepEqual(r("[G] Show - NCOP2 [BD].mkv").episodes.map((e) => e.id), [12]);
   assert.deepEqual(r("[G] Show - NCED [BD].mkv").episodes.map((e) => e.id), [13]);
   assert.equal(r("[G] Show - NCED3 [BD].mkv").ok, false);
+  // A batch that also has the OP/ED isn't taken for a single special.
+  assert.notEqual(r("Show 01-12 (BD 1080p) + NCOP NCED").method, "creditless");
+  assert.ok(isCreditlessTitle("NCOP1") && isCreditlessTitle("Opening 2: Yuusha") && isCreditlessTitle("Opening 1a"));
 });
 
 test("never junk: classified as creditless (title or AniDB credit type)", () => {
@@ -64,7 +67,7 @@ test("import as Plex extras: the show's Other folder with -other", () => {
   cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at, series_type) VALUES (1, 900, 'Show', '/media/AnimeArr/Show', 1, 0, 'anime')").run();
   const ep = { id: 11, season: 0, episode: 2, absolute: null, title: "Creditless Opening 1", air_date: null, file_id: null };
   patchSettings((s) => ({ ...s, media: { ...s.media, creditlessAs: "extras" } }));
-  assert.equal(episodeDestination(900, [ep], { release: "x", ext: ".mkv", probe: null }), "/media/AnimeArr/Show/Other/Creditless Opening 1-other.mkv");
+  assert.equal(episodeDestination(900, [ep], { release: "x", ext: ".mkv", probe: null }), "/media/AnimeArr/Show/Other/Creditless Opening 1 (S00E02)-other.mkv");
   patchSettings((s) => ({ ...s, media: { ...s.media, creditlessAs: "s00" } }));
   assert.match(episodeDestination(900, [ep], { release: "x", ext: ".mkv", probe: null }), /Specials\/.*S00E02/);
 });

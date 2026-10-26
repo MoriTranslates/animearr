@@ -141,7 +141,7 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
   // Creditless OP/ED as Plex extras: the show's "Other" folder, named after the special (Plex lists them as extras).
   if (season === 0 && (m.creditlessAs ?? "s00") === "extras" && eps.every((e) => isCreditlessTitle(e.title))) {
     const title = (titles[0] ?? `S00E${String(eps[0].episode).padStart(2, "0")}`).replace(/[\\/:*?"<>|]/g, " ").trim();
-    return `${s.path.replace(/\/+$/, "")}/Other/${title}-other${ctx.ext}`;
+    return `${s.path.replace(/\/+$/, "")}/Other/${title} (S00E${String(eps[0].episode).padStart(2, "0")})-other${ctx.ext}`;
   }
   return `${s.path.replace(/\/+$/, "")}/${folder ? `${folder}/` : ""}${name}${ctx.ext}`;
 }

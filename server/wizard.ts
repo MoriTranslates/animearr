@@ -32,10 +32,9 @@ export function saveWizard(input: Record<string, unknown>) {
 /** Folders under a path (directories only), with whether AnimeArr can write there. Never file contents. */
 export function listFolders(p: string) {
   const dir = path.posix.normalize(p && p.startsWith("/") ? p : "/").replace(/\/+$/, "") || "/";
-  const real = process.platform === "win32" ? dir : dir;
   let entries: fs.Dirent[] = [];
   try {
-    entries = fs.readdirSync(real, { withFileTypes: true });
+    entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch (e) {
     throw Object.assign(new Error(`Can't open ${dir} (${(e as NodeJS.ErrnoException).code ?? "error"})`), { statusCode: 400 });
   }
@@ -49,7 +48,16 @@ export function listFolders(p: string) {
   };
   const skip = /^(proc|sys|dev|run|etc|usr|bin|sbin|lib|lib64|boot|var|tmp|opt|srv|root|home|app)$/;
   const dirs = entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !(dir === "/" && skip.test(e.name)))
+    .filter((e) => {
+      if (e.name.startsWith(".") || (dir === "/" && skip.test(e.name))) return false;
+      if (e.isDirectory()) return true;
+      // Symlinked mounts (common on Unraid/Docker) are folders too.
+      try {
+        return e.isSymbolicLink() && fs.statSync(path.posix.join(dir, e.name)).isDirectory();
+      } catch {
+        return false;
+      }
+    })
     .map((e) => ({ name: e.name, path: path.posix.join(dir, e.name), writable: writable(path.posix.join(dir, e.name)) }))
     .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 500);
@@ -62,9 +70,16 @@ export async function createCategory(client: "sabnzbd" | "qbittorrent") {
   if (client === "sabnzbd") {
     const c = s.sabnzbd;
     if (!c.url || !c.apiKey) throw Object.assign(new Error("Connect SABnzbd first"), { statusCode: 400 });
-    const qs = new URLSearchParams({ mode: "set_config", section: "categories", keyword: c.category, name: c.category, dir: c.category, output: "json", apikey: c.apiKey });
-    const res = await fetch(`${c.url}/api?${qs}`, { signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) throw Object.assign(new Error(`SABnzbd answered HTTP ${res.status}`), { statusCode: 502 });
+    const ask = async (params: Record<string, string>) => {
+      const res = await fetch(`${c.url}/api?${new URLSearchParams({ ...params, output: "json", apikey: c.apiKey })}`, { signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) throw Object.assign(new Error(`SABnzbd answered HTTP ${res.status}`), { statusCode: 502 });
+      const j = (await res.json()) as { status?: boolean; error?: string; categories?: string[] };
+      if (j.status === false) throw Object.assign(new Error(`SABnzbd: ${j.error ?? "refused"}`), { statusCode: 502 });
+      return j;
+    };
+    // Never rewrite an existing category (its folder may be set up already).
+    if ((await ask({ mode: "get_cats" })).categories?.includes(c.category)) return { ok: true, category: c.category, existed: true };
+    await ask({ mode: "set_config", section: "categories", keyword: c.category, name: c.category, dir: c.category });
     logDecision("info", { why: `Created the "${c.category}" category in SABnzbd` });
     return { ok: true, category: c.category };
   }
@@ -99,7 +114,7 @@ export async function arrPreview() {
     out.sonarr = {
       animeSeries,
       roots: (roots ?? []).map((r) => r.path),
-      clients: (clients ?? []).map((c) => ({ name: c.name, type: c.implementation, enabled: c.enable, protocol: c.protocol, host: field(c.fields, "host") ?? null, port: field(c.fields, "port") ?? null, category: field(c.fields, "tvCategory") ?? field(c.fields, "category") ?? null })),
+      clients: (clients ?? []).map((c) => ({ name: c.name, type: c.implementation, enabled: c.enable, protocol: c.protocol, host: field(c.fields, "host") ?? null, port: field(c.fields, "port") ?? null, ssl: !!field(c.fields, "useSsl"), urlBase: String(field(c.fields, "urlBase") ?? "").replace(/^\/*/, "/").replace(/\/+$/, "").replace(/^\/$/, ""), category: field(c.fields, "tvCategory") ?? field(c.fields, "category") ?? null })),
       indexers: (indexers ?? []).map((i) => ({ name: i.name, type: i.implementation, protocol: i.protocol, viaProwlarr: /\/\d+\/api$|prowlarr/i.test(String(field(i.fields, "baseUrl") ?? "")) })),
       plex: (notes ?? []).some((n) => /plex/i.test(n.implementation)),
       tags: (tags ?? []).map((t) => t.label),

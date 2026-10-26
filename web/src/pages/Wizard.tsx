@@ -37,7 +37,7 @@ function useSettingsSaver(onSaved: () => void) {
   return { s: d.data, saveNow, reload: d.reload, error: d.error };
 }
 
-export function Wizard({ status, onChanged }: { status: Status; onChanged: () => void }) {
+export function Wizard({ status, onChanged }: { status: Status; onChanged: () => void | Promise<void> }) {
   usePageTitle(t("wiz.title"));
   const toast = useToast();
   const st = useLoad(() => api<WizardState>("/wizard"), []);
@@ -82,7 +82,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
         </div>
         <p className="muted small">
           {t("wiz.skipAll")}{" "}
-          <button className="linklike" onClick={() => void save({ done: true }).then(() => navigate("/settings"))}>
+          <button className="linklike" onClick={() => void save({ done: true }).then(async () => (await onChanged(), navigate("/settings")))}>
             {t("wiz.skipLink")}
           </button>
         </p>
@@ -144,7 +144,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
             </button>
           )}
           {step.id === "done" ? (
-            <button className="primary" onClick={() => void save({ done: true, completed: steps.map((x) => x.id) }).then(() => (onChanged(), navigate("/")))}>
+            <button className="primary" onClick={() => void save({ done: true, completed: steps.map((x) => x.id) }).then(async () => (await onChanged(), navigate("/")))}>
               {t("wiz.finish")}
             </button>
           ) : (
@@ -285,7 +285,7 @@ function IndexersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   );
 }
 
-interface Preview { sonarr?: { animeSeries: number; roots: string[]; clients: { name: string; type: string; enabled: boolean; protocol: string; host: string | null; port: number | null; category: string | null }[]; indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[]; plex: boolean; tags: string[] }; radarr?: { animeMovies: number; roots: string[] } }
+interface Preview { sonarr?: { animeSeries: number; roots: string[]; clients: { name: string; type: string; enabled: boolean; protocol: string; host: string | null; port: number | null; ssl?: boolean; urlBase?: string; category: string | null }[]; indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[]; plex: boolean; tags: string[] }; radarr?: { animeMovies: number; roots: string[] } }
 
 /** What Sonarr/Radarr have, with a checkbox per piece to take over. */
 function PreviewStep({ onApplied }: { onApplied: () => void }) {
@@ -299,7 +299,7 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const so = d.data.sonarr;
-  const url = (c: { host: string | null; port: number | null }) => (c.host ? `http://${c.host}${c.port ? `:${c.port}` : ""}` : "");
+  const url = (c: { host: string | null; port: number | null; ssl?: boolean; urlBase?: string }) => (c.host ? `${c.ssl ? "https" : "http"}://${c.host}${c.port ? `:${c.port}` : ""}${c.urlBase ?? ""}` : "");
   const sab = so?.clients.find((c) => /sabnzbd/i.test(c.type) && c.enabled);
   const qb = so?.clients.find((c) => /qbittorrent/i.test(c.type) && c.enabled);
   return (
