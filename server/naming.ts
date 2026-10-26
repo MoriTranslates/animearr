@@ -133,6 +133,7 @@ export function cleanName(s: string, opts: NamingOptions) {
   let x = fixChars(s, opts);
   x = x
     .replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, "")
+    .replace(/\.{2,}/g, ".") // Sonarr: "Mask... Again" → "Mask. Again"
     .replace(/\s+-\s+(-\s+)+/g, " - ")
     .replace(/[ ]{2,}/g, " ")
     .replace(/\s+([\])])/g, "$1")
