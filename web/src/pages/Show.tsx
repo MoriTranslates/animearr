@@ -460,7 +460,7 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
             <article key={`${m.movieId ?? "t"}${m.tmdbId}`} className="poster-card">
               {m.movieId ? (
                 <Link to={`/movie/${m.movieId}`} className="poster-link card-link">
-                  <Cover src={m.cover} alt={m.title} size="md" />
+                  <Cover src={m.cover} alt={m.title} size="lg" />
                   <span className="poster-title clamp2">
                     {m.title}
                     {m.year ? ` (${m.year})` : ""}
@@ -468,7 +468,7 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
                 </Link>
               ) : (
                 <div className="poster-link">
-                  <Cover src={null} alt={m.title} size="md" />
+                  <Cover src={null} alt={m.title} size="lg" />
                   <span className="poster-title clamp2">{m.title}</span>
                 </div>
               )}
