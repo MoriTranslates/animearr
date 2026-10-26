@@ -192,6 +192,24 @@ export function inSourceRoots(real: string) {
   });
 }
 
+/**
+ * A download AnimeArr itself grabbed (its own grab record and client job): trusted wherever the client saved it, as
+ * long as that's inside the downloads mount (/data). `trusted` is that job's own payload path (Sonarr view).
+ */
+export function trustedSource(real: string, trusted: string | null | undefined) {
+  if (!trusted) return false;
+  const local = localPath(trusted);
+  const dataRoot = localPath("/data");
+  if (!local || !dataRoot) return false;
+  try {
+    const t = fs.realpathSync(local);
+    const d = fs.realpathSync(dataRoot);
+    return under(t, d) && under(real, t);
+  } catch {
+    return false;
+  }
+}
+
 /** Video files in a download folder, with sizes (for native shows, which have no Sonarr to list them). */
 export function listVideos(dir: string) {
   return videosIn(dir, 0).map((f) => ({ path: f, size: fs.statSync(f).size }));
@@ -231,7 +249,7 @@ function videosIn(dir: string, minBytes: number) {
  * Plans an import of a folder (or single file) for a show: which file is which episode (explicit ids when given, else
  * identified from the names), where it goes, how, and what it replaces. Nothing is changed.
  */
-export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<ImportPlan> {
+export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<ImportPlan> {
   const series = seriesByTvdb(input.tvdbId);
   if (!series) throw err("Unknown series", 404);
   const minBytes = deps.minBytes ?? 30e6;
@@ -249,7 +267,7 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     throw err(`AnimeArr can't read ${input.path}`);
   }
   if (forbiddenSource(real)) throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
-  if (input.automatic && !inSourceRoots(real)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
+  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
   let files: string[];
   if (st.isDirectory()) files = videosIn(real, minBytes);
   else {
@@ -541,7 +559,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
 export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; notes: string[] }
 
 /** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
-export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; live?: { path: string; currentFile: string | null } }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
+export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null } }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
   const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; year: number | null; path: string; file: string | null } | undefined;
   if (!mv) throw err("Unknown movie", 404);
   const m = getSettings().media;
@@ -557,7 +575,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
     throw err(`AnimeArr can't read ${input.path}`);
   }
   if (forbiddenSource(real)) throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
-  if (input.automatic && !inSourceRoots(real)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
+  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
   const minBytes = deps.minBytes ?? 100e6;
   const files = st.isDirectory() ? videosIn(real, minBytes) : VIDEO.test(real) && st.size >= minBytes ? [real] : [];
   const label = mv.year ? `${mv.title} (${mv.year})` : mv.title;

@@ -114,6 +114,18 @@ export const realClients: DownloadClients = {
     const tag = `animearr-${Date.now().toString(36)}`;
     const form = new FormData();
     form.append("category", s.category);
+    // The category's own save path, explicitly: with Automatic Torrent Management off, qBittorrent ignores it and
+    // saves into its default folder (outside AnimeArr's category folder).
+    try {
+      const cats = (await (await qbit("/torrents/categories")).json()) as Record<string, { savePath?: string; save_path?: string }>;
+      const savePath = cats[s.category]?.savePath ?? cats[s.category]?.save_path ?? "";
+      if (savePath) {
+        form.append("savepath", savePath);
+        form.append("autoTMM", "false");
+      } else form.append("autoTMM", "true");
+    } catch {
+      form.append("autoTMM", "true");
+    }
     form.append("tags", tag);
     form.append("rename", name);
     if (src.magnet) form.append("urls", src.magnet);

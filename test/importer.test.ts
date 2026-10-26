@@ -195,6 +195,11 @@ test("automatic imports only take files from AnimeArr's own category folders; ma
   await assert.rejects(planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/Frieren.S01E02.other.mkv", episodeIds: [102], automatic: true }, { probe, minBytes: 0 }), /can't reach|only a manual import/);
   const ok = await planImport({ tvdbId: 424536, path: "/data/completed/animearr/Frieren.S01E02.ours.mkv", episodeIds: [102], automatic: true }, { probe, minBytes: 0 });
   assert.equal(ok.items.length, 1);
+  // A download AnimeArr itself grabbed is trusted wherever the client saved it (inside /data), e.g. qBittorrent's default folder.
+  write(path.join(DL, "qbittorrent", "completed", "Frieren.S01E02.ours-but-misplaced.mkv"));
+  const trusted = await planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/Frieren.S01E02.ours-but-misplaced.mkv", episodeIds: [102], automatic: true, trusted: "/data/qbittorrent/completed/Frieren.S01E02.ours-but-misplaced.mkv" }, { probe, minBytes: 0 });
+  assert.equal(trusted.items.length, 1);
+  await assert.rejects(planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/sonarr/Frieren.S01E02.other.mkv", episodeIds: [102], automatic: true, trusted: "/data/qbittorrent/completed/Frieren.S01E02.ours-but-misplaced.mkv" }, { probe, minBytes: 0 }), /only a manual import/, "trust covers only that grab's own payload");
   const manual = await planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/sonarr/Frieren.S01E02.other.mkv", episodeIds: [102] }, { probe, minBytes: 0 });
   assert.equal(manual.items.length, 1, "an explicit manual import may pick any download folder");
 });
