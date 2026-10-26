@@ -269,7 +269,7 @@ export const importModeFor = (client: string | null): "copy" | "move" => (client
 /** After a restart: grabs caught mid-import need a look; grabs caught mid-send never reached a client. */
 export function recoverGrabs() {
   if (dbState.corrupt) return;
-  db.prepare("UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check Sonarr, then retry the import' WHERE state = 'importing'").run();
+  db.prepare("UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check the show folder, then retry the import' WHERE state = 'importing'").run();
   db.prepare("UPDATE grabs SET state = 'failed', error = 'AnimeArr restarted while sending to the download client' WHERE state = 'sending' AND updated_at < ?").run(Date.now() - 10 * 60_000);
 }
 
