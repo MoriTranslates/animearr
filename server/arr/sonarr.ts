@@ -168,6 +168,13 @@ export const getMediaManagement = () => call<{ recycleBin?: string; recycleBinCl
 export const getNamingConfig = () => call<Record<string, unknown>>("GET", "/config/naming");
 export const getMediaManagementFull = () => call<Record<string, unknown>>("GET", "/config/mediamanagement");
 /** Asks Sonarr to re-read a series folder (after AnimeArr's own importer or renamer touched it). */
+/** Sonarr's own rename preview for a series (files whose names differ from Sonarr's naming). */
+export const renamePreview = (seriesId: number) =>
+  call<{ seriesId: number; seasonNumber: number; episodeNumbers: number[]; episodeFileId: number; existingPath: string; newPath: string }[]>("GET", `/rename?seriesId=${seriesId}`);
+/** Asks Sonarr to rename these files itself (its file records and history stay intact). */
+export async function renameFiles(seriesId: number, files: number[]) {
+  return call<{ id: number }>("POST", "/command", { name: "RenameFiles", seriesId, files });
+}
 export async function rescanSeries(seriesId: number) {
   return call<{ id: number }>("POST", "/command", { name: "RescanSeries", seriesId });
 }

@@ -50,7 +50,7 @@ async function catalogTick(force = false) {
   }
 }
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
-import { applyRename, executeImport, planImport, planRename, renameBack } from "./importer.js";
+import { applyRenameRouted, executeImport, planImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -564,10 +564,10 @@ app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?
   const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
   return { plan, results: await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only }) };
 });
-app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/rename", async (req) => planRename(id(req.params.tvdbId)));
+app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/rename", async (req) => renamePlan(id(req.params.tvdbId)));
 app.post<{ Params: { tvdbId: string }; Body: { fileIds: number[] } }>("/api/series/:tvdbId/rename", async (req) => {
   writable();
-  return { results: await applyRename(id(req.params.tvdbId), (req.body?.fileIds ?? []).map(Number)) };
+  return applyRenameRouted(id(req.params.tvdbId), (req.body?.fileIds ?? []).map(Number));
 });
 app.get("/api/media/rename-all", async () => {
   const rows = cache.prepare("SELECT tvdb_id, title FROM series ORDER BY sort_title").all() as { tvdb_id: number; title: string }[];

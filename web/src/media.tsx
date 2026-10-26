@@ -240,7 +240,7 @@ interface RenameItem { fileId: number; from: string; to: string; episodes: strin
 export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: number; onDone: () => void; initiallyOpen?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(!!initiallyOpen);
-  const d = useLoad(() => (open ? api<{ items: RenameItem[] }>(`/series/${tvdbId}/rename`) : Promise.resolve(null)), [open, tvdbId]);
+  const d = useLoad(() => (open ? api<{ route: "sonarr" | "animearr"; items: RenameItem[] }>(`/series/${tvdbId}/rename`) : Promise.resolve(null)), [open, tvdbId]);
   const [pick, setPick] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   useEffect(() => setPick(new Set((d.data?.items ?? []).filter((i) => !i.problem).map((i) => i.fileId))), [d.data]);
@@ -250,6 +250,7 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
       <summary>{t("rename.title")}</summary>
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
       {open && !d.data && !d.error && <Spinner label={t("app.loading")} />}
+      {d.data && <p className="muted small">{t(d.data.route === "sonarr" ? "rename.routeSonarr" : "rename.routeOwn")}</p>}
       {d.data && !d.data.items.length && <p className="muted small">{t("rename.none")}</p>}
       {d.data && d.data.items.length > 0 && (
         <>
@@ -287,7 +288,7 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
                 try {
                   const r = await api<{ results: { done: boolean; why: string }[] }>(`/series/${tvdbId}/rename`, { body: { fileIds: [...pick] } });
                   const ok = r.results.filter((x) => x.done).length;
-                  toast(t("rename.done", { ok, total: r.results.length }), ok < r.results.length);
+                  toast(t(d.data?.route === "sonarr" ? "rename.doneSonarr" : "rename.done", { ok, total: r.results.length }), ok < r.results.length);
                   await d.reload();
                   onDone();
                 } catch (e) {

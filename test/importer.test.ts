@@ -162,3 +162,27 @@ test("the real-import budget: one import, then a review pause", async () => {
   await assert.rejects(executeImport(plan), /paused for a review/);
   patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: false } }));
 });
+
+test("rename route: Sonarr renames while it owns the show (RenameFiles), with its own preview", async () => {
+  const { renamePlan, applyRenameRouted, renameRoute } = await import("../server/importer.js");
+  let pending = [{ seriesId: 10, seasonNumber: 1, episodeNumbers: [4], episodeFileId: 504, existingPath: "Season 01/old.mkv", newPath: "Season 01/new.mkv" }];
+  const calls: unknown[] = [];
+  const deps = {
+    sonarrOn: () => true,
+    preview: async () => pending,
+    renameFiles: async (sid: number, files: number[]) => (calls.push({ sid, files }), (pending = []), { id: 9 }),
+    getCommand: async () => ({ id: 9, status: "completed" }),
+    sleep: async () => undefined,
+  };
+  assert.equal(renameRoute(424536, deps), "sonarr");
+  assert.equal(renameRoute(424536, { sonarrOn: () => false }), "animearr");
+  const plan = await renamePlan(424536, deps);
+  assert.equal(plan.route, "sonarr");
+  assert.equal(plan.items[0].to, "/media/AnimeArr/Frieren (2023)/Season 01/new.mkv");
+  await assert.rejects(applyRenameRouted(424536, [504], deps), /isn't switched on/);
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowRename: true } }));
+  const r = await applyRenameRouted(424536, [504], deps);
+  assert.deepEqual(calls, [{ sid: 10, files: [504] }]);
+  assert.equal(r.results[0].done, true);
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowRename: false } }));
+});

@@ -539,6 +539,58 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
   return { items };
 }
 
+export type RenameRoute = "sonarr" | "animearr";
+
+/**
+ * Who renames a show's files: Sonarr (its RenameFiles command) while Sonarr still owns the show, so its file records
+ * and history stay intact; AnimeArr's own renamer after cutover or for AnimeArr-native shows.
+ */
+export function renameRoute(tvdbId: number, deps = { sonarrOn: sonarr.sonarrConfigured }): RenameRoute {
+  const s = seriesRow(tvdbId);
+  return s && deps.sonarrOn() ? "sonarr" : "animearr";
+}
+
+/** The rename preview by route: Sonarr's own preview, or AnimeArr's plan. */
+export async function renamePlan(tvdbId: number, deps = { sonarrOn: sonarr.sonarrConfigured, preview: sonarr.renamePreview }): Promise<{ route: RenameRoute; items: RenameItem[] }> {
+  const route = renameRoute(tvdbId, deps);
+  if (route === "animearr") return { route, items: planRename(tvdbId).items };
+  const s = seriesRow(tvdbId)!;
+  if (!getSettings().media.renameEpisodes) return { route, items: [] };
+  const base = s.path.replace(/\/+$/, "");
+  const items = (await deps.preview(s.id)).map((x) => ({
+    fileId: x.episodeFileId,
+    from: `${base}/${x.existingPath}`,
+    to: `${base}/${x.newPath}`,
+    episodes: x.episodeNumbers.map((e) => `S${String(x.seasonNumber).padStart(2, "0")}E${String(e).padStart(2, "0")}`).join("+"),
+    problem: underAllowedRoot(s.path) ? null : "outside the allowed root folders",
+    sidecars: [],
+  }));
+  return { route, items };
+}
+
+/** Renames the chosen files by route. Through Sonarr: its RenameFiles command (no undo; Sonarr keeps its records). */
+export async function applyRenameRouted(tvdbId: number, fileIds: number[], deps = { sonarrOn: sonarr.sonarrConfigured, preview: sonarr.renamePreview, renameFiles: sonarr.renameFiles, getCommand: sonarr.getCommand, sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)) }) {
+  const route = renameRoute(tvdbId, deps);
+  if (route === "animearr") return { route, results: await applyRename(tvdbId, fileIds) };
+  if (!getSettings().importer.allowRename) throw err("Renaming isn't switched on (Settings → Media management → Importer)", 409);
+  const s = seriesRow(tvdbId)!;
+  if (!underAllowedRoot(s.path)) throw err("This show is outside the allowed root folders");
+  const before = (await renamePlan(tvdbId, deps)).items.filter((i) => fileIds.includes(i.fileId));
+  if (!before.length) return { route, results: [] };
+  const cmd = await deps.renameFiles(s.id, before.map((i) => i.fileId));
+  let status = "queued";
+  for (let i = 0; i < 60 && !["completed", "failed", "aborted"].includes(status); i++) {
+    await deps.sleep(2000);
+    status = (await deps.getCommand(cmd.id)).status;
+  }
+  const still = new Set((await renamePlan(tvdbId, deps)).items.map((i) => i.fileId));
+  const results = before.map((i) => ({ from: i.from, to: i.to, done: status === "completed" && !still.has(i.fileId), why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}` }));
+  const n = results.filter((r) => r.done).length;
+  if (n) logDecision("info", { tvdbId, title: s.title, why: `Sonarr renamed ${n} file(s) of ${s.title} (asked by AnimeArr; Sonarr keeps its file records). ${results.filter((r) => r.done).slice(0, 3).map((r) => path.posix.basename(r.to)).join(", ")}${n > 3 ? "…" : ""}` });
+  void scanFolder(s.path).catch(() => undefined);
+  return { route, results };
+}
+
 /** Renames the chosen files (and their sidecars); every rename is logged with undo. */
 export async function applyRename(tvdbId: number, fileIds: number[]) {
   if (!getSettings().importer.allowRename) throw err("Renaming isn't switched on yet (the first rename plan is being reviewed)", 409);
