@@ -1,6 +1,6 @@
 import { ArrowRight, CaptionsOff, ChevronRight, CircleAlert, Download, FileX, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, sxe, type Status } from "../api";
+import { api, store, sxe, type Status } from "../api";
 import { Link, navigate } from "../App";
 import { EpisodeSheet, type EpisodeStatus } from "../episodes";
 import { t } from "../i18n";
@@ -27,7 +27,11 @@ const weekday = (ms: number) => new Date(ms).toLocaleDateString(undefined, { wee
 /** Home: what airs today, what needs you, what's downloading, what just arrived, what's ready to binge, this week. */
 export function Home({ status }: { status: Status; onChanged: () => void }) {
   usePageTitle(t("home.title"));
-  const d = useLoad(() => api<HomeData>("/home"), []);
+  const d = useLoad(() => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return api<HomeData>(`/home?from=${midnight}${store.get("calManagedOnly", false) ? "&managed=1" : ""}`);
+  }, []);
   const [open, setOpen] = useState<number | null>(null);
   // Downloads and today's statuses move on by themselves.
   useEffect(() => {

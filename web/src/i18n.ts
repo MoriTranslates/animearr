@@ -512,7 +512,7 @@ const en = {
   "home.recent": "Recent activity",
 
   "shows.title": "Library",
-  "shows.intro": "AnimeArr decides and grabs for the shows you pick here; Sonarr stays your library. When you manage shows you choose whether they start live or in dry run.",
+  "shows.intro": "Your anime. Managed shows (★) are searched, grabbed and imported by AnimeArr; pick shows and choose Manage.",
   "shows.filter.airing": "Airing this season ({season})",
   "shows.filter.continuing": "All continuing",
   "shows.filter.all": "All",

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
 import { Link, navigate } from "../App";
 import { t } from "../i18n";
-import { Confirm, Empty, ErrorBox, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
+import { Confirm, Empty, ErrorBox, Menu, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { ScopeEditor } from "../scope";
 
@@ -213,6 +213,8 @@ export function LibraryHead({ current }: { current: "shows" | "movies" }) {
   return (
     <div className="row between">
       <h1>{t("nav.library")}</h1>
+      <span className="row">
+      <SyncMenu />
       <div className="seg" role="group" aria-label={t("nav.library")}>
         <button className={current === "shows" ? "on" : ""} aria-pressed={current === "shows"} onClick={() => current !== "shows" && navigate("/shows")}>
           {t("lib.shows")}
@@ -221,6 +223,29 @@ export function LibraryHead({ current }: { current: "shows" | "movies" }) {
           {t("lib.movies")}
         </button>
       </div>
+      </span>
     </div>
+  );
+}
+
+/** "Sync library now" (the sync also runs on a schedule). */
+function SyncMenu() {
+  const toast = useToast();
+  return (
+    <Menu
+      items={[
+        {
+          label: t("home.syncNow"),
+          onSelect: async () => {
+            try {
+              await api("/library/sync", { body: {} });
+              toast(t("home.syncing"));
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          },
+        },
+      ]}
+    />
   );
 }

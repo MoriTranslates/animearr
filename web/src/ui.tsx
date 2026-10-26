@@ -45,7 +45,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     const kind: ToastKind = error ? "error" : (opts?.kind ?? "success");
     const id = Date.now() + Math.random();
-    setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action, kind, burst: pickBurst(kind, opts), cover: opts?.cover ?? null }]);
+    const burst = pickBurst(kind, opts);
+    setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action, kind, burst, cover: opts?.cover ?? null }]);
     setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), error ? 12_000 : action ? 8000 : 4500);
   }, []);
   const close = (id: number) => setToasts((x) => x.filter((y) => y.id !== id));
@@ -57,9 +58,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((x) => (
-          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined} aria-label={x.burst ? `${x.burst.text} ${x.msg}` : undefined}>
+          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined}>
             {x.burst && (
-              <span className={`burst ${x.kind}`} aria-hidden="true">
+              <span className={`burst ${x.kind}`}>
                 <b>{x.burst.text}</b>
                 <small>{x.burst.jp}</small>
               </span>

@@ -261,11 +261,11 @@ app.get<{ Querystring: { u?: string; s?: string } }>("/api/img", async (req, rep
   const r = await thumb(String(req.query.u ?? ""), size);
   if (!r) return reply.code(404).send({ error: "No such image" });
   if (req.headers["if-none-match"] === r.etag) return reply.code(304).send();
-  reply.header("Cache-Control", "private, max-age=31536000, immutable").header("ETag", r.etag).type(r.type);
+  reply.header("Cache-Control", "private, max-age=31536000, immutable").header("ETag", r.etag).header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox; default-src 'none'").type(r.type);
   return reply.send(fs.createReadStream(r.file));
 });
 
-app.get("/api/home", async () => homeSummary());
+app.get<{ Querystring: { from?: string; managed?: string } }>("/api/home", async (req) => homeSummary(Date.now(), Number(req.query.from) || undefined, req.query.managed === "1"));
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 

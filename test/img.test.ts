@@ -53,3 +53,12 @@ test("resized to WebP when smaller; the original kept when resizing isn't possib
   const b = await thumb("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/r2.png", "sm", { ...f, resize: async () => null });
   assert.equal(b?.type, "image/png");
 });
+
+test("redirects off the allowed hosts and non-raster types are refused", async () => {
+  const redirect = { fetch: (async () => new Response(null, { status: 302, headers: { location: "http://192.168.1.1/admin.png" } })) as typeof fetch };
+  assert.equal(await thumb("https://image.tmdb.org/t/p/original/r1.jpg", "sm", redirect), null);
+  const svg = { fetch: (async () => new Response("<svg onload=alert(1)>", { headers: { "content-type": "image/svg+xml" } })) as typeof fetch };
+  assert.equal(await thumb("https://image.tmdb.org/t/p/original/r2.jpg", "sm", svg), null);
+  const big = { fetch: (async () => new Response(new Uint8Array(10), { headers: { "content-type": "image/png", "content-length": "99999999" } })) as typeof fetch };
+  assert.equal(await thumb("https://image.tmdb.org/t/p/original/r3.jpg", "sm", big), null);
+});

@@ -867,7 +867,6 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .tag.good { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
 .tag.next { background: color-mix(in srgb, var(--show) 22%, transparent); color: color-mix(in srgb, var(--show) 70%, white); }
 .tag.neutral { background: color-mix(in srgb, var(--text) 6%, transparent); color: color-mix(in srgb, var(--text) 80%, var(--muted)); }
-[data-theme="light"] .tag.bad, [data-theme="light"] .tag.info, [data-theme="light"] .tag.next { color: color-mix(in srgb, currentColor 100%, black); }
 
 /* episode rows: # | title + date · group | quality | size | status */
 .ep-list { border-top: 1px solid var(--line); }
@@ -1051,3 +1050,14 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .sh-title { display: flex; flex-direction: column; gap: 4px; text-shadow: 0 1px 10px rgb(0 0 0 / 0.6); }
 .sh-title h2 { font-size: 22px; font-weight: 700; }
 .sheet .sheet-actions .split.primary > button, .sheet .sheet-actions .split.primary .menu-trigger { background: var(--show); border-color: var(--show); color: var(--show-ink); }
+
+.crumb-link { color: inherit; text-decoration: none; }
+.crumb-link:hover { text-decoration: underline; }
+.hero-chips { margin-top: 10px; }
+
+/* light theme: the accent fallback is dark, so white ink; show-colour tints mix with black for contrast */
+[data-theme="light"] { --show-ink: #ffffff; }
+[data-theme="light"] .kv-hero .synopsis .linklike, [data-theme="light"] .ep-row.next .ep-num, [data-theme="light"] .tag.next { color: color-mix(in srgb, var(--show) 55%, black); }
+[data-theme="light"] .tag.bad { color: color-mix(in srgb, var(--bad) 80%, black); }
+[data-theme="light"] .tag.info { color: color-mix(in srgb, var(--info) 80%, black); }
+[data-theme="light"] .tag.warn { color: color-mix(in srgb, var(--warn) 85%, black); }

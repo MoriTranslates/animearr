@@ -19,7 +19,7 @@ export function ffmpegResize(buf: Buffer, width: number): Promise<Buffer | null>
   return new Promise((resolve) => {
     let p;
     try {
-      p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vf", `scale='min(${width},iw)':-2`, "-frames:v", "1", "-c:v", "libwebp", "-quality", "78", "-f", "webp", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
+      p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-protocol_whitelist", "pipe", "-f", "image2pipe", "-i", "pipe:0", "-vf", `scale='min(${width},iw)':-2`, "-frames:v", "1", "-c:v", "libwebp", "-quality", "78", "-f", "webp", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
     } catch {
       return resolve(null);
     }
@@ -60,6 +60,52 @@ export function allowedImage(u: string) {
 }
 
 const inflight = new Map<string, Promise<{ file: string; type: string } | null>>();
+/** Raster types only (an SVG could carry script and would be served from AnimeArr's origin). */
+const TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+/** Recent failures aren't refetched for 10 minutes. */
+const failed = new Map<string, number>();
+/** At most 4 fetch+resize jobs at once (a cold poster grid asks for hundreds). */
+let running = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= 4) await new Promise<void>((r) => waiting.push(r));
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
+/** Fetches without following redirects off the allowed hosts; reads at most MAX_BYTES. */
+async function fetchImage(url: string, f: typeof fetch): Promise<{ type: string; buf: Buffer } | null> {
+  let cur = url;
+  for (let hop = 0; hop < 4; hop++) {
+    if (!allowedImage(cur)) return null;
+    const res = await f(cur, { signal: AbortSignal.timeout(15_000), redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return null;
+      cur = new URL(loc, cur).href;
+      continue;
+    }
+    if (!res.ok) return null;
+    const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!TYPES.has(type)) return null;
+    if (Number(res.headers.get("content-length") ?? 0) > MAX_BYTES) return null;
+    if (!res.body) return { type, buf: Buffer.from(await res.arrayBuffer()) };
+    const chunks: Buffer[] = [];
+    let n = 0;
+    for await (const c of res.body as unknown as AsyncIterable<Uint8Array>) {
+      n += c.length;
+      if (n > MAX_BYTES) return null;
+      chunks.push(Buffer.from(c));
+    }
+    return { type, buf: Buffer.concat(chunks) };
+  }
+  return null;
+}
 
 /** The cached file for a cover at a size (fetched once; concurrent requests share the fetch). */
 export async function thumb(u: string, size: ThumbSize, deps: { fetch: typeof fetch; resize?: (b: Buffer, w: number) => Promise<Buffer | null> } = { fetch, resize: ffmpegResize }): Promise<{ file: string; type: string; etag: string } | null> {
@@ -69,17 +115,14 @@ export async function thumb(u: string, size: ThumbSize, deps: { fetch: typeof fe
   const file = path.join(DIR, key.slice(0, 2), key);
   const meta = `${file}.type`;
   if (fs.existsSync(file) && fs.existsSync(meta)) return { file, type: fs.readFileSync(meta, "utf8"), etag: `"${key}"` };
+  if ((failed.get(key) ?? 0) > Date.now()) return null;
   let p = inflight.get(key);
   if (!p) {
-    p = (async () => {
-      let res = await deps.fetch(src, { signal: AbortSignal.timeout(15_000) });
+    p = slot(async () => {
       // A rendition the provider doesn't have: fall back to the original URL.
-      if (!res.ok && src !== u) res = await deps.fetch(u, { signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) return null;
-      let type = res.headers.get("content-type") ?? "";
-      if (!/^image\//.test(type)) return null;
-      let buf: Buffer = Buffer.from(await res.arrayBuffer());
-      if (buf.length > MAX_BYTES) return null;
+      const got = (await fetchImage(src, deps.fetch)) ?? (src !== u ? await fetchImage(u, deps.fetch) : null);
+      if (!got) return null;
+      let { type, buf } = got;
       // Shrunk to the slot's width as WebP (AniList's covers are PNG/JPG of 100–260 KB even at "medium").
       const small = deps.resize ? await deps.resize(buf, WIDTH[size]) : null;
       if (small && small.length < buf.length) (buf = small), (type = "image/webp");
@@ -89,10 +132,19 @@ export async function thumb(u: string, size: ThumbSize, deps: { fetch: typeof fe
       fs.writeFileSync(meta, type);
       pruneSoon();
       return { file, type };
-    })().finally(() => inflight.delete(key));
+    })
+      .catch(() => null)
+      .then((r) => {
+        if (!r) {
+          failed.set(key, Date.now() + 10 * 60_000);
+          if (failed.size > 5000) failed.clear();
+        }
+        return r;
+      })
+      .finally(() => inflight.delete(key));
     inflight.set(key, p);
   }
-  const r = await p.catch(() => null);
+  const r = await p;
   return r ? { ...r, etag: `"${key}"` } : null;
 }
 

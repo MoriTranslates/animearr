@@ -158,7 +158,7 @@ export function App() {
           {t("app.skip")}
         </a>
         <aside className="sidebar" aria-label={t("nav.main")}>
-          <Brand />
+          <Brand listen />
           <nav className="side-nav" aria-label={t("nav.main")}>
             {GROUPS.map((g) => (
               <div key={g.label} className="nav-group" role="group" aria-labelledby={`grp-${g.label}`}>
@@ -268,10 +268,11 @@ export function App() {
 }
 
 /** The logo mark. Tap it 7 times (or type the Konami code) for Comic mode. */
-function Brand() {
+function Brand({ listen = false }: { listen?: boolean }) {
   const toast = useToast();
   const taps = useRef<number[]>([]);
   useEffect(() => {
+    if (!listen) return;
     const seq = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
     let i = 0;
     const onKey = (e: KeyboardEvent) => {
@@ -281,7 +282,7 @@ function Brand() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toast]);
+  }, [toast, listen]);
   return (
     <Link to="/" className="brand">
       <span
@@ -319,6 +320,7 @@ function GlobalSearch() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest?.("input, textarea, select, [contenteditable]");
+      if (document.querySelector("[aria-modal='true']")) return;
       if ((e.key === "k" && (e.ctrlKey || e.metaKey)) || (e.key === "/" && !typing)) {
         e.preventDefault();
         ref.current?.focus();

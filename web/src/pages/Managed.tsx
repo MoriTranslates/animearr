@@ -22,8 +22,9 @@ export function Managed({ status }: { status: Status }) {
 
   const shows = data.data?.shows ?? [];
   const attention = shows.filter((m) => m.schedule.some((x) => x.state === "retry" || x.state === "gave-up"));
-  const scheduled = shows.filter((m) => !attention.includes(m) && m.schedule.length);
-  const quiet = shows.filter((m) => !m.schedule.length);
+  const pending = (m: ManagedShow) => m.schedule.some((x) => x.state !== "done");
+  const scheduled = shows.filter((m) => !attention.includes(m) && pending(m));
+  const quiet = shows.filter((m) => !attention.includes(m) && !pending(m));
   const sonarrToo = shows.filter((m) => !m.unmonitoredInSonarr);
   const card = (m: ManagedShow) => (
     <article key={m.tvdbId} className="card show-card">
@@ -45,7 +46,7 @@ export function Managed({ status }: { status: Status }) {
         <Menu label={`${m.title}: ${t("common.moreActions")}`} items={[{ label: t("managed.sonarrMonitor"), onSelect: () => setConfirm(m), hidden: m.unmonitoredInSonarr }]} />
       </div>
       <ul className="sched show-body">
-        {m.schedule.map((s) => (
+        {m.schedule.filter((s) => s.state !== "done").map((s) => (
           <li key={s.episodeId}>
             <span className="mono">{sxe(s.season, s.episode)}</span>
             <Chip tone={STATE_TONE[s.state] ?? "info"}>{t(`managed.state.${s.state}` as I18nKey)}</Chip>

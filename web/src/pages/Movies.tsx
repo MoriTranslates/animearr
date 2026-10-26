@@ -4,7 +4,7 @@ import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
 import { Link , navigate } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Skeleton, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Skeleton, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast, Why } from "../ui";
 import { PosterCard } from "../posters";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
@@ -207,18 +207,23 @@ export function MoviePage({ id }: { id: number }) {
   };
   return (
     <section className="stack">
-      <nav className="crumbs small muted" aria-label={t("nav.library")}>
-        <Link to="/movies">{t("nav.library")} · {t("lib.movies")}</Link>
-      </nav>
-      <header className="series-hero card">
-        <Cover src={m.cover} alt={m.title} size="lg" hero />
-        <div className="stack hero-body">
-          <div className="row between hero-title">
-            <h1 className="clamp2 grow">
-              {m.title}
-              {m.year ? ` (${m.year})` : ""}
-            </h1>
+      <header className="kv-hero">
+        {m.cover && <span className="hero-blur" style={{ backgroundImage: `url(${thumbUrl(m.cover, "sm")})` }} aria-hidden="true" />}
+        <div className="hero-in">
+        <div className="hero-poster">
+          <Cover src={m.cover} alt={m.title} size="lg" hero />
+        </div>
+        <div className="hero-info">
+          <div className="hero-top">
+            <span className="eyebrow show-eyebrow">
+              <Link to="/movies" className="crumb-link">
+                {t("lib.movies")}
+              </Link>
+              {m.year ? ` · ${m.year}` : ""}
+              {m.runtime ? ` · ${t("movies.runtime", { min: m.runtime })}` : ""}
+            </span>
             <Menu
+              className="hero-menu"
               items={[
                 { label: t("files.refreshScan"), onSelect: () => void rescan() },
                 { label: m.monitored ? t("movies.unwantThis") : t("movies.wantThis"), onSelect: () => void toggleWanted() },
@@ -226,7 +231,8 @@ export function MoviePage({ id }: { id: number }) {
               ]}
             />
           </div>
-          {m.originalTitle && m.originalTitle !== m.title && <p className="muted small">{m.originalTitle}</p>}
+          <h1 className="hero-title">{m.title}</h1>
+          {m.originalTitle && m.originalTitle !== m.title && <p className="hero-jp jp">{m.originalTitle}</p>}
           {!!m.series.length && (
             <p className="small">
               {t("movies.partOf")}{" "}
@@ -238,17 +244,17 @@ export function MoviePage({ id }: { id: number }) {
               ))}
             </p>
           )}
-          <p className="muted small">
-            {[m.dates.digital ? t("movies.digital", { date: dateOnly(m.dates.digital) }) : null, m.dates.physical ? t("movies.physical", { date: dateOnly(m.dates.physical) }) : null, m.runtime ? t("movies.runtime", { min: m.runtime }) : null].filter(Boolean).join(" · ")}
+          <p className="hero-facts">
+            {[m.dates.digital ? t("movies.digital", { date: dateOnly(m.dates.digital) }) : null, m.dates.physical ? t("movies.physical", { date: dateOnly(m.dates.physical) }) : null].filter(Boolean).join(" · ")}
           </p>
-          <div className="chips">
+          <div className="chips hero-chips">
             {!m.released && <Chip tone="info">{t("movies.status.unreleased")}</Chip>}
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
             <button className="small" aria-pressed={m.monitored} onClick={() => void toggleWanted()} title={t("movies.wantedHelp")}>
               {m.monitored ? `★ ${t("movies.wanted")}` : `☆ ${t("movies.notWanted")}`}
             </button>
           </div>
-          <div className="row hero-actions">
+          <div className="hero-actions">
             {m.allowed ? (
               <SplitButton
                 label={`⚡ ${autoBusy ? t("common.working") : t("auto.find")}`}
@@ -261,10 +267,11 @@ export function MoviePage({ id }: { id: number }) {
                 {searching ? t("common.working") : t("auto.chooseRelease")}
               </button>
             )}
-            <button className="small" onClick={() => setWatchOpen(true)} aria-haspopup="dialog">
+            <button className="glass-btn" onClick={() => setWatchOpen(true)} aria-haspopup="dialog">
               {t("profiles.watchAs")}: {m.profile.name}
             </button>
           </div>
+        </div>
         </div>
       </header>
       <div className="card pad stack">

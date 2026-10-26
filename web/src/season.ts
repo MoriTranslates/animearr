@@ -87,5 +87,6 @@ export function safeShowColor(hex: string | null | undefined): string | null {
 /** Inline style for an element that should take a show's colour (or fall back to the season accent). */
 export const showVars = (hex: string | null | undefined): React.CSSProperties => {
   const c = safeShowColor(hex);
-  return c ? ({ "--show": c } as React.CSSProperties) : {};
+  // A clamped show colour is light enough for dark text in both themes.
+  return c ? ({ "--show": c, "--show-ink": "#0b0d14" } as React.CSSProperties) : {};
 };

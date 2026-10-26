@@ -5,6 +5,10 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 
 ## Must-have before tagging 1.0
 
+- [ ] **Creditless OP/ED (NCOP/NCED) are first-class, never junk** (user request, 2026-10-26): their own special type; an "Openings & endings" group on the series page (OP1, OP2, ED1… with song title and artist from AniDB when known), never under "minor extras"; a "Creditless OP/ED" monitoring toggle (default ON for new shows); searches understand NCOP/NCED/creditless naming and BD batch "Extras/NCOP" folders; import into S00 or as Plex extras (Featurettes/Other folder or -other suffix) by a setting; files already in the library count as Have. Seed of the music layer
+- [ ] **Indexers & download clients, Sonarr parity** (see PARITY.md): multiple clients (SABnzbd, NZBGet, qBittorrent, Transmission; Deluge/rTorrent later) with category, priority, enabled, remove-completed, Test, remote path mapping; direct Newznab/Torznab (custom forms; keys encrypted and redacted); Jackett as a manager; curated versioned anime indexer catalogue (each entry verified live, with date); duplicate detection; protocol priority per profile (Prefer Usenet / Prefer Torrent / No preference) with per-protocol delays, shown on both tabs and in grab reasons
+- [ ] **First-run setup wizard** (two paths: "I'm new" / "I already use Sonarr/Radarr"), saved and resumable, re-runnable from Settings → System (spec in PARITY.md)
+
 - [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
 - [x] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies, series ↔ movie links (S0 double-download guard)
 
@@ -137,7 +141,14 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 ### Other sources
 - [ ] Muse Asia and other official free-stream links
 
+### Manga layer (toggleable module, 2.x)
+- [ ] Franchise pages show the source manga/light novel from AniList relations (ADAPTATION/SOURCE) with volume/chapter counts and status; "where the anime ends" (chapter/volume, community data or a user note); integrations instead of a reader/downloader: Komga/Kavita (library status, "read in Komga" links), Suwayomi/Kaizoku/Mylar-style downloaders, AniList reading-progress sync
+
+### Music / OST layer (toggleable module, 2.x)
+- [ ] Franchise pages list OPs/EDs (AniDB song/credit data per anime and episode), insert songs and soundtrack albums (VGMdb as the canonical source, MusicBrainz links); have/missing from the user's music library via Plex Music, Navidrome/Jellyfin or a Lidarr connection, "Listen" links; an "Opening of the week" card on Home for airing shows; integrate with Lidarr rather than building a downloader. Seeded by the creditless OP/ED work
+
 ### Themes
+- [ ] **Merry theme** (fun, optional): an original sheep-figurehead caravel SVG (our own drawing, flat, 2–3 token colours; no One Piece/Toei artwork, names or Jolly Roger) on the 404 page ("Lost at sea…"), a small sail-by on the OMEDETOU toast (reduced-motion respected), a caramel-wood / sea-blue / sail-white palette in Appearance, Activity titled "Ship's log" in that theme only
 - UI design rules (user feedback 2026-10-25) live in PROPOSAL §10 "Design rules"; themes must keep them (no colour-only meaning, readable phone type).
 - [ ] Themes engine with presets: "server/compact" dense view, "pretty" poster-heavy view, colour themes, community theme files. Builds on 0.1's design tokens.
 - [ ] "Theme it after your favourite anime": pick a show; AnimeArr takes an accent palette from its AniList art (`coverImage.color`), uses its banner as the header/background, and lets users share theme files.

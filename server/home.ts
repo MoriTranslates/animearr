@@ -39,16 +39,34 @@ export function artFor(tvdbId: number): { cover: string | null; banner: string |
 
 const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`;
 
-let langMemo: { at: number; v: { files: number; series: number } } | null = null;
-function noLangCount() {
-  if (langMemo && Date.now() - langMemo.at < 10 * 60_000) return langMemo.v;
-  const r = missingLanguage();
-  const v = { files: r.series.reduce((n, g) => n + g.files.length, 0) + r.movies.length, series: new Set(r.series.map((g) => g.tvdbId)).size };
-  langMemo = { at: Date.now(), v };
-  return v;
+/**
+ * Memoized expensive values: the first request computes; later ones get the cached value at once and, when it's
+ * stale, a refresh runs after the response (never on the request's time).
+ */
+function memo<T>(ttl: number, compute: () => T) {
+  let v: { at: number; value: T } | null = null;
+  let refreshing = false;
+  return () => {
+    if (!v) v = { at: Date.now(), value: compute() };
+    else if (Date.now() - v.at > ttl && !refreshing) {
+      refreshing = true;
+      setTimeout(() => {
+        try {
+          v = { at: Date.now(), value: compute() };
+        } finally {
+          refreshing = false;
+        }
+      }, 50);
+    }
+    return v.value;
+  };
 }
 
-let bingeMemo: { at: number; v: ReturnType<typeof readyToBingeNow> } | null = null;
+const noLangCount = memo(10 * 60_000, () => {
+  const r = missingLanguage();
+  return { files: r.series.reduce((n, g) => n + g.files.length, 0) + r.movies.length, series: new Set(r.series.map((g) => g.tvdbId)).size };
+});
+
 /**
  * Ready to binge: seasons that finished airing in the last 120 days, with every episode in the library and every file
  * in the show's language (subs, or audio for dub profiles).
@@ -84,13 +102,22 @@ export function airingShowCount(now = Date.now()) {
   return n;
 }
 
-export function homeSummary(now = Date.now()) {
-  const today = startOfDay(now);
+const readyToBinge = memo(15 * 60_000, () => readyToBingeNow());
+
+/** `dayStart`: the viewer's local midnight (the server's timezone may differ); `managedOnly` as on the calendar. */
+export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = false) {
+  const today = dayStart && Math.abs(dayStart - now) < 2 * DAY ? dayStart : startOfDay(now);
   const managed = new Set(listManaged().map((m) => m.tvdbId));
   const withColor = <T extends { tvdbId: number }>(x: T) => ({ ...x, color: colorFor(x.tvdbId) });
 
-  const airingToday = calendar(today, today + DAY, false).map(withColor);
-  const thisWeek = calendar(today + DAY, today + 8 * DAY, false).slice(0, 12);
+  const airingToday = calendar(today, today + DAY, managedOnly).map(withColor);
+  // This week: the next days, whole days only (up to 18 entries), so a busy day doesn't hide the rest of the week.
+  const week = calendar(today + DAY, today + 8 * DAY, managedOnly);
+  const thisWeek: typeof week = [];
+  for (const e of week) {
+    if (thisWeek.length >= 18 && Math.floor((e.airUtc - today) / DAY) !== Math.floor((thisWeek[thisWeek.length - 1].airUtc - today) / DAY)) break;
+    thisWeek.push(e);
+  }
 
   // Needs you: recent missing (aired in the last 14 days), imports that need a look, files without the language.
   const recentMissing = calendar(today - 14 * DAY, now, false).filter((e) => e.status === "missing" && managed.has(e.tvdbId));
@@ -126,7 +153,6 @@ export function homeSummary(now = Date.now()) {
   }
   const importsThisWeek = (db.prepare("SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND state = 'done' AND updated_at > ?").get(now - 7 * DAY) as { n: number }).n;
 
-  if (!bingeMemo || now - bingeMemo.at > 15 * 60_000) bingeMemo = { at: now, v: readyToBingeNow(now) };
 
   const airingShows = airingShowCount(now);
   return {
@@ -140,7 +166,7 @@ export function homeSummary(now = Date.now()) {
     downloading,
     justArrived,
     importsThisWeek,
-    readyToBinge: bingeMemo.v,
+    readyToBinge: readyToBinge(),
     thisWeek,
   };
 }
