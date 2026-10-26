@@ -1,4 +1,5 @@
 /** Queue (AnimeArr's own downloads, with live client status) and grab history. */
+import { liveFixesFor } from "./fixes.js";
 import { cache, db } from "./db.js";
 import { grabStages, realDeps, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { ClientJob } from "./arr/clients.js";
@@ -19,8 +20,12 @@ const movieTitle = (id: number) => {
 
 function view(g: GrabRow) {
   const eps = JSON.parse(g.episode_ids) as number[];
-  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin };
+  const fixes = g.error && (g.state === "needs-attention" || g.state === "failed") ? liveFixesFor(g.error, { grabId: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, episodeIds: eps, kind: verifyFailed(g) ? "verify-fail" : g.state === "failed" ? "fail" : "attention" }) : [];
+  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin, fixes };
 }
+
+/** A grab that failed the language check (its error is the blocklist reason the check wrote). */
+const verifyFailed = (g: GrabRow) => g.state === "failed" && !!g.error && !!db.prepare("SELECT 1 FROM blocklist WHERE release = ? AND reason = ? LIMIT 1").get(g.release, g.error);
 
 export async function queueView(deps: PipelineDeps = realDeps) {
   const active = db.prepare("SELECT * FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id DESC").all() as unknown as GrabRow[];

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
 import { Link } from "../App";
@@ -159,6 +159,11 @@ export function MoviePage({ id }: { id: number }) {
       setAutoBusy(false);
     }
   };
+  // "Interactive search" fix button: /movie/:id?search=1
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("search") === "1" && d.data && !res && !searching) void search();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.data, location.search]);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const m = d.data;

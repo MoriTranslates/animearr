@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Flag } from "./api";
+import { fixesForMessage, runFix, type Flag } from "./api";
 import { t } from "./i18n";
 
 // ---------------------------------------------------------------- toasts
@@ -12,6 +12,11 @@ export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = useCallback<Push>((msg, error = false, action) => {
+    // An error the server attached a fix to gets that fix as its button.
+    if (error && !action) {
+      const f = fixesForMessage(msg)?.[0];
+      if (f) action = { label: f.label, run: () => runFix(f) };
+    }
     const id = Date.now() + Math.random();
     setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action }]);
     setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), error ? 12_000 : action ? 8000 : 4500);

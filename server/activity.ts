@@ -1,4 +1,5 @@
 import { db, dbState } from "./db.js";
+import { liveFixesFor } from "./fixes.js";
 import { onDecision } from "./notify.js";
 
 /**
@@ -72,7 +73,13 @@ export function listDecisions(opts: { tvdbId?: number; kinds?: string[]; before?
   const rows = db
     .prepare(`SELECT * FROM decisions ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`)
     .all(...args, Math.min(500, opts.limit ?? 100)) as { id: number; at: number; kind: DecisionKind; tvdb_id: number | null; title: string; episode_ids: string; release: string | null; why: string; detail: string; undo: string | null; undone_at: number | null }[];
-  return rows.map((r) => ({ id: r.id, at: r.at, kind: r.kind, tvdbId: r.tvdb_id, title: r.title, episodeIds: JSON.parse(r.episode_ids), release: r.release, why: r.why, detail: JSON.parse(r.detail), undo: r.undo ? JSON.parse(r.undo) : null, undoneAt: r.undone_at }));
+  return rows.map((r) => {
+    const detail = JSON.parse(r.detail) as { grabId?: number; movieId?: number };
+    const episodeIds = JSON.parse(r.episode_ids) as number[];
+    const problem = r.kind === "fail" || r.kind === "verify-fail" || r.kind === "skip" || (r.kind === "info" && /needs a look|paused|couldn't|failed/i.test(r.why));
+    const fixes = problem ? liveFixesFor(r.why, { kind: r.kind, grabId: detail.grabId ?? null, tvdbId: r.tvdb_id, movieId: detail.movieId ?? null, episodeIds }) : [];
+    return { id: r.id, at: r.at, kind: r.kind, tvdbId: r.tvdb_id, title: r.title, episodeIds, release: r.release, why: r.why, detail, undo: r.undo ? JSON.parse(r.undo) : null, undoneAt: r.undone_at, fixes };
+  });
 }
 
 export function getDecision(id: number) {

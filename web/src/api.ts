@@ -1,3 +1,12 @@
+/** A problem's fix, as the server describes it (rendered as a button; see server/fixes.ts). */
+export interface Fix { action: string; label: string; params?: Record<string, unknown> }
+
+/** The fixes the server sent with recent error messages (so a toast of that message can offer its fix). */
+const errorFixes = new Map<string, Fix[]>();
+export const fixesForMessage = (msg: string) => errorFixes.get(msg) ?? null;
+/** Runs a fix (handled by FixHost in the app shell). */
+export const runFix = (f: Fix) => window.dispatchEvent(new CustomEvent("animearr:fix", { detail: f }));
+
 export class ApiError extends Error {
   constructor(message: string, public status: number, public data?: Record<string, unknown>) {
     super(message);
@@ -19,7 +28,12 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   }
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event("animearr:auth"));
-    throw new ApiError((data?.error as string) ?? res.statusText, res.status, data);
+    const msg = (data?.error as string) ?? res.statusText;
+    if (Array.isArray(data?.fixes) && (data!.fixes as Fix[]).length) {
+      errorFixes.set(msg, data!.fixes as Fix[]);
+      if (errorFixes.size > 50) errorFixes.delete(errorFixes.keys().next().value!);
+    }
+    throw new ApiError(msg, res.status, data);
   }
   return data as T;
 }
@@ -58,6 +72,7 @@ export interface Decision {
   why: string;
   undo: { action: string } | null;
   undoneAt: number | null;
+  fixes?: Fix[];
 }
 
 export interface LibraryShow {

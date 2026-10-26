@@ -334,6 +334,9 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE movie_wanted (movie_id INTEGER PRIMARY KEY, wanted INTEGER NOT NULL, at INTEGER NOT NULL);`,
   // 21: the user's placement of an AniDB entry on TVDB numbering (entry + season + offset)
   `CREATE TABLE anidb_overrides (aid INTEGER PRIMARY KEY, tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, offset INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL);`,
+  // 22: fixes: the notification's subject (for its buttons/links); a grab the user chose to keep despite the language check
+  `ALTER TABLE notifications ADD COLUMN ctx TEXT;
+   ALTER TABLE grabs ADD COLUMN keep INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FixButtons } from "../fixes";
 import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
@@ -18,7 +19,7 @@ interface Item {
   state: string;
   dryRun: boolean;
   why: string;
-  error: string | null;
+  error: string | null; fixes?: import("../api").Fix[];
   progress: number | null;
   attempt: number;
   stage?: string | null;
@@ -109,6 +110,7 @@ function Downloading() {
               </>
             )}
             <Why lines={[g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
+            <FixButtons fixes={g.fixes} />
             <div className="row">
               {g.state === "needs-attention" && (
                 <button
@@ -206,6 +208,7 @@ function History() {
             </div>
             <p className="mono small muted">{g.release}</p>
             <Why lines={[g.why, ...(g.error ? [g.error] : [])]} />
+            <FixButtons fixes={g.fixes} />
           </article>
         ))}
       </div>

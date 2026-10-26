@@ -484,9 +484,10 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     const probe = await deps.probe(local);
     const v = strictMovie(judge(probe, prof, live.runtime ?? m.runtime ?? null, null));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
-    if (!v.ok) return fail(`${path.posix.basename(main.path)}: ${v.why}`, false);
+    if (!v.ok && !row.keep) return fail(`${path.posix.basename(main.path)}: ${v.why}`, false);
     preVerified = true;
-    logDecision("verify-ok", { title: label, release: row.release, why: `Checked ${path.posix.basename(main.path)} before import: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
+    if (v.ok) logDecision("verify-ok", { title: label, release: row.release, why: `Checked ${path.posix.basename(main.path)} before import: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
+    else logDecision("info", { title: label, release: row.release, why: `Kept ${path.posix.basename(main.path)} as you asked, although: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
   }
   // AnimeArr imports by itself (the user's decision): nothing goes through Radarr's import any more; whatever can't go
   // through AnimeArr's importer waits in "needs attention".
@@ -539,7 +540,7 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     if (!subs.length && !audio.length) return attention(`Radarr has no track information for ${path.posix.basename(mf.path ?? main.path)} yet, so the language couldn't be checked; check the file, then retry`);
     const v = strictMovie(judge({ subs, audio, durationSec: runTimeSec(mf.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, after.runtime ?? m.runtime ?? null, null));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
-    if (!v.ok) return fail(`${path.posix.basename(mf.path ?? main.path)}: ${v.why}`, true);
+    if (!v.ok && !row.keep) return fail(`${path.posix.basename(mf.path ?? main.path)}: ${v.why}`, true);
   }
   setState(row.id, "done");
   cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(mf)), m.id);

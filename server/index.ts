@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
@@ -28,7 +29,7 @@ import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { backlogSummary, candidates, managePreview, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
-import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
+import { keepGrab, listGrabs, nextForGrab, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
@@ -57,7 +58,7 @@ async function catalogTick(force = false) {
   }
 }
 import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMovieGrab } from "./movies.js";
-import { applyRenameRouted, executeImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
+import { applyRenameRouted, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
@@ -80,7 +81,7 @@ await app.register(fastifyCookie);
 app.addHook("onRequest", guard);
 app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   app.log.warn(redactUrl(err.message));
-  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(err.message) });
+  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(err.message), fixes: fixesFor(err.message) });
 });
 
 const fail = (msg: string, code = 400) => Object.assign(new Error(msg), { statusCode: code });
@@ -900,6 +901,31 @@ app.post<{ Params: { id: string }; Body: { blocklist?: boolean; searchNext?: boo
   if (req.body?.confirm !== true) throw fail("Confirm first");
   const next = await removeGrab(id(req.params.id), { blocklist: req.body?.blocklist === true, searchNext: req.body?.searchNext === true });
   return { ok: true, next };
+});
+app.post<{ Params: { id: string } }>("/api/grabs/:id/keep", async (req) => {
+  writable();
+  keepGrab(id(req.params.id));
+  return { ok: true };
+});
+app.post<{ Params: { id: string } }>("/api/grabs/:id/next", async (req) => {
+  writable();
+  const r = await nextForGrab(id(req.params.id));
+  return { ok: true, next: r };
+});
+app.post<{ Body: { movieId: number; path: string } }>("/api/import/movie-run", async (req) => {
+  writable();
+  const plan = await planMovieImport({ movieId: id(req.body?.movieId), path: String(req.body?.path ?? "") });
+  return { plan, results: await executeMovieImport(plan) };
+});
+app.post<{ Body: { name: string } }>("/api/downloads/rules/disable", async (req) => {
+  writable();
+  const name = String(req.body?.name ?? "");
+  const s = getSettings();
+  if (!s.downloads.rules.some((r) => r.name === name)) throw fail("No rule with that name", 404);
+  patchSettings((x) => ({ ...x, downloads: { ...x.downloads, rules: x.downloads.rules.map((r) => (r.name === name ? { ...r, enabled: false } : r)) } }));
+  reevaluate();
+  logDecision("info", { why: `You switched the download-folder rule "${name}" off (grabs resume)` });
+  return { ok: true };
 });
 app.post<{ Params: { id: string } }>("/api/grabs/:id/retry", async (req) => {
   writable();

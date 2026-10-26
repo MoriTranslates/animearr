@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { FixButtons } from "./fixes";
 import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface Bell { unread: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused"; title: string; body: string; read: boolean }[] }
+interface Bell { unread: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused"; title: string; body: string; read: boolean; fixes?: import("./api").Fix[] }[] }
 const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️" } as const;
 
 /** The in-app bell: grabbed / imported / failed / paused, newest first; opening it marks them read. */
@@ -53,6 +54,7 @@ export function BellButton() {
                   {ICON[n.event]} <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>
                 </span>
                 <span className="muted clamp2">{n.body}</span>
+                <FixButtons fixes={n.fixes} />
               </li>
             ))}
           </ul>

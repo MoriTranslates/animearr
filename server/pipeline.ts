@@ -11,6 +11,7 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
+import { supersededBy } from "./fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "./importer.js";
 import { isNativeSeriesId } from "./native.js";
@@ -119,6 +120,7 @@ export interface GrabRow {
   attempt?: number;
   progress?: number | null;
   progress_at?: number | null;
+  keep?: number;
 }
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
@@ -401,6 +403,40 @@ function rowTitle(row: GrabRow): string | undefined {
   return row.tvdb_id ? (seriesByTvdb(row.tvdb_id)?.title ?? undefined) : undefined;
 }
 
+/**
+ * Fix buttons. "Keep anyway": import a download whose language check failed (the user decides), if nothing else is
+ * already downloading for it. "Try next release": the grab's next candidate.
+ */
+export function keepGrab(id: number) {
+  const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
+  if (!row || !["failed", "needs-attention"].includes(row.state) || !row.client_ref) throw Object.assign(new Error("Only a finished download that failed its check can be kept"), { statusCode: 409 });
+  const eps = JSON.parse(row.episode_ids) as number[];
+  const others = db.prepare(`SELECT id, episode_ids, movie_id FROM grabs WHERE id != ? AND dry_run = 0 AND state IN (${ACTIVE.map(() => "?").join(",")})`).all(id, ...ACTIVE) as { id: number; episode_ids: string; movie_id: number | null }[];
+  const clash = others.find((o) => (row.movie_id ? o.movie_id === row.movie_id : (JSON.parse(o.episode_ids) as number[]).some((e) => eps.includes(e))));
+  if (clash) throw Object.assign(new Error(`Another download for it is already running (grab ${clash.id}); remove that one first`), { statusCode: 409 });
+  const newer = supersededBy(id);
+  if (newer) throw Object.assign(new Error(`A newer download (grab ${newer}) already replaced this one; keeping the old one would overwrite it`), { statusCode: 409 });
+  if (/already imported/i.test(row.error ?? "")) throw Object.assign(new Error("This one is already imported; it stays until a better release is found"), { statusCode: 409 });
+  if (!db.prepare("UPDATE grabs SET keep = 1, state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state IN ('failed', 'needs-attention')").run(Date.now(), Date.now(), id).changes)
+    throw Object.assign(new Error("This download changed meanwhile; refresh and try again"), { statusCode: 409 });
+  db.prepare("DELETE FROM blocklist WHERE release = ?").run(row.release);
+  logDecision("info", { tvdbId: row.tvdb_id, episodeIds: eps, release: row.release, why: `You kept ${row.release}: it will be imported despite the language check`, detail: { grabId: id, movieId: row.movie_id } });
+}
+
+export async function nextForGrab(id: number, deps: PipelineDeps = realDeps) {
+  const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
+  if (!row || !["failed", "needs-attention"].includes(row.state)) throw Object.assign(new Error("Only a failed download or one that needs attention can move on to the next release"), { statusCode: 409 });
+  const newer = supersededBy(id);
+  if (newer) throw Object.assign(new Error(`A newer download (grab ${newer}) is already handling it`), { statusCode: 409 });
+  if (row.state === "needs-attention") setState(id, "failed", "you moved on to the next release");
+  if (!db.prepare("SELECT 1 FROM blocklist WHERE release = ? LIMIT 1").get(row.release)) blocklist(row, "you moved on to the next release");
+  if (row.movie_id) {
+    const { movieNextForRow } = await import("./movies.js");
+    return movieNextForRow(row, deps, "you moved on to the next release");
+  }
+  return tryNext(id, rowRequest(row), deps, "you moved on to the next release");
+}
+
 function rowRequest(row: GrabRow): GrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
   return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: row.purpose ?? null };
@@ -514,10 +550,11 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const probe = await deps.probe(local);
     const v = strictUpgrade(judge(probe, prof, expectedMin, burned));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
-    if (!v.ok) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
+    if (!v.ok && !row.keep) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
+    if (!v.ok) logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Kept ${path.posix.basename(p.item.path)} as you asked, although: ${v.why}`, detail: { grabId: row.id } });
     preVerified.add(p.item.path);
     verdicts.push(v.why);
-    logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Checked ${path.posix.basename(p.item.path)} before import: ${v.why}`, detail: { grabId: row.id, probe } });
+    if (v.ok) logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Checked ${path.posix.basename(p.item.path)} before import: ${v.why}`, detail: { grabId: row.id, probe } });
   }
 
   const files = plan.map((p) => ({
@@ -577,7 +614,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       if (!subs.length && !audio.length) return attention(`Sonarr has no track information for ${path.posix.basename(ef.path)} yet, so the language couldn't be checked; check the file, then retry`);
       const v = strictUpgrade(judge({ subs, audio, durationSec: runTimeSec(ef.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, expectedMin, burned));
       learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
-      if (!v.ok) return fail(`${path.posix.basename(ef.path)}: ${v.why}`, true);
+      if (!v.ok && !row.keep) return fail(`${path.posix.basename(ef.path)}: ${v.why}`, true);
       verdicts.push(v.why);
       logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Imported and checked ${path.posix.basename(ef.path)}: ${v.why}`, detail: { grabId: row.id } });
     }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
 import { t, type I18nKey } from "../i18n";
@@ -42,6 +43,7 @@ export function DecisionCard({ d, onUndone }: { d: Decision; onUndone?: () => vo
         <time className="muted small">{dateTime(d.at)}</time>
       </div>
       <p className={`why-text ${open || !long ? "" : "clamp2"}`}>{d.why}</p>
+      <FixButtons fixes={d.fixes} />
       <div className="row">
         {long && (
           <button className="linklike" onClick={() => setOpen(!open)}>
