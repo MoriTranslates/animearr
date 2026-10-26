@@ -19,6 +19,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Real imports by AnimeArr's own importer run on a budget (Settings → Media management → Importer): 1 for the first one, then a review pause; beyond it, imports go through Sonarr
 - Bulk rename (4,800 files in 378 shows) waits for the user: a taste decision that also touches Plex (rescans) and Tdarr (path-keyed records). Only the Absolute Duo test batch was approved
 - Recycling-bin auto-empty stays OFF until the user confirms
+- Absolute Duo test rename (12 files, 2026-10-26): on disk ✓, Sonarr picked up the new paths ✓ (but as delete + new file: 12 "episodeFileDeleted" history events, new file IDs, dateAdded reset, sceneName empty; monitoring and quality kept), Plex kept the same items (ratingKeys 103–114) with the new paths ✓, undo + redo on S01E01 ✓. Proposal: while Sonarr still owns a show (parallel mode), a bulk rename should go through Sonarr's own RenameFiles command so its file records and history stay intact; AnimeArr's own renamer after cutover
 - Usenet imports MOVE out of /data/completed/animearr (that one folder is mounted read-write); everything else under /data stays read-only
 - UMASK 002 (folders 775, files 664, owner 99:100) like the *arr images; chmod/chown on import stay off unless "Set permissions" is on
 - Upgrades: a file that also holds other episodes (multi-episode file) is never replaced automatically; it becomes "import by hand"
