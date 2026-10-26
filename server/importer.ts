@@ -19,14 +19,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
+import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, CONFIG_DIR, db } from "./db.js";
 import { catalogLookup } from "./catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
-import { renderEpisode, renderSeasonFolder, type NamingOptions } from "./naming.js";
-import { isNativeSeriesId, rematerializeSeries } from "./native.js";
+import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
+import { isNativeMovieId, isNativeSeriesId, rematerializeMovie, rematerializeSeries } from "./native.js";
 import { localPath, mappedPath } from "./paths.js";
 import { identifyContext, seriesByTvdb } from "./search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
@@ -418,14 +419,39 @@ function setPerms(dir: string) {
  * sidecars) to the bin → temporary name → final name; if the last step fails the old file comes back.
  */
 export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; only?: string[] } = {}) {
+  const series = seriesRow(plan.tvdbId);
+  if (!series) throw err("Unknown series", 404);
+  return placeItems(plan.items, {
+    arrRoot: series.path,
+    title: series.title,
+    tvdbId: plan.tvdbId,
+    after: async () => {
+      if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
+      await scanFolder(series.path).catch(() => undefined);
+      if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
+    },
+  }, opts);
+}
+
+/** Which episodes a file AnimeArr imported holds (so a native show never has to guess from the name). */
+export const fileLink = (arrPath: string) => {
+  const r = db.prepare("SELECT episode_ids FROM file_links WHERE path = ?").get(arrPath) as { episode_ids: string } | undefined;
+  return r ? (JSON.parse(r.episode_ids) as number[]) : null;
+};
+
+/**
+ * The shared placement for episodes and movies. Refused unless real imports were switched on (importer.allowReal and
+ * the real-import budget), except when `dryRun` (then it only reports). Order per item: new file in place under a
+ * temporary name → old file (and its sidecars) to the bin → temporary name → final name; if the last step fails the old
+ * file comes back.
+ */
+async function placeItems(items: PlanItem[], target: { arrRoot: string; title: string; tvdbId?: number; movieId?: number; after: () => Promise<void> }, opts: { dryRun?: boolean; only?: string[] }) {
   const real = !opts.dryRun;
   if (real && !getSettings().importer.allowReal) throw err("Real imports by AnimeArr's own importer aren't switched on yet (the first plan is being reviewed)", 409);
   if (real && (getSettings().importer.realBudget ?? 0) === 0) throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
-  const series = seriesRow(plan.tvdbId);
-  if (!series) throw err("Unknown series", 404);
-  const seriesLocal = mappedPath(series.path);
+  const rootLocal = mappedPath(target.arrRoot);
   const out: { label: string; done: boolean; why: string }[] = [];
-  for (const it of plan.items) {
+  for (const it of items) {
     if (opts.only && !opts.only.includes(it.source)) continue;
     if (it.problem) {
       out.push({ label: it.label, done: false, why: it.problem });
@@ -436,7 +462,7 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
       continue;
     }
     // Defence in depth: the plan is re-checked here.
-    if (!getSettings().importer.allowReal || (getSettings().importer.realBudget ?? 0) === 0 || !underAllowedRoot(series.path) || !under(it.dest, seriesLocal)) {
+    if (!getSettings().importer.allowReal || (getSettings().importer.realBudget ?? 0) === 0 || !underAllowedRoot(target.arrRoot) || !under(it.dest, rootLocal)) {
       out.push({ label: it.label, done: false, why: "refused: outside the allowed root folders or real imports are off" });
       continue;
     }
@@ -446,7 +472,7 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
     try {
       if (fs.existsSync(it.dest) && path.resolve(it.dest) !== path.resolve(it.replaces ?? "")) throw new Error("a file with that name appeared meanwhile: not overwritten");
       did = placeFile(it.action, it.source, tmp);
-      if (it.replaces && fs.existsSync(it.replaces)) binned = recycle(it.replaces, seriesLocal);
+      if (it.replaces && fs.existsSync(it.replaces)) binned = recycle(it.replaces, rootLocal);
       try {
         moveNoClobber(tmp, it.dest);
       } catch (e) {
@@ -467,11 +493,17 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
           /* a subtitle that can't be placed doesn't undo the video */
         }
       }
-      setPerms(path.dirname(it.dest));
+      // Placed: the budget counts it whatever happens next; bookkeeping can't turn it into a failure.
+      if ((getSettings().importer.realBudget ?? 0) > 0) patchSettings((x) => ({ ...x, importer: { ...x.importer, realBudget: x.importer.realBudget - 1 } }));
       const verb = did === "move" ? "moved" : did === "hardlink" ? "hardlinked" : "copied";
       out.push({ label: it.label, done: true, why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}` });
-      if ((getSettings().importer.realBudget ?? 0) > 0) patchSettings((x) => ({ ...x, importer: { ...x.importer, realBudget: x.importer.realBudget - 1 } }));
-      logDecision("import", { tvdbId: plan.tvdbId, title: series.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}` });
+      try {
+        setPerms(path.dirname(it.dest));
+        if (it.episodeIds.length) db.prepare("INSERT OR REPLACE INTO file_links (path, tvdb_id, episode_ids, at) VALUES (?, ?, ?, ?)").run(it.destArr, target.tvdbId ?? null, JSON.stringify(it.episodeIds), Date.now());
+      } catch {
+        /* bookkeeping only */
+      }
+      logDecision("import", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`, detail: target.movieId ? { movieId: target.movieId } : undefined });
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).
       if (did && fs.existsSync(tmp)) {
@@ -485,12 +517,92 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
       out.push({ label: it.label, done: false, why: (e as Error).message });
     }
   }
-  if (real && out.some((x) => x.done)) {
-    if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
-    await scanFolder(series.path).catch(() => undefined);
-    if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
-  }
+  if (real && out.some((x) => x.done)) await target.after();
   return out;
+}
+
+// ---------------------------------------------------------------- movies
+
+export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; notes: string[] }
+
+/** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
+export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; live?: { path: string; currentFile: string | null } }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
+  const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; year: number | null; path: string; file: string | null } | undefined;
+  if (!mv) throw err("Unknown movie", 404);
+  const m = getSettings().media;
+  const notes: string[] = [];
+  const local = localPath(input.path);
+  if (!local) throw err(`AnimeArr can't reach ${input.path} (Settings → Paths)`);
+  let real: string;
+  let st: fs.Stats;
+  try {
+    real = fs.realpathSync(local);
+    st = fs.statSync(real);
+  } catch {
+    throw err(`AnimeArr can't read ${input.path}`);
+  }
+  if (forbiddenSource(real)) throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
+  const minBytes = deps.minBytes ?? 100e6;
+  const files = st.isDirectory() ? videosIn(real, minBytes) : VIDEO.test(real) && st.size >= minBytes ? [real] : [];
+  const label = mv.year ? `${mv.title} (${mv.year})` : mv.title;
+  if (!files.length) return { movieId: mv.id, title: label, items: [], notes: ["no video files found"] };
+  const bySize = files.map((f) => ({ f, size: fs.statSync(f).size })).sort((a, b) => b.size - a.size);
+  const main = bySize[0];
+  const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: input.client === "qbittorrent" ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
+  if (bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand` }], notes };
+  let probe: Probe | null = null;
+  try {
+    probe = await deps.probe(main.f);
+  } catch {
+    probe = null;
+  }
+  const release = input.release ?? path.basename(main.f).replace(/\.[^.]+$/, "");
+  const ext = path.extname(main.f).toLowerCase();
+  const opts = namingOptions();
+  const name = m.renameMovies
+    ? renderMovie(m.movieFormat, { movieTitle: mv.title, year: mv.year, quality: qualityName(release, probe?.video?.height ?? null), mediaInfo: mediaInfoOf(probe), releaseGroup: parseRelease(release).group, imdbId: mv.imdb_id, tmdbId: mv.tmdb_id, originalTitle: release }, opts)
+    : path.basename(main.f).replace(/\.[^.]+$/, "");
+  let problem: string | null = null;
+  if (!name.trim() || name.startsWith(".")) problem = "the movie format gives an empty file name";
+  else if (Buffer.byteLength(name + ext) > MAX_NAME_BYTES) problem = "the file name would be too long";
+  // Radarr's live view wins over the cache (the movie may have moved, or gained a file).
+  if (input.live) {
+    mv.path = input.live.path;
+    mv.file = input.live.currentFile ? JSON.stringify({ path: input.live.currentFile }) : null;
+  }
+  const destArr = `${mv.path.replace(/\/+$/, "")}/${name}${ext}`;
+  const dest = mappedPath(destArr);
+  const currentArr = mv.file ? ((JSON.parse(mv.file) as { path: string | null }).path ?? null) : null;
+  const currentLocal = currentArr ? localPath(currentArr) : null;
+  if (problem) {
+    /* keep the first problem */
+  } else if (!underAllowedRoot(mv.path)) problem = "outside the allowed root folders";
+  else if (currentArr && !currentLocal) problem = "AnimeArr can't reach the movie's current file, so it can't replace it";
+  else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
+  else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
+  else if (!freeSpaceOk(dest, main.size)) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
+  return {
+    movieId: mv.id,
+    title: label,
+    items: [{ ...base, dest, destArr, sidecars: m.importExtraFiles ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix })) : [], replaces: currentLocal, problem }],
+    notes,
+  };
+}
+
+export async function executeMovieImport(plan: MoviePlan, opts: { dryRun?: boolean } = {}) {
+  if (!opts.dryRun && !getSettings().importer.movies) throw err("Movie imports by AnimeArr's own importer aren't switched on yet (the first movie plan is being reviewed)", 409);
+  const mv = cache.prepare("SELECT id, path, title FROM movies WHERE id = ?").get(plan.movieId) as { id: number; path: string; title: string } | undefined;
+  if (!mv) throw err("Unknown movie", 404);
+  return placeItems(plan.items, {
+    arrRoot: mv.path,
+    title: plan.title,
+    movieId: mv.id,
+    after: async () => {
+      if (!isNativeMovieId(mv.id)) await radarr.rescanMovie(mv.id).catch(() => undefined);
+      await scanFolder(mv.path).catch(() => undefined);
+      if (isNativeMovieId(mv.id)) rematerializeMovie(mv.id);
+    },
+  }, opts);
 }
 
 // ---------------------------------------------------------------- rename existing files

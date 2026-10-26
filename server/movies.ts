@@ -7,6 +7,9 @@
  * manual grabs need a confirmation and honour the global dry-run; never two downloads for one movie at once;
  * a pack or a series release is never taken for the movie.
  */
+import { executeMovieImport, listVideos, planMovieImport } from "./importer.js";
+import { isNativeMovieId } from "./native.js";
+import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
@@ -380,17 +383,25 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     // A bad file that was already imported may be replaced by the next candidate.
     await movieNext({ ...movieRequest(row), replace: imported || !!row.replace_file }, deps, why);
   };
-  if (!m) return attention("the movie is no longer in the synced Radarr library");
-  if (!deps.radarr) return attention("Radarr isn't available");
+  if (!m) return attention("the movie is no longer in the library");
+  // A movie added in AnimeArr has no Radarr: AnimeArr lists, checks and imports it itself.
+  const native = isNativeMovieId(m.id);
+  if (!native && !deps.radarr) return attention("Radarr isn't available");
   // Live re-check (the cache can be stale): still inside an allowed root, and no file gained since the grab
   // unless replacing it was asked for.
-  const live = await deps.radarr.movie(m.id);
+  const live = native ? { path: m.path, hasFile: !!m.has_file, runtime: m.runtime } : await deps.radarr!.movie(m.id);
   if (!underAllowedRoot(live.path)) return attention(`the movie is now in ${live.path}, outside the allowed root folders`);
   if (live.hasFile && !row.replace_file) return attention("the movie got a file in the meantime; AnimeArr won't replace it without your OK (remove this download, or search again and confirm replacing)");
   const p0 = clientToSonarr(clientPath);
   const single = VIDEO.test(p0);
   const folder = single ? path.posix.dirname(p0) : p0;
-  const items = (await deps.radarr.preview(folder)).filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 100e6);
+  let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];
+  if (native) {
+    const lf = deps.localPath(single ? p0 : folder);
+    if (!lf) return attention(`can't reach ${single ? p0 : folder} from AnimeArr (check Settings → Paths)`);
+    listed = single ? [{ path: p0, size: fs.statSync(lf).size }] : listVideos(lf).map((f) => ({ path: `${folder}/${path.relative(lf, f.path).split(path.sep).join("/")}`, size: f.size }));
+  } else listed = await deps.radarr!.preview(folder);
+  const items = listed.filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 100e6) as Awaited<ReturnType<NonNullable<PipelineDeps["radarr"]>["preview"]>>;
   const inThis = items.filter((x) => (single ? x.path === p0 : x.path.startsWith(`${folder}/`)));
   if (!inThis.length) return attention(`no video files found in ${single ? p0 : folder} (Radarr must see the download folder at the same path as Sonarr; archives aren't unpacked for movies yet)`);
   // The movie is the biggest file; extras stay out. Two big files = maybe two movies: let the user decide.
@@ -420,16 +431,47 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     preVerified = true;
     logDecision("verify-ok", { title: label, release: row.release, why: `Checked ${path.posix.basename(main.path)} before import: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
   }
+  // AnimeArr's own importer: always for movies added in AnimeArr; for Radarr's once switched on. Budget-gated.
+  const imp = getSettings().importer;
+  const budgetOk = (imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= 1;
+  if (native && (!imp.allowReal || !budgetOk || !imp.movies)) return attention("this movie was added in AnimeArr, so AnimeArr imports it itself, and its real imports are paused for a review (Settings → Media management → Importer)");
+  if (native && !preVerified) return attention("AnimeArr couldn't check the file before importing (check Settings → Paths)");
+  if ((native || imp.engine === "animearr") && imp.movies && imp.allowReal && budgetOk && preVerified) {
+    try {
+      const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
+      const plan = await planMovieImport({ movieId: m.id, path: main.path, release: row.release, client: row.client, live: native ? undefined : { path: live.path, currentFile: liveFile } });
+      const res = await executeMovieImport(plan);
+      const bad = res.find((r) => !r.done);
+      if (bad || !res.length) return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
+      if (!native) {
+        // Radarr must see the new file (it re-reads the folder); otherwise it would search for the movie again.
+        const want = plan.items[0].destArr;
+        let after: Awaited<ReturnType<NonNullable<PipelineDeps["radarr"]>["movie"]>> | null = null;
+        for (let i = 0; i < 24; i++) {
+          after = await deps.radarr!.movie(m.id);
+          if (after.movieFile?.path === want) break;
+          await deps.sleep(5000);
+        }
+        if (after?.movieFile?.path !== want) return attention(`AnimeArr imported ${path.posix.basename(want)}, but Radarr hasn't picked it up yet (check Radarr; a Rescan there fixes it)`);
+        cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(after.movieFile)), m.id);
+      }
+    } catch (e) {
+      return attention(`AnimeArr's importer: ${(e as Error).message}`);
+    }
+    setState(row.id, "done");
+    logDecision("import", { title: label, release: row.release, why: `Imported ✓ ${label} (AnimeArr's importer)`, detail: { grabId: row.id, movieId: m.id, final: true } });
+    return;
+  }
   const started = Date.now();
-  const cmd = await deps.radarr.importFiles([{ path: main.path, movieId: m.id, quality: main.quality, languages: main.languages, releaseGroup: main.releaseGroup ?? parsed.group ?? undefined, downloadId: row.client_ref ?? undefined, indexerFlags: main.indexerFlags ?? 0 }], importModeFor(row.client));
+  const cmd = await deps.radarr!.importFiles([{ path: main.path, movieId: m.id, quality: main.quality, languages: main.languages, releaseGroup: main.releaseGroup ?? parsed.group ?? undefined, downloadId: row.client_ref ?? undefined, indexerFlags: main.indexerFlags ?? 0 }], importModeFor(row.client));
   logDecision("import", { title: label, release: row.release, why: `Asked Radarr to import ${path.posix.basename(main.path)} as ${label} (command ${cmd.id})`, detail: { grabId: row.id, movieId: m.id, commandId: cmd.id } });
   let status = "queued";
   for (let i = 0; i < 120 && !["completed", "failed", "aborted"].includes(status); i++) {
     await deps.sleep(5000);
-    status = (await deps.radarr.command(cmd.id)).status;
+    status = (await deps.radarr!.command(cmd.id)).status;
   }
   if (status !== "completed") return attention(`Radarr import ${status}`);
-  const after = await deps.radarr.movie(m.id);
+  const after = await deps.radarr!.movie(m.id);
   const mf = after.movieFile;
   if (!after.hasFile || !mf || !mf.dateAdded || Date.parse(mf.dateAdded) < started - 60_000) return attention("Radarr finished the import but the movie has no new file (Radarr may have rejected it; see Radarr's activity)");
   if (!preVerified) {

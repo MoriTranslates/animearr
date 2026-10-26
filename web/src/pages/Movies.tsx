@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
 import { Link } from "../App";
 import { t } from "../i18n";
@@ -129,6 +130,12 @@ export function MoviePage({ id }: { id: number }) {
     <section className="stack">
       <p className="small">
         <Link to="/movies">← {t("movies.title")}</Link>
+        {id >= 900_000_000 && (
+          <>
+            {" · "}
+            {t("add.nativeMovieNote")} <RemoveNative movieId={id} title={m.title} />
+          </>
+        )}
       </p>
       <header className="series-hero card">
         <Cover src={m.cover} alt={m.title} size="lg" />

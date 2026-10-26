@@ -20,7 +20,7 @@ import { parseRelease } from "./core/parser.js";
 import { fribb } from "./covers.js";
 import { cache, db, dbState, tx } from "./db.js";
 import { animeListEntries, invalidateIndex } from "./metadata.js";
-import { renderSeriesFolder } from "./naming.js";
+import { renderMovie, renderSeriesFolder } from "./naming.js";
 import { mappedPath } from "./paths.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
@@ -93,6 +93,8 @@ export function materialize(n: NativeRow, now = Date.now()) {
   const base = n.path.replace(/\/+$/, "");
   const recs = db.prepare("SELECT path, size, video, audio, subs FROM media_files WHERE substr(path, 1, ?) = ?").all(base.length + 1, `${base}/`) as { path: string; size: number; video: string; audio: string; subs: string }[];
   const byAbs = new Map(eps.map((e) => [e.absolute, e]));
+  // Files AnimeArr imported itself know their episodes; only older files are matched by name.
+  const links = new Map((db.prepare("SELECT path, episode_ids FROM file_links WHERE tvdb_id = ?").all(n.tvdb_id) as { path: string; episode_ids: string }[]).map((r) => [r.path, JSON.parse(r.episode_ids) as number[]]));
   const files: { id: number; path: string; size: number; season: number; eps: number[]; audio: string; subs: string; resolution: string | null }[] = [];
   const oneSeason = new Set(eps.map((e) => e.season)).size === 1;
   for (const r of recs) {
@@ -100,7 +102,11 @@ export function materialize(n: NativeRow, now = Date.now()) {
     const folderSeason = /(?:^|\/)Season (\d+)\//i.exec(r.path.slice(base.length))?.[1];
     const m = /S(\d{1,2})E(\d{1,4})(?:-?E?(\d{1,4}))?/i.exec(name);
     let hit: Ep[] = [];
-    if (m) {
+    const linked = links.get(r.path);
+    if (linked) hit = linked.map((id) => eps.find((e) => e.id === id)).filter((x): x is Ep => !!x);
+    if (hit.length) {
+      /* known from the import */
+    } else if (m) {
       const s = Number(m[1]);
       const a = Number(m[2]);
       const b = m[3] ? Number(m[3]) : a;
@@ -162,6 +168,7 @@ export function materializeAll() {
       logDecision("fail", { tvdbId: r.tvdb_id, title: r.title, why: `Couldn't build ${r.title}'s episodes from the catalog: ${(e as Error).message}` }); // one broken show doesn't stop the rest
     }
   }
+  materializeAllMovies();
   invalidateIndex();
   return n;
 }
@@ -244,8 +251,8 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
       const r = await Promise.race([ask, new Promise<null>((res) => setTimeout(() => res(null), deps.timeoutMs ?? 6000))]);
       if (r === null) anilist = "busy";
       else remote = r;
-    } catch {
-      anilist = "error";
+    } catch (x) {
+      anilist = /superseded/.test((x as Error).message) ? "busy" : "error";
     }
   }
   const f = await deps.fribb();
@@ -254,7 +261,9 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
   const libTvdb = new Set((cache.prepare("SELECT tvdb_id FROM series").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id));
   const libMovies = new Map((cache.prepare("SELECT id, tmdb_id FROM movies WHERE tmdb_id IS NOT NULL").all() as { id: number; tmdb_id: number }[]).map((r) => [r.tmdb_id, r.id]));
   const inLib = (tvdbId: number | null, tmdbMovie: number | null, anilistId: number): AddResult["inLibrary"] => {
-    if (tmdbMovie && libMovies.has(tmdbMovie)) return { kind: "movie", movieId: libMovies.get(tmdbMovie), native: false };
+    if (tmdbMovie && libMovies.has(tmdbMovie)) return { kind: "movie", movieId: libMovies.get(tmdbMovie), native: libMovies.get(tmdbMovie)! >= NATIVE_BASE };
+    const nm = db.prepare("SELECT id FROM native_movies WHERE anilist_id = ?").get(anilistId) as { id: number } | undefined;
+    if (nm) return { kind: "movie", movieId: NATIVE_BASE + nm.id, native: true };
     const synthetic = NATIVE_BASE + anilistId;
     if (libTvdb.has(synthetic)) return { kind: "series", tvdbId: synthetic, native: true };
     if (tvdbId && libTvdb.has(tvdbId)) return { kind: "series", tvdbId, native: isNativeTvdb(tvdbId) };
@@ -301,7 +310,7 @@ async function ensureEntries(anilistId: number, deps: { media: typeof mediaByIds
   const have = new Set((db.prepare(`SELECT anilist_id FROM entries WHERE anilist_id IN (${[...want].map(() => "?").join(",")})`).all(...want) as { anilist_id: number }[]).map((r) => r.anilist_id));
   const missing = [...want].filter((x) => !have.has(x));
   for (let i = 0; i < missing.length; i += 50) {
-    const batch = await deps.media(missing.slice(i, i + 50));
+    const batch = await deps.media(missing.slice(i, i + 50), undefined, { priority: true }); // someone is waiting on Add
     tx(db, () => {
       for (const m of batch) upsertMedia(m, f.anilistToAnidb.get(m.id) ?? null);
     });
@@ -377,5 +386,120 @@ export function removeShow(tvdbId: number) {
   });
   invalidateIndex();
   logDecision("info", { tvdbId, title: r.title, why: `Removed ${r.title} from AnimeArr (its files in ${r.path} were left alone)` });
+  return { removed: true };
+}
+
+// ---------------------------------------------------------------- native movies
+
+interface NativeMovieRow { id: number; anilist_id: number; tmdb_id: number | null; title: string; year: number | null; path: string; root_folder: string; added_at: number }
+
+export const nativeMovies = () => db.prepare("SELECT * FROM native_movies ORDER BY id").all() as unknown as NativeMovieRow[];
+export const isNativeMovieId = (id: number) => id >= NATIVE_BASE;
+/** Radarr has this movie too (by TMDB id): Radarr's copy is used; the native one is parked. */
+const movieOwnedByRadarr = (tmdbId: number | null) => !!tmdbId && !!cache.prepare("SELECT 1 FROM movies WHERE tmdb_id = ? AND id < ?").get(tmdbId, NATIVE_BASE);
+
+/** Writes one native movie's cache row; its file is the biggest video AnimeArr's own scan found in its folder. */
+export function materializeMovie(n: NativeMovieRow, now = Date.now()) {
+  const mid = NATIVE_BASE + n.id;
+  cache.prepare("DELETE FROM movies WHERE id = ?").run(mid);
+  if (movieOwnedByRadarr(n.tmdb_id)) return { parked: true, hasFile: false };
+  const e = db.prepare("SELECT * FROM entries WHERE anilist_id = ?").get(n.anilist_id) as unknown as EntryRow | undefined;
+  const base = n.path.replace(/\/+$/, "");
+  const rec = db
+    .prepare("SELECT path, size, audio, subs, video FROM media_files WHERE substr(path, 1, ?) = ? ORDER BY size DESC LIMIT 1")
+    .get(base.length + 1, `${base}/`) as { path: string; size: number; audio: string; subs: string; video: string } | undefined;
+  let file: Record<string, unknown> | null = null;
+  if (!rec) {
+    // Not scanned yet (or the scan failed): a video on disk still counts, so the movie isn't searched again.
+    try {
+      const dir = mappedPath(base);
+      const v = fs.readdirSync(dir).filter((f) => /\.(mkv|mp4|m4v|avi|ts|webm)$/i.test(f) && !f.endsWith(".animearr-part")).map((f) => ({ f, size: fs.statSync(path.join(dir, f)).size })).sort((a, b) => b.size - a.size)[0];
+      if (v) file = { path: `${base}/${v.f}`, sceneName: null, releaseGroup: null, quality: null, audio: [], subs: [], runTime: null, resolution: null };
+    } catch {
+      /* no folder yet */
+    }
+  }
+  if (rec) {
+    const v = JSON.parse(rec.video) as { width: number | null; height: number | null } | null;
+    file = {
+      path: rec.path,
+      sceneName: null,
+      releaseGroup: null,
+      quality: null,
+      audio: [...new Set((JSON.parse(rec.audio) as { lang: string | null }[]).map((a) => a.lang).filter((l): l is string => !!l))],
+      subs: [...new Set((JSON.parse(rec.subs) as { lang: string | null; partial?: boolean }[]).filter((s) => !s.partial).map((s) => s.lang).filter((l): l is string => !!l))],
+      runTime: null,
+      resolution: v?.width && v.height ? `${v.width}x${v.height}` : null,
+    };
+  }
+  const alt = e ? [e.title_english, e.title_romaji, e.title_native, ...(JSON.parse(e.synonyms) as string[])].filter((t): t is string => !!t && t !== n.title) : [];
+  const start = e?.start_date ? Date.parse(e.start_date) : null;
+  cache
+    .prepare(
+      `INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 1, ?, ?, NULL, '[]', ?, ?, 1, ?, ?, ?, ?, ?, NULL, NULL)`,
+    )
+    .run(mid, n.tmdb_id, n.title, e?.title_romaji ?? null, n.year, n.path, n.root_folder, file ? 1 : 0, e?.duration ?? null, JSON.stringify(alt), file ? JSON.stringify(file) : null, e?.cover ?? null, now,
+      e?.status === "FINISHED" ? "released" : "announced", e?.status === "FINISHED" ? 1 : 0, Number.isFinite(start) ? start : null);
+  return { parked: false, hasFile: !!file };
+}
+
+export function materializeAllMovies() {
+  if (dbState.corrupt) return 0;
+  let n = 0;
+  for (const r of nativeMovies()) {
+    try {
+      materializeMovie(r);
+      n++;
+    } catch (e) {
+      logDecision("fail", { title: r.title, why: `Couldn't rebuild the movie ${r.title}: ${(e as Error).message}` });
+    }
+  }
+  return n;
+}
+
+export function rematerializeMovie(movieId: number) {
+  const r = db.prepare("SELECT * FROM native_movies WHERE id = ?").get(movieId - NATIVE_BASE) as unknown as NativeMovieRow | undefined;
+  if (r) materializeMovie(r);
+}
+
+/** Adds a movie natively (no Radarr): catalog entry → native_movies → cache row. */
+export async function addMovie(input: { anilistId: number; rootFolder: string }, deps = { media: mediaByIds, fribb }) {
+  if (dbState.corrupt) throw err("The database failed its integrity check; restore a backup first", 503);
+  const root = path.posix.normalize(String(input.rootFolder ?? "").replace(/\\/g, "/")).replace(/\/+$/, "");
+  if (!root || !getSettings().allowedRoots.some((a) => a.replace(/\\/g, "/").replace(/\/+$/, "") === root)) throw err("Pick one of the allowed root folders");
+  await ensureEntries(Number(input.anilistId), deps);
+  const e = db.prepare("SELECT * FROM entries WHERE anilist_id = ?").get(Number(input.anilistId)) as unknown as (EntryRow & { tmdb_movie: number | null }) | undefined;
+  if (!e) throw err("AniList didn't return that entry", 404);
+  if (e.kind !== "MOVIE") throw err("That's not a movie; add it as a show", 409);
+  const f = await deps.fribb();
+  const tmdb = e.tmdb_movie ?? f.anilistToTmdb?.get(e.anilist_id) ?? null;
+  if ((tmdb && cache.prepare("SELECT 1 FROM movies WHERE tmdb_id = ?").get(tmdb)) || db.prepare("SELECT 1 FROM native_movies WHERE anilist_id = ?").get(e.anilist_id)) throw err("That movie is already in your library", 409);
+  const title = e.title_english ?? e.title_romaji ?? e.title_native ?? `AniList ${e.anilist_id}`;
+  const m = getSettings().media;
+  const folder = renderMovie(m.movieFolderFormat, { movieTitle: title, year: e.season_year, tmdbId: tmdb }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
+  if (!folder.trim() || /^\.+$/.test(folder) || folder.includes("/")) throw err("The movie folder format gives an unusable folder name");
+  const moviePath = `${root}/${folder}`;
+  if (cache.prepare("SELECT 1 FROM movies WHERE path = ?").get(moviePath)) throw err(`${moviePath} already belongs to another movie`, 409);
+  let rowId: number;
+  try {
+    rowId = Number(db.prepare("INSERT INTO native_movies (anilist_id, tmdb_id, title, year, path, root_folder, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(e.anilist_id, tmdb, title, e.season_year, moviePath, root, Date.now()).lastInsertRowid);
+  } catch {
+    throw err("That movie is already in your library", 409);
+  }
+  materializeMovie(db.prepare("SELECT * FROM native_movies WHERE id = ?").get(rowId) as unknown as NativeMovieRow);
+  logDecision("info", { title, why: `Added the movie ${title}${e.season_year ? ` (${e.season_year})` : ""} in AnimeArr → ${moviePath}` });
+  return { movieId: NATIVE_BASE + rowId, title, path: moviePath };
+}
+
+export function removeMovie(movieId: number) {
+  const r = db.prepare("SELECT * FROM native_movies WHERE id = ?").get(movieId - NATIVE_BASE) as unknown as NativeMovieRow | undefined;
+  if (!r) throw err("That movie wasn't added in AnimeArr", 404);
+  cache.prepare("DELETE FROM movies WHERE id = ?").run(movieId);
+  tx(db, () => {
+    db.prepare("DELETE FROM native_movies WHERE id = ?").run(r.id);
+    for (const t of ["movie_prefs", "movie_search"]) db.prepare(`DELETE FROM ${t} WHERE movie_id = ?`).run(movieId);
+  });
+  logDecision("info", { title: r.title, why: `Removed the movie ${r.title} from AnimeArr (its files in ${r.path} were left alone)` });
   return { removed: true };
 }

@@ -314,6 +314,11 @@ const USER_MIGRATIONS: string[] = [
   // 13: native shows (added in AnimeArr, no Sonarr)
   `CREATE TABLE native_series (id INTEGER PRIMARY KEY AUTOINCREMENT, tvdb_id INTEGER NOT NULL UNIQUE, anilist_id INTEGER NOT NULL, synthetic INTEGER NOT NULL, title TEXT NOT NULL, year INTEGER,
      path TEXT NOT NULL, root_folder TEXT NOT NULL, added_at INTEGER NOT NULL);`,
+  // 14: native movies
+  `CREATE TABLE native_movies (id INTEGER PRIMARY KEY AUTOINCREMENT, anilist_id INTEGER NOT NULL UNIQUE, tmdb_id INTEGER, title TEXT NOT NULL, year INTEGER, path TEXT NOT NULL,
+     root_folder TEXT NOT NULL, added_at INTEGER NOT NULL);`,
+  // 15: which episodes a file AnimeArr imported holds (by library path)
+  `CREATE TABLE file_links (path TEXT PRIMARY KEY, tvdb_id INTEGER, episode_ids TEXT NOT NULL, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

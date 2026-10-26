@@ -53,7 +53,7 @@ async function catalogTick(force = false) {
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, executeImport, planImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
-import { addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeShow, searchAdd } from "./native.js";
+import { addMovie, addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -555,13 +555,24 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/catalog", async (re
 // ---------------------------------------------------------------- native Add (no Sonarr/Radarr)
 
 app.get<{ Querystring: { q?: string } }>("/api/add/search", async (req) => searchAdd(String(req.query.q ?? "").slice(0, 200)));
-app.post<{ Body: { anilistId: number; rootFolder: string; profileId?: string | null; sizePreset?: string | null; scope?: Scope | null; then?: "search" | "queue" | "none"; live?: boolean } }>("/api/add", async (req) => {
+app.post<{ Body: { anilistId: number; rootFolder: string; kind?: "show" | "movie"; profileId?: string | null; sizePreset?: string | null; scope?: Scope | null; then?: "search" | "queue" | "none"; live?: boolean } }>("/api/add", async (req) => {
   writable();
   const b = req.body ?? ({} as never);
   if (!id(b.anilistId)) throw fail("anilistId is required", 400);
   if (b.profileId && !getSettings().profiles.some((p) => p.id === b.profileId)) throw fail("Unknown profile", 400);
   if (b.sizePreset && !["lean", "balanced", "best"].includes(b.sizePreset)) throw fail("Unknown size preset", 400);
   if (b.then && !["search", "queue", "none"].includes(b.then)) throw fail("Unknown next step", 400);
+  if (b.kind === "movie") {
+    if (b.then === "queue") throw fail("Movies aren't queued; search now or just add", 400);
+    const mv = await addMovie({ anilistId: Number(b.anilistId), rootFolder: String(b.rootFolder ?? "") });
+    if (b.profileId) setMoviePrefs(mv.movieId, b.profileId, null);
+    let then: unknown = null;
+    if (b.then === "search") {
+      then = { searching: 1 };
+      void autoSearchMovie(mv.movieId).catch((e) => logDecision("fail", { title: mv.title, why: `Search after adding ${mv.title} failed: ${(e as Error).message}` }));
+    }
+    return { ...mv, then };
+  }
   const scope = b.scope ? validateScope(b.scope) : null;
   const added = await addShow({ anilistId: Number(b.anilistId), rootFolder: String(b.rootFolder ?? "") });
   if (b.profileId || b.sizePreset) setSeriesPrefs(added.tvdbId, b.profileId || null, null, (b.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]);
@@ -587,6 +598,10 @@ app.post<{ Body: { anilistId: number; rootFolder: string; profileId?: string | n
   return { ...added, managed, then };
 });
 
+app.delete<{ Params: { movieId: string } }>("/api/add/movie/:movieId", async (req) => {
+  writable();
+  return removeMovie(id(req.params.movieId));
+});
 app.delete<{ Params: { tvdbId: string } }>("/api/add/:tvdbId", async (req) => {
   writable();
   return removeShow(id(req.params.tvdbId));
@@ -627,11 +642,11 @@ app.get("/api/media/rename-all", async () => {
 app.post<{ Body: Record<string, unknown> }>("/api/media/preview", async (req) => previewNaming((req.body ?? {}) as never));
 app.get("/api/media/status", async () => ({ importer: getSettings().importer, importedFromArr: getSettings().media.importedFromArr }));
 /** Who imports, and whether real imports/renames are on (switched on after the first plans were reviewed). */
-app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean; realBudget?: number } }>("/api/media/importer", async (req) => {
+app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean; realBudget?: number; movies?: boolean } }>("/api/media/importer", async (req) => {
   writable();
   const b = req.body ?? {};
   const cur = getSettings().importer;
-  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0) };
+  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0), movies: typeof b.movies === "boolean" ? b.movies : !!cur.movies };
   patchSettings((x) => ({ ...x, importer: next }));
   logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? (next.realBudget < 0 ? "on" : `on for ${next.realBudget} more`) : "off"}; renames ${next.allowRename ? "on" : "off"}` });
   return next;

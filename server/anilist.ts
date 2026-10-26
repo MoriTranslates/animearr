@@ -38,10 +38,34 @@ const FIELDS = `id idMal title { romaji english native } synonyms format status 
   streamingEpisodes { title }`;
 
 let last = 0;
-let chain: Promise<unknown> = Promise.resolve();
+interface Job { priority: boolean; supersede: boolean; run: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }
+const queue: Job[] = [];
+let working = false;
 
-/** One GraphQL call, serialised and spaced. */
-export function anilistQuery<T>(query: string, variables: Record<string, unknown>, fetcher: typeof fetch = fetch): Promise<T> {
+async function work() {
+  if (working) return;
+  working = true;
+  try {
+    while (queue.length) {
+      // Interactive searches (the Add box) go before the catalog refresh's batches.
+      const i = queue.findIndex((j) => j.priority);
+      const job = queue.splice(i >= 0 ? i : 0, 1)[0];
+      try {
+        job.resolve(await job.run());
+      } catch (e) {
+        job.reject(e);
+      }
+    }
+  } finally {
+    working = false;
+  }
+}
+
+/**
+ * One GraphQL call, serialised and spaced (AniList allows ~30 per minute). `priority` calls jump the queue, and a
+ * newer superseding call (a search) replaces an older one still waiting (someone typing).
+ */
+export function anilistQuery<T>(query: string, variables: Record<string, unknown>, fetcher: typeof fetch = fetch, opts: { priority?: boolean; supersede?: boolean } = {}): Promise<T> {
   const run = async (): Promise<T> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const wait = Math.max(0, last + 2100 - Date.now());
@@ -67,16 +91,20 @@ export function anilistQuery<T>(query: string, variables: Record<string, unknown
     }
     throw new Error("AniList is rate-limiting us; try again later");
   };
-  const p = chain.then(run, run);
-  chain = p.catch(() => undefined);
-  return p;
+  return new Promise<T>((resolve, reject) => {
+    if (opts.supersede)
+      for (let i = queue.length - 1; i >= 0; i--)
+        if (queue[i].supersede) queue.splice(i, 1)[0].reject(new Error("superseded by a newer search"));
+    queue.push({ priority: !!opts.priority, supersede: !!opts.supersede, run, resolve: resolve as (v: unknown) => void, reject });
+    void work();
+  });
 }
 
 /** Media by AniList ids (50 per request). */
-export async function mediaByIds(ids: number[], fetcher?: typeof fetch): Promise<AniMedia[]> {
+export async function mediaByIds(ids: number[], fetcher?: typeof fetch, opts: { priority?: boolean } = {}): Promise<AniMedia[]> {
   const out: AniMedia[] = [];
   for (let i = 0; i < ids.length; i += 50) {
-    const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { ${FIELDS} } } }`, { ids: ids.slice(i, i + 50) }, fetcher);
+    const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { ${FIELDS} } } }`, { ids: ids.slice(i, i + 50) }, fetcher, { priority: opts.priority });
     out.push(...(d.Page?.media ?? []));
   }
   return out;
@@ -84,6 +112,8 @@ export async function mediaByIds(ids: number[], fetcher?: typeof fetch): Promise
 
 /** Title search (English, romaji, native, synonyms), anime only. */
 export async function searchMedia(q: string, perPage = 15, fetcher?: typeof fetch): Promise<AniMedia[]> {
-  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${FIELDS} } } }`, { q, n: perPage }, fetcher);
+  // Only what a search result shows (the full entry is fetched when something is added); first in the queue.
+  const slim = "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color }";
+  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`, { q, n: perPage }, fetcher, { priority: true, supersede: true });
   return d.Page?.media ?? [];
 }

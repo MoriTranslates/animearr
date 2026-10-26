@@ -9,6 +9,7 @@
  * - Same acceptance as the episode scheduler: accepted, confident match, likely the profile's language, no burn-in,
  *   torrents with seeders. Off by default (it grabs for real).
  */
+import { isNativeMovieId, nativeMovies } from "./native.js";
 import { logDecision } from "./activity.js";
 import { prowlarrConfigured } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrQueueFor } from "./arr/radarr.js";
@@ -99,7 +100,7 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
     }
     let inRadarr: unknown[];
     try {
-      inRadarr = await deps.radarrQueue(r.movie_id);
+      inRadarr = isNativeMovieId(r.movie_id) ? [] : await deps.radarrQueue(r.movie_id); // a movie added in AnimeArr isn't in Radarr
     } catch (e) {
       // Can't tell whether Radarr is downloading it: don't risk a second download.
       db.prepare("UPDATE movie_search SET next_at = ?, last_why = ? WHERE movie_id = ?").run(now + HOUR, `couldn't check Radarr's queue (${(e as Error).message})`, r.movie_id);
@@ -134,7 +135,7 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
 
 let running = false;
 export async function movieTick() {
-  if (running || !getSettings().movieSearch.enabled || !prowlarrConfigured() || !radarrConfigured()) return;
+  if (running || !getSettings().movieSearch.enabled || !prowlarrConfigured() || (!radarrConfigured() && !nativeMovies().length)) return;
   running = true;
   try {
     const r = await moviePass();

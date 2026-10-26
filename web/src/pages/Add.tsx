@@ -95,9 +95,10 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!s.data) return;
-    setRoot((x) => x || s.data!.allowedRoots.find((a) => !/movies/i.test(a)) || s.data!.allowedRoots[0] || "");
+    const isMovie = r.kind === "MOVIE";
+    setRoot((x) => x || s.data!.allowedRoots.find((a) => /movies/i.test(a) === isMovie) || s.data!.allowedRoots[0] || "");
     setScope((x) => x ?? (r.status === "FINISHED" ? s.data!.scope.ended : s.data!.scope.continuing));
-  }, [s.data, r.status]);
+  }, [s.data, r.status, r.kind]);
   const movie = r.kind === "MOVIE";
   return (
     <Modal title={t("add.sheetTitle", { title: r.title })} onClose={onClose}>
@@ -116,9 +117,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
               <span className="muted">{r.tvdbId ? t("add.tvdbMapped", { id: r.tvdbId }) : t("add.noTvdb")}</span>
             </div>
           </div>
-          {movie ? (
-            <p className="banner warn">{t("add.movieLater")}</p>
-          ) : (
+          {(
             <div className="form">
               <label>
                 {t("add.root")}
@@ -141,6 +140,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                   ))}
                 </select>
               </label>
+              {!movie && (
               <label>
                 {t("size.preset")}
                 <select value={size} onChange={(e) => setSize(e.target.value as SizePreset | "")}>
@@ -152,13 +152,14 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                   ))}
                 </select>
               </label>
-              {scope && <ScopeFields value={scope} onChange={setScope} />}
+              )}
+              {scope && !movie && <ScopeFields value={scope} onChange={setScope} />}
               <fieldset className="stack">
                 <legend>{t("add.then")}</legend>
-                {(["search", "queue", "none"] as const).map((x) => (
+                {(movie ? (["search", "none"] as const) : (["search", "queue", "none"] as const)).map((x) => (
                   <label key={x} className="row small">
                     <input type="radio" name="then" checked={then === x} onChange={() => setThen(x)} />
-                    {t(`add.then.${x}` as I18nKey)}
+                    {t(`add.then.${movie && x !== "queue" ? `movie.${x}` : x}` as I18nKey)}
                   </label>
                 ))}
               </fieldset>
@@ -166,16 +167,16 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
           )}
           <div className="row">
             <button onClick={onClose}>{t("common.cancel")}</button>
-            {!movie && (
+            {(
               <button
                 className="primary"
                 disabled={busy || !root}
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    const res = await api<{ tvdbId: number; title: string; path: string }>("/add", { body: { anilistId: r.anilistId, rootFolder: root, profileId: profileId || null, sizePreset: size || null, scope, then } });
+                    const res = await api<{ tvdbId?: number; movieId?: number; title: string; path: string }>("/add", { body: { anilistId: r.anilistId, rootFolder: root, kind: movie ? "movie" : "show", profileId: profileId || null, sizePreset: movie ? null : size || null, scope: movie ? null : scope, then } });
                     toast(t("add.added", { title: res.title, path: res.path }));
-                    navigate(`/show/${res.tvdbId}`);
+                    navigate(res.movieId ? `/movie/${res.movieId}` : `/show/${res.tvdbId}`);
                   } catch (e) {
                     toast((e as Error).message, true);
                   } finally {
@@ -184,7 +185,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                 }}
               >
                 {then === "search" ? "⚡ " : ""}
-                {t("add.confirm")}
+                {t(movie ? "add.confirmMovie" : "add.confirm")}
               </button>
             )}
           </div>
@@ -195,7 +196,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
 }
 
 /** Show page, shows added in AnimeArr: remove from AnimeArr (files stay on disk). */
-export function RemoveNative({ tvdbId, title }: { tvdbId: number; title: string }) {
+export function RemoveNative({ tvdbId, movieId, title }: { tvdbId?: number; movieId?: number; title: string }) {
   const toast = useToast();
   const [ask, setAsk] = useState(false);
   return (
@@ -211,14 +212,14 @@ export function RemoveNative({ tvdbId, title }: { tvdbId: number; title: string 
           onClose={() => setAsk(false)}
           onConfirm={async () => {
             try {
-              await api(`/add/${tvdbId}`, { method: "DELETE" });
-              navigate("/shows");
+              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}`, { method: "DELETE" });
+              navigate(movieId ? "/movies" : "/shows");
             } catch (e) {
               toast((e as Error).message, true);
             }
           }}
         >
-          <p>{t("add.removeBody")}</p>
+          <p>{t(movieId ? "add.removeMovieBody" : "add.removeBody")}</p>
         </Confirm>
       )}
     </>
