@@ -42,3 +42,14 @@ test("fetched once, then served from the cache; non-images and failures refused"
   assert.ok(await thumb("https://image.tmdb.org/t/p/original/q.jpg", "sm", fallback));
   assert.deepEqual(seen, ["https://image.tmdb.org/t/p/w154/q.jpg", "https://image.tmdb.org/t/p/original/q.jpg"]);
 });
+
+test("resized to WebP when smaller; the original kept when resizing isn't possible", async () => {
+  const f = { fetch: (async () => new Response(new Uint8Array(1000), { headers: { "content-type": "image/png" } })) as typeof fetch };
+  const widths: number[] = [];
+  const a = await thumb("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/r1.png", "sm", { ...f, resize: async (_b, w) => (widths.push(w), Buffer.alloc(100)) });
+  assert.equal(a?.type, "image/webp");
+  assert.equal(fs.statSync(a!.file).size, 100);
+  assert.deepEqual(widths, [144]);
+  const b = await thumb("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/r2.png", "sm", { ...f, resize: async () => null });
+  assert.equal(b?.type, "image/png");
+});
