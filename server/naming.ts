@@ -170,8 +170,12 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   const absFmt = /\{absolute(?::(0+))?\}/i.exec(format)?.[1] ?? "";
   const eps = c.episodes.map((e) => e.episode);
   const abs = c.episodes.map((e) => e.absolute).filter((x): x is number => !!x);
-  const titles = [...new Set(c.episodes.map((e) => e.title).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
-  const title = titles.join(" + ");
+  // Like Sonarr: trailing " ", "." and "?" are trimmed from episode titles; "X (1)" + "X (2)" / "X Part 1" + "X Part 2"
+  // become "X"; other multi-episode titles are joined with " + ".
+  const titles = [...new Set(c.episodes.map((e) => e.title?.replace(/[ .?]+$/, "")).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
+  const multiPart = /:?\s?(?:\(\d+\)|(?:Part|Pt\.?)\s?\d+)$/i;
+  const cleaned = [...new Set(titles.map((t) => t.replace(multiPart, "").replace(/[ .?]+$/, "")))];
+  const title = titles.length > 1 && cleaned.length === 1 && titles.every((t) => multiPart.test(t)) ? cleaned[0] : titles.join(" + ");
   const air = c.episodes[0]?.airDate ?? "";
   // Multi-episode: render the numbers ourselves, then splice them in place of {episode:00}/{absolute:000}.
   const epText = episodeNumbers(format, eps, opts.multiEpisodeStyle, epFmt);

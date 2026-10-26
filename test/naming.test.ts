@@ -55,3 +55,11 @@ test("folders and movies", () => {
   assert.equal(renderMovie(radarr, { movieTitle: "Suzume", year: 2022, quality: "Bluray-1080p" }, opts), "Suzume (2022) [Bluray-1080p]");
   assert.equal(renderMovie(radarr, { movieTitle: "Suzume", year: 2022, imdbId: "tt16428256", quality: "Bluray-1080p" }, opts), "Suzume (2022) {imdb-tt16428256} [Bluray-1080p]");
 });
+
+test("episode titles like Sonarr: trailing . and ? trimmed, Part 1/Part 2 merged", () => {
+  const f = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}";
+  assert.equal(renderEpisode(f, { ...ep, episodes: [{ episode: 1, title: "Gold Digger!?" }] }, opts), "Frieren - Beyond Journey's End - S01E01 - Gold Digger!");
+  assert.equal(renderEpisode(f, { ...ep, episodes: [{ episode: 1, title: "April showers bring May flowers." }] }, opts), "Frieren - Beyond Journey's End - S01E01 - April showers bring May flowers");
+  const parts = { ...ep, season: 0, episodes: [{ episode: 8, title: "The Meeting Part 1" }, { episode: 9, title: "The Meeting Part 2" }] };
+  assert.equal(renderEpisode(f, parts, { ...opts, multiEpisodeStyle: "extend" }), "Frieren - Beyond Journey's End - S00E08-09 - The Meeting");
+});
