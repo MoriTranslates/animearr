@@ -28,6 +28,7 @@ const media = (id: number): AniMedia => ({
 const fribb = async () => ({ mtime: 0, anidbToAnilist: new Map<number, number>(), anilistToAnidb: new Map<number, number>(), anilistToAnidbAll: new Map<number, number[]>(), anilistToTmdb: new Map([[142770, 916224]]) });
 
 before(() => {
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: false, realBudget: 0, movies: false } })); // start "off" to test the gates
   patchSettings((s) => ({
     ...s,
     allowedRoots: ["/media/Movies/Anime"],

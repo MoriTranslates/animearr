@@ -260,7 +260,7 @@ function moveShowState(tvdbId: number, sonarrSeriesId: number, nativeSeriesId: n
 }
 
 function moveMovieState(from: number, to: number) {
-  for (const t of ["movie_prefs", "movie_search", "movie_upgrade"]) db.prepare(`UPDATE OR REPLACE ${t} SET movie_id = ? WHERE movie_id = ?`).run(to, from);
+  for (const t of ["movie_prefs", "movie_search", "movie_upgrade", "movie_wanted"]) db.prepare(`UPDATE OR REPLACE ${t} SET movie_id = ? WHERE movie_id = ?`).run(to, from);
   db.prepare("UPDATE grabs SET movie_id = ? WHERE movie_id = ?").run(to, from);
   db.prepare("UPDATE blocklist SET movie_id = ? WHERE movie_id = ?").run(to, from);
   db.prepare("UPDATE OR REPLACE franchise_links SET movie_id = ? WHERE movie_id = ?").run(to, from);

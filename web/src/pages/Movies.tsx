@@ -20,6 +20,18 @@ export function Movies() {
   const d = useLoad(() => api<MovieItem[]>("/movies"), []);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const toast = useToast();
+  const setWanted = async (ids: number[], wanted: boolean) => {
+    try {
+      await api("/movies/wanted", { body: { movieIds: ids, wanted } });
+      toast(t(wanted ? "movies.nowWanted" : "movies.nowNotWanted", { n: ids.length }));
+      setSel(new Set());
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
   const shown = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return (d.data ?? []).filter((m) => (filter === "all" || (filter === "missing" && m.status === "missing") || (filter === "problems" && m.verdict?.ok === false)) && (!ql || m.title.toLowerCase().includes(ql)));
@@ -44,7 +56,21 @@ export function Movies() {
       {d.data && !!d.data.length && !shown.length && <Empty>{t("shows.empty")}</Empty>}
       <div className="poster-grid">
         {shown.map((m) => (
-          <article key={m.id} className="poster-card">
+          <article key={m.id} className={`poster-card${sel.has(m.id) ? " selected" : ""}`}>
+            <input
+              className="poster-check"
+              type="checkbox"
+              checked={sel.has(m.id)}
+              onChange={() =>
+                setSel((x) => {
+                  const n = new Set(x);
+                  if (n.has(m.id)) n.delete(m.id);
+                  else n.add(m.id);
+                  return n;
+                })
+              }
+              aria-label={m.title}
+            />
             <Link to={`/movie/${m.id}`} className="poster-link card-link">
               <Cover src={m.cover} alt={m.title} size="lg" />
               <span className="poster-title clamp2">
@@ -56,12 +82,32 @@ export function Movies() {
               <div className="chips">
                 <Chip tone={STATUS_TONE[m.status]}>{t(`movies.status.${m.status}`)}</Chip>
                 {m.verdict?.ok === false && <Chip tone="bad">✕ {t("movies.notProfile")}</Chip>}
+                {!m.monitored && <Chip tone="info">{t("movies.notWanted")}</Chip>}
                 {!m.allowed && <Chip tone="warn">{t("chip.outsideRoot")}</Chip>}
               </div>
             </div>
           </article>
         ))}
       </div>
+      {sel.size > 0 && (
+        <div className="bulkbar card">
+          <span>{t("movies.selected", { n: sel.size })}</span>
+          <span className="row">
+            <button className="small" onClick={() => setSel(new Set(shown.map((m) => m.id)))}>
+              {t("movies.selectShown")}
+            </button>
+            <button className="primary small" onClick={() => void setWanted([...sel], true)}>
+              {t("movies.want")}
+            </button>
+            <button className="small" onClick={() => void setWanted([...sel], false)}>
+              {t("movies.dontWant")}
+            </button>
+            <button className="small ghost" onClick={() => setSel(new Set())}>
+              {t("common.cancel")}
+            </button>
+          </span>
+        </div>
+      )}
     </section>
   );
 }
@@ -162,7 +208,19 @@ export function MoviePage({ id }: { id: number }) {
             {m.dates.physical ? <Chip>{t("movies.physical", { date: dateOnly(m.dates.physical) })}</Chip> : null}
             {!m.released && <Chip tone="info">{t("movies.status.unreleased")}</Chip>}
             {m.runtime ? <Chip>{t("movies.runtime", { min: m.runtime })}</Chip> : null}
-            {!m.monitored && <Chip tone="info">{t("movies.unmonitored")}</Chip>}
+            <button
+              className="small"
+              onClick={async () => {
+                try {
+                  await api("/movies/wanted", { body: { movieIds: [id], wanted: !m.monitored } });
+                  await d.reload();
+                } catch (e) {
+                  toast((e as Error).message, true);
+                }
+              }}
+            >
+              {m.monitored ? `✓ ${t("movies.wanted")}` : t("movies.notWanted")}
+            </button>
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
           </div>
         </div>

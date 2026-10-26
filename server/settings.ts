@@ -283,7 +283,7 @@ const DEFAULTS: Settings = {
     renameAfterReencode: false,
     importedFromArr: false,
   },
-  importer: { engine: "sonarr", allowReal: false, allowRename: false, realBudget: 0, movies: false, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
+  importer: { engine: "animearr", allowReal: true, allowRename: false, realBudget: -1, movies: true, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },

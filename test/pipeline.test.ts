@@ -13,6 +13,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
+
+// These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
+patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" } }));
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");
 type Deps = import("../server/pipeline.js").PipelineDeps;
 

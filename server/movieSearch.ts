@@ -1,5 +1,5 @@
 /**
- * Automatic movie search (Radarr side): watches monitored anime movies for their release and searches the missing
+ * Automatic movie search: watches the anime movies AnimeArr wants (its own flag, not Radarr's monitored) for their release and searches the missing
  * ones (Sonarr/Radarr-style "Wanted"), within an hourly budget.
  *
  * - Only monitored anime movies inside the allowed root folders, without a file.
@@ -15,7 +15,7 @@ import { logDecision } from "./activity.js";
 import { prowlarrConfigured } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrQueueFor } from "./arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
-import { isReleased, releaseAt, searchMovie, startMovieGrab, type MovieRow } from "./movies.js";
+import { isReleased, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "./movies.js";
 import type { Candidate } from "./pipeline.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
@@ -40,9 +40,10 @@ export function planMovies(now = Date.now()) {
   tx(db, () => {
     for (const m of movies) {
       const row = db.prepare("SELECT * FROM movie_search WHERE movie_id = ?").get(m.id) as Row | undefined;
-      const wanted = !!m.monitored && !m.has_file && underAllowedRoot(m.path);
+      const want = isWanted(m.id);
+      const wanted = want && !m.has_file && underAllowedRoot(m.path);
       if (!wanted) {
-        if (row && row.state !== "done") db.prepare("UPDATE movie_search SET state = 'done', last_why = ? WHERE movie_id = ?").run(m.has_file ? "Radarr has a file" : !m.monitored ? "not monitored in Radarr" : "outside the allowed root folders", m.id);
+        if (row && row.state !== "done") db.prepare("UPDATE movie_search SET state = 'done', last_why = ? WHERE movie_id = ?").run(m.has_file ? "has a file" : !want ? "not wanted in AnimeArr" : "outside the allowed root folders", m.id);
         continue;
       }
       const rel = releaseAt(m);
@@ -158,6 +159,6 @@ export async function movieTick() {
 /** Counts for Settings. */
 export function movieSearchSummary() {
   const rows = db.prepare("SELECT state, COUNT(*) AS n FROM movie_search GROUP BY state").all() as { state: string; n: number }[];
-  const wanted = (cache.prepare("SELECT path, monitored, has_file, digital_release, physical_release, is_available, in_cinemas FROM movies WHERE is_anime = 1 AND monitored = 1 AND has_file = 0").all() as unknown as MovieRow[]).filter((m) => underAllowedRoot(m.path));
+  const wanted = (cache.prepare("SELECT id, path, monitored, has_file, digital_release, physical_release, is_available, in_cinemas FROM movies WHERE is_anime = 1 AND has_file = 0").all() as unknown as MovieRow[]).filter((m) => isWanted(m.id) && underAllowedRoot(m.path));
   return { ...getSettings().movieSearch, wanted: wanted.length, released: wanted.filter((m) => isReleased(m)).length, states: Object.fromEntries(rows.map((r) => [r.state, r.n])) };
 }

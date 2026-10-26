@@ -52,6 +52,26 @@ export interface MovieRow {
 }
 export interface MovieFile { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; runTime: string | null; resolution: string | null }
 
+/**
+ * Whether AnimeArr wants this movie (searches for it while it has no file). AnimeArr's own flag; Radarr's monitored
+ * flag doesn't count. Movies added in AnimeArr are wanted unless switched off.
+ */
+export function isWanted(movieId: number) {
+  const r = db.prepare("SELECT wanted FROM movie_wanted WHERE movie_id = ?").get(movieId) as { wanted: number } | undefined;
+  return r ? r.wanted === 1 : movieId >= 900_000_000;
+}
+
+export function setWanted(movieIds: number[], wanted: boolean, now = Date.now()) {
+  let n = 0;
+  for (const id of movieIds) {
+    if (!cache.prepare("SELECT 1 FROM movies WHERE id = ? AND is_anime = 1").get(id)) continue;
+    db.prepare("INSERT INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, ?) ON CONFLICT(movie_id) DO UPDATE SET wanted = excluded.wanted, at = excluded.at").run(id, wanted ? 1 : 0, now);
+    n++;
+  }
+  if (n) logDecision("info", { why: `${n} movie(s) set to ${wanted ? "wanted" : "not wanted"} in AnimeArr` });
+  return { changed: n };
+}
+
 export function movieById(id: number): MovieRow | null {
   return (cache.prepare("SELECT * FROM movies WHERE id = ? AND is_anime = 1").get(id) as MovieRow | undefined) ?? null;
 }
@@ -92,7 +112,7 @@ export function listMovies() {
       title: m.title,
       year: m.year,
       cover: m.poster,
-      monitored: !!m.monitored,
+      monitored: isWanted(m.id),
       status: g ? (g.state === "needs-attention" ? "attention" : "downloading") : m.has_file ? "have" : isReleased(m) ? "missing" : "unreleased",
       releaseAt: releaseAt(m),
       allowed: underAllowedRoot(m.path),
@@ -128,7 +148,7 @@ export function movieDetail(id: number) {
     runtime: m.runtime,
     path: m.path,
     cover: m.poster,
-    monitored: !!m.monitored,
+    monitored: isWanted(m.id),
     allowed: underAllowedRoot(m.path),
     file: f,
     verdict: verdictOf(f, m.id),
@@ -438,12 +458,14 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     preVerified = true;
     logDecision("verify-ok", { title: label, release: row.release, why: `Checked ${path.posix.basename(main.path)} before import: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
   }
-  // AnimeArr's own importer: always for movies added in AnimeArr; for Radarr's once switched on. Budget-gated.
+  // AnimeArr imports by itself (the user's decision): nothing goes through Radarr's import any more; whatever can't go
+  // through AnimeArr's importer waits in "needs attention".
   const imp = getSettings().importer;
   const budgetOk = (imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= 1;
-  if (native && (!imp.allowReal || !budgetOk || !imp.movies)) return attention("this movie was added in AnimeArr, so AnimeArr imports it itself, and its real imports are paused for a review (Settings → Media management → Importer)");
-  if (native && !preVerified) return attention("AnimeArr couldn't check the file before importing (check Settings → Paths)");
-  if ((native || imp.engine === "animearr") && imp.movies && imp.allowReal && budgetOk && preVerified) {
+  if (native || imp.engine !== "sonarr") {
+    if (!imp.allowReal || !imp.movies) return attention("real movie imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
+    if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
+    if (!preVerified) return attention("AnimeArr couldn't check the file before importing (check Settings → Paths)");
     try {
       const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
       const plan = await planMovieImport({ movieId: m.id, path: main.path, release: row.release, client: row.client, automatic: true, live: native ? undefined : { path: live.path, currentFile: liveFile } });
@@ -501,11 +523,11 @@ export function movieCalendar(fromMs: number, toMs: number, wantedOnly: boolean)
     .all(fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000) as unknown as MovieRow[];
   const out: { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }[] = [];
   for (const m of rows) {
-    if (wantedOnly && (!m.monitored || !underAllowedRoot(m.path))) continue;
+    if (wantedOnly && (!isWanted(m.id) || !underAllowedRoot(m.path))) continue;
     const g = activeGrab(m.id);
     const status = g ? (g.state === "needs-attention" ? "attention" : "downloading") : m.has_file ? "have" : isReleased(m) ? "missing" : "unreleased";
     for (const [kind, at] of [["cinema", m.in_cinemas], ["digital", m.digital_release], ["physical", m.physical_release]] as const)
-      if (at && at >= fromMs - 86_400_000 && at <= toMs + 86_400_000) out.push({ movieId: m.id, title: m.title, year: m.year, cover: m.poster, kind, at, status, monitored: !!m.monitored });
+      if (at && at >= fromMs - 86_400_000 && at <= toMs + 86_400_000) out.push({ movieId: m.id, title: m.title, year: m.year, cover: m.poster, kind, at, status, monitored: isWanted(m.id) });
   }
   return out.sort((a, b) => a.at - b.at);
 }

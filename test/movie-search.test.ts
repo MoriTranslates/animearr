@@ -1,5 +1,5 @@
 /** Movie search: release watching, budget, backoff, Radarr already downloading, follow-ups; movie dual upgrades. Mocks only. */
-import { test, before } from "node:test";
+import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,6 +10,11 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
+
+// AnimeArr owns "wanted" for movies: mirror the fixtures' monitored flag into it before each test.
+beforeEach(() => {
+  for (const r of cache.prepare("SELECT id, monitored FROM movies").all() as { id: number; monitored: number }[]) db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
+});
 const { moviePass, planMovies } = await import("../server/movieSearch.js");
 const { setMoviePrefs } = await import("../server/profiles.js");
 const { upgradePass, moviePlaceholders } = await import("../server/upgrade.js");

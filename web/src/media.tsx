@@ -184,10 +184,7 @@ function ImporterCard({ s }: { s: S }) {
       </div>
       <p className="muted small">{t("media.importerHelp")}</p>
       <div className="row">
-        <select value={imp.engine} onChange={(e) => setAsk({ engine: e.target.value as S["importer"]["engine"] })} aria-label={t("media.importer")}>
-          <option value="sonarr">{t("media.engine.sonarr")}</option>
-          <option value="animearr">{t("media.engine.animearr")}</option>
-        </select>
+
         <button className="small" onClick={() => setAsk({ allowReal: !imp.allowReal })}>
           {imp.allowReal ? t("media.realTurnOff") : t("media.realTurnOn")}
         </button>

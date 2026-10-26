@@ -1,5 +1,5 @@
 /** Dual-audio upgrades: placeholders, log vs auto, budget, follow-ups, stale cache, strict import check. Mocks only. */
-import { test, before } from "node:test";
+import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,6 +10,14 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
+
+// These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
+patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" } }));
+
+// AnimeArr owns "wanted" for movies: mirror the fixtures' monitored flag into it before each test.
+beforeEach(() => {
+  for (const r of cache.prepare("SELECT id, monitored FROM movies").all() as { id: number; monitored: number }[]) db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
+});
 const { setSeriesPrefs } = await import("../server/profiles.js");
 const { placeholders, qualifies, upgradePass } = await import("../server/upgrade.js");
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");

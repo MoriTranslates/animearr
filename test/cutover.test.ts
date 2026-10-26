@@ -44,6 +44,7 @@ test("plan: a file AnimeArr hasn't scanned blocks; ready after the scan; adopt c
 test("the switch: gated; refused while downloading; moves state to AnimeArr's ids; AnimeArr's copy is live at once", async () => {
   const removed: number[] = [];
   const deps = { removeSeries: async (id: number) => void removed.push(id), removeMovie: async () => undefined, sonarrQueue: async () => [], radarrQueue: async () => [] };
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: false } }));
   await assert.rejects(switchToAnimeArr({ tvdbIds: [555] }, deps as never), /isn't switched on/);
   patchSettings((s) => ({ ...s, cutover: { allowArrWrites: true } }));
   await assert.rejects(switchToAnimeArr({ tvdbIds: [555] }, deps as never), /own importer/);

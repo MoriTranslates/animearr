@@ -330,6 +330,8 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE anidb_anime (aid INTEGER PRIMARY KEY, fetched_at INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, type TEXT, episode_count INTEGER, missing INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE anidb_episodes (aid INTEGER NOT NULL, epno TEXT NOT NULL, type TEXT NOT NULL, number INTEGER NOT NULL, length INTEGER, airdate TEXT, title_en TEXT, title_xjat TEXT, title_ja TEXT, PRIMARY KEY (aid, epno));
    CREATE TABLE anidb_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // 20: AnimeArr owns "wanted" for movies (Radarr's monitored flag no longer counts)
+  `CREATE TABLE movie_wanted (movie_id INTEGER PRIMARY KEY, wanted INTEGER NOT NULL, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

@@ -34,7 +34,7 @@ import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
-import { movieSearchSummary, movieTick } from "./movieSearch.js";
+import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
 import { scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
@@ -56,7 +56,7 @@ async function catalogTick(force = false) {
     catalogRunning = false;
   }
 }
-import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
+import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, executeImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
@@ -766,7 +766,8 @@ app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean; r
   writable();
   const b = req.body ?? {};
   const cur = getSettings().importer;
-  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0), movies: typeof b.movies === "boolean" ? b.movies : !!cur.movies, sourceRoots: cur.sourceRoots ?? ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] };
+  if (b.engine === "sonarr") throw fail("Imports through Sonarr/Radarr are gone: AnimeArr imports by itself", 400);
+  const next = { engine: "animearr" as const, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0), movies: typeof b.movies === "boolean" ? b.movies : !!cur.movies, sourceRoots: cur.sourceRoots ?? ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] };
   patchSettings((x) => ({ ...x, importer: next }));
   logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? (next.realBudget < 0 ? "on" : `on for ${next.realBudget} more`) : "off"}; renames ${next.allowRename ? "on" : "off"}` });
   return next;
@@ -818,6 +819,12 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch"
   writable();
   if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
   return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
+});
+app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wanted", async (req) => {
+  writable();
+  const r = setWanted((req.body?.movieIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0), req.body?.wanted !== false);
+  planMovies();
+  return r;
 });
 app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:id/autosearch", async (req) => {
   writable();

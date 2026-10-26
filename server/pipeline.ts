@@ -532,12 +532,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     downloadId: row.client_ref ?? undefined,
   }));
   const startedImport = Date.now();
-  // AnimeArr's own importer (once switched on): only when every file was checked here before import.
+  // AnimeArr imports by itself (the user's decision): nothing goes through Sonarr's import any more. Whatever can't go
+  // through AnimeArr's importer waits in "needs attention". (engine "sonarr" can't be chosen in the settings; it only
+  // remains for old tests of the earlier Sonarr route.)
   const imp = getSettings().importer;
   const budgetOk = (imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= plan.length; // never half a batch
-  if (native && (!imp.allowReal || !budgetOk)) return attention("this show was added in AnimeArr, so AnimeArr imports it itself, and its real imports are paused for a review (Settings → Media management → Importer)");
-  if (native && !plan.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
-  if ((native || imp.engine === "animearr") && imp.allowReal && budgetOk && plan.every((p) => preVerified.has(p.item.path))) {
+  if (native || imp.engine !== "sonarr") {
+    if (!imp.allowReal) return attention("real imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
+    if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
+    if (!plan.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
     for (const p of plan) {
       try {
         const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client, automatic: true });

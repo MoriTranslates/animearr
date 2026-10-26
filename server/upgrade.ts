@@ -12,6 +12,7 @@
  *   release fails before it replaces anything (blocklist + next candidate, as usual).
  * - Honours dry-run (show + global). "log" mode only reports what it would grab.
  */
+import { isWanted } from "./movies.js";
 import { logDecision } from "./activity.js";
 import { prowlarrConfigured } from "./arr/prowlarr.js";
 import { langList } from "./core/langs.js";
@@ -188,7 +189,7 @@ interface MovieWaiting { movieId: number; title: string; audio: string[]; dub: s
 /** Anime movies watched in Dual mode whose file is known to have no dub. */
 export function moviePlaceholders(): MovieWaiting[] {
   const out: MovieWaiting[] = [];
-  for (const m of cache.prepare("SELECT id, title, year, path, file FROM movies WHERE is_anime = 1 AND has_file = 1 AND monitored = 1 AND file IS NOT NULL").all() as { id: number; title: string; year: number | null; path: string; file: string }[]) {
+  for (const m of (cache.prepare("SELECT id, title, year, path, file FROM movies WHERE is_anime = 1 AND has_file = 1 AND file IS NOT NULL").all() as { id: number; title: string; year: number | null; path: string; file: string }[]).filter((x) => isWanted(x.id))) {
     if (!underAllowedRoot(m.path)) continue;
     // Only movies you set to Dual yourself (a default Dual profile doesn't opt the whole movie library in).
     if (moviePrefs(m.id).watch_mode !== "dual") continue;

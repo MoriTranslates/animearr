@@ -24,6 +24,7 @@ const probe = async () => ({ duration: 1440, container: "matroska", video: { cod
 const write = (p: string, s = "x") => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, s));
 
 before(() => {
+  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: false, allowRename: false, realBudget: 0, movies: false } })); // start "off" to test the gates
   fs.mkdirSync(path.join(LIB, "Frieren (2023)"), { recursive: true });
   cache.prepare("INSERT INTO series (id, tvdb_id, title, year, series_type, path, monitored, synced_at) VALUES (10, 424536, 'Frieren: Beyond Journey''s End', 2023, 'anime', '/media/AnimeArr/Frieren (2023)', 1, 0)").run();
   for (const [id, e, t] of [[101, 1, "The Journey's End"], [102, 2, "It Didn't Have to Be Magic..."], [103, 3, "Killing Magic"]] as const)
