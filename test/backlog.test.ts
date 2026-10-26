@@ -29,10 +29,10 @@ test("off by default: nothing is planned", () => {
   assert.equal(state(2001), undefined);
 });
 
-test("plans only old, monitored, missing episodes; searches within the hourly budget, newest first", async () => {
+test("plans old missing episodes in scope (the default scope still honours Sonarr's unmonitored episodes); hourly budget, newest first", async () => {
   patchSettings((s) => ({ ...s, backlog: { enabled: true, perHour: 2, retryDays: 7 } }));
   assert.equal(planBacklog(now), 3);
-  assert.equal(state(2004), undefined, "unmonitored");
+  assert.equal(state(2004), undefined, "unmonitored in Sonarr, no own scope yet");
   assert.equal(state(2005), undefined, "has a file");
   assert.equal(state(2006), undefined, "recent: the normal schedule's job");
   assert.equal(backlogSummary(now).missing, 3);

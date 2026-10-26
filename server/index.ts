@@ -20,7 +20,7 @@ import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
-import { backlogSummary, candidates, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
+import { backlogSummary, candidates, managePreview, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { listGrabs, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
@@ -31,6 +31,8 @@ import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick } from "./movieSearch.js";
 import { fileScanTick, fileSummary, scanLibrary, scanRunning } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
+import { scopeFor, scopePreview, setScope, validateScope } from "./scope.js";
+import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -345,11 +347,12 @@ app.get<{ Querystring: { from?: string; to?: string; managed?: string } }>("/api
   return { from, to, entries: calendar(from, to, req.query.managed === "1"), movies: movieCalendar(from, to, req.query.managed === "1") };
 });
 
-app.post<{ Body: { tvdbIds?: number[]; on?: boolean } }>("/api/managed", async (req) => {
+app.post<{ Body: { tvdbIds?: number[]; on?: boolean; live?: boolean } }>("/api/managed", async (req) => {
   writable();
   const ids = (req.body?.tvdbIds ?? []).map(id).slice(0, 500);
-  return setManaged(ids, req.body?.on !== false);
+  return setManaged(ids, req.body?.on !== false, { live: req.body?.live === true });
 });
+app.post<{ Body: { tvdbIds?: number[] } }>("/api/managed/preview", async (req) => managePreview((req.body?.tvdbIds ?? []).map(id).slice(0, 500)));
 app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30, { episodesOnly: true }) }));
 app.put<{ Params: { tvdbId: string }; Body: { dryRun?: boolean } }>("/api/managed/:tvdbId", async (req) => {
   writable();
@@ -516,6 +519,32 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string } }>("/api/series/:tvdbId/scope", async (req) => {
+  const tvdbId = id(req.params.tvdbId);
+  const current = scopeFor(tvdbId);
+  const q = req.query;
+  const want = q.seasons ? validateScope({ seasons: q.seasons as never, recentN: Number(q.recentN ?? 1), episodes: q.episodes as never, specials: q.specials === "1" }) : current;
+  return { scope: current, preview: scopePreview(tvdbId, want) };
+});
+app.put<{ Body: { tvdbIds?: number[]; scope?: Record<string, unknown> | null } }>("/api/scope", async (req) => {
+  writable();
+  const ids = (req.body?.tvdbIds ?? []).map(id);
+  if (!ids.length) throw fail("Pick at least one show");
+  setScope(ids, req.body?.scope ? validateScope(req.body.scope as never) : null);
+  return { ok: true, changed: ids.length };
+});
+app.get("/api/fillin", async () => fillInView());
+app.post<{ Body: { tvdbIds?: number[] } }>("/api/fillin", async (req) => {
+  writable();
+  return addToQueue((req.body?.tvdbIds ?? []).map(id));
+});
+app.put<{ Params: { tvdbId: string }; Body: { action?: string } }>("/api/fillin/:tvdbId", async (req) => {
+  writable();
+  const a = req.body?.action;
+  if (!["up", "down", "skip", "remove", "requeue"].includes(a ?? "")) throw fail("Unknown action");
+  editQueue(id(req.params.tvdbId), a as "up");
+  return { ok: true };
+});
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
   writable();
   if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
@@ -728,6 +757,7 @@ every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
 every(30 * 60_000, () => fileScanTick(), "file scan");
+every(30 * 60_000, () => fillInTick(), "fill-in");
 setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;

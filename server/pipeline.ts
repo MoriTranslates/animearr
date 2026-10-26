@@ -270,6 +270,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
   ticking = true;
   try {
     const rows = db.prepare("SELECT * FROM grabs WHERE state = 'downloading' ORDER BY id").all() as unknown as GrabRow[];
+    const ready: { row: GrabRow; path: string }[] = [];
     for (const row of rows) {
       try {
         const job = { client: row.client as ClientJob["client"], ref: row.client_ref! };
@@ -316,15 +317,9 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
           // The job vanished from the client (e.g. its history was cleared by hand): not the release's fault.
           setState(row.id, "needs-attention", "the download disappeared from the download client");
         } else if (st.state === "completed" && st.path) {
-          // Claim the row so an overlapping tick can't import it twice.
-          if (!db.prepare("UPDATE grabs SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(Date.now(), row.id).changes) continue;
-          try {
-            if (row.movie_id) await importMovie(row, st.path, deps);
-            else await importAndVerify(row, st.path, deps);
-          } catch (e) {
-            setState(row.id, "needs-attention", `import error: ${(e as Error).message}`);
-            logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Import of ${row.release} hit an error: ${(e as Error).message}. The download is kept; press "Retry import" when the cause is fixed.`, detail: { grabId: row.id } });
-          }
+          // Downloaded: wait in the import line (progress 1 = "waiting to import"; the UI shows the position).
+          if ((row.progress ?? 0) < 1) db.prepare("UPDATE grabs SET progress = 1, progress_at = ? WHERE id = ?").run(now, row.id);
+          ready.push({ row, path: st.path });
         } else if ((row.progress ?? -1) < st.progress) {
           db.prepare("UPDATE grabs SET progress = ?, progress_at = ? WHERE id = ?").run(st.progress, now, row.id);
         }
@@ -332,9 +327,53 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
         db.prepare("UPDATE grabs SET error = ? WHERE id = ?").run((e as Error).message, row.id);
       }
     }
+    // Imports: two lines in parallel at most; each show or movie in one line (never two at once for the same one).
+    const groups = new Map<string, typeof ready>();
+    for (const r of ready) {
+      const key = r.row.movie_id ? `m${r.row.movie_id}` : `s${r.row.tvdb_id}`;
+      groups.set(key, [...(groups.get(key) ?? []), r]);
+    }
+    const lines = [...groups.values()];
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(IMPORT_SLOTS, lines.length) }, async () => {
+        while (next < lines.length) {
+          for (const { row, path: p } of lines[next++]) {
+            // Claim the row so an overlapping tick can't import it twice.
+            if (!db.prepare("UPDATE grabs SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(Date.now(), row.id).changes) continue;
+            try {
+              if (row.movie_id) await importMovie(row, p, deps);
+              else await importAndVerify(row, p, deps);
+            } catch (e) {
+              setState(row.id, "needs-attention", `import error: ${(e as Error).message}`);
+              logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Import of ${row.release} hit an error: ${(e as Error).message}. The download is kept; press "Retry import" when the cause is fixed.`, detail: { grabId: row.id } });
+            }
+          }
+        }
+      }),
+    );
   } finally {
     ticking = false;
   }
+}
+
+const IMPORT_SLOTS = 2;
+
+/**
+ * Where each in-flight grab is: downloading, waiting to import (with how many are ahead), or importing.
+ * Waiting = the client finished (progress 1) and the import line hasn't reached it yet.
+ */
+export function grabStages(): Map<number, { stage: "downloading" | "waiting" | "importing" | "attention"; ahead: number }> {
+  const rows = db.prepare("SELECT id, state, progress FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; state: string; progress: number | null }[];
+  const out = new Map<number, { stage: "downloading" | "waiting" | "importing" | "attention"; ahead: number }>();
+  let waiting = 0;
+  for (const r of rows) {
+    if (r.state === "importing") out.set(r.id, { stage: "importing", ahead: 0 });
+    else if (r.state === "needs-attention") out.set(r.id, { stage: "attention", ahead: 0 });
+    else if ((r.progress ?? 0) >= 1) out.set(r.id, { stage: "waiting", ahead: waiting++ });
+    else out.set(r.id, { stage: "downloading", ahead: 0 });
+  }
+  return out;
 }
 
 /** Title for activity entries: the show's, or the movie's for movie grabs. */

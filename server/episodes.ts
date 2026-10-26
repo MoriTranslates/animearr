@@ -9,6 +9,7 @@ import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { recordFor } from "./mediafiles.js";
+import { grabStages } from "./pipeline.js";
 import { specialType } from "./audit.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
@@ -79,9 +80,10 @@ const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e
 
 /** Active grabs by episode id (for "downloading 45%" / "needs attention"). */
 function grabStates() {
-  const out = new Map<number, { state: string; progress: number | null; grabId: number; release: string }>();
+  const stages = grabStages();
+  const out = new Map<number, { state: string; progress: number | null; grabId: number; release: string; stage?: string; ahead?: number }>();
   const rows = db.prepare("SELECT id, episode_ids, state, progress, release FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; episode_ids: string; state: string; progress: number | null; release: string }[];
-  for (const r of rows) for (const e of JSON.parse(r.episode_ids) as number[]) out.set(e, { state: r.state, progress: r.progress, grabId: r.id, release: r.release });
+  for (const r of rows) for (const e of JSON.parse(r.episode_ids) as number[]) out.set(e, { state: r.state, progress: r.progress, grabId: r.id, release: r.release, stage: stages.get(r.id)?.stage, ahead: stages.get(r.id)?.ahead });
   return out;
 }
 
@@ -99,6 +101,9 @@ export interface EpisodeRow {
   file: FileInfo | null;
   /** This S0 "episode" is really a movie, handled by Radarr (never grabbed as an episode). */
   movie?: { movieId: number | null; title: string } | null;
+  /** Where a download is: downloading / waiting to import (ahead = place in line) / importing. */
+  stage?: string | null;
+  ahead?: number | null;
   /** Season 0 only: what kind of special this is (OVA, movie, recap, promo, …); junk ones are collapsed in lists. */
   special?: { type: string; cls: string } | null;
 }
@@ -118,7 +123,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialType(e.title, e.runtime) : null };
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialType(e.title, e.runtime) : null };
   });
 }
 
@@ -341,7 +346,7 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
       if (!covers.has(r.tvdb_id)) covers.set(r.tvdb_id, coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }));
       const g = active.get(r.id);
       const status: EpisodeStatus = g ? (g.state === "needs-attention" ? "attention" : "downloading") : r.has_file ? "have" : r.air_utc > now ? "unaired" : "missing";
-      return { episodeId: r.id, tvdbId: r.tvdb_id, series: r.series, cover: covers.get(r.tvdb_id) ?? null, season: r.season, episode: r.episode, title: r.title, airUtc: r.air_utc, status, progress: g?.progress ?? null, managed: managed.has(r.tvdb_id) };
+      return { episodeId: r.id, tvdbId: r.tvdb_id, series: r.series, cover: covers.get(r.tvdb_id) ?? null, season: r.season, episode: r.episode, title: r.title, airUtc: r.air_utc, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, managed: managed.has(r.tvdb_id) };
     });
 }
 

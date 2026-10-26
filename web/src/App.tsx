@@ -4,6 +4,7 @@ import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
 import { Audit } from "./pages/Audit";
 import { Calendar } from "./pages/Calendar";
+import { FillIn } from "./pages/FillIn";
 import { MoviePage, Movies } from "./pages/Movies";
 import { Queue } from "./pages/Queue";
 import { Home } from "./pages/Home";
@@ -96,7 +97,7 @@ export function App() {
   if (!status.loggedIn) return <Login onDone={refreshStatus} />;
 
   const section = "/" + (path.split("/")[1] ?? "");
-  const active = (p: string) => (p === "/" ? path === "/" : section === p || (p === "/shows" && section === "/show") || (p === "/movies" && section === "/movie"));
+  const active = (p: string) => (p === "/" ? path === "/" : section === p || (p === "/shows" && section === "/show") || (p === "/movies" && section === "/movie") || (p === "/managed" && section === "/fillin"));
 
   return (
     <ToastProvider>
@@ -146,6 +147,7 @@ export function App() {
           {section === "/movies" && <Movies />}
           {section === "/movie" && <MoviePage id={Number(path.split("/")[2])} />}
           {section === "/calendar" && <Calendar />}
+          {section === "/fillin" && <FillIn />}
           {section === "/queue" && <Queue />}
           {section === "/audit" && <Audit />}
           {section === "/search" && <Search />}

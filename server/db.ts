@@ -291,6 +291,10 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE media_files (path TEXT PRIMARY KEY, root TEXT NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL, probed_at INTEGER, duration REAL, container TEXT,
      video TEXT NOT NULL DEFAULT 'null', audio TEXT NOT NULL DEFAULT '[]', subs TEXT NOT NULL DEFAULT '[]', sidecars TEXT NOT NULL DEFAULT '[]', error TEXT, seen_at INTEGER NOT NULL);
    CREATE INDEX media_files_root ON media_files (root, seen_at);`,
+  // 10: per-show monitoring scope; staged fill-in queue
+  `CREATE TABLE series_scope (tvdb_id INTEGER PRIMARY KEY, seasons TEXT NOT NULL, recent_n INTEGER NOT NULL DEFAULT 1, episodes TEXT NOT NULL, specials INTEGER NOT NULL DEFAULT 0, since INTEGER NOT NULL);
+   CREATE TABLE fill_queue (tvdb_id INTEGER PRIMARY KEY, position INTEGER NOT NULL, state TEXT NOT NULL, wave INTEGER, added_at INTEGER NOT NULL, activated_at INTEGER, done_at INTEGER,
+     start_missing INTEGER, last_missing INTEGER, progress_at INTEGER, note TEXT NOT NULL DEFAULT '');`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

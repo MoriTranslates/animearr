@@ -6,6 +6,7 @@ import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
+import { ScopeEditor } from "../scope";
 
 interface Header {
   seriesId: number;
@@ -143,6 +144,14 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </details>
       )}
       {!h.allowed && <p className="banner warn">{t("series.outsideRoot")}</p>}
+      {h.managed && (
+        <details className="card pad stack">
+          <summary>
+            <strong>{t("scope.title")}</strong> <span className="muted small">{t("scope.titleHelp")}</span>
+          </summary>
+          <ScopeEditor tvdbIds={[tvdbId]} onSaved={() => void d.reload()} />
+        </details>
+      )}
 
       {/* ---------------- movies & specials (the franchise's movies live in Radarr) */}
       <FranchiseMovies tvdbId={tvdbId} movies={s.movies} onChanged={() => void d.reload()} />

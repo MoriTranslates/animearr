@@ -18,6 +18,7 @@ import { decisionSummary, deepSearch, identifyContext, type SearchResult } from 
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { profileFor } from "./profiles.js";
+import { scopedEpisodeIds } from "./scope.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -83,7 +84,7 @@ export function candidates() {
   };
 }
 
-export function setManaged(tvdbIds: number[], on: boolean): { changed: number; refused: { tvdbId: number; title: string; reason: string }[] } {
+export function setManaged(tvdbIds: number[], on: boolean, opts: { live?: boolean } = {}): { changed: number; refused: { tvdbId: number; title: string; reason: string }[] } {
   if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const refused: { tvdbId: number; title: string; reason: string }[] = [];
   let changed = 0;
@@ -98,10 +99,12 @@ export function setManaged(tvdbIds: number[], on: boolean): { changed: number; r
         refused.push({ tvdbId, title: s.title, reason: `its folder ${s.path} is not under an allowed root folder` });
         continue;
       }
-      const r = db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, ?, 1, ?) ON CONFLICT(tvdb_id) DO NOTHING").run(tvdbId, s.id, s.title, Date.now());
+      // Dry-run unless the caller confirmed live (the Shows confirm dialog, the fill-in queue).
+      const live = !!opts.live && !getSettings().managed.dryRun;
+      const r = db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO NOTHING").run(tvdbId, s.id, s.title, live ? 0 : 1, Date.now());
       if (r.changes) {
         changed++;
-        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr (dry-run on: it will only log what it would grab)`, undo: { action: "unmanage", args: { tvdbId } } });
+        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr${live ? "" : " (in dry run: it only logs what it would grab; Settings → Safety → Dry run)"}`, undo: { action: "unmanage", args: { tvdbId } } });
       }
     } else {
       const r = db.prepare("DELETE FROM managed WHERE tvdb_id = ?").run(tvdbId);
@@ -154,8 +157,13 @@ export function planSchedule(now = Date.now()) {
   const managed = listManaged();
   let added = 0;
   for (const m of managed) {
-    const eps = cache.prepare("SELECT id, air_utc, has_file FROM episodes WHERE series_id = ? AND season > 0 AND air_utc IS NOT NULL AND air_utc <= ? AND air_utc >= ?").all(m.seriesId, now + DAY, now - 30 * DAY) as { id: number; air_utc: number; has_file: number }[];
+    const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
+    const eps = cache.prepare("SELECT id, air_utc, has_file FROM episodes WHERE series_id = ? AND air_utc IS NOT NULL AND air_utc <= ? AND air_utc >= ?").all(m.seriesId, now + DAY, now - 30 * DAY) as { id: number; air_utc: number; has_file: number }[];
     for (const e of eps) {
+      if (!e.has_file && !scoped.has(e.id)) {
+        db.prepare("UPDATE search_state SET state = 'done', last_why = 'outside the monitoring scope' WHERE episode_id = ? AND state IN ('waiting', 'retry')").run(e.id);
+        continue;
+      }
       if (e.has_file) {
         db.prepare("UPDATE search_state SET state = 'done', last_why = 'Sonarr has a file' WHERE episode_id = ? AND state NOT IN ('done', 'replace')").run(e.id);
         continue;
@@ -274,17 +282,24 @@ const BACKLOG_STATES = "('backlog', 'retry')"; // a failed backlog grab comes ba
  * Sonarr or isn't managed any more. Runs even while the missing-episode search is off. 'replace' rows are left
  * alone: they have a (bad) file by design.
  */
-function closeFound() {
-  const managedIds = new Set(listManaged().map((m) => m.tvdbId));
+function closeFound(now = Date.now()) {
+  const managedMap = new Map(listManaged().map((m) => [m.tvdbId, m.seriesId]));
+  const managedIds = new Set(managedMap.keys());
+  const scopes = new Map<number, Set<number>>();
+  const inScopeCached = (tvdbId: number, episodeId: number) => {
+    if (!scopes.has(tvdbId)) scopes.set(tvdbId, managedMap.has(tvdbId) ? scopedEpisodeIds(tvdbId, managedMap.get(tvdbId)!, now) : new Set());
+    return scopes.get(tvdbId)!.has(episodeId);
+  };
   const epInfo = cache.prepare("SELECT has_file, monitored FROM episodes WHERE id = ?");
   const close = db.prepare("UPDATE search_state SET state = 'done', last_why = ? WHERE episode_id = ?");
-  const rows = db.prepare("SELECT episode_id, tvdb_id, kind FROM search_state WHERE state IN ('backlog', 'waiting', 'retry')").all() as { episode_id: number; tvdb_id: number; kind: string }[];
+  const rows = db.prepare("SELECT episode_id, tvdb_id, kind FROM search_state WHERE state IN ('backlog', 'waiting', 'retry', 'would-grab')").all() as { episode_id: number; tvdb_id: number; kind: string }[];
   tx(db, () => {
     for (const r of rows) {
       const e = epInfo.get(r.episode_id) as { has_file: number; monitored: number } | undefined;
       if (!e) close.run("no longer in Sonarr", r.episode_id);
       else if (e.has_file) close.run("Sonarr has a file", r.episode_id);
-      else if (r.kind === "backlog" && (!e.monitored || !managedIds.has(r.tvdb_id))) close.run(!e.monitored ? "not monitored" : "not managed", r.episode_id);
+      else if (r.kind === "backlog" && !managedIds.has(r.tvdb_id)) close.run("not managed", r.episode_id);
+      else if (managedIds.has(r.tvdb_id) && !inScopeCached(r.tvdb_id, r.episode_id)) close.run("outside the monitoring scope", r.episode_id);
     }
   });
 }
@@ -294,22 +309,23 @@ function closeFound() {
  * episodes of managed shows without a file. Episodes the normal schedule gave up on join after retryDays.
  */
 export function planBacklog(now = Date.now()) {
-  closeFound();
   const b = getSettings().backlog;
+  if (b.enabled) db.prepare("UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?").run(now, now - b.retryDays * DAY);
+  closeFound(now);
   if (!b.enabled) return 0;
   const cutoff = now - b.retryDays * DAY;
-  db.prepare("UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?").run(now, cutoff);
   const insert = db.prepare("INSERT INTO search_state (episode_id, tvdb_id, air_utc, next_at, state, kind) VALUES (?, ?, ?, ?, 'backlog', 'backlog') ON CONFLICT(episode_id) DO NOTHING");
   // A 'done' episode that is missing again (file deleted) rejoins, but never right after AnimeArr imported it
   // (the cache can lag behind the import until the next refresh).
   const reopen = db.prepare(
     "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
   );
-  const listEps = cache.prepare("SELECT id, air_utc FROM episodes WHERE series_id = ? AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?");
+  const listEps = cache.prepare("SELECT id, air_utc FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?");
   let added = 0;
   tx(db, () => {
     for (const m of listManaged()) {
-      for (const e of listEps.all(m.seriesId, now - 30 * DAY) as { id: number; air_utc: number }[]) {
+      const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
+      for (const e of (listEps.all(m.seriesId, now - 30 * DAY) as { id: number; air_utc: number }[]).filter((x) => scoped.has(x.id))) {
         const n = Number(insert.run(e.id, m.tvdbId, e.air_utc, now).changes);
         added += n || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
       }
@@ -349,14 +365,17 @@ export async function backlogPass(now = Date.now(), opts: { plan?: boolean } = {
 /** What the missing-episode search has to do (for Settings). */
 export function backlogSummary(now = Date.now()) {
   const b = getSettings().backlog;
-  const ids = listManaged().map((m) => m.seriesId);
-  const missing = ids.length
-    ? (cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE series_id IN (${ids.map(() => "?").join(",")}) AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?`).get(...ids, now - 30 * DAY) as { n: number }).n
-    : 0;
-  const live = listManaged().filter((m) => !isDryRun(m.dryRun)).map((m) => m.seriesId);
-  const missingLive = live.length
-    ? (cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE series_id IN (${live.map(() => "?").join(",")}) AND season > 0 AND monitored = 1 AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?`).get(...live, now - 30 * DAY) as { n: number }).n
-    : 0;
+  // Older missing episodes inside each show's monitoring scope (what the backlog would actually search).
+  const old = cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?");
+  const count = (m: ManagedRow) => {
+    const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
+    return (old.all(m.seriesId, now - 30 * DAY) as { id: number }[]).filter((e) => scoped.has(e.id)).length;
+  };
+  const all = listManaged();
+  const missing = all.reduce((n, m) => n + count(m), 0);
+  const liveRows = all.filter((m) => !isDryRun(m.dryRun));
+  const live = liveRows.map((m) => m.seriesId);
+  const missingLive = liveRows.reduce((n, m) => n + count(m), 0);
   const rows = db.prepare("SELECT state, COUNT(*) AS n FROM search_state WHERE kind = 'backlog' GROUP BY state").all() as { state: string; n: number }[];
   return { ...b, missing, missingLive, liveShows: live.length, states: Object.fromEntries(rows.map((r) => [r.state, r.n])), searchedLastHour: searchesLastHour(now) };
 }
@@ -395,4 +414,16 @@ export async function rssTick(now = Date.now()) {
     }
   }
   setJob("rss", "done", `${recent.length} recent releases checked, ${hits} for waiting episodes`);
+}
+
+/** For the "Manage selected" confirm: how many in-scope missing episodes these shows would search live. */
+export function managePreview(tvdbIds: number[], now = Date.now()) {
+  let missing = 0;
+  for (const id of tvdbIds) {
+    const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(id) as { id: number } | undefined;
+    if (!s) continue;
+    const scoped = scopedEpisodeIds(id, s.id, now);
+    missing += (cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc <= ?").all(s.id, now) as { id: number }[]).filter((e) => scoped.has(e.id)).length;
+  }
+  return { shows: tvdbIds.length, missing, dryRun: getSettings().managed.dryRun, backlog: getSettings().backlog.enabled, perHour: getSettings().backlog.perHour };
 }

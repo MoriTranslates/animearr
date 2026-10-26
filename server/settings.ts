@@ -104,6 +104,13 @@ export interface Settings {
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   /** AnimeArr's own file records: scan the library roots and ffprobe every file (read-only). */
   library: { scan: boolean };
+  /** Default monitoring scope for managed shows without their own (see scope.ts). */
+  scope: {
+    ended: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean };
+    continuing: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean };
+  };
+  /** Staged fill-in queue (see fillin.ts). */
+  fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
@@ -145,6 +152,8 @@ const DEFAULTS: Settings = {
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
+  scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
+  fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
   externalUrl: "",
   ui: { language: "en" },
@@ -155,7 +164,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -165,7 +174,16 @@ const SECRET_FOR_URL: [string, string][] = [
   ["qbittorrent.url", "qbittorrent.password"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
-const ENUMS: Record<string, readonly string[]> = { "repair.mode": ["off", "log", "auto"], "dualUpgrade.mode": ["off", "log", "auto"] };
+const SEASONS = ["all", "first", "latest", "recent"];
+const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
+const ENUMS: Record<string, readonly string[]> = {
+  "repair.mode": ["off", "log", "auto"],
+  "dualUpgrade.mode": ["off", "log", "auto"],
+  "scope.ended.seasons": SEASONS,
+  "scope.ended.episodes": EPISODES,
+  "scope.continuing.seasons": SEASONS,
+  "scope.continuing.episodes": EPISODES,
+};
 const RANGES: Record<string, [number, number]> = {
   "managed.searchDelayMin": [0, 1440],
   "managed.maxAttempts": [1, 100],
@@ -178,6 +196,11 @@ const RANGES: Record<string, [number, number]> = {
   "queueHealth.stallHours": [1, 72],
   "dualUpgrade.perHour": [1, 24],
   "movieSearch.delayHours": [0, 168],
+  "scope.ended.recentN": [1, 100],
+  "scope.continuing.recentN": [1, 100],
+  "fillIn.waveSize": [1, 50],
+  "fillIn.advancePct": [50, 100],
+  "fillIn.stallDays": [1, 60],
   "movieSearch.perHour": [1, 12],
   "movieSearch.retryDays": [1, 60],
   "dualUpgrade.recheckDays": [1, 60],

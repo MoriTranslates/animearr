@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
-import { Link } from "../App";
+import { Link, navigate } from "../App";
 import { ShowLink } from "../episodes";
 import { t } from "../i18n";
-import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { ScopeEditor } from "../scope";
 
 type Filter = "airing" | "continuing" | "managed" | "all";
 
@@ -35,10 +36,31 @@ export function Shows({ status }: { status: Status }) {
     return n;
   });
 
-  async function apply(on: boolean) {
-    setBusy(true);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [manageAsk, setManageAsk] = useState<{ shows: number; missing: number; dryRun: boolean; backlog: boolean; perHour: number } | null>(null);
+  const [fillAsk, setFillAsk] = useState(false);
+  async function askManage() {
     try {
-      const r = await api<{ changed: number; refused: { title: string; reason: string }[] }>("/managed", { body: { tvdbIds: [...sel], on } });
+      setManageAsk(await api("/managed/preview", { body: { tvdbIds: [...sel] } }));
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  }
+  async function fill() {
+    setFillAsk(false);
+    try {
+      const r = await api<{ added: number }>("/fillin", { body: { tvdbIds: [...sel] } });
+      toast(t("fill.added", { n: r.added }), false, { label: t("fill.open"), run: () => navigate("/fillin") });
+      setSel(new Set());
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  }
+  async function apply(on: boolean, live = false) {
+    setBusy(true);
+    setManageAsk(null);
+    try {
+      const r = await api<{ changed: number; refused: { title: string; reason: string }[] }>("/managed", { body: { tvdbIds: [...sel], on, live } });
       if (r.refused.length) toast(t("shows.refused", { list: r.refused.map((x) => `${x.title} (${x.reason})`).join("; ") }), true);
       else toast(t("common.saved"));
       setSel(new Set());
@@ -124,14 +146,50 @@ export function Shows({ status }: { status: Status }) {
         <div className="bulkbar card">
           <span>{t("shows.selected", { n: sel.size })}</span>
           <div className="row">
+            <button className="ghost" disabled={busy} onClick={() => setScopeOpen(true)}>
+              {t("scope.bulk")}
+            </button>
+            <button className="ghost" disabled={busy} onClick={() => setFillAsk(true)}>
+              {t("fill.add")}
+            </button>
             <button className="ghost" disabled={busy} onClick={() => apply(false)}>
               {t("shows.unmanageSelected")}
             </button>
-            <button className="primary" disabled={busy} onClick={() => apply(true)}>
+            <button className="primary" disabled={busy} onClick={() => void askManage()}>
               {t("shows.manageSelected")}
             </button>
           </div>
         </div>
+      )}
+      {manageAsk && (
+        <Modal title={t("shows.manageTitle", { n: manageAsk.shows })} onClose={() => setManageAsk(null)}>
+          <div className="stack">
+            <p>{manageAsk.dryRun ? t("shows.manageDry") : t("shows.manageLiveBody", { missing: manageAsk.missing, perHour: manageAsk.perHour })}</p>
+            {!manageAsk.dryRun && !manageAsk.backlog && <p className="muted small">{t("shows.manageNoBacklog")}</p>}
+            <div className="row">
+              {!manageAsk.dryRun && (
+                <button className="primary" onClick={() => void apply(true, true)}>
+                  {t("shows.manageLive")}
+                </button>
+              )}
+              <button onClick={() => void apply(true, false)}>{t("shows.manageDryButton")}</button>
+              <button className="ghost" onClick={() => setManageAsk(null)}>
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {fillAsk && (
+        <Confirm title={t("fill.addTitle", { n: sel.size })} confirmLabel={t("fill.add")} onClose={() => setFillAsk(false)} onConfirm={() => fill()}>
+          <p>{t("fill.addBody")}</p>
+        </Confirm>
+      )}
+      {scopeOpen && (
+        <Modal title={t("scope.bulkTitle", { n: sel.size })} onClose={() => setScopeOpen(false)}>
+          <p className="muted small">{t("scope.bulkNote")}</p>
+          <ScopeEditor tvdbIds={[...sel]} previewFor={[...sel][0]} onSaved={() => setScopeOpen(false)} />
+        </Modal>
       )}
     </section>
   );

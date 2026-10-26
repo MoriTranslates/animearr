@@ -24,6 +24,9 @@ export function Managed({ status }: { status: Status }) {
       <div className="row between">
         <h1>{t("managed.title")}</h1>
         <div className="row">
+          <Link to="/fillin" className="button">
+            {t("fill.title")}
+          </Link>
           <Link to="/shows" className="button">
             {t("managed.choose")}
           </Link>

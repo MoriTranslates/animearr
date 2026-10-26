@@ -3,6 +3,7 @@ import { api, fmtSize, store, type PathMapping, type Settings as S, type Status 
 import { applyTheme, query } from "../App";
 import { t } from "../i18n";
 import { ProfilesEditor } from "../profiles";
+import { ScopeFields } from "../scope";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tab = "connections" | "profile" | "safety" | "paths" | "security" | "system";
@@ -209,6 +210,14 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
             </label>
           ))}
         </div>
+      </div>
+      <div className="card pad stack">
+        <h2>{t("scope.defaults")}</h2>
+        <p className="muted small">{t("scope.defaultsHelp")}</p>
+        <h3>{t("scope.forEnded")}</h3>
+        <ScopeFields value={s.scope.ended} onChange={(v) => upd((x) => ({ ...x, scope: { ...x.scope, ended: v } }))} />
+        <h3>{t("scope.forContinuing")}</h3>
+        <ScopeFields value={s.scope.continuing} onChange={(v) => upd((x) => ({ ...x, scope: { ...x.scope, continuing: v } }))} />
       </div>
       <Backlog s={s} upd={upd} />
       <MovieSearch s={s} upd={upd} />

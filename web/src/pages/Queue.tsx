@@ -21,6 +21,8 @@ interface Item {
   error: string | null;
   progress: number | null;
   attempt: number;
+  stage?: string | null;
+  ahead?: number | null;
   live?: { state: string; progress: number; etaSec?: number | null; speed?: number | null; sizeBytes?: number | null; clientStatus?: string; seeders?: number | null; message?: string } | null;
 }
 
@@ -97,7 +99,8 @@ function Downloading() {
               {g.live?.sizeBytes ? <span className="muted small">{fmtSize(g.live.sizeBytes)}</span> : null}
               {g.attempt > 1 && <span className="muted small">#{g.attempt}</span>}
             </div>
-            {g.state === "downloading" && (
+            {g.state === "downloading" && g.stage === "waiting" && <p className="small">⇢ {g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}</p>}
+            {g.state === "downloading" && g.stage !== "waiting" && (
               <>
                 <div className="progressbar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
                   <div style={{ width: `${pct}%` }} />

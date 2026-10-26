@@ -5,7 +5,7 @@ import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
 
-interface EpEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; managed: boolean }
+interface EpEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; stage?: string | null; ahead?: number | null; managed: boolean }
 interface MovieEntry { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }
 type Entry = ({ type: "episode" } & EpEntry & { at: number }) | ({ type: "movie" } & MovieEntry);
 type View = "month" | "week" | "agenda";
@@ -181,7 +181,7 @@ function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) 
         {e.type === "episode" && <span className="muted small">{time(e.at)}</span>}
       </span>
       <span className="agenda-status">
-        {e.type === "episode" ? <StatusPill e={{ status: e.status, progress: e.progress, file: null }} /> : <Chip tone={MOVIE_STATUS[e.status] ?? "info"}>{t(`movies.status.${e.status}` as I18nKey)}</Chip>}
+        {e.type === "episode" ? <StatusPill e={{ status: e.status, progress: e.progress, file: null, stage: e.stage, ahead: e.ahead }} /> : <Chip tone={MOVIE_STATUS[e.status] ?? "info"}>{t(`movies.status.${e.status}` as I18nKey)}</Chip>}
       </span>
     </button>
   );

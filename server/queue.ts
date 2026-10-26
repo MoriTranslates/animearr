@@ -1,6 +1,6 @@
 /** Queue (AnimeArr's own downloads, with live client status) and grab history. */
 import { cache, db } from "./db.js";
-import { realDeps, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { grabStages, realDeps, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { ClientJob } from "./arr/clients.js";
 import * as sonarr from "./arr/sonarr.js";
 import { logDecision } from "./activity.js";
@@ -24,6 +24,7 @@ function view(g: GrabRow) {
 
 export async function queueView(deps: PipelineDeps = realDeps) {
   const active = db.prepare("SELECT * FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id DESC").all() as unknown as GrabRow[];
+  const stages = grabStages();
   const items = await Promise.all(
     active.map(async (g) => {
       let live = null;
@@ -34,7 +35,7 @@ export async function queueView(deps: PipelineDeps = realDeps) {
           live = { state: "unknown", progress: g.progress ?? 0, message: (e as Error).message };
         }
       }
-      return { ...view(g), live };
+      return { ...view(g), live, stage: stages.get(g.id)?.stage ?? null, ahead: stages.get(g.id)?.ahead ?? null };
     }),
   );
   return { items };

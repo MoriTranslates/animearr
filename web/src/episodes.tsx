@@ -7,7 +7,7 @@ import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
 export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[] }
-export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null }
+export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
@@ -18,9 +18,11 @@ const resLabel = (r: string | null) => {
 };
 
 /** Status pill: colour AND a word (never colour-only). "Have · 1080p WEB · EN subs", "Downloading 45%", ... */
-export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file">; lang?: string }) {
+export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { stage?: string | null; ahead?: number | null }; lang?: string }) {
   let label: string = t(`ep.status.${e.status}`);
-  if (e.status === "downloading" && e.progress !== null) label += ` ${Math.round(e.progress * 100)}%`;
+  if (e.status === "downloading" && e.stage === "importing") label = `⇢ ${t("ep.importing")}`;
+  else if (e.status === "downloading" && e.stage === "waiting") label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
+  else if (e.status === "downloading" && e.progress !== null) label += ` ${Math.round(e.progress * 100)}%`;
   if (e.status === "have" && e.file) {
     const parts = [[resLabel(e.file.resolution), e.file.source].filter(Boolean).join(" "), e.file.subs.includes(lang) ? t("ep.subs", { lang: lang.toUpperCase() }) : e.file.audio.includes(lang) ? t("ep.audioLang", { lang: lang.toUpperCase() }) : t("ep.noSubs", { lang: lang.toUpperCase() })].filter(Boolean);
     label = [label, ...parts].join(" · ");

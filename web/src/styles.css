@@ -414,3 +414,9 @@ dl.facts .wide { grid-column: 1 / -1; }
 @media (max-width: 760px) { .picker-row { grid-template-columns: auto 28px 1fr; } .picker-row .ep-status { grid-column: 3; } }
 .info-tip { cursor: help; border-bottom: 1px dotted var(--muted); }
 button.link { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline; cursor: pointer; font: inherit; }
+
+.num-small { width: 5rem; }
+.scope-fields .row { gap: var(--space-2); }
+.fill-row { align-items: flex-start; gap: var(--space-3); }
+.fill-actions { flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
+@media (max-width: 760px) { .fill-row { flex-wrap: wrap; } .fill-actions { width: 100%; justify-content: flex-start; } }
