@@ -51,6 +51,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
+  const toast = useToast();
 
   // Poll while something is downloading so status moves on by itself.
   const downloading = d.data?.rows.some((r) => r.status === "downloading");
@@ -168,6 +169,20 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               {t("ep.grid")}
             </button>
           </div>
+          <button
+            className="small ghost"
+            onClick={async () => {
+              try {
+                const r = await api<{ files: number; probed: number; removed: number }>(`/series/${tvdbId}/scan`, { body: {} });
+                toast(t("files.scanned", { files: r.files, probed: r.probed }));
+                await d.reload();
+              } catch (e) {
+                toast((e as Error).message, true);
+              }
+            }}
+          >
+            ↻ {t("files.refreshScan")}
+          </button>
           <button className="small" onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
             {selecting ? t("ep.selectDone") : t("ep.select")}
           </button>
@@ -213,6 +228,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                         <span className="ep-title clamp2" title={r.title ?? undefined}>
                           {r.title ?? t("ep.tba")} {r.id === nextId && <Chip tone="accent">{t("ep.next")}</Chip>}
                           {r.movie && <Chip tone="info">🎬 {t("ep.movieChip")}</Chip>}
+                          {r.file?.changed && <Chip tone="info" title={t("ep.changed")}>{t("ep.reencodedChip")}</Chip>}
                           {r.special && !r.movie && <Chip tone={r.special.cls === "junk" ? "info" : "accent"}>{t(`special.${r.special.type}` as I18nKey)}</Chip>}
                         </span>
                         <span className="ep-meta muted small">

@@ -24,6 +24,7 @@ import type { SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
 import { indexerHealth } from "./health.js";
+import { ownFile, probeOf } from "./mediafiles.js";
 
 export interface MovieRow {
   id: number;
@@ -79,7 +80,7 @@ const activeGrab = (movieId: number) =>
 export function listMovies() {
   const rows = cache.prepare("SELECT * FROM movies WHERE is_anime = 1 ORDER BY title").all() as unknown as MovieRow[];
   return rows.map((m) => {
-    const f = m.file ? (JSON.parse(m.file) as MovieFile) : null;
+    const f = movieFileOf(m);
     const g = activeGrab(m.id);
     return {
       id: m.id,
@@ -97,10 +98,20 @@ export function listMovies() {
   });
 }
 
+/** The movie's file, from AnimeArr's own scan when there is one (Radarr's data otherwise). */
+function movieFileOf(m: MovieRow): (MovieFile & { size?: number | null; codec?: string | null; scanned?: boolean }) | null {
+  const f = m.file ? (JSON.parse(m.file) as MovieFile) : null;
+  if (!f?.path) return f;
+  const own = ownFile(f.path);
+  if (!own) return f;
+  const p = probeOf(own);
+  return { ...f, audio: p.audio, subs: [...new Set([...p.subs, ...p.sidecars])], resolution: own.video?.width ? `${own.video.width}x${own.video.height}` : f.resolution, size: own.size, codec: own.video?.codec ?? null, scanned: true };
+}
+
 export function movieDetail(id: number) {
   const m = movieById(id);
   if (!m) throw Object.assign(new Error("That movie isn't in the synced Radarr library (or isn't anime)"), { statusCode: 404 });
-  const f = m.file ? (JSON.parse(m.file) as MovieFile) : null;
+  const f = movieFileOf(m);
   const grabs = db.prepare("SELECT id, at, release, state, error, progress FROM grabs WHERE movie_id = ? ORDER BY id DESC LIMIT 10").all(id);
   return {
     id: m.id,

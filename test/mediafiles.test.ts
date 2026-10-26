@@ -86,3 +86,11 @@ test("record keys use forward slashes: a Windows-style *arr path still finds the
   const winStyle = arr(ep1).replace(/\//g, "\\");
   assert.ok(recordFor(winStyle));
 });
+
+test("own records win when they match the *arr or are newer than its import (Tdarr re-encode); stale ones don't", async () => {
+  const { ownFile } = await import("../server/mediafiles.js");
+  const rec = recordFor(arr(ep1))!;
+  assert.ok(ownFile(arr(ep1), { size: rec.size }), "same size");
+  assert.ok(ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime - 86_400_000).toISOString() }), "rewritten after the import");
+  assert.equal(ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime + 86_400_000).toISOString() }), null, "the *arr has a newer file than our record");
+});

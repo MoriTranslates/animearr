@@ -10,7 +10,7 @@ import { animeListEntries, USER_AGENT } from "./metadata.js";
 const FRIBB_URL = "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json";
 const FRIBB_FILE = path.join(CACHE_DIR, "anime-list-full.json");
 
-async function anilistByAnidb(): Promise<Map<number, number>> {
+async function anilistByAnidbDownload() {
   const stale = !fs.existsSync(FRIBB_FILE) || Date.now() - fs.statSync(FRIBB_FILE).mtimeMs > 7 * 86_400_000;
   if (stale) {
     try {
@@ -22,10 +22,30 @@ async function anilistByAnidb(): Promise<Map<number, number>> {
       if (!fs.existsSync(FRIBB_FILE)) throw new Error(`Couldn't download the AniList mapping: ${(e as Error).message}`);
     }
   }
-  const rows = JSON.parse(fs.readFileSync(FRIBB_FILE, "utf8")) as { anidb_id?: number; anilist_id?: number }[];
-  const out = new Map<number, number>();
-  for (const r of rows) if (r.anidb_id && r.anilist_id) out.set(r.anidb_id, r.anilist_id);
-  return out;
+}
+
+export async function anilistByAnidb(): Promise<Map<number, number>> {
+  await anilistByAnidbDownload();
+  fribbMemo = null;
+  return (await fribb()).anidbToAnilist;
+}
+
+let fribbMemo: { at: number; anidbToAnilist: Map<number, number>; anilistToAnidb: Map<number, number>; anilistToTmdb: Map<number, number> } | null = null;
+/** The Fribb mapping (AniDB ↔ AniList ↔ TMDB movie), read once per hour from the cached file. */
+export async function fribb() {
+  if (fribbMemo && Date.now() - fribbMemo.at < 3_600_000) return fribbMemo;
+  if (!fs.existsSync(FRIBB_FILE)) await anilistByAnidbDownload();
+  const rows = JSON.parse(fs.readFileSync(FRIBB_FILE, "utf8")) as { anidb_id?: number; anilist_id?: number; themoviedb_id?: number | string }[];
+  const anidbToAnilist = new Map<number, number>();
+  const anilistToAnidb = new Map<number, number>();
+  const anilistToTmdb = new Map<number, number>();
+  for (const r of rows) {
+    if (r.anidb_id && r.anilist_id) (anidbToAnilist.set(r.anidb_id, r.anilist_id), anilistToAnidb.set(r.anilist_id, r.anidb_id));
+    const tm = Number(r.themoviedb_id);
+    if (r.anilist_id && Number.isFinite(tm) && tm > 0) anilistToTmdb.set(r.anilist_id, tm);
+  }
+  fribbMemo = { at: Date.now(), anidbToAnilist, anilistToAnidb, anilistToTmdb };
+  return fribbMemo;
 }
 
 export async function refreshCovers(limit = 600) {

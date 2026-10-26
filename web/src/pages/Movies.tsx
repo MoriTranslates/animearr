@@ -198,6 +198,20 @@ export function MoviePage({ id }: { id: number }) {
             ⚡ {autoBusy ? t("common.working") : t("auto.button")}
           </button>
         )}
+        <button
+          className="ghost"
+          onClick={async () => {
+            try {
+              const r = await api<{ files: number; probed: number }>(`/movies/${id}/scan`, { body: {} });
+              toast(t("files.scanned", { files: r.files, probed: r.probed }));
+              await d.reload();
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          ↻ {t("files.refreshScan")}
+        </button>
         <button disabled={searching} onClick={() => void search()}>
           🔍 {searching ? t("common.working") : t("auto.interactive")}
         </button>

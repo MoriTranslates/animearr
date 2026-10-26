@@ -29,7 +29,7 @@ import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick } from "./movieSearch.js";
-import { fileScanTick, fileSummary, scanLibrary, scanRunning } from "./mediafiles.js";
+import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
 import { scopeFor, scopePreview, setScope, validateScope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
@@ -261,6 +261,8 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
   const s = seriesByTvdb(tvdbId);
   if (!s) throw fail("Not in the synced library", 404);
   const eps = episodesFor(tvdbId).sort((a, b) => a.season - b.season || a.episode - b.episode);
+  // Opening a series page re-checks its folder in the background (at most every 10 minutes).
+  if (getSettings().library.scan && Date.now() - lastFolderScan(s.path) > 10 * 60_000) void scanFolder(s.path).catch(() => undefined);
   const idx = aliasIndex();
   return {
     ...s,
@@ -519,6 +521,16 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/scan", async (req) => {
+  const s = seriesByTvdb(id(req.params.tvdbId));
+  if (!s) throw fail("Unknown series", 404);
+  return scanFolder(s.path);
+});
+app.post<{ Params: { id: string } }>("/api/movies/:id/scan", async (req) => {
+  const m = cache.prepare("SELECT path FROM movies WHERE id = ?").get(id(req.params.id)) as { path: string } | undefined;
+  if (!m) throw fail("Unknown movie", 404);
+  return scanFolder(m.path);
+});
 app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string } }>("/api/series/:tvdbId/scope", async (req) => {
   const tvdbId = id(req.params.tvdbId);
   const current = scopeFor(tvdbId);

@@ -13,7 +13,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, library, metadata). Afterwards Sonarr and Radarr have no anime libraries. Build order (PROPOSAL "1.0 takeover checklist"):
 
 - [ ] 1. Own file records (scan + ffprobe every file; incremental; nightly; after Tdarr rewrites)
-- [ ] 2. Own importer (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts
+- [ ] 2. Own importer (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts. Renamer can refresh {Quality}/{MediaInfo} tokens after a re-encode (optional "Rename after Tdarr re-encode", default off)
 - [ ] 3. Plex (partial scans, path mapping, .plexmatch)
 - [ ] 4. Own metadata (AniDB/AniList-first franchise model; TVDB/TMDB as mappings; donghua/ONAs)
 - [ ] 5. Add series/movies UI (AniList/AniDB search)

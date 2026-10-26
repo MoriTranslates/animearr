@@ -6,7 +6,7 @@
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
 import { movieSpecials } from "./franchise.js";
-import { probeOf, recordFor } from "./mediafiles.js";
+import { ownFile, probeOf } from "./mediafiles.js";
 import fs from "node:fs";
 import path from "node:path";
 import { db, cache } from "./db.js";
@@ -110,12 +110,12 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
   let checked = 0;
   for (const s of seriesRows()) {
     const prof = profileFor(s.tvdb_id);
-    const files = cache.prepare("SELECT id, season, path, size, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; size: number | null; release_group: string | null; audio_langs: string; sub_langs: string }[];
+    const files = cache.prepare("SELECT id, season, path, size, date_added, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; size: number | null; date_added: string | null; release_group: string | null; audio_langs: string; sub_langs: string }[];
     const bySeason = new Map<number, MissingGroup>();
     for (const f of files) {
       checked++;
       // AnimeArr's own scan first (it sees forced flags and sidecars); Sonarr's mediaInfo otherwise.
-      const own = recordFor(f.path, f.size);
+      const own = ownFile(f.path, { size: f.size, dateAdded: f.date_added });
       const p = own ? probeOf(own) : null;
       const subs = p ? p.subs : f.sub_langs.split("/").filter(Boolean);
       const audio = p ? p.audio : f.audio_langs.split("/").filter(Boolean);
@@ -134,7 +134,11 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
   // Movies (Radarr anime), against the default profile.
   const movies = (cache.prepare("SELECT id, tmdb_id, title, year, file, poster FROM movies WHERE is_anime = 1 AND file IS NOT NULL ORDER BY title").all() as { id: number; tmdb_id: number; title: string; year: number; file: string; poster: string | null }[])
     .map((m) => ({ ...m, f: JSON.parse(m.file) as { path: string | null; audio: string[]; subs: string[]; releaseGroup: string | null } }))
-    .map((m) => ({ ...m, v: judge({ subs: m.f.subs, audio: m.f.audio, durationSec: null, sidecars: [], untagged: 0 }, def, null, null) }))
+    .map((m) => {
+      const own = m.f.path ? ownFile(m.f.path) : null;
+      return own ? { ...m, f: { ...m.f, audio: probeOf(own).audio, subs: [...new Set([...probeOf(own).subs, ...probeOf(own).sidecars])] }, p: probeOf(own) } : { ...m, p: null };
+    })
+    .map((m) => ({ ...m, v: judge(m.p ? { ...m.p, durationSec: null } : { subs: m.f.subs, audio: m.f.audio, durationSec: null, sidecars: [], untagged: 0 }, def, null, null) }))
     .filter((m) => !m.v.ok)
     .map((m) => ({ movieId: m.id, tmdbId: m.tmdb_id, title: `${m.title} (${m.year})`, cover: m.poster, path: m.f.path, group: m.f.releaseGroup, audio: m.f.audio, subs: m.f.subs, reason: !m.f.subs.length && !m.f.audio.length ? "no track languages recorded" : m.v.why }));
   return {

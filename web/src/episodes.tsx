@@ -6,7 +6,7 @@ import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
-export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[] }
+export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
 export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
@@ -311,8 +311,25 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 </div>
                 <div>
                   <dt>{t("ep.size")}</dt>
-                  <dd>{d.file.size ? fmtSize(d.file.size) : "—"}</dd>
+                  <dd>
+                    {d.file.size ? fmtSize(d.file.size) : "—"}
+                    {d.file.codec ? <span className="muted small"> · {d.file.codec.toUpperCase()}</span> : null}
+                  </dd>
                 </div>
+                {d.file.changed && (
+                  <div className="wide">
+                    <dt>{t("ep.changed")}</dt>
+                    <dd>
+                      {t("ep.lineage", {
+                        source: [d.file.changed.fromQuality, d.file.group, d.file.changed.fromSize ? fmtSize(d.file.changed.fromSize) : null].filter(Boolean).join(" · "),
+                        imported: d.file.changed.importedAt ? new Date(d.file.changed.importedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "?",
+                        now: [(d.file.changed.codec ?? "").toUpperCase(), fmtSize(d.file.changed.toSize)].filter(Boolean).join(" · "),
+                        changed: new Date(d.file.changed.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                      })}
+                      {d.currentRelease && <span className="muted small mono"> · {d.currentRelease}</span>}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt>{t("ep.quality")}</dt>
                   <dd>

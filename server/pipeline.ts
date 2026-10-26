@@ -31,6 +31,7 @@ import { ffprobe, judge, type ProbeResult } from "./verify.js";
 import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
 import { importMovie, movieNextForRow } from "./movies.js";
 import { isTitleEncodingError, recordIndexerFailure } from "./health.js";
+import { scanFolder } from "./mediafiles.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 
 export interface PipelineDeps {
@@ -344,6 +345,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
             try {
               if (row.movie_id) await importMovie(row, p, deps);
               else await importAndVerify(row, p, deps);
+              rescanAfterImport(row);
             } catch (e) {
               setState(row.id, "needs-attention", `import error: ${(e as Error).message}`);
               logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Import of ${row.release} hit an error: ${(e as Error).message}. The download is kept; press "Retry import" when the cause is fixed.`, detail: { grabId: row.id } });
@@ -358,6 +360,14 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
 }
 
 const IMPORT_SLOTS = 2;
+
+/** Our own file records catch up with an import at once (in the background). */
+function rescanAfterImport(row: GrabRow) {
+  const folder = row.movie_id
+    ? (cache.prepare("SELECT path FROM movies WHERE id = ?").get(row.movie_id) as { path: string } | undefined)?.path
+    : seriesByTvdb(row.tvdb_id)?.path;
+  if (folder && getSettings().library.scan) void scanFolder(folder).catch(() => undefined);
+}
 
 /**
  * Where each in-flight grab is: downloading, waiting to import (with how many are ahead), or importing.

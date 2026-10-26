@@ -8,7 +8,7 @@ import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
-import { recordFor } from "./mediafiles.js";
+import { ownFile, probeOf, recordFor } from "./mediafiles.js";
 import { grabStages } from "./pipeline.js";
 import { specialType } from "./audit.js";
 import { burnedInFact, coverFor } from "./audit.js";
@@ -42,6 +42,12 @@ export interface FileInfo {
   resolution: string | null;
   /** Every episode this file holds ("S01E01", "S01E02" for a multi-episode file). */
   episodes: string[];
+  /** Video codec from AnimeArr's own scan. */
+  codec?: string | null;
+  /** True when size/tracks come from AnimeArr's own scan (else Sonarr's data). */
+  scanned?: boolean;
+  /** The file changed after Sonarr imported it (e.g. Tdarr re-encoded it). */
+  changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null;
 }
 
 /** Groups whose releases are web rips even when the name doesn't say so (SubsPlease = CR/ADN web rips). */
@@ -55,9 +61,35 @@ function sourceLabel(sceneName: string | null, group: string | null, sonarrSourc
   return { source: src ? SOURCE_LABEL[src] : null, platform: p?.platform ?? null };
 }
 
-type FileRow = { id: number; path: string; size: number | null; quality: string | null; source: string | null; release_group: string | null; scene_name: string | null; audio_langs: string; sub_langs: string; run_time: string | null; resolution: string | null };
+type FileRow = { id: number; path: string; size: number | null; quality: string | null; source: string | null; release_group: string | null; scene_name: string | null; audio_langs: string; sub_langs: string; run_time: string | null; resolution: string | null; date_added?: string | null };
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 function fileInfo(f: FileRow, episodes: string[] = []): FileInfo {
   const s = sourceLabel(f.scene_name, f.release_group, f.source);
+  // AnimeArr's own scan first (it follows Tdarr re-encodes); Sonarr's data as the fallback.
+  const own = ownFile(f.path, { size: f.size, dateAdded: f.date_added ?? null });
+  if (own) {
+    const p = probeOf(own);
+    const changed = f.size && own.size !== f.size && Math.abs(own.size - f.size) > f.size * 0.05 ? { fromSize: f.size, toSize: own.size, codec: own.video?.codec ?? null, importedAt: f.date_added ?? null, changedAt: own.mtime, fromQuality: f.quality } : null;
+    return {
+      id: f.id,
+      path: f.path,
+      name: path.posix.basename(f.path),
+      size: own.size,
+      quality: f.quality,
+      source: s.source,
+      platform: s.platform,
+      group: f.release_group,
+      sceneName: f.scene_name,
+      subs: [...new Set([...p.subs, ...p.sidecars])],
+      audio: p.audio,
+      runTime: own.duration ? mmss(own.duration) : f.run_time,
+      resolution: own.video?.width && own.video.height ? `${own.video.width}x${own.video.height}` : f.resolution,
+      episodes,
+      codec: own.video?.codec ?? null,
+      scanned: true,
+      changed,
+    };
+  }
   return {
     id: f.id,
     path: f.path,
@@ -176,7 +208,7 @@ export function episodeDetail(episodeId: number) {
     .all(episodeId);
   const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 }).filter((d) => d.episodeIds.includes(episodeId)).slice(0, 30);
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
-  const own = row.file ? recordFor(row.file.path, row.file.size) : null;
+  const own = row.file?.scanned ? recordFor(row.file.path) : null;
   return { ...row, own, tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
 }
 

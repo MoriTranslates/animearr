@@ -330,3 +330,65 @@ export async function fileScanTick() {
   if (dbState.corrupt || !getSettings().library.scan) return;
   await scanLibrary();
 }
+
+// ---------------------------------------------------------------- one folder at a time (Refresh & scan, after an import)
+
+const folderScans = new Map<string, number>();
+export const lastFolderScan = (arrFolder: string) => folderScans.get(keyOf(arrFolder)) ?? 0;
+
+/**
+ * Walks one show/movie folder and probes new or changed files right away (Refresh & scan, after an import, when a
+ * series page opens). Records keep the library root they belong to; removal only inside this folder, and only after
+ * a clean walk.
+ */
+export async function scanFolder(arrFolder: string, probe: typeof probeFile = probeFile): Promise<{ files: number; probed: number; removed: number }> {
+  const folder = keyOf(arrFolder);
+  folderScans.set(folder, Date.now());
+  const local = localPath(arrFolder);
+  if (!local) return { files: 0, probed: 0, removed: 0 };
+  const root = libraryRoots().map(keyOf).find((r) => folder === r || folder.startsWith(`${r}/`)) ?? folder;
+  const st: WalkState = { files: [], side: new Map(), failures: 0 };
+  await walk(local, 6, st);
+  const started = Date.now();
+  const found = st.files.map((f) => ({ arr: `${folder}/${path.relative(local, f.file).split(path.sep).join("/")}`, local: f.file, size: f.size, mtime: f.mtime, sidecars: sidecarsOf(f.file, st.side) }));
+  const known = new Map((db.prepare("SELECT path, size, mtime, probed_at, error FROM media_files WHERE substr(path, 1, ?) = ?").all(folder.length + 1, `${folder}/`) as { path: string; size: number; mtime: number; probed_at: number | null; error: string | null }[]).map((r) => [r.path, r]));
+  const upsert = db.prepare(
+    `INSERT INTO media_files (path, root, size, mtime, probed_at, duration, container, video, audio, subs, sidecars, error, seen_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime = excluded.mtime, probed_at = excluded.probed_at, duration = excluded.duration, container = excluded.container,
+       video = excluded.video, audio = excluded.audio, subs = excluded.subs, sidecars = excluded.sidecars, error = excluded.error, seen_at = excluded.seen_at`,
+  );
+  let probed = 0;
+  for (const f of found) {
+    const k = known.get(f.arr);
+    if (k && k.size === f.size && k.mtime === f.mtime && k.probed_at && !k.error) {
+      db.prepare("UPDATE media_files SET seen_at = ?, sidecars = ? WHERE path = ?").run(started, JSON.stringify(f.sidecars), f.arr);
+      continue;
+    }
+    let rec: Awaited<ReturnType<typeof probeFile>> | null = null;
+    let error: string | null = null;
+    try {
+      rec = await probe(f.local);
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    upsert.run(f.arr, root, f.size, f.mtime, Date.now(), rec?.duration ?? null, rec?.container ?? null, JSON.stringify(rec?.video ?? null), JSON.stringify(rec?.audio ?? []), JSON.stringify(rec?.subs ?? []), JSON.stringify(f.sidecars), error, started);
+    probed++;
+  }
+  let removed = 0;
+  if (!st.failures) for (const p of known.keys()) if (!found.some((f) => f.arr === p)) removed += Number(db.prepare("DELETE FROM media_files WHERE path = ?").run(p).changes);
+  summaryCache = null;
+  return { files: found.length, probed, removed };
+}
+
+/**
+ * AnimeArr's record of a file, judged against what the *arr knows: the record wins when it matches the *arr's size
+ * or is newer than the *arr's import (e.g. Tdarr rewrote the file). An older, different record is stale.
+ */
+export function ownFile(arrPath: string, arr: { size?: number | null; dateAdded?: string | null } = {}): FileRecord | null {
+  const rec = recordFor(arrPath);
+  if (!rec) return null;
+  if (!arr.size || rec.size === arr.size) return rec;
+  const added = arr.dateAdded ? Date.parse(arr.dateAdded) : NaN;
+  return Number.isFinite(added) && rec.mtime > added ? rec : null;
+}
