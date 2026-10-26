@@ -122,7 +122,8 @@ function fixChars(s: string, opts: NamingOptions) {
   const colon = { delete: "", dash: "-", spaceDash: " -", spaceDashSpace: " - ", smart: "" }[opts.colonReplacement];
   if (opts.colonReplacement === "smart") x = x.replace(/(\d):(\d)/g, "$1-$2").replace(/\s*:\s*/g, " - ");
   else x = x.replace(/:/g, colon);
-  if (opts.replaceIllegalCharacters) x = x.replace(/[\\/]/g, "+").replace(/[*?"<>|]/g, "");
+  // Sonarr's replacements: \ / → +, ? → !, * → -, < > | " removed.
+  if (opts.replaceIllegalCharacters) x = x.replace(/[\\/]/g, "+").replace(/\?/g, "!").replace(/\*/g, "-").replace(/["<>|]/g, "");
   else x = x.replace(/[\\/:*?"<>|]/g, "");
   return x;
 }

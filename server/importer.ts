@@ -488,6 +488,13 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
 
 export interface RenameItem { fileId: number; from: string; to: string; episodes: string; problem: string | null; sidecars: { from: string; to: string }[] }
 
+/** Sonarr's {Quality Full}: the name, then v2 (anime) / Proper / Repack, then REAL. */
+export function qualityFull(name: string, rev: { version?: number; real?: number; isRepack?: boolean }, seriesType: string) {
+  const v = rev.version ?? 1;
+  const proper = v > 1 ? (seriesType === "anime" ? `v${v}` : rev.isRepack ? "Repack" : "Proper") : "";
+  return [name, proper, (rev.real ?? 0) > 0 ? "REAL" : ""].filter(Boolean).join(" ");
+}
+
 const BIT_DEPTH = /\{[^{}]*mediainfo[ ._]videobitdepth[^{}]*\}/i;
 
 /** The series' files whose names differ from the naming settings (old → new). Empty when renaming is off. */
@@ -497,7 +504,7 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
   const m = getSettings().media;
   if (!m.renameEpisodes) return { items: [] };
   const fmt = s.series_type === "anime" ? m.animeEpisodeFormat : s.series_type === "daily" ? m.dailyEpisodeFormat : m.standardEpisodeFormat;
-  const files = cache.prepare("SELECT id, path, scene_name, quality FROM files WHERE series_id = ?").all(s.id) as { id: number; path: string; scene_name: string | null; quality: string | null }[];
+  const files = cache.prepare("SELECT id, path, scene_name, quality, revision FROM files WHERE series_id = ?").all(s.id) as { id: number; path: string; scene_name: string | null; quality: string | null; revision: string | null }[];
   const items: RenameItem[] = [];
   const taken = new Set<string>();
   const listing = new Map<string, string[]>();
@@ -508,7 +515,8 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
     const probe: Probe | null = rec ? { video: JSON.parse(rec.video), audio: JSON.parse(rec.audio), subs: JSON.parse(rec.subs) } : null;
     let to: string;
     try {
-      to = episodeDestination(tvdbId, eps, { release: f.scene_name ?? path.posix.basename(f.path).replace(/\.[^.]+$/, ""), ext: path.posix.extname(f.path), probe, quality: f.quality });
+      if (!f.revision || !f.quality) throw new Error("waiting for the show's next sync from Sonarr (quality details)");
+      to = episodeDestination(tvdbId, eps, { release: f.scene_name ?? path.posix.basename(f.path).replace(/\.[^.]+$/, ""), ext: path.posix.extname(f.path), probe, quality: qualityFull(f.quality, JSON.parse(f.revision), s.series_type) });
     } catch (e) {
       items.push({ fileId: f.id, from: f.path, to: f.path, episodes: "", problem: (e as Error).message, sidecars: [] });
       continue;

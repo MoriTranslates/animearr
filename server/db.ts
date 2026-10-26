@@ -384,6 +384,9 @@ migrateCache();
   const scols = new Set((cache.prepare("PRAGMA table_info(series)").all() as { name: string }[]).map((c) => c.name));
   // Sonarr's "Season folder" flag per show (null until the next sync; the importer then infers it from the files).
   if (!scols.has("season_folder")) cache.exec("ALTER TABLE series ADD COLUMN season_folder INTEGER");
+  // The file's quality revision from Sonarr (JSON {version, real, isRepack}; null until the show's next sync).
+  const fcols = new Set((cache.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name));
+  if (!fcols.has("revision")) cache.exec("ALTER TABLE files ADD COLUMN revision TEXT");
 }
 
 /** Runs fn in one write transaction on the given database. */

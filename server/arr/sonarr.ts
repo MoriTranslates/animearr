@@ -62,7 +62,7 @@ export interface SonarrEpisodeFile {
   sceneName?: string;
   releaseGroup?: string;
   dateAdded?: string;
-  quality: { quality: { name: string; source?: string; resolution?: number } };
+  quality: { quality: { name: string; source?: string; resolution?: number }; revision?: { version?: number; real?: number; isRepack?: boolean } };
   mediaInfo?: { audioLanguages?: string; subtitles?: string; runTime?: string; resolution?: string };
 }
 export interface ManualImportItem {

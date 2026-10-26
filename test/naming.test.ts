@@ -38,7 +38,7 @@ test("multi-episode styles", () => {
 });
 
 test("illegal characters and colon modes", () => {
-  assert.equal(cleanName("Re:Zero / Part 2? <x>", { ...opts, colonReplacement: "delete" }), "ReZero + Part 2 x");
+  assert.equal(cleanName("Re:Zero / Part 2? <x>", { ...opts, colonReplacement: "delete" }), "ReZero + Part 2! x");
   assert.equal(cleanName("Re:Zero", { ...opts, colonReplacement: "dash" }), "Re-Zero");
   assert.equal(cleanName("Title: Sub", { ...opts, colonReplacement: "spaceDashSpace" }), "Title - Sub");
   assert.equal(cleanName("Steins;Gate 0: 12:30", { ...opts, colonReplacement: "smart" }), "Steins;Gate 0 - 12-30");

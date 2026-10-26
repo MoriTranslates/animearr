@@ -148,11 +148,12 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
     for (const e of eps)
       ins.run(e.id, seriesId, e.seasonNumber, e.episodeNumber, e.absoluteEpisodeNumber ?? null, e.sceneSeasonNumber ?? null, e.sceneEpisodeNumber ?? null, e.sceneAbsoluteEpisodeNumber ?? null, e.title ?? null,
         e.airDate ?? null, e.airDateUtc ? Date.parse(e.airDateUtc) : null, e.runtime ?? null, e.monitored ? 1 : 0, e.hasFile ? 1 : 0, e.episodeFileId || null);
-    const insF = cache.prepare(`INSERT INTO files (id, series_id, season, path, size, quality, source, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insF = cache.prepare(`INSERT INTO files (id, series_id, season, path, size, quality, source, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added, revision)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const f of files)
       insF.run(f.id, seriesId, f.seasonNumber, f.path, f.size, f.quality?.quality?.name ?? null, f.quality?.quality?.source ?? null, f.releaseGroup ?? null, f.sceneName ?? null,
-        langList(f.mediaInfo?.audioLanguages).join("/"), langList(f.mediaInfo?.subtitles).join("/"), f.mediaInfo?.runTime ?? null, f.mediaInfo?.resolution ?? null, f.dateAdded ?? null);
+        langList(f.mediaInfo?.audioLanguages).join("/"), langList(f.mediaInfo?.subtitles).join("/"), f.mediaInfo?.runTime ?? null, f.mediaInfo?.resolution ?? null, f.dateAdded ?? null,
+        JSON.stringify({ version: f.quality?.revision?.version ?? 1, real: f.quality?.revision?.real ?? 0, isRepack: !!f.quality?.revision?.isRepack }));
     if (sig !== undefined) cache.prepare("UPDATE series SET sig = ?, synced_at = ? WHERE id = ?").run(sig, Date.now(), seriesId);
   });
 }
