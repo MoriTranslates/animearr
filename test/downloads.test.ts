@@ -102,3 +102,16 @@ test("running the clean-up: deletions gated; torrents only through the client; m
   assert.ok(fs.existsSync(path.join(SAB, "Pack.S01", "Pack.S00E01.special.mkv")), "a download with a video left stays");
   assert.ok(fs.existsSync(path.join(SAB, "_UNPACK_Something")), "unpacking folders stay");
 });
+
+test("free space on Unraid: the cache pool counts when downloads sit on the FUSE union (shfs)", async () => {
+  const { mountOf, freeSpaceTarget } = await import("../server/downloads.js");
+  const mounts = "rootfs / rootfs rw 0 0\nshfs /data fuse.shfs rw 0 0\n/dev/nvme0n1p1 /unraid/cache btrfs ro 0 0\n";
+  assert.deepEqual(mountOf("/data/completed/animearr", mounts), { point: "/data", type: "fuse.shfs" });
+  const cache = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-cache-"));
+  assert.deepEqual(freeSpaceTarget("/data/completed/animearr", mounts, cache), { path: cache, label: "cache" });
+  assert.equal(freeSpaceTarget("/data/completed/animearr", "xfs /data xfs rw 0 0\n", cache), null, "a plain disk is measured as is");
+  assert.equal(freeSpaceTarget("/data/completed/animearr", mounts, path.join(cache, "missing")), null, "no cache mount: the share itself");
+  patchSettings((s) => ({ ...s, downloads: { ...s.downloads, freeSpacePath: "/mnt/somewhere" } }));
+  assert.deepEqual(freeSpaceTarget("/data/x", mounts, cache), { path: "/mnt/somewhere", label: "somewhere" }, "the setting wins");
+  patchSettings((s) => ({ ...s, downloads: { ...s.downloads, freeSpacePath: "" } }));
+});

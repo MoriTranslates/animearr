@@ -173,6 +173,8 @@ export interface Settings {
     rules: import("./downloads.js").FolderRule[];
     /** Always on: under this many GB free on the download disk, every grab pauses. */
     freeSpaceGb: number;
+    /** Where to measure free space ("" = automatic: Unraid's cache pool at /unraid/cache when downloads are on the FUSE union). */
+    freeSpacePath: string;
     /** Imported payloads that are still seeding don't count toward the size/items rules. */
     excludeSeeding: boolean;
     /** off: never; plan: show what it would do; auto: a pause-and-clean rule runs it. */
@@ -235,7 +237,7 @@ const DEFAULTS: Settings = {
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
-  downloads: { rules: [], freeSpaceGb: 50, excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
+  downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
     replaceIllegalCharacters: true,

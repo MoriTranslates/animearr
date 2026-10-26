@@ -145,7 +145,7 @@ export function App() {
           {status.grabsPaused && (
             <p className="banner warn" role="status">
               {t("dl.banner", { why: status.grabsPaused.why })}
-              {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}` : ""}{" "}
+              {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { label: status.grabsPaused.disk.label, free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}${status.grabsPaused.disk.shareFreeGb !== null ? ` ${t("dl.bannerArray", { free: status.grabsPaused.disk.shareFreeGb })}` : ""}` : ""}{" "}
               <Link to="/settings?tab=downloads">{t("dl.bannerLink")}</Link>
             </p>
           )}

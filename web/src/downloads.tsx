@@ -6,7 +6,7 @@ import { Chip, ErrorBox, NumberInput, Spinner, Toggle, useLoad, useToast } from 
 type Upd = (fn: (x: S) => S) => void;
 export interface FolderRule { id: string; name: string; metric: "sizeGb" | "items"; threshold: number; action: "pauseUntilUnder" | "pauseUntilCleared" | "pauseAndClean"; resumeAt: number | null; scope: "shows" | "movies" | "both"; applies: "all" | "backlog"; enabled: boolean }
 interface Status {
-  measure: { byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>; disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number } | null; errors: string[] } | null;
+  measure: { byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>; disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number; label: string; share: { freeGb: number; totalGb: number } | null } | null; errors: string[] } | null;
   rules: { id: string; paused: boolean; value: number }[];
   why: string | null;
   presets: Record<string, Omit<FolderRule, "id">[]>;
@@ -33,7 +33,12 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
             <p className="small">
               {t("dl.counts", { size: st.data.measure.byScope.both.sizeGb.toFixed(1), items: st.data.measure.byScope.both.items, shows: st.data.measure.byScope.shows.sizeGb.toFixed(1), movies: st.data.measure.byScope.movies.sizeGb.toFixed(1) })}
             </p>
-            {st.data.measure.disk && <p className="small muted">{t("dl.disk", { free: Math.round(st.data.measure.disk.freeGb), ours: Math.round(st.data.measure.disk.animearrGb), other: Math.round(st.data.measure.disk.otherGb) })}</p>}
+            {st.data.measure.disk && (
+              <p className="small muted">
+                {t("dl.disk", { label: st.data.measure.disk.label, free: Math.round(st.data.measure.disk.freeGb), ours: Math.round(st.data.measure.disk.animearrGb), other: Math.round(st.data.measure.disk.otherGb) })}
+                {st.data.measure.disk.share ? ` · ${t("dl.diskArray", { free: (st.data.measure.disk.share.freeGb / 1024).toFixed(1) })}` : ""}
+              </p>
+            )}
             {st.data.measure.errors.map((e) => (
               <p key={e} className="small warn-text">
                 {e}
@@ -50,6 +55,11 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
           {t("dl.free")}
           <NumberInput value={d.freeSpaceGb} min={1} max={100000} onChange={(v) => set({ freeSpaceGb: v })} label={t("dl.free")} />
           <span className="muted small">{t("dl.freeHelp")}</span>
+        </label>
+        <label>
+          {t("dl.freePath")}
+          <input value={d.freeSpacePath} onChange={(e) => set({ freeSpacePath: e.target.value })} placeholder={t("dl.freePathAuto")} />
+          <span className="muted small">{t("dl.freePathHelp")}</span>
         </label>
         <Toggle checked={d.excludeSeeding} onChange={(v) => set({ excludeSeeding: v })} label={t("dl.excludeSeeding")} help={t("dl.excludeSeedingHelp")} />
       </div>

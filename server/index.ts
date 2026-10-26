@@ -133,7 +133,7 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
       const d = downloadsStatus();
       if (!d.why) return null;
       const disk = d.measure?.disk;
-      return { why: d.why, disk: disk ? { freeGb: Math.round(disk.freeGb), animearrGb: Math.round(disk.animearrGb), otherGb: Math.round(disk.otherGb) } : null, diskRule: d.rules.some((r) => r.id === "free-space" && r.paused) };
+      return { why: d.why, disk: disk ? { freeGb: Math.round(disk.freeGb), animearrGb: Math.round(disk.animearrGb), otherGb: Math.round(disk.otherGb), label: disk.label, shareFreeGb: disk.share ? Math.round(disk.share.freeGb) : null } : null, diskRule: d.rules.some((r) => r.id === "free-space" && r.paused) };
     })(),
     allowedRoots: s.allowedRoots,
     lastSync: lastSync(),

@@ -51,7 +51,49 @@ const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;
 type Client = "sabnzbd" | "qbittorrent";
 interface Grab { id: number; release: string; client: string | null; client_ref: string | null; state: string; movie_id: number | null }
 interface Item { name: string; local: string; arr: string; client: Client; size: number; mtime: number; kind: "show" | "movie" | "unknown"; grab: Grab | null; seeding: boolean; torrent: OwnTorrent | null }
-export interface Measure { at: number; items: Item[]; byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>; disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number } | null; errors: string[]; unreadable: Client[] }
+export interface Measure {
+  at: number;
+  items: Item[];
+  byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>;
+  /** The disk the free-space rule watches (label "cache" on Unraid), plus the share's own view (the array) when different. */
+  disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number; label: string; share: { freeGb: number; totalGb: number } | null } | null;
+  errors: string[];
+  unreadable: Client[];
+}
+
+/** Where /proc/mounts says a path lives: its mount point and filesystem type. */
+export function mountOf(p: string, mounts: string): { point: string; type: string } | null {
+  let best: { point: string; type: string } | null = null;
+  for (const line of mounts.split("\n")) {
+    const [, point, type] = line.split(" ");
+    if (!point || !type) continue;
+    const pt = point.replace(/\\040/g, " ");
+    if ((p === pt || p.startsWith(pt === "/" ? "/" : `${pt}/`)) && (!best || pt.length > best.point.length)) best = { point: pt, type };
+  }
+  return best;
+}
+
+export const UNRAID_CACHE = "/unraid/cache";
+
+/**
+ * The path whose free space counts: the setting when given; else, when the download folder is on Unraid's FUSE
+ * union (shfs) and the cache pool is mounted at /unraid/cache, the cache pool; else the download folder itself.
+ */
+export function freeSpaceTarget(local: string, mounts?: string, cachePath = UNRAID_CACHE): { path: string; label: string } | null {
+  const set = getSettings().downloads.freeSpacePath.trim();
+  if (set) return { path: set, label: path.posix.basename(set.replace(/\/+$/, "")) || set };
+  if (!fs.existsSync(cachePath)) return null;
+  let text = mounts;
+  if (text === undefined) {
+    try {
+      text = fs.readFileSync("/proc/mounts", "utf8");
+    } catch {
+      return null;
+    }
+  }
+  const m = mountOf(local, text);
+  return m && /fuse|shfs/i.test(m.type) ? { path: cachePath, label: "cache" } : null;
+}
 
 /** Size of a file or folder, without blocking the server for long (async, a few at a time; symlinks not followed). */
 async function sizeOf(p: string): Promise<number> {
@@ -81,7 +123,7 @@ const under = (p: string, root: string) => p === root || p.startsWith(`${root}/`
 
 let last: Measure | null = null;
 
-export interface MeasureDeps { torrents: typeof ownTorrents; sab: typeof ownSabHistory }
+export interface MeasureDeps { torrents: typeof ownTorrents; sab: typeof ownSabHistory; mounts?: () => string }
 const realDeps: MeasureDeps = { torrents: ownTorrents, sab: ownSabHistory };
 
 /** What's in AnimeArr's download folders, by scope; the download disk's free space. Cached for a minute. */
@@ -137,18 +179,22 @@ export async function measure(opts: { fresh?: boolean } = {}, deps: MeasureDeps 
   const excl = getSettings().downloads.excludeSeeding;
   const counted = items.filter((i) => !(excl && i.seeding));
   const sum = (f: (i: Item) => boolean) => ({ sizeGb: counted.filter(f).reduce((a, i) => a + i.size, 0) / GB, items: counted.filter(f).length });
-  // Free space: the tightest of the download disks.
+  // Free space: where downloads really land. On Unraid the download share is a FUSE union (shfs) that reports the
+  // whole array; a cache-first share fills the cache pool first, so that's the one that counts.
   let disk: Measure["disk"] = null;
+  const ours = items.reduce((a, i) => a + i.size, 0) / GB;
+  const stat = (p: string) => {
+    const st = fs.statfsSync(p);
+    return { totalGb: (st.blocks * st.bsize) / GB, freeGb: (st.bavail * st.bsize) / GB };
+  };
   for (const r of roots()) {
     if (!fs.existsSync(r.local)) continue;
     try {
-      const st = fs.statfsSync(r.local);
-      const total = (st.blocks * st.bsize) / GB;
-      const free = (st.bavail * st.bsize) / GB;
-      if (!disk || free < disk.freeGb) {
-        const ours = items.reduce((a, i) => a + i.size, 0) / GB;
-        disk = { totalGb: total, freeGb: free, animearrGb: ours, otherGb: Math.max(0, total - free - ours) };
-      }
+      const share = stat(r.local);
+      const target = freeSpaceTarget(r.local, deps.mounts?.());
+      const at = target ? stat(target.path) : share;
+      if (!disk || at.freeGb < disk.freeGb)
+        disk = { totalGb: at.totalGb, freeGb: at.freeGb, animearrGb: ours, otherGb: Math.max(0, at.totalGb - at.freeGb - ours), label: target?.label ?? "download disk", share: target ? { freeGb: share.freeGb, totalGb: share.totalGb } : null };
     } catch (e) {
       errors.push(`free space: ${(e as Error).message}`);
     }
