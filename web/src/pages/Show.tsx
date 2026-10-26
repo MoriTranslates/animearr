@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
-import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
+import { airLabel, EpisodeSheet, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
+import { CaptionsOff, Check, Download, LayoutGrid, List, ListChecks } from "lucide-react";
+import { Ring } from "../posters";
+import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
@@ -24,6 +27,8 @@ interface Header {
   path: string;
   cover: string | null;
   banner: string | null;
+  color?: string | null;
+  catalog?: { titleNative: string | null; kind: string | null; from: number | null; to: number | null } | null;
   nextEpisode: { id: number; season: number; episode: number; title: string | null; airUtc: number | null } | null;
   counts: { have: number; aired: number; missing: number; downloading: number; total: number };
   language: { lang: string; withLang: number; have: number };
@@ -124,9 +129,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       toast((e as Error).message, true);
     }
   };
-  const tabs: { id: ShowTab; label: string; hidden?: boolean }[] = [
-    { id: "episodes", label: t("show.episodes") },
-    { id: "movies", label: `${t("franchise.title")} (${s.movies.length})`, hidden: !s.movies.length && !linking },
+  const tabs: { id: ShowTab; label: string; n?: number; hidden?: boolean }[] = [
+    { id: "episodes", label: t("show.episodes"), n: s.rows.filter((r) => !r.movie && r.season > 0).length },
+    { id: "movies", label: t("franchise.title"), n: s.movies.length, hidden: !s.movies.length && !linking },
     { id: "details", label: t("show.details") },
     { id: "history", label: t("show.history") },
   ];
@@ -134,63 +139,99 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   return (
     <section>
       {/* ---------------- header: what the show is, how complete it is, and its one main action */}
-      <header className="series-hero card" style={h.banner ? { backgroundImage: `linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, transparent), var(--panel) 85%), url(${thumbUrl(h.banner, "xl")})` } : undefined}>
-        <Cover src={h.cover} alt={h.title} size="lg" hero />
-        <div className="stack hero-body">
-          <div className="row between hero-title">
-            <h1 className="clamp2 grow">{h.title}</h1>
-            <Menu
-              label={t("show.manage")}
-              items={[
-                { label: t("scope.menu"), onSelect: () => setPanel("scope"), hidden: !h.managed },
-                { label: t("rename.menu"), onSelect: () => setPanel("rename"), hidden: !h.allowed },
-                { label: t("import.menu"), onSelect: () => setPanel("import"), hidden: !h.allowed },
-                { label: t("files.refreshScan"), onSelect: () => void refreshScan() },
-                { label: t("franchise.linkMenu"), onSelect: () => (setLinking(true), setTab("movies")) },
-                ...links.map((l) => ({ label: l.label, onSelect: () => window.open(l.href!, "_blank", "noopener,noreferrer") })),
-                { label: t("add.remove"), onSelect: () => setPanel("remove"), hidden: !h.native, danger: true },
-              ]}
-            />
+      <header className="kv-hero" style={showVars(h.color)}>
+        {h.banner && <span className="hero-bgart" style={{ backgroundImage: `url(${thumbUrl(h.banner, "xl")})` }} aria-hidden="true" />}
+        {h.cover && <span className="hero-blur" style={{ backgroundImage: `url(${thumbUrl(h.cover, "sm")})` }} aria-hidden="true" />}
+        <div className="hero-in">
+          <div className="hero-poster">
+            <Cover src={h.cover} alt={h.title} size="lg" hero />
           </div>
-          <div className="chips">
-            <Chip tone={h.status === "continuing" ? "good" : "info"}>{h.status === "continuing" ? `● ${t("series.airing")}` : h.status === "ended" ? t("series.ended") : h.status}</Chip>
-            {h.network && <Chip>{h.network}</Chip>}
-            {h.year && <Chip>{h.year}</Chip>}
-            {h.managed && (
-              <Chip tone="accent">
-                ★ {t("chip.managed")}
-                {h.managed.dryRun ? ` · ${t("chip.dryRun")}` : ""}
-              </Chip>
-            )}
-          </div>
-          {h.nextEpisode && <p className="strong-line">⏱ {t("series.next", { label: sxe(h.nextEpisode.season, h.nextEpisode.episode), when: airLabel(h.nextEpisode.airUtc) })}</p>}
-          <p>
-            {t("series.have", { have: h.counts.have, aired: h.counts.aired })}
-            {h.counts.missing ? <span className="warn-text"> · {t("series.missing", { n: h.counts.missing })}</span> : null}
-            {!!h.language.have && h.language.withLang !== h.language.have && (
-              <span className="warn-text"> · {t("series.langSome", { lang: h.language.lang.toUpperCase(), n: h.language.withLang, have: h.language.have })}</span>
-            )}
-            {!!h.language.have && h.language.withLang === h.language.have && <span className="muted"> · {t("series.langAll", { lang: h.language.lang.toUpperCase() })}</span>}
-          </p>
-          {h.overview && <Synopsis text={h.overview} />}
-          <div className="row hero-actions">
-            {!!missingAll.length && <SeasonSearch tvdbId={tvdbId} missing={missingAll} dryRun={dryRun} primary onDone={() => (void d.reload(), void act.reload())} />}
-            <button className="small" onClick={() => setPanel("watch")} aria-haspopup="dialog">
-              {t("profiles.watchAs")}: {h.profile.name} · {t(`mode.${h.profile.watchMode}` as I18nKey)}
-            </button>
+          <div className="hero-info">
+            <div className="hero-top">
+              <span className="eyebrow show-eyebrow">{[h.catalog?.kind ? t(`catalog.kind.${h.catalog.kind}` as I18nKey) : null, h.network, h.catalog?.from ? `${h.catalog.from}${h.catalog.to && h.catalog.to !== h.catalog.from ? ` – ${h.catalog.to}` : h.status === "continuing" ? " –" : ""}` : h.year].filter(Boolean).join(" · ")}</span>
+              <Menu
+                label={t("show.manage")}
+                className="hero-menu"
+                items={[
+                  { label: t("scope.menu"), onSelect: () => setPanel("scope"), hidden: !h.managed },
+                  { label: t("rename.menu"), onSelect: () => setPanel("rename"), hidden: !h.allowed },
+                  { label: t("import.menu"), onSelect: () => setPanel("import"), hidden: !h.allowed },
+                  { label: t("files.refreshScan"), onSelect: () => void refreshScan() },
+                  { label: t("franchise.linkMenu"), onSelect: () => (setLinking(true), setTab("movies")) },
+                  ...links.map((l) => ({ label: l.label, onSelect: () => window.open(l.href!, "_blank", "noopener,noreferrer") })),
+                  { label: t("add.remove"), onSelect: () => setPanel("remove"), hidden: !h.native, danger: true },
+                ]}
+              />
+            </div>
+            <h1 className="hero-title">{h.title}</h1>
+            {h.catalog?.titleNative && <p className="hero-jp jp" lang="ja">{h.catalog.titleNative}</p>}
+            <p className="hero-facts">
+              <span>
+                <i className={`dot ${h.status === "continuing" ? "good" : "off"}`} aria-hidden="true" />
+                {h.status === "continuing" ? t("series.continuing") : h.status === "ended" ? t("series.ended") : h.status}
+              </span>
+              {h.network && <span>{h.network}</span>}
+              <span>{t("show.seasonsEps", { s: seasons.filter(([n]) => n > 0).length, e: s.rows.filter((r) => r.season > 0).length })}</span>
+              {!!h.genres?.length && <span className="hide-phone">{h.genres.slice(0, 3).join(", ")}</span>}
+              {h.managed && (
+                <span className="managed-flag">
+                  ★ {t("chip.managed")}
+                  {h.managed.dryRun ? ` · ${t("chip.dryRun")}` : ""}
+                </span>
+              )}
+            </p>
+            {h.nextEpisode && <p className="hero-next">⏱ {t("series.next", { label: sxe(h.nextEpisode.season, h.nextEpisode.episode), when: airLabel(h.nextEpisode.airUtc) })}</p>}
+            {h.overview && <Synopsis text={h.overview} />}
+            <div className="hero-actions">
+              <span className="ring-wrap hide-phone">
+                <Ring value={h.counts.aired ? h.counts.have / h.counts.aired : 0} label={t("series.have", { have: h.counts.have, aired: h.counts.aired })} />
+                <span className="ringlbl">
+                  <b className="tnum">
+                    {h.counts.have} / {h.counts.aired}
+                  </b>
+                  {t("show.inLibraryLang", { n: h.language.withLang, lang: h.language.lang.toUpperCase() })}
+                </span>
+              </span>
+              {missingAll.length ? (
+                <SeasonSearch tvdbId={tvdbId} missing={missingAll} dryRun={dryRun} primary big onDone={() => (void d.reload(), void act.reload())} />
+              ) : (
+                <SplitButton label={`⚡ ${t("show.searchReleases")}`} onClick={() => navigate(`/search?tvdbId=${tvdbId}`)} items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]} />
+              )}
+              <button className="glass-btn" onClick={() => setPanel("watch")} aria-haspopup="dialog">
+                {t("profiles.watchAs")}: {t(`mode.${h.profile.watchMode}` as I18nKey)} · {h.profile.name}
+              </button>
+            </div>
           </div>
         </div>
       </header>
       {!h.allowed && <p className="banner warn">{t("series.outsideRoot")}</p>}
 
-      <div className="tabs" role="tablist" aria-label={h.title}>
-        {tabs
-          .filter((x) => !x.hidden)
-          .map((x) => (
-            <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "on" : ""} onClick={() => setTab(x.id)}>
-              {x.label}
+      <div className="show-tabs" style={showVars(h.color)}>
+        <div className="tabs" role="tablist" aria-label={h.title}>
+          {tabs
+            .filter((x) => !x.hidden)
+            .map((x) => (
+              <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "on" : ""} onClick={() => setTab(x.id)}>
+                {x.label}
+                {x.n !== undefined && <small className="tab-n">{x.n}</small>}
+              </button>
+            ))}
+        </div>
+        {tab === "episodes" && (
+          <div className="row tab-tools">
+            <div className="seg icon-seg" role="group" aria-label={t("ep.view")}>
+              <button className={!grid ? "on" : ""} aria-pressed={!grid} aria-label={t("ep.list")} title={t("ep.list")} onClick={() => (setGrid(false), store.set("episodeGrid", false))}>
+                <List className="lucide" aria-hidden="true" />
+              </button>
+              <button className={grid ? "on" : ""} aria-pressed={grid} aria-label={t("ep.grid")} title={t("ep.grid")} onClick={() => (setGrid(true), store.set("episodeGrid", true))}>
+                <LayoutGrid className="lucide" aria-hidden="true" />
+              </button>
+            </div>
+            <button className={`icon-btn${selecting ? " on" : ""}`} aria-pressed={selecting} aria-label={selecting ? t("ep.selectDone") : t("ep.select")} title={selecting ? t("ep.selectDone") : t("ep.select")} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
+              <ListChecks className="lucide" aria-hidden="true" />
             </button>
-          ))}
+          </div>
+        )}
       </div>
 
       {tab === "movies" && !s.movies.length && !linking && <Empty>{t("franchise.none")}</Empty>}
@@ -215,39 +256,57 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {/* ---------------- episodes (what you open the page for) */}
       {tab === "episodes" && (
         <>
-          <div className="row between episodes-toolbar">
-            <span className="muted small">{t("show.epCount", { n: s.rows.filter((r) => !r.movie).length })}</span>
-            <div className="row">
-              <div className="seg" role="group" aria-label={t("ep.view")}>
-                <button className={!grid ? "on" : ""} aria-pressed={!grid} onClick={() => (setGrid(false), store.set("episodeGrid", false))}>
-                  {t("ep.list")}
-                </button>
-                <button className={grid ? "on" : ""} aria-pressed={grid} onClick={() => (setGrid(true), store.set("episodeGrid", true))}>
-                  {t("ep.grid")}
-                </button>
-              </div>
-              <button className="small" aria-pressed={selecting} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
-                {selecting ? t("ep.selectDone") : t("ep.select")}
-              </button>
-            </div>
-          </div>
           {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
       {seasons.map(([season, rows], i) => {
         const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
+        const aired = rows.filter((r) => r.status !== "unaired");
+        const have = rows.filter((r) => r.status === "have");
+        const noLang = have.filter((r) => r.file && !r.file.subs.includes(lang) && !r.file.audio.includes(lang));
+        const dl = rows.filter((r) => r.status === "downloading");
+        const attention = rows.filter((r) => r.status === "attention");
+        const quiet = !missing.length && !noLang.length && !dl.length && !attention.length && have.length === aired.length;
+        const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
+        const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
+        const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "have" || (r.file && !r.file.subs.includes(lang) && !r.file.audio.includes(lang))));
+        const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId);
         return (
-          <details key={season} className="season card" open={i === 0}>
+          <details key={season} className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
             <summary className="season-head">
-              <strong>{season === 0 ? t("series.specials") : t("common.season", { n: season })}</strong>
-              <span className="muted small">
-                {rows.filter((r) => r.status === "have").length}/{rows.filter((r) => r.status !== "unaired").length}
+              <span className="season-chev" aria-hidden="true" />
+              <h3 className="season-name-h">{season === 0 ? t("series.specials") : t("common.season", { n: season })}</h3>
+              {!!years.length && <span className="muted small tnum hide-phone">{years.length > 1 ? `${years[0]} – ${years[years.length - 1]}` : years[0]}</span>}
+              <span className="season-prog hide-phone" aria-hidden="true">
+                <i style={{ width: `${aired.length ? Math.round((have.length / aired.length) * 100) : 0}%` }} />
               </span>
-              {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
-              {selecting && (
-                <button className="small ghost" onClick={(e) => (e.preventDefault(), setSel((x) => new Set([...x, ...rows.map((r) => r.id)])))}>
-                  {t("shows.selectAll")}
-                </button>
+              <span className="muted small tnum">
+                {have.length} / {aired.length}
+              </span>
+              {quiet && aired.length > 0 && (
+                <span className="tag good">
+                  <Check className="lucide" aria-hidden="true" /> {t("show.allQuiet")}
+                </span>
               )}
+              {unmonitored && <span className="tag neutral">{t("show.notMonitored")}</span>}
+              {!!noLang.length && (
+                <span className="tag warn">
+                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.noLangCount", { n: noLang.length, lang: lang.toUpperCase() })}
+                </span>
+              )}
+              {!!dl.length && (
+                <span className="tag info">
+                  <Download className="lucide" aria-hidden="true" /> {t("show.dlCount", { n: dl.length })}
+                </span>
+              )}
+              {!!attention.length && <span className="tag bad">{t("show.attentionCount", { n: attention.length })}</span>}
+              <span className="season-right">
+                {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
+                {selecting && (
+                  <button className="small ghost" onClick={(e) => (e.preventDefault(), setSel((x) => new Set([...x, ...rows.map((r) => r.id)])))}>
+                    {t("shows.selectAll")}
+                  </button>
+                )}
+              </span>
             </summary>
             {grid ? (
               <div className="ep-grid">
@@ -263,29 +322,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               </div>
             ) : (
               <ul className="ep-list">
-                {ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).main.map((r) => (
-                  <li key={r.id} className={`ep-row${r.id === nextId ? " next" : ""}${sel.has(r.id) ? " selected" : ""}`}>
-                    {selecting && <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={sxe(r.season, r.episode)} />}
-                    <button className="ep-main" onClick={() => (selecting ? toggle(r.id) : setOpen(r.id))}>
-                      <span className="ep-num">{r.episode}</span>
-                      <span className="ep-text">
-                        <span className="ep-title clamp2" title={r.title ?? undefined}>
-                          {r.title ?? t("ep.tba")} {r.id === nextId && <Chip tone="accent">{t("ep.next")}</Chip>}
-                          {r.movie && <Chip tone="info">🎬 {t("ep.movieChip")}</Chip>}
-                          {r.file?.changed && <Chip tone="info" title={t("ep.changed")}>{t("ep.reencodedChip")}</Chip>}
-                          {r.special && !r.movie && <Chip tone={r.special.cls === "junk" ? "info" : "accent"}>{t(`special.${r.special.type}` as I18nKey)}</Chip>}
-                        </span>
-                        <span className="ep-meta muted small">
-                          {airLabel(r.airUtc)}
-                          {season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
-                          {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}
-                        </span>
-                      </span>
-                      <span className="ep-status">
-                        <StatusPill e={r} lang={lang} />
-                      </span>
-                    </button>
-                  </li>
+                {ordered_.main.map((r) => (
+                  <EpRow key={r.id} r={r} lang={lang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
                 ))}
               </ul>
             )}
@@ -296,44 +334,17 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   {rows
                     .filter((r) => r.special?.cls === "junk")
                     .map((r) => (
-                      <li key={r.id} className="ep-row">
-                        <button className="ep-main" onClick={() => setOpen(r.id)}>
-                          <span className="ep-num">{r.episode}</span>
-                          <span className="ep-text">
-                            <span className="ep-title clamp2" title={r.title ?? undefined}>
-                              {r.title ?? t("ep.tba")} <Chip tone="info">{t(`special.${r.special!.type}` as I18nKey)}</Chip>
-                            </span>
-                            <span className="ep-meta muted small">
-                              {airLabel(r.airUtc)}
-                              {r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
-                            </span>
-                          </span>
-                          <span className="ep-status">
-                            <StatusPill e={r} lang={lang} />
-                          </span>
-                        </button>
-                      </li>
+                      <EpRow key={r.id} r={r} lang={lang} selecting={false} selected={false} onToggle={() => undefined} onOpen={() => setOpen(r.id)} />
                     ))}
                 </ul>
               </details>
             )}
-            {!grid && ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.length > 0 && (
+            {!grid && ordered_.later.length > 0 && (
               <details className="later">
-                <summary className="muted small">{t("ep.upcoming", { n: ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.length })}</summary>
+                <summary className="muted small">{t("ep.upcoming", { n: ordered_.later.length })}</summary>
                 <ul className="ep-list">
-                  {ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.map((r) => (
-                    <li key={r.id} className="ep-row">
-                      <button className="ep-main" onClick={() => setOpen(r.id)}>
-                        <span className="ep-num">{r.episode}</span>
-                        <span className="ep-text">
-                          <span className="ep-title clamp2">{r.title ?? t("ep.tba")}</span>
-                          <span className="ep-meta muted small">{airLabel(r.airUtc)}</span>
-                        </span>
-                        <span className="ep-status">
-                          <StatusPill e={r} lang={lang} />
-                        </span>
-                      </button>
-                    </li>
+                  {ordered_.later.map((r) => (
+                    <EpRow key={r.id} r={r} lang={lang} selecting={false} selected={false} onToggle={() => undefined} onOpen={() => setOpen(r.id)} />
                   ))}
                 </ul>
               </details>
@@ -403,6 +414,50 @@ function Synopsis({ text }: { text: string }) {
         </button>
       )}
     </p>
+  );
+}
+
+/**
+ * One episode row: a status dot in the number column, title + date · group, then quality and size as columns on
+ * desktop; a chip only when something needs you (no subs, downloading, missing, attention).
+ */
+function EpRow({ r, lang, next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: () => void }) {
+  const noLang = r.status === "have" && !!r.file && !r.file.subs.includes(lang) && !r.file.audio.includes(lang);
+  const dot = r.status === "have" ? (noLang ? "warn" : "good") : r.status === "downloading" ? "info" : r.status === "missing" ? "bad" : r.status === "attention" ? "warn" : "off";
+  const quality = r.file ? [r.file.source, r.file.resolution ? resLabel(r.file.resolution) : null].filter(Boolean).join(" ") : "";
+  return (
+    <li className={`ep-row${next ? " next" : ""}${selected ? " selected" : ""}`}>
+      {selecting && <input type="checkbox" checked={selected} onChange={onToggle} aria-label={sxe(r.season, r.episode)} />}
+      <button className="ep-main" onClick={() => (selecting ? onToggle() : onOpen())}>
+        <span className="ep-num tnum">
+          <i className={`dot ${dot}`} aria-hidden="true" />
+          {r.episode}
+        </span>
+        <span className="ep-text">
+          <span className="ep-title clamp1" title={r.title ?? undefined}>
+            {r.title ?? t("ep.tba")}
+            {r.movie && <span className="tag info inline">{t("ep.movieChip")}</span>}
+            {r.file?.changed && <span className="tag neutral inline" title={t("ep.changed")}>{t("ep.reencodedChip")}</span>}
+            {r.special && !r.movie && <span className="tag neutral inline">{t(`special.${r.special.type}` as I18nKey)}</span>}
+          </span>
+          <span className="ep-meta muted small">
+            {airLabel(r.airUtc)}
+            {r.file?.group ? ` · ${r.file.group}` : ""}
+            {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
+            <span className="phone-meta">
+              {quality ? ` · ${quality}` : ""}
+              {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}
+            </span>
+          </span>
+        </span>
+        <span className="ep-q muted small">{quality}</span>
+        <span className="ep-sz muted small tnum">{r.file?.size ? fmtSize(r.file.size) : ""}</span>
+        <span className="ep-status">
+          {next ? <span className="tag next">{t("ep.next")}</span> : null}
+          {r.status === "have" && !noLang ? <span className="sr-only">{t("ep.status.have")}</span> : !next || r.status !== "unaired" ? <StatusPill e={r} lang={lang} /> : null}
+        </span>
+      </button>
+    </li>
   );
 }
 
@@ -626,12 +681,12 @@ function FranchiseMovies({ tvdbId, movies, adding, setAdding, onChanged }: { tvd
 }
 
 /** "Find missing (n)" for a season or the whole show: finds automatically (asks once; prefers a season pack); the caret picks a release. */
-function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void; primary?: boolean }) {
+function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false, big = false }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void; primary?: boolean; big?: boolean }) {
   const list = missing.slice(0, 26);
   const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
   return (
     <span className="season-search" onClick={(e) => e.preventDefault()}>
-      <SplitButton small primary={primary} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
+      <SplitButton small={!big} primary={primary} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
       {a.ui}
     </span>
   );

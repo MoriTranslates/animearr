@@ -11,7 +11,7 @@ import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "./mediafiles.js";
-import { catalogLookup } from "./catalog.js";
+import { catalogLookup, entriesForSeries } from "./catalog.js";
 import { grabStages } from "./pipeline.js";
 import { specialType } from "./audit.js";
 import { burnedInFact, coverFor } from "./audit.js";
@@ -190,6 +190,18 @@ export function seriesHeader(tvdbId: number) {
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
   const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
   const next = rows.filter((e) => e.status === "unaired" && e.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0] ?? null;
+  // The hero's facts from AnimeArr's catalog (AniList): native title, format, years, banner.
+  const ents = entriesForSeries(tvdbId).entries.filter((e) => e.kind !== "MOVIE");
+  const yearOf = (d: string | null) => (d ? Number(d.slice(0, 4)) || null : null);
+  const catalog = ents.length
+    ? {
+        titleNative: ents[0].titleNative,
+        kind: ents[0].kind,
+        from: yearOf(ents[0].startDate),
+        to: ents.some((e) => e.status === "RELEASING" || e.status === "NOT_YET_RELEASED") ? null : yearOf(ents[ents.length - 1].endDate),
+        banner: [...ents].reverse().find((e) => e.banner)?.banner ?? null,
+      }
+    : null;
   return {
     seriesId: s.id,
     tvdbId: s.tvdb_id,
@@ -201,7 +213,8 @@ export function seriesHeader(tvdbId: number) {
     genres: JSON.parse(s.genres) as string[],
     path: s.path,
     cover: coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }),
-    banner: cov.find((c) => c.banner)?.banner ?? null,
+    banner: cov.find((c) => c.banner)?.banner ?? catalog?.banner ?? null,
+    catalog,
     color: cov[0]?.color ?? null,
     nextEpisode: next ? { id: next.id, season: next.season, episode: next.episode, title: next.title, airUtc: next.airUtc } : null,
     counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing").length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },

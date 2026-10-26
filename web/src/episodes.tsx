@@ -12,7 +12,7 @@ export interface EpisodeRow { id: number; season: number; episode: number; absol
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
 
-const resLabel = (r: string | null) => {
+export const resLabel = (r: string | null) => {
   const h = r ? Number(r.split("x")[1]) : NaN;
   return Number.isFinite(h) ? (h >= 2000 ? "2160p" : h >= 1000 ? "1080p" : h >= 700 ? "720p" : `${h}p`) : null;
 };
@@ -104,7 +104,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
         r.results.length === 1
           ? `${r.results[0].label}: ${t(`auto.${r.results[0].outcome}` as I18nKey)}${r.results[0].release ? ` · ${r.results[0].release}` : ""} · ${r.results[0].why}`
           : t("auto.summary", { got: got.length, look: look.length, other: r.results.length - got.length - look.length });
-      toast(msg, r.results.every((x) => x.outcome === "failed"), look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, look.flatMap((x) => x.episodeIds)) } : undefined);
+      toast(msg, r.results.every((x) => x.outcome === "failed"), look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, look.flatMap((x) => x.episodeIds)) } : undefined, { kind: got.length ? "grab" : "success" });
       onDone();
     } catch (e) {
       toast((e as Error).message, true);

@@ -17,35 +17,39 @@ import { Search } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { Show } from "./pages/Show";
 import { Shows } from "./pages/Shows";
-import { ToastProvider } from "./ui";
+import { ToastProvider, useToast } from "./ui";
+import { applyFont } from "./appearance";
+import { applySeason, seasonOf } from "./season";
+import { CalendarDays, Download, Ellipsis, History, House, LibraryBig, ListFilter, ListOrdered, ScanSearch, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sparkles } from "lucide-react";
 
 /**
- * Navigation. Desktop: one row, grouped (Watch · Get · Automate · Maintain · Settings). Phone: 5 tabs
- * (Home · Calendar · Library · Search · More); More opens a sheet with the rest, so nothing is unreachable.
+ * Navigation. Desktop: a sidebar grouped Watch · Get · Automate · Maintain, with the season card at the bottom and a
+ * global search (Ctrl K) in the top bar. Phone: 5 tabs (Home · Calendar · Library · Search · More); More opens a sheet
+ * with the rest, so nothing is unreachable.
  */
-interface NavItem { path: string; label: I18nKey; icon: string }
+type Icon = typeof House;
+interface NavItem { path: string; label: I18nKey; icon: Icon }
 const GROUPS: { label: I18nKey; items: NavItem[] }[] = [
-  { label: "nav.group.watch", items: [{ path: "/", label: "nav.home", icon: "⌂" }, { path: "/calendar", label: "nav.calendar", icon: "▤" }, { path: "/shows", label: "nav.library", icon: "▦" }] },
-  { label: "nav.group.get", items: [{ path: "/find", label: "nav.find", icon: "⌕" }, { path: "/queue", label: "nav.queue", icon: "↓" }] },
-  { label: "nav.group.automate", items: [{ path: "/managed", label: "nav.managed", icon: "★" }] },
-  { label: "nav.group.maintain", items: [{ path: "/audit", label: "nav.audit", icon: "✓" }, { path: "/activity", label: "nav.activity", icon: "≡" }] },
-  { label: "nav.settings", items: [{ path: "/settings", label: "nav.settings", icon: "⚙" }] },
+  { label: "nav.group.watch", items: [{ path: "/", label: "nav.home", icon: House }, { path: "/calendar", label: "nav.calendar", icon: CalendarDays }, { path: "/shows", label: "nav.library", icon: LibraryBig }] },
+  { label: "nav.group.get", items: [{ path: "/find", label: "nav.find", icon: SearchIcon }, { path: "/queue", label: "nav.queue", icon: Download }] },
+  { label: "nav.group.automate", items: [{ path: "/managed", label: "nav.managed", icon: Sparkles }, { path: "/fillin", label: "nav.fillin", icon: ListOrdered }] },
+  { label: "nav.group.maintain", items: [{ path: "/audit", label: "nav.audit", icon: ShieldCheck }, { path: "/activity", label: "nav.activity", icon: History }, { path: "/settings", label: "nav.settings", icon: SettingsIcon }] },
 ];
 const PHONE_TABS: NavItem[] = [
-  { path: "/", label: "nav.home", icon: "⌂" },
-  { path: "/calendar", label: "nav.calendar", icon: "▤" },
-  { path: "/shows", label: "nav.library", icon: "▦" },
-  { path: "/find", label: "nav.find", icon: "⌕" },
+  { path: "/", label: "nav.home", icon: House },
+  { path: "/calendar", label: "nav.calendar", icon: CalendarDays },
+  { path: "/shows", label: "nav.library", icon: LibraryBig },
+  { path: "/find", label: "nav.find", icon: SearchIcon },
 ];
 const MORE: NavItem[] = [
-  { path: "/queue", label: "nav.queue", icon: "↓" },
-  { path: "/managed", label: "nav.managed", icon: "★" },
-  { path: "/fillin", label: "nav.fillin", icon: "⇣" },
-  { path: "/audit", label: "nav.audit", icon: "✓" },
-  { path: "/activity", label: "nav.activity", icon: "≡" },
-  { path: "/search", label: "nav.deepSearch", icon: "⌕" },
-  { path: "/search?tab=identify", label: "nav.identify", icon: "?" },
-  { path: "/settings", label: "nav.settings", icon: "⚙" },
+  { path: "/queue", label: "nav.queue", icon: Download },
+  { path: "/managed", label: "nav.managed", icon: Sparkles },
+  { path: "/fillin", label: "nav.fillin", icon: ListOrdered },
+  { path: "/audit", label: "nav.audit", icon: ShieldCheck },
+  { path: "/activity", label: "nav.activity", icon: History },
+  { path: "/search", label: "nav.deepSearch", icon: ListFilter },
+  { path: "/search?tab=identify", label: "nav.identify", icon: ScanSearch },
+  { path: "/settings", label: "nav.settings", icon: SettingsIcon },
 ];
 
 export function navigate(to: string) {
@@ -66,6 +70,8 @@ export const query = () => new URLSearchParams(location.search);
 
 export function applyTheme(theme: string) {
   document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+  applySeason(theme === "light" ? "light" : "dark");
+  applyFont(store.get<string>("font", "inter"));
   // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
   document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
 }
@@ -136,93 +142,121 @@ export function App() {
   const q = status.queue ?? { active: 0, attention: 0 };
   const badge = q.attention ? <span className="nav-badge warn" aria-label={t("nav.queueBadge", { n: q.attention })}>{q.attention}</span> : q.active ? <span className="nav-badge">{q.active}</span> : null;
 
+  const season = seasonOf();
+  const navLink = (n: NavItem) => (
+    <Link key={n.path} to={n.path} className={`nav-link${active(n.path) ? " active" : ""}`} current={active(n.path)}>
+      <n.icon aria-hidden="true" className="lucide" />
+      <span className="nav-label">{t(n.label)}</span>
+      {n.path === "/queue" && badge}
+    </Link>
+  );
+
   return (
     <ToastProvider>
       <div className="app">
         <a className="skip" href="#main">
           {t("app.skip")}
         </a>
-        <header className="topbar">
-          <Link to="/" className="brand">
-            <img src="/favicon.svg" alt="" width={28} height={28} />
-            <span>{t("app.name")}</span>
-          </Link>
-          <nav className="topnav" aria-label="Main">
+        <aside className="sidebar" aria-label={t("nav.main")}>
+          <Brand />
+          <nav className="side-nav" aria-label={t("nav.main")}>
             {GROUPS.map((g) => (
-              <span key={g.label} className="nav-group" role="group" aria-label={t(g.label)}>
-                {g.items.map((n) => (
-                  <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>
-                    {t(n.label)}
-                    {n.path === "/queue" && badge}
-                  </Link>
-                ))}
-              </span>
+              <div key={g.label} className="nav-group" role="group" aria-labelledby={`grp-${g.label}`}>
+                <span className="eyebrow nav-grp" id={`grp-${g.label}`}>
+                  {t(g.label)}
+                </span>
+                {g.items.map(navLink)}
+              </div>
             ))}
           </nav>
-          <span className="topbar-end">
-            {status.dryRun && (
-              <Link to="/settings?tab=safety" className="mode-chip dry">
-                {t("chip.dryRun")}
-              </Link>
+          <Link to="/calendar" className="season-card">
+            <span className="kanji" aria-hidden="true">
+              {season.kanji}
+            </span>
+            <span className="season-name">
+              {t(`season.${season.key}` as I18nKey)} {season.year}
+            </span>
+            <span className="muted small">{t("season.cardSub", { week: season.week, weeks: season.weeks, n: status.airingShows ?? 0 })}</span>
+            <span className="season-bar" aria-hidden="true">
+              <i style={{ width: `${Math.round((season.week / season.weeks) * 100)}%` }} />
+            </span>
+          </Link>
+        </aside>
+        <div className="shell">
+          <header className="topbar">
+            <span className="phone-only">
+              <Brand />
+            </span>
+            <GlobalSearch />
+            <span className="topbar-end">
+              {status.dryRun && (
+                <Link to="/settings?tab=safety" className="mode-chip dry">
+                  {t("chip.dryRun")}
+                </Link>
+              )}
+              <BellButton />
+            </span>
+            <FixHost />
+          </header>
+          <main id="main" tabIndex={-1}>
+            {status.defaultPassword && !dismissed && (
+              <div className="banner warn row between" role="alert">
+                <span>
+                  {t("security.defaultBanner")} · <Link to="/settings?tab=security">{t("security.defaultBannerLink")}</Link>
+                </span>
+                <button className="small ghost" onClick={() => (setDismissed(true), store.set("dismissDefaultPw", Date.now()))}>
+                  {t("security.dismiss")}
+                </button>
+              </div>
             )}
-            <BellButton />
-          </span>
-          <FixHost />
-        </header>
-        <main id="main" tabIndex={-1}>
-          {status.defaultPassword && !dismissed && (
-            <div className="banner warn row between" role="alert">
-              <span>
-                {t("security.defaultBanner")} · <Link to="/settings?tab=security">{t("security.defaultBannerLink")}</Link>
-              </span>
-              <button className="small ghost" onClick={() => (setDismissed(true), store.set("dismissDefaultPw", Date.now()))}>
-                {t("security.dismiss")}
-              </button>
-            </div>
-          )}
-          {status.warnings?.map((w) => (
-            <p key={w} className="banner warn" role="alert">
-              {w}
-            </p>
-          ))}
-          <DryRunBanner status={status} />
-          {status.grabsPaused && (
-            <p className="banner warn" role="status">
-              {t("dl.banner", { why: status.grabsPaused.why })}
-              {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { label: status.grabsPaused.disk.label, free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}${status.grabsPaused.disk.shareFreeGb !== null ? ` ${t("dl.bannerArray", { free: status.grabsPaused.disk.shareFreeGb })}` : ""}` : ""}{" "}
-              <Link to="/settings?tab=downloads">{t("dl.bannerLink")}</Link>
-            </p>
-          )}
-          {path === "/" && <Home status={status} onChanged={refreshStatus} />}
-          {section === "/managed" && <Managed status={status} />}
-          {section === "/shows" && <Shows status={status} />}
-          {(section === "/add" || section === "/find") && <Add />}
-          {section === "/show" && <Show key={path} tvdbId={Number(path.split("/")[2])} />}
-          {section === "/movies" && <Movies />}
-          {section === "/movie" && <MoviePage key={path} id={Number(path.split("/")[2])} />}
-          {section === "/calendar" && <Calendar />}
-          {section === "/fillin" && <FillIn />}
-          {section === "/queue" && <Queue />}
-          {section === "/audit" && <Audit />}
-          {section === "/search" && <Search />}
-          {section === "/activity" && <Activity />}
-          {section === "/settings" && <Settings status={status} onSaved={refreshStatus} />}
-        </main>
-        <footer className="foot">
-          {t("app.footer", { version: status.version })} ·{" "}
-          <a href="https://ko-fi.com/moritranslates" target="_blank" rel="noreferrer">
-            {t("app.support")}
-          </a>
-        </footer>
-        <nav className="tabbar" aria-label="Main">
+            {status.warnings?.map((w) => (
+              <p key={w} className="banner warn" role="alert">
+                {w}
+              </p>
+            ))}
+            <DryRunBanner status={status} />
+            {status.grabsPaused && (
+              <p className="banner warn" role="status">
+                {t("dl.banner", { why: status.grabsPaused.why })}
+                {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { label: status.grabsPaused.disk.label, free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}${status.grabsPaused.disk.shareFreeGb !== null ? ` ${t("dl.bannerArray", { free: status.grabsPaused.disk.shareFreeGb })}` : ""}` : ""}{" "}
+                <Link to="/settings?tab=downloads">{t("dl.bannerLink")}</Link>
+              </p>
+            )}
+            {path === "/" && <Home status={status} onChanged={refreshStatus} />}
+            {section === "/managed" && <Managed status={status} />}
+            {section === "/shows" && <Shows status={status} />}
+            {(section === "/add" || section === "/find") && <Add />}
+            {section === "/show" && <Show key={path} tvdbId={Number(path.split("/")[2])} />}
+            {section === "/movies" && <Movies />}
+            {section === "/movie" && <MoviePage key={path} id={Number(path.split("/")[2])} />}
+            {section === "/calendar" && <Calendar />}
+            {section === "/fillin" && <FillIn />}
+            {section === "/queue" && <Queue />}
+            {section === "/audit" && <Audit />}
+            {section === "/search" && <Search />}
+            {section === "/activity" && <Activity />}
+            {section === "/settings" && <Settings status={status} onSaved={refreshStatus} />}
+          </main>
+          <footer className="foot">
+            {t("app.footer", { version: status.version })} ·{" "}
+            <a href="https://ko-fi.com/moritranslates" target="_blank" rel="noreferrer">
+              {t("app.support")}
+            </a>
+          </footer>
+        </div>
+        <nav className="tabbar" aria-label={t("nav.main")}>
           {PHONE_TABS.map((n) => (
             <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>
-              <span aria-hidden="true">{n.icon}</span>
+              <span className="tab-pill" aria-hidden="true">
+                <n.icon className="lucide" />
+              </span>
               {t(n.label)}
             </Link>
           ))}
           <button type="button" className={`tab-more${moreActive || moreOpen ? " active" : ""}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => setMoreOpen(true)}>
-            <span aria-hidden="true">⋯</span>
+            <span className="tab-pill" aria-hidden="true">
+              <Ellipsis className="lucide" />
+            </span>
             {t("nav.more")}
             {badge}
           </button>
@@ -230,6 +264,84 @@ export function App() {
         {moreOpen && <MoreSheet active={active} badge={badge} version={status.version} onClose={() => setMoreOpen(false)} />}
       </div>
     </ToastProvider>
+  );
+}
+
+/** The logo mark. Tap it 7 times (or type the Konami code) for Comic mode. */
+function Brand() {
+  const toast = useToast();
+  const taps = useRef<number[]>([]);
+  useEffect(() => {
+    const seq = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
+    let i = 0;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select")) return;
+      i = e.key === seq[i] ? i + 1 : e.key === seq[0] ? 1 : 0;
+      if (i === seq.length) (i = 0), toggleComic(toast);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toast]);
+  return (
+    <Link to="/" className="brand">
+      <span
+        className="mark"
+        aria-hidden="true"
+        onClick={(e) => {
+          const now = Date.now();
+          taps.current = [...taps.current.filter((x) => now - x < 2500), now];
+          if (taps.current.length >= 7) {
+            e.preventDefault();
+            e.stopPropagation();
+            taps.current = [];
+            toggleComic(toast);
+          }
+        }}
+      >
+        <b>A</b>
+      </span>
+      <span className="brand-name">{t("app.name")}</span>
+    </Link>
+  );
+}
+
+function toggleComic(toast: ReturnType<typeof useToast>) {
+  const on = store.get<string>("font", "inter") !== "comic";
+  store.set("font", on ? "comic" : "inter");
+  applyFont(on ? "comic" : "inter");
+  toast(on ? t("comic.on") : t("comic.off"), false, undefined, on ? { burst: "always" } : undefined);
+}
+
+/** Global search in the top bar: Ctrl K or "/" focuses it; it opens Search with what you typed. */
+function GlobalSearch() {
+  const ref = useRef<HTMLInputElement>(null);
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement)?.closest?.("input, textarea, select, [contenteditable]");
+      if ((e.key === "k" && (e.ctrlKey || e.metaKey)) || (e.key === "/" && !typing)) {
+        e.preventDefault();
+        ref.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <form
+      className="global-search"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        navigate(`/find${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`);
+        setQ("");
+        ref.current?.blur();
+      }}
+    >
+      <SearchIcon aria-hidden="true" className="lucide" />
+      <input ref={ref} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.global")} aria-label={t("find.title")} />
+      <kbd aria-hidden="true">Ctrl K</kbd>
+    </form>
   );
 }
 
@@ -267,9 +379,7 @@ function MoreSheet({ active, badge, version, onClose }: { active: (p: string) =>
           {MORE.map((n) => (
             <li key={n.path}>
               <Link to={n.path} className={active(n.path) && !n.path.includes("?") ? "active" : ""}>
-                <span aria-hidden="true" className="more-icon">
-                  {n.icon}
-                </span>
+                <n.icon aria-hidden="true" className="lucide more-icon" />
                 <span className="grow">{t(n.label)}</span>
                 {n.path === "/queue" && badge}
               </Link>

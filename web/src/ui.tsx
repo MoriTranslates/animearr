@@ -1,24 +1,50 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { fixesForMessage, runFix, type Flag } from "./api";
-import { t } from "./i18n";
+import { t, type I18nKey } from "./i18n";
+import { exclaimMode } from "./appearance";
 
-// ---------------------------------------------------------------- toasts
+// ---------------------------------------------------------------- toasts (manga speech bubbles by default)
 
-interface Toast { id: number; msg: string; error: boolean; action?: { label: string; run: () => void } }
-type Push = (msg: string, error?: boolean, action?: Toast["action"]) => void;
+/** What a toast is about: picks its manga exclamation (KITA━! for a new episode, SUGOI!/YATTA! for a grab…). */
+export type ToastKind = "success" | "grab" | "import" | "new-episode" | "complete" | "download" | "error";
+export interface ToastOpts { kind?: ToastKind; burst?: "always" | "never"; cover?: string | null }
+interface Toast { id: number; msg: string; error: boolean; action?: { label: string; run: () => void }; burst: { text: string; jp: string } | null; kind: ToastKind; cover: string | null }
+type Push = (msg: string, error?: boolean, action?: Toast["action"], opts?: ToastOpts) => void;
 const ToastCtx = createContext<Push>(() => undefined);
 export const useToast = () => useContext(ToastCtx);
 
+const BURSTS: Record<ToastKind, I18nKey[]> = {
+  "new-episode": ["exclaim.kita"],
+  grab: ["exclaim.sugoi", "exclaim.yatta"],
+  import: ["exclaim.yatta", "exclaim.sugoi"],
+  success: ["exclaim.sugoi", "exclaim.yatta", "exclaim.nice"],
+  complete: ["exclaim.omedetou"],
+  download: ["exclaim.doki"],
+  error: ["exclaim.nani"],
+};
+/** Default ≈ 1 in 5 toasts; big moments (a completed season) always; Comic mode every toast; or off. */
+function pickBurst(kind: ToastKind, opts?: ToastOpts) {
+  const mode = exclaimMode();
+  if (opts?.burst === "never" || mode === "off") return null;
+  const show = opts?.burst === "always" || mode === "always" || kind === "complete" || Math.random() < 0.2;
+  if (!show) return null;
+  const list = BURSTS[kind];
+  const key = list[Math.floor(Math.random() * list.length)];
+  return { text: t(key), jp: t(`${key}.jp` as I18nKey) };
+}
+const EMOTE: Record<ToastKind, string> = { success: "✨", grab: "✨", import: "✨", "new-episode": "✨", complete: "🎉", download: "💨", error: "💢" };
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback<Push>((msg, error = false, action) => {
+  const push = useCallback<Push>((msg, error = false, action, opts) => {
     // An error the server attached a fix to gets that fix as its button.
     if (error && !action) {
       const f = fixesForMessage(msg)?.[0];
       if (f) action = { label: f.label, run: () => runFix(f) };
     }
+    const kind: ToastKind = error ? "error" : (opts?.kind ?? "success");
     const id = Date.now() + Math.random();
-    setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action }]);
+    setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action, kind, burst: pickBurst(kind, opts), cover: opts?.cover ?? null }]);
     setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), error ? 12_000 : action ? 8000 : 4500);
   }, []);
   const close = (id: number) => setToasts((x) => x.filter((y) => y.id !== id));
@@ -30,9 +56,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((x) => (
-          <div key={x.id} className={`toast${x.error ? " err" : ""}`} aria-hidden={x.error || undefined}>
+          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined} aria-label={x.burst ? `${x.burst.text} ${x.msg}` : undefined}>
+            {x.burst && (
+              <span className={`burst ${x.kind}`} aria-hidden="true">
+                <b>{x.burst.text}</b>
+                <small>{x.burst.jp}</small>
+              </span>
+            )}
+            {x.cover && <img className="toast-cover" src={thumbUrl(x.cover, "sm")} alt="" width={34} height={50} />}
             <span className="toast-emote" aria-hidden="true">
-              {x.error ? "💢" : x.action ? "💦" : "✨"}
+              {EMOTE[x.kind]}
             </span>
             <span className="toast-msg">{x.msg}</span>
             {x.action && (
@@ -43,6 +76,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <button className="icon" aria-label={t("common.close")} onClick={() => close(x.id)}>
               ✕
             </button>
+            <svg className="toast-tail" viewBox="0 0 30 22" aria-hidden="true">
+              <path d="M2 0 C 8 10, 14 16, 28 21 C 20 12, 18 6, 18 0" />
+            </svg>
           </div>
         ))}
       </div>
@@ -358,6 +394,34 @@ export function usePageTitle(title: string) {
   useEffect(() => {
     document.title = `${title} · AnimeArr`;
   }, [title]);
+}
+
+/** Placeholder shapes while a page loads (static under reduced motion). */
+export function Skeleton({ kind, label }: { kind: "home" | "list" | "posters" | "hero"; label?: string }) {
+  const n = kind === "posters" ? 12 : kind === "list" ? 6 : 0;
+  return (
+    <div className={`skeleton sk-${kind}`} role="status" aria-label={label ?? t("app.loading")}>
+      {kind === "home" && (
+        <>
+          <div className="sk sk-shelf" />
+          <div className="sk-row">
+            <div className="sk sk-card" />
+            <div className="sk sk-card" />
+          </div>
+        </>
+      )}
+      {kind === "hero" && (
+        <>
+          <div className="sk sk-hero" />
+          <div className="sk sk-line" />
+          <div className="sk sk-line short" />
+        </>
+      )}
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className={`sk ${kind === "posters" ? "sk-poster" : "sk-item"}`} />
+      ))}
+    </div>
+  );
 }
 
 export function Spinner({ label }: { label: string }) {

@@ -57,6 +57,7 @@ export interface Status {
   defaultPassword?: boolean;
   bypassLocal?: boolean;
   queue?: { active: number; attention: number };
+  airingShows?: number;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";

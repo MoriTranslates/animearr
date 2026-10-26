@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { applyFont } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
@@ -183,6 +184,9 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
 function Appearance() {
   const [theme, setTheme] = useState(store.get("theme", "dark"));
   const [toastStyle, setToastStyle] = useState(store.get("toastStyle", "bubble"));
+  const [font, setFont] = useState(store.get("font", "inter"));
+  const [exclaim, setExclaim] = useState(store.get("exclaim", "sometimes"));
+  const toast = useToast();
   return (
     <div className="stack">
       <SectionIntro icon="◑" text={t("appearance.intro")} />
@@ -216,6 +220,40 @@ function Appearance() {
           </select>
           <span className="muted small">{t("appearance.toastsHelp")}</span>
         </label>
+        <label>
+          {t("appearance.font")}
+          <select
+            value={font}
+            onChange={(e) => {
+              setFont(e.target.value);
+              store.set("font", e.target.value);
+              applyFont(e.target.value);
+            }}
+          >
+            <option value="inter">{t("appearance.font.inter")}</option>
+            <option value="system">{t("appearance.font.system")}</option>
+            <option value="comic">{t("appearance.font.comic")}</option>
+          </select>
+          <span className="muted small">{t("appearance.fontHelp")}</span>
+        </label>
+        <label>
+          {t("appearance.exclaim")}
+          <select
+            value={exclaim}
+            onChange={(e) => {
+              setExclaim(e.target.value);
+              store.set("exclaim", e.target.value);
+            }}
+          >
+            <option value="off">{t("appearance.exclaim.off")}</option>
+            <option value="sometimes">{t("appearance.exclaim.sometimes")}</option>
+            <option value="always">{t("appearance.exclaim.always")}</option>
+          </select>
+          <span className="muted small">{t("appearance.exclaimHelp")}</span>
+        </label>
+        <button className="small self-start" onClick={() => toast(t("appearance.preview"), false, undefined, { kind: "grab", burst: "always" })}>
+          {t("appearance.try")}
+        </button>
       </div>
     </div>
   );

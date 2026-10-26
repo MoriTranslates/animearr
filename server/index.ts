@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview } from "./connections.js";
 import { fixesFor } from "./fixes.js";
@@ -155,6 +156,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     // Shows in dry-run (the global switch, or their own), so the UI only mentions dry-run when something is in it.
     dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
+    // The season card: shows with an episode airing this week or last.
+    airingShows: airingShowCount(),
     // The nav's Queue badge: what's downloading, and what needs a look.
     queue: db.prepare("SELECT COALESCE(SUM(state IN ('sending', 'downloading', 'importing')), 0) AS active, COALESCE(SUM(state = 'needs-attention'), 0) AS attention FROM grabs WHERE dry_run = 0").get() as { active: number; attention: number },
   };
@@ -261,6 +264,8 @@ app.get<{ Querystring: { u?: string; s?: string } }>("/api/img", async (req, rep
   reply.header("Cache-Control", "private, max-age=31536000, immutable").header("ETag", r.etag).type(r.type);
   return reply.send(fs.createReadStream(r.file));
 });
+
+app.get("/api/home", async () => homeSummary());
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 
