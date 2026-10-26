@@ -124,6 +124,8 @@ export interface Settings {
     seasonFolderFormat: string;
     specialsFolderFormat: string;
     renameMovies: boolean;
+    /** Radarr has its own colon setting; movies use it. */
+    movieColonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
     movieFormat: string;
     movieFolderFormat: string;
     createEmptyFolders: boolean;
@@ -224,6 +226,7 @@ const DEFAULTS: Settings = {
     seasonFolderFormat: "Season {season:00}",
     specialsFolderFormat: "Specials",
     renameMovies: true,
+    movieColonReplacement: "smart",
     movieFormat: "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
     movieFolderFormat: "{Movie CleanTitle} ({Release Year})",
     createEmptyFolders: false,
@@ -276,6 +279,7 @@ const ENUMS: Record<string, readonly string[]> = {
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
+  "media.movieColonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
   "media.multiEpisodeStyle": ["extend", "duplicate", "repeat", "scene", "range", "prefixedRange"],
   "media.episodeTitleRequired": ["always", "bulkSeasonReleases", "never"],
   "media.propers": ["preferAndUpgrade", "doNotUpgrade", "doNotPrefer"],

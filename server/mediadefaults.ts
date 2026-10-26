@@ -58,6 +58,7 @@ export function mapArrMedia(cur: Settings["media"], naming: Record<string, unkno
   }
   if (radarrNaming) {
     m.renameMovies = bool(radarrNaming.renameMovies, m.renameMovies);
+    m.movieColonReplacement = enumOf(radarrNaming.colonReplacementFormat, COLON, m.movieColonReplacement);
     m.movieFormat = str(radarrNaming.standardMovieFormat, m.movieFormat);
     m.movieFolderFormat = str(radarrNaming.movieFolderFormat, m.movieFolderFormat);
   }
@@ -106,7 +107,7 @@ export function previewNaming(media: Partial<Settings["media"]>) {
     seriesFolder: safe(() => renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: ep.seriesTitle, seriesYear: 2023, tvdbId: 424536, anidbTitle: ep.anidbTitle }, opts)),
     seasonFolder: safe(() => renderSeasonFolder(m.seasonFolderFormat, 1, opts)),
     specialsFolder: safe(() => renderSeasonFolder(m.specialsFolderFormat, 0, opts)),
-    movie: safe(() => renderMovie(m.movieFormat, { movieTitle: "Suzume", year: 2022, quality: "Bluray-1080p", mediaInfo: mi, releaseGroup: "GRP", imdbId: "tt16428256", tmdbId: 916224 }, opts) + ".mkv"),
-    movieFolder: safe(() => renderMovie(m.movieFolderFormat, { movieTitle: "Suzume", year: 2022, imdbId: "tt16428256", tmdbId: 916224 }, opts)),
+    movie: safe(() => renderMovie(m.movieFormat, { movieTitle: "Suzume: The Door", year: 2022, quality: "Bluray-1080p", mediaInfo: mi, releaseGroup: "GRP", imdbId: "tt16428256", tmdbId: 916224 }, { ...opts, colonReplacement: m.movieColonReplacement }) + ".mkv"),
+    movieFolder: safe(() => renderMovie(m.movieFolderFormat, { movieTitle: "Suzume: The Door", year: 2022, imdbId: "tt16428256", tmdbId: 916224 }, { ...opts, colonReplacement: m.movieColonReplacement })),
   };
 }

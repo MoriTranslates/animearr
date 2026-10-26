@@ -92,6 +92,7 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="card pad form">
         <h2>{t("media.movieNaming")}</h2>
         <Toggle checked={m.renameMovies} onChange={(v) => set({ renameMovies: v })} label={t("media.renameMovies")} />
+        {sel("movieColonReplacement", "media.colon", COLON)}
         {fmt("movieFormat", "media.movieFormat", "movie")}
         {fmt("movieFolderFormat", "media.movieFolder", "movieFolder")}
       </div>

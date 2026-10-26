@@ -132,6 +132,7 @@ export interface MediaSettings {
   seasonFolderFormat: string;
   specialsFolderFormat: string;
   renameMovies: boolean;
+  movieColonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
   movieFormat: string;
   movieFolderFormat: string;
   createEmptyFolders: boolean;

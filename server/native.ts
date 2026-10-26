@@ -477,7 +477,7 @@ export async function addMovie(input: { anilistId: number; rootFolder: string },
   if ((tmdb && cache.prepare("SELECT 1 FROM movies WHERE tmdb_id = ?").get(tmdb)) || db.prepare("SELECT 1 FROM native_movies WHERE anilist_id = ?").get(e.anilist_id)) throw err("That movie is already in your library", 409);
   const title = e.title_english ?? e.title_romaji ?? e.title_native ?? `AniList ${e.anilist_id}`;
   const m = getSettings().media;
-  const folder = renderMovie(m.movieFolderFormat, { movieTitle: title, year: e.season_year, tmdbId: tmdb }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
+  const folder = renderMovie(m.movieFolderFormat, { movieTitle: title, year: e.season_year, tmdbId: tmdb }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.movieColonReplacement ?? m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
   if (!folder.trim() || /^\.+$/.test(folder) || folder.includes("/")) throw err("The movie folder format gives an unusable folder name");
   const moviePath = `${root}/${folder}`;
   if (cache.prepare("SELECT 1 FROM movies WHERE path = ?").get(moviePath)) throw err(`${moviePath} already belongs to another movie`, 409);

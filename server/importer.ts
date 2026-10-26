@@ -560,7 +560,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   const ext = path.extname(main.f).toLowerCase();
   const opts = namingOptions();
   const name = m.renameMovies
-    ? renderMovie(m.movieFormat, { movieTitle: mv.title, year: mv.year, quality: qualityName(release, probe?.video?.height ?? null), mediaInfo: mediaInfoOf(probe), releaseGroup: parseRelease(release).group, imdbId: mv.imdb_id, tmdbId: mv.tmdb_id, originalTitle: release }, opts)
+    ? renderMovie(m.movieFormat, { movieTitle: mv.title, year: mv.year, quality: qualityName(release, probe?.video?.height ?? null), mediaInfo: mediaInfoOf(probe), releaseGroup: parseRelease(release).group, imdbId: mv.imdb_id, tmdbId: mv.tmdb_id, originalTitle: release }, { ...opts, colonReplacement: m.movieColonReplacement ?? opts.colonReplacement })
     : path.basename(main.f).replace(/\.[^.]+$/, "");
   let problem: string | null = null;
   if (!name.trim() || name.startsWith(".")) problem = "the movie format gives an empty file name";
