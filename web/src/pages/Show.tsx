@@ -154,6 +154,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </details>
       )}
 
+      {/* ---------------- franchise (AnimeArr's own catalog) */}
+      <Franchise tvdbId={tvdbId} />
+
       {/* ---------------- movies & specials (the franchise's movies live in Radarr) */}
       <FranchiseMovies tvdbId={tvdbId} movies={s.movies} onChanged={() => void d.reload()} />
 
@@ -559,5 +562,46 @@ function SeasonSearch({ tvdbId, missing, dryRun, onDone }: { tvdbId: number; mis
       </button>
       {a.ui}
     </span>
+  );
+}
+
+interface CatalogEntry { anilistId: number; kind: string | null; title: string; titleRomaji: string | null; titleNative: string | null; status: string | null; year: number | null; episodes: number | null; cover: string | null; tvdbSeason: string | null; nextEpisode: number | null; nextAt: number | null; country: string | null }
+
+/** The show's AniList entries (seasons/cours) and the rest of its franchise, from AnimeArr's own catalog. */
+function Franchise({ tvdbId }: { tvdbId: number }) {
+  const d = useLoad(() => api<{ franchise: { id: number; title: string } | null; entries: CatalogEntry[]; related: CatalogEntry[] }>(`/series/${tvdbId}/catalog`), [tvdbId]);
+  if (!d.data || (!d.data.entries.length && !d.data.related.length)) return null;
+  const row = (e: CatalogEntry) => (
+    <li key={e.anilistId} className="franchise-entry">
+      <Cover src={e.cover} alt={e.title} size="sm" />
+      <span className="stack grow">
+        <a href={`https://anilist.co/anime/${e.anilistId}`} target="_blank" rel="noreferrer" className="strong clamp2">
+          {e.title}
+        </a>
+        {e.titleNative && <span className="muted small">{e.titleRomaji && e.titleRomaji !== e.title ? `${e.titleRomaji} · ` : ""}{e.titleNative}</span>}
+        <span className="chips">
+          {e.kind && <Chip>{t(`catalog.kind.${e.kind}` as I18nKey)}</Chip>}
+          {e.year && <Chip>{e.year}</Chip>}
+          {e.episodes ? <Chip>{t("catalog.eps", { n: e.episodes })}</Chip> : null}
+          {e.status && <Chip tone={e.status === "RELEASING" ? "good" : "info"}>{t(`catalog.status.${e.status}` as I18nKey)}</Chip>}
+          {e.tvdbSeason && <Chip>{e.tvdbSeason === "a" ? t("catalog.absolute") : e.tvdbSeason === "0" ? t("series.specials") : t("common.season", { n: Number(e.tvdbSeason) })}</Chip>}
+          {e.country === "CN" && <Chip>{t("catalog.donghua")}</Chip>}
+        </span>
+      </span>
+    </li>
+  );
+  return (
+    <details className="card pad stack">
+      <summary>
+        <strong>{t("catalog.title", { name: d.data.franchise?.title ?? d.data.entries[0]?.title ?? d.data.related[0]?.title ?? "" })}</strong> <span className="muted small">{t("catalog.count", { n: d.data.entries.length + d.data.related.length })}</span>
+      </summary>
+      <ul className="plain stack">{d.data.entries.map(row)}</ul>
+      {!!d.data.related.length && (
+        <>
+          <h3>{t("catalog.related")}</h3>
+          <ul className="plain stack">{d.data.related.map(row)}</ul>
+        </>
+      )}
+    </details>
   );
 }

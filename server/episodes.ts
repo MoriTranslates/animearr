@@ -9,6 +9,7 @@ import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "./mediafiles.js";
+import { catalogLookup } from "./catalog.js";
 import { grabStages } from "./pipeline.js";
 import { specialType } from "./audit.js";
 import { burnedInFact, coverFor } from "./audit.js";
@@ -140,6 +141,8 @@ export interface EpisodeRow {
   special?: { type: string; cls: string } | null;
 }
 
+const tvdbOf = (seriesId: number) => (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id ?? 0;
+
 export function episodeRows(seriesId: number): EpisodeRow[] {
   const now = Date.now();
   const active = grabStates();
@@ -148,6 +151,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     id: number; season: number; episode: number; absolute: number | null; title: string | null; air_utc: number | null; runtime: number | null; monitored: number; has_file: number; file_id: number | null;
   }[];
   const asMovie = radarrMovieSpecials(seriesId);
+  let lookup: ReturnType<typeof catalogLookup> | null = null;
   const byFile = new Map<number, string[]>();
   for (const e of [...eps].reverse()) if (e.file_id) byFile.set(e.file_id, [...(byFile.get(e.file_id) ?? []), sxe(e.season, e.episode)]);
   return eps.map((e) => {
@@ -155,7 +159,8 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialType(e.title, e.runtime) : null };
+    const fallback = !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialType(e.title, e.runtime) : null };
   });
 }
 

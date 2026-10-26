@@ -66,6 +66,7 @@ export interface AnimeListEntry {
   offset: number;
   tmdbTv: number | null;
   tmdbSeason: number | null;
+  tmdbOffset?: number;
   tmdbMovie: number | null;
   imdbId: string | null;
   mappings: EpisodeMapping[];
@@ -112,6 +113,7 @@ export function parseAnimeList(xml: string): Map<number, AnimeListEntry> {
       offset: num(attr(head, "episodeoffset")) ?? 0,
       tmdbTv: num(attr(head, "tmdbtv")),
       tmdbSeason: num(attr(head, "tmdbseason")),
+      tmdbOffset: num(attr(head, "tmdboffset")) ?? 0,
       tmdbMovie: num(attr(head, "tmdbid")),
       imdbId: attr(head, "imdbid") || null,
       mappings,

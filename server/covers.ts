@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CACHE_DIR, cache, setJob } from "./db.js";
 import { animeListEntries, USER_AGENT } from "./metadata.js";
+import { anilistQuery } from "./anilist.js";
 
 const FRIBB_URL = "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json";
 const FRIBB_FILE = path.join(CACHE_DIR, "anime-list-full.json");
@@ -25,26 +26,30 @@ async function anilistByAnidbDownload() {
 }
 
 export async function anilistByAnidb(): Promise<Map<number, number>> {
-  await anilistByAnidbDownload();
-  fribbMemo = null;
   return (await fribb()).anidbToAnilist;
 }
 
-let fribbMemo: { at: number; anidbToAnilist: Map<number, number>; anilistToAnidb: Map<number, number>; anilistToTmdb: Map<number, number> } | null = null;
-/** The Fribb mapping (AniDB ↔ AniList ↔ TMDB movie), read once per hour from the cached file. */
+let fribbMemo: { mtime: number; anidbToAnilist: Map<number, number>; anilistToAnidb: Map<number, number>; anilistToAnidbAll: Map<number, number[]>; anilistToTmdb: Map<number, number> } | null = null;
+/** The Fribb mapping (AniDB ↔ AniList ↔ TMDB movie): downloaded weekly, parsed once per file version. */
 export async function fribb() {
-  if (fribbMemo && Date.now() - fribbMemo.at < 3_600_000) return fribbMemo;
-  if (!fs.existsSync(FRIBB_FILE)) await anilistByAnidbDownload();
-  const rows = JSON.parse(fs.readFileSync(FRIBB_FILE, "utf8")) as { anidb_id?: number; anilist_id?: number; themoviedb_id?: number | string }[];
+  await anilistByAnidbDownload();
+  const mtime = fs.statSync(FRIBB_FILE).mtimeMs;
+  if (fribbMemo && fribbMemo.mtime === mtime) return fribbMemo;
+  const rows = JSON.parse(await fs.promises.readFile(FRIBB_FILE, "utf8")) as { anidb_id?: number; anilist_id?: number; themoviedb_id?: number | string }[];
   const anidbToAnilist = new Map<number, number>();
   const anilistToAnidb = new Map<number, number>();
+  const anilistToAnidbAll = new Map<number, number[]>();
   const anilistToTmdb = new Map<number, number>();
   for (const r of rows) {
-    if (r.anidb_id && r.anilist_id) (anidbToAnilist.set(r.anidb_id, r.anilist_id), anilistToAnidb.set(r.anilist_id, r.anidb_id));
+    if (r.anidb_id && r.anilist_id) {
+      anidbToAnilist.set(r.anidb_id, r.anilist_id);
+      if (!anilistToAnidb.has(r.anilist_id)) anilistToAnidb.set(r.anilist_id, r.anidb_id);
+      anilistToAnidbAll.set(r.anilist_id, [...(anilistToAnidbAll.get(r.anilist_id) ?? []), r.anidb_id]);
+    }
     const tm = Number(r.themoviedb_id);
     if (r.anilist_id && Number.isFinite(tm) && tm > 0) anilistToTmdb.set(r.anilist_id, tm);
   }
-  fribbMemo = { at: Date.now(), anidbToAnilist, anilistToAnidb, anilistToTmdb };
+  fribbMemo = { mtime, anidbToAnilist, anilistToAnidb, anilistToAnidbAll, anilistToTmdb };
   return fribbMemo;
 }
 
@@ -67,16 +72,14 @@ export async function refreshCovers(limit = 600) {
     for (let i = 0; i < todo.length; i += 50) {
       const batch = todo.slice(i, i + 50);
       const ids = batch.map((a) => map.get(a)!);
-      const res = await fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": USER_AGENT },
-        body: JSON.stringify({ query: "query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids) { id coverImage { large color } bannerImage } } }", variables: { ids } }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (res.status === 429) break;
-      if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
-      const j = (await res.json()) as { data?: { Page: { media: { id: number; coverImage: { large: string | null; color: string | null }; bannerImage: string | null }[] } } };
-      const byId = new Map((j.data?.Page.media ?? []).map((m) => [m.id, m]));
+      let j: { Page: { media: { id: number; coverImage: { large: string | null; color: string | null }; bannerImage: string | null }[] } };
+      try {
+        j = await anilistQuery("query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids) { id coverImage { large color } bannerImage } } }", { ids });
+      } catch {
+        break; // rate-limited or down: try again next time
+      }
+      const data = { data: j };
+      const byId = new Map((data.data?.Page.media ?? []).map((m) => [m.id, m]));
       for (const aid of batch) {
         const m = byId.get(map.get(aid)!);
         cache.prepare("INSERT INTO covers (anidb_id, anilist_id, cover, banner, color, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(anidb_id) DO UPDATE SET anilist_id = excluded.anilist_id, cover = excluded.cover, banner = excluded.banner, color = excluded.color, fetched_at = excluded.fetched_at").run(aid, map.get(aid)!, m?.coverImage.large ?? null, m?.bannerImage ?? null, m?.coverImage.color ?? null, Date.now());

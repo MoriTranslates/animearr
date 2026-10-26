@@ -8,6 +8,11 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
 - [x] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies, series ↔ movie links (S0 double-download guard)
 
+## Decisions to confirm (made conservatively overnight; the user can change them)
+
+- Own metadata: AniList-first catalog refreshed every 6 h (airing shows daily, others weekly), one relation hop out for franchises; TMDB/AniDB/TVDB providers stay off until the user enters a key/client in Settings → Metadata
+- Episode titles: Sonarr's title wins; the catalog's (AniList streaming list, TMDB when keyed) only fills missing/TBA titles until cutover
+
 ## 1.0 = takeover (binding)
 
 AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, library, metadata). Afterwards Sonarr and Radarr have no anime libraries. Build order (PROPOSAL "1.0 takeover checklist"):

@@ -295,6 +295,20 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE series_scope (tvdb_id INTEGER PRIMARY KEY, seasons TEXT NOT NULL, recent_n INTEGER NOT NULL DEFAULT 1, episodes TEXT NOT NULL, specials INTEGER NOT NULL DEFAULT 0, since INTEGER NOT NULL);
    CREATE TABLE fill_queue (tvdb_id INTEGER PRIMARY KEY, position INTEGER NOT NULL, state TEXT NOT NULL, wave INTEGER, added_at INTEGER NOT NULL, activated_at INTEGER, done_at INTEGER,
      start_missing INTEGER, last_missing INTEGER, progress_at INTEGER, note TEXT NOT NULL DEFAULT '');`,
+  // 11: AnimeArr's own metadata catalog (AniList-first entries, episodes, relations, franchises)
+  `CREATE TABLE entries (anilist_id INTEGER PRIMARY KEY, anidb_id INTEGER, mal_id INTEGER, tvdb_id INTEGER, tvdb_season TEXT, tvdb_offset INTEGER NOT NULL DEFAULT 0,
+     tmdb_tv INTEGER, tmdb_season INTEGER, tmdb_offset INTEGER NOT NULL DEFAULT 0, tmdb_movie INTEGER, kind TEXT, title_romaji TEXT, title_english TEXT, title_native TEXT,
+     synonyms TEXT NOT NULL DEFAULT '[]', status TEXT, season_year INTEGER, start_date TEXT, end_date TEXT, episodes INTEGER, duration INTEGER, country TEXT, cover TEXT, banner TEXT,
+     color TEXT, description TEXT, genres TEXT NOT NULL DEFAULT '[]', adult INTEGER NOT NULL DEFAULT 0, next_ep INTEGER, next_at INTEGER, franchise_id INTEGER, fetched_at INTEGER NOT NULL,
+     tmdb_fetched_at INTEGER);
+   CREATE INDEX entries_tvdb ON entries (tvdb_id);
+   CREATE INDEX entries_anidb ON entries (anidb_id);
+   CREATE INDEX entries_franchise ON entries (franchise_id);
+   CREATE TABLE entry_episodes (anilist_id INTEGER NOT NULL, number INTEGER NOT NULL, title TEXT, air_utc INTEGER, source TEXT NOT NULL, PRIMARY KEY (anilist_id, number));
+   CREATE TABLE entry_relations (from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, type TEXT NOT NULL, PRIMARY KEY (from_id, to_id));
+   CREATE TABLE franchises (id INTEGER PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL);
+   CREATE TABLE catalog_pins (anilist_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);
+   CREATE TABLE catalog_missing (anilist_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

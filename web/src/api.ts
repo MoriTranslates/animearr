@@ -138,6 +138,7 @@ export interface Settings {
   dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   scope: { ended: import("./scope").Scope; continuing: import("./scope").Scope };
+  metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   sync: { intervalHours: number };
   externalUrl: string;

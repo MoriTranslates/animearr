@@ -104,6 +104,8 @@ export interface Settings {
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   /** AnimeArr's own file records: scan the library roots and ffprobe every file (read-only). */
   library: { scan: boolean };
+  /** Optional metadata providers (AniList, Anime-Lists and the AniDB dump need nothing). */
+  metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
   scope: {
     ended: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean };
@@ -152,6 +154,7 @@ const DEFAULTS: Settings = {
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
+  metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
@@ -162,9 +165,9 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password"] as const;
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -199,6 +202,7 @@ const RANGES: Record<string, [number, number]> = {
   "scope.ended.recentN": [1, 100],
   "scope.continuing.recentN": [1, 100],
   "fillIn.waveSize": [1, 50],
+  "metadata.anidbClientVer": [1, 99],
   "fillIn.advancePct": [50, 100],
   "fillIn.stallDays": [1, 60],
   "movieSearch.perHour": [1, 12],

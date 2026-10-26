@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
-import { t } from "../i18n";
+import { t, type I18nKey } from "../i18n";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "connections" | "profile" | "safety" | "paths" | "security" | "system";
-const TABS: Tab[] = ["connections", "profile", "safety", "paths", "security", "system"];
+type Tab = "connections" | "profile" | "safety" | "paths" | "metadata" | "security" | "system";
+const TABS: Tab[] = ["connections", "profile", "safety", "paths", "metadata", "security", "system"];
 
 export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
   usePageTitle(t("settings.title"));
@@ -52,6 +52,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       {tab === "profile" && <ProfilesEditor />}
       {tab === "safety" && <Safety s={s} upd={upd} />}
       {tab === "paths" && <Paths s={s} upd={upd} />}
+      {tab === "metadata" && <Metadata s={s} upd={upd} />}
       {tab === "system" && <System status={status} />}
       {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
       {tab !== "system" && tab !== "security" && tab !== "profile" && (
@@ -422,6 +423,75 @@ interface SystemInfo {
   backups: { name: string; kind: string; size: number; at: number }[];
   backupDir: string;
   memoryMb: number;
+}
+
+/** Own metadata: what the catalog knows, optional provider keys. */
+function Metadata({ s, upd }: { s: S; upd: Upd }) {
+  const toast = useToast();
+  const d = useLoad(() => api<{ entries: number; franchises: number; episodes: number; withTitles: number; withoutTvdb: number; donghua: number; providers: Record<string, boolean>; pending: Record<string, boolean>; lastJob: { state: string; detail: string } | null }>("/catalog"), []);
+  const m = s.metadata;
+  const setM = (fn: (x: S["metadata"]) => S["metadata"]) => upd((x) => ({ ...x, metadata: fn(x.metadata) }));
+  return (
+    <div className="stack">
+      <div className="card pad stack">
+        <h2>{t("meta.title")}</h2>
+        <p className="muted small">{t("meta.help")}</p>
+        {d.data && (
+          <>
+            <p className="small">{t("meta.counts", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}</p>
+            {d.data.lastJob && <p className="small muted">{d.data.lastJob.detail}</p>}
+            <div className="chips">
+              {Object.entries(d.data.providers).map(([k, on]) => (
+                <span key={k} className={`chip ${on ? "good" : "info"}`}>
+                  {on ? "✓" : "○"} {t(`meta.provider.${k}` as I18nKey)}
+                </span>
+              ))}
+              {Object.entries(d.data.pending).map(([k, on]) => (
+                <span key={k} className="chip info">
+                  {on ? t("meta.savedNotUsed", { name: t(`meta.provider.${k}` as I18nKey) }) : `○ ${t(`meta.provider.${k}` as I18nKey)}`}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+        <button
+          className="small self-start"
+          onClick={async () => {
+            try {
+              const r = await api<{ started: boolean }>("/catalog/refresh", { body: {} });
+              toast(r.started ? t("meta.refreshing") : t("meta.alreadyRunning"));
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          ↻ {t("meta.refresh")}
+        </button>
+      </div>
+      <div className="card pad form">
+        <h2>{t("meta.providers")}</h2>
+        <label>
+          {t("meta.tmdb")}
+          <SecretInput value={m.tmdbKey} onChange={(v) => setM((x) => ({ ...x, tmdbKey: v }))} label={t("meta.tmdb")} />
+          <span className="muted small">{t("meta.tmdbHelp")}</span>
+        </label>
+        <label>
+          {t("meta.anidb")}
+          <input value={m.anidbClient} onChange={(e) => setM((x) => ({ ...x, anidbClient: e.target.value }))} placeholder="animearr" />
+          <span className="muted small">{t("meta.anidbHelp")}</span>
+        </label>
+        <label>
+          {t("meta.anidbVer")}
+          <NumberInput value={m.anidbClientVer} min={1} max={99} onChange={(v) => setM((x) => ({ ...x, anidbClientVer: v }))} label={t("meta.anidbVer")} />
+        </label>
+        <label>
+          {t("meta.tvdb")}
+          <SecretInput value={m.tvdbKey} onChange={(v) => setM((x) => ({ ...x, tvdbKey: v }))} label={t("meta.tvdb")} />
+          <span className="muted small">{t("meta.tvdbHelp")}</span>
+        </label>
+      </div>
+    </div>
+  );
 }
 
 /** AnimeArr's own file records: what was scanned, problems found, scan now. */

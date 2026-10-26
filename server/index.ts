@@ -5,7 +5,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import { authState, COOKIE, csrfOk, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, SETUP_TOKEN, trustProxyOption } from "./auth.js";
-import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, startupWarnings } from "./db.js";
+import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
 import { prowlarrConfigured, testProwlarr } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
@@ -33,6 +33,22 @@ import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, sca
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
 import { scopeFor, scopePreview, setScope, validateScope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
+import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
+
+let catalogRunning = false;
+/** Own metadata: AniList catalog (+ TMDB episode titles when a key is set). */
+async function catalogTick(force = false) {
+  if (catalogRunning) return;
+  catalogRunning = true;
+  try {
+    await refreshCatalog({ force });
+    await tmdbEpisodes();
+  } catch (e) {
+    setJob("catalog", "error", (e as Error).message);
+  } finally {
+    catalogRunning = false;
+  }
+}
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -521,6 +537,14 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.get("/api/catalog", async () => catalogStatus());
+app.post("/api/catalog/refresh", async () => {
+  writable();
+  if (catalogRunning) return { started: false, running: true };
+  void catalogTick(true).catch(() => undefined);
+  return { started: true };
+});
+app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/catalog", async (req) => entriesForSeries(id(req.params.tvdbId)));
 app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/scan", async (req) => {
   const s = seriesByTvdb(id(req.params.tvdbId));
   if (!s) throw fail("Unknown series", 404);
@@ -770,6 +794,8 @@ every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
 every(30 * 60_000, () => fileScanTick(), "file scan");
 every(30 * 60_000, () => fillInTick(), "fill-in");
+every(6 * 3_600_000, () => catalogTick(), "catalog");
+setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);
 setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;

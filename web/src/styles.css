@@ -420,3 +420,5 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent-2); t
 .fill-row { align-items: flex-start; gap: var(--space-3); }
 .fill-actions { flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
 @media (max-width: 760px) { .fill-row { flex-wrap: wrap; } .fill-actions { width: 100%; justify-content: flex-start; } }
+
+.franchise-entry { display: flex; gap: var(--space-3); align-items: flex-start; }

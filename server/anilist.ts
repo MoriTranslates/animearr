@@ -1,5 +1,5 @@
 /**
- * AniList GraphQL client (no key needed). Gentle: one request at a time, ≥ 800 ms apart (AniList allows 90/min),
+ * AniList GraphQL client (no key needed). Gentle: one request at a time, ≥ 2.1 s apart (AniList's degraded limit is 30/min),
  * backs off on 429. Used for AnimeArr's own metadata (titles, format, status, schedule, covers, relations).
  */
 import { USER_AGENT } from "./metadata.js";
@@ -44,7 +44,7 @@ let chain: Promise<unknown> = Promise.resolve();
 export function anilistQuery<T>(query: string, variables: Record<string, unknown>, fetcher: typeof fetch = fetch): Promise<T> {
   const run = async (): Promise<T> => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const wait = Math.max(0, last + 800 - Date.now());
+      const wait = Math.max(0, last + 2100 - Date.now());
       if (wait) await new Promise((r) => setTimeout(r, wait));
       last = Date.now();
       const res = await fetcher("https://graphql.anilist.co", {
@@ -54,13 +54,15 @@ export function anilistQuery<T>(query: string, variables: Record<string, unknown
         signal: AbortSignal.timeout(30_000),
       });
       if (res.status === 429) {
-        const after = Number(res.headers.get("retry-after") ?? 60);
+        const raw = Number(res.headers.get("retry-after"));
+        const after = Number.isFinite(raw) && raw > 0 ? raw : 60;
         await new Promise((r) => setTimeout(r, Math.min(120, after) * 1000));
         continue;
       }
       if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
       const j = (await res.json()) as { data?: T; errors?: { message: string }[] };
       if (j.errors?.length && !j.data) throw new Error(`AniList: ${j.errors[0].message}`);
+      if (!j.data) throw new Error("AniList: empty response");
       return j.data as T;
     }
     throw new Error("AniList is rate-limiting us; try again later");
