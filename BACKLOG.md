@@ -19,7 +19,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [ ] 5. Add series/movies UI (AniList/AniDB search)
 - [ ] 6. RSS/new-release monitoring via Prowlarr feeds
 - [ ] 7. Migration/cutover tool (import, parallel mode, final removal checklist; never deletes without confirmation)
-- [ ] 8. Notifications (Discord, ntfy/Gotify)
+- [ ] 8. Notifications (Discord, ntfy/Gotify, and browser/desktop **Web Push** from the PWA as a first-class channel). Web Push needs a secure context (plain http://192.168.1.13:8484 isn't one): detect it and explain in Settings (reverse proxy with HTTPS, Tailscale HTTPS, externalUrl); fall back to in-app toasts + a notification bell/inbox while the app is open. Per-event toggles: grabbed / imported / failed / needs attention / paused by a limit rule / new episode available
 - [ ] **Release gate:** a separate parity-audit run against Sonarr/Radarr, the proposal's anime features and the absorbed tools (Cleanuparr, Unpackerr, Huntarr, indexer health), using the living [PARITY.md](PARITY.md) matrix
 
 ## 0.x steps to 1.0
@@ -75,6 +75,9 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 ## After 1.0 (extras)
 
 - [ ] Plex collections created automatically (show + its movies)
+- [ ] **Plex playback integration (Plex Pass webhooks):** prefetch the next episode when you start watching; warn when the playing file only has forced English subs (with Re-grab); "you're caught up" / "fill in the rest?"; auto-select the full English track instead of Forced via the Plex API; watched signals into Tastearr/Discover. Plex has no API for third-party on-screen toasts in its clients, so:
+  - **TV overlay channels:** Android/Google TV/Shield via TvOverlay or PiPup (HTTP POST); Fire TV via "Notifications for Fire TV"; LG webOS via an SSAP toast (pairing key stored encrypted); Kodi via JSON-RPC GUI.ShowNotification. Samsung Tizen and Apple TV aren't feasible (fall back to the other channels). Playback alerts go to the device the Plex webhook says is playing (Plex player → configured TV channel)
+- [ ] **Smart home via Home Assistant** (reaches Google Home, Alexa and Apple Home): a generic outgoing webhook channel (JSON per event) + optional MQTT with HA discovery (sensors: downloading, missing, paused-by-limit, last imported; event triggers for imported/failed); later a HACS integration (services: search episode, pause/resume grabs; calendar entity); optional direct Alexa announcements (Notify Me-style skill) as a low-priority non-HA fallback
 - [ ] The full franchise graph (AniDB relations: sequels, prequels, side stories, OVAs across shows)
 
 ### Subtitles (needs AnimeArr to own the files; MoriSubs keeps working standalone until then)
