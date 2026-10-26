@@ -5,6 +5,7 @@
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
+import { isCreditlessTitle } from "./core/resolver.js";
 import { movieSpecials } from "./franchise.js";
 import { ownFile, probeOf } from "./mediafiles.js";
 import fs from "node:fs";
@@ -181,12 +182,14 @@ export function gaps() {
 
 // ---------------------------------------------------------------- specials
 
-const JUNK = /\b(PV|CM|trailer|teaser|promo(?:tion(?:al)?)?|preview|recap|digest|picture drama|mini ?anime|chibi|commentary|music video|MV|opening|ending|NCOP|NCED|creditless|interview|making of|behind the scenes|announcement|web preview|character song|bonus|omake|talk|event|live|stage|radio|countdown|summary|highlights?|blooper|spot)\b/i;
+const JUNK = /\b(PV|CM|trailer|teaser|promo(?:tion(?:al)?)?|preview|recap|digest|picture drama|mini ?anime|chibi|commentary|music video|MV|interview|making of|behind the scenes|announcement|web preview|character song|bonus|omake|talk|event|live|stage|radio|countdown|summary|highlights?|blooper|spot)\b/i;
 const REAL = /\b(OVA|OAD|ONA|episode\s*\d+(\.\d)?|special episode|movie|film|gekijouban|the movie|extra episode|unaired)\b|劇場版|\d+\.5\b/i;
 
-export type SpecialClass = "movie" | "real" | "junk" | "unknown";
+/** "creditless": a creditless opening/ending (NCOP/NCED) — collected, never junk. */
+export type SpecialClass = "movie" | "real" | "junk" | "unknown" | "creditless";
 export function classifySpecial(title: string | null, runtime: number | null): { cls: SpecialClass; why: string } {
   const t = title ?? "";
+  if (isCreditlessTitle(title)) return { cls: "creditless", why: "a creditless opening/ending" };
   if (runtime !== null && runtime >= 60) return { cls: "movie", why: `${runtime} min long` };
   if (/\b(movie|film|gekijouban)\b|劇場版/i.test(t) && (runtime === null || runtime >= 40)) return { cls: "movie", why: "titled as a movie" };
   if (JUNK.test(t)) return { cls: "junk", why: `title looks like "${t.match(JUNK)![0]}"` };
@@ -206,7 +209,8 @@ export function specialType(title: string | null, runtime: number | null): { typ
   if (/\b(recap|digest|summary|highlights?)\b/i.test(t)) return { type: "recap", cls: "junk" };
   if (/\b(PV|CM|trailer|teaser|promo(tion(al)?)?|preview|announcement|spot|web preview)\b/i.test(t)) return { type: "promo", cls: "junk" };
   if (/\bpicture drama\b/i.test(t)) return { type: "pictureDrama", cls: "junk" };
-  if (/\b(NCOP|NCED|creditless|opening|ending|music video|MV|character song)\b/i.test(t)) return { type: "music", cls: "junk" };
+  if (c.cls === "creditless") return { type: "creditless", cls: "creditless" };
+  if (/\b(music video|MV|character song)\b/i.test(t)) return { type: "music", cls: "junk" };
   if (c.cls === "junk") return { type: "extra", cls: c.cls };
   if (c.cls === "real") return { type: "episode", cls: c.cls };
   return { type: "special", cls: c.cls };
@@ -218,7 +222,7 @@ export function specials() {
   for (const m of movies) for (const t of [m.title, m.original_title ?? "", ...(JSON.parse(m.alt_titles) as string[])]) if (t) movieKeys.set(compactKey(t), m);
   const byTmdb = new Map(movies.filter((m) => m.tmdb_id).map((m) => [m.tmdb_id!, m]));
   const out: { seriesId: number; tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; monitored: boolean; cls: SpecialClass; why: string; radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null }[] }[] = [];
-  const totals = { movie: 0, real: 0, junk: 0, unknown: 0, movieInRadarr: 0 };
+  const totals = { movie: 0, real: 0, junk: 0, unknown: 0, creditless: 0, movieInRadarr: 0 };
   const allSpecials = movieSpecials();
   for (const s of seriesRows()) {
     const eps = cache.prepare("SELECT id, episode, title, runtime, has_file, monitored FROM episodes WHERE series_id = ? AND season = 0 ORDER BY episode").all(s.id) as { id: number; episode: number; title: string | null; runtime: number | null; has_file: number; monitored: number }[];

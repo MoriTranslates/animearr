@@ -204,19 +204,19 @@ function Language() {
   );
 }
 
-interface SpecialSeries { tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; cls: "movie" | "real" | "junk" | "unknown"; why: string; radarr: { inRadarr: boolean; title?: string; movieId?: number } | null }[] }
+interface SpecialSeries { tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; cls: "movie" | "real" | "junk" | "unknown" | "creditless"; why: string; radarr: { inRadarr: boolean; title?: string; movieId?: number } | null }[] }
 
 function Specials() {
   const [junk, setJunk] = useState(false);
   const d = useLoad(() => api<{ series: SpecialSeries[]; totals: Record<string, number> }>("/audit/specials"), []);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
-  const tone = { movie: "accent", real: "good", junk: "info", unknown: "warn" } as const;
+  const tone = { movie: "accent", real: "good", junk: "info", unknown: "warn", creditless: "good" } as const;
   return (
     <div className="stack">
       <p className="muted">{t("audit.specials.intro")}</p>
       <p>
-        <strong>{t("audit.specials.totals", { movie: d.data.totals.movie, inRadarr: d.data.totals.movieInRadarr, real: d.data.totals.real, junk: d.data.totals.junk, unknown: d.data.totals.unknown })}</strong>
+        <strong>{t("audit.specials.totals", { movie: d.data.totals.movie, inRadarr: d.data.totals.movieInRadarr, real: d.data.totals.real, junk: d.data.totals.junk, unknown: d.data.totals.unknown, creditless: d.data.totals.creditless ?? 0 })}</strong>
       </p>
       <label className="check">
         <input type="checkbox" checked={junk} onChange={(e) => setJunk(e.target.checked)} /> {t("audit.specials.showJunk")}

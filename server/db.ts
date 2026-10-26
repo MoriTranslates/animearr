@@ -343,6 +343,9 @@ const USER_MIGRATIONS: string[] = [
    CREATE INDEX anidb_requests_at ON anidb_requests (at);
    UPDATE anidb_state SET value = CAST(value AS INTEGER) + 21600000 WHERE key = 'blockedUntil' AND CAST(value AS INTEGER) > 0 AND EXISTS (SELECT 1 FROM anidb_state WHERE key = 'lastError' AND value LIKE 'banned%');
    INSERT OR REPLACE INTO anidb_state (key, value) SELECT 'lastBanUntil', value FROM anidb_state WHERE key = 'blockedUntil' AND EXISTS (SELECT 1 FROM anidb_state WHERE key = 'lastError' AND value LIKE 'banned%');`,
+  // 24: creditless OP/ED in the monitoring scope. Shows that already have their own scope keep what they search (0);
+  // new scopes say it explicitly (the UI's default is on).
+  `ALTER TABLE series_scope ADD COLUMN creditless INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

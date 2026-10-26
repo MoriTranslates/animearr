@@ -151,6 +151,7 @@ export interface MediaSettings {
   seriesFolderFormat: string;
   seasonFolderFormat: string;
   specialsFolderFormat: string;
+  creditlessAs?: "s00" | "extras";
   renameMovies: boolean;
   movieColonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
   movieFormat: string;

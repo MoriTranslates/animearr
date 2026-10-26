@@ -77,7 +77,7 @@ export function fillInTick(now = Date.now()) {
   if (!next.length) return;
   const wave = ((db.prepare("SELECT COALESCE(MAX(wave), 0) AS w FROM fill_queue").get() as { w: number }).w ?? 0) + 1;
   // Fill-in shows use AnimeArr's scope (Sonarr's monitored flags no longer matter for them) and go live.
-  for (const x of next) if (!db.prepare("SELECT 1 FROM series_scope WHERE tvdb_id = ?").get(x.tvdb_id)) setScope([x.tvdb_id], { ...getSettings().scope.ended }, now);
+  for (const x of next) if (!db.prepare("SELECT 1 FROM series_scope WHERE tvdb_id = ?").get(x.tvdb_id)) setScope([x.tvdb_id], { ...getSettings().scope.ended, creditless: getSettings().scope.ended.creditless !== false }, now);
   const r = setManaged(next.filter((x) => !managed.has(x.tvdb_id)).map((x) => x.tvdb_id), true, { live: true });
   const refused = new Map(r.refused.map((x) => [x.tvdbId, x.reason]));
   const lines: string[] = [];

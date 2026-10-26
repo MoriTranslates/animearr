@@ -52,6 +52,8 @@ export interface ParsedRelease {
   /** Decimal recap numbers (`12.5`). */
   specialNumber: number | null;
   special: SpecialKind;
+  /** A creditless opening/ending ("NCOP2", "Creditless Ending 1", "Clean OP"): which one. */
+  creditless: { kind: "op" | "ed"; n: number | null } | null;
   version: number;
   /** Season pack / batch (range, "Batch", "Complete", or a season with no episode). */
   batch: boolean;
@@ -410,6 +412,11 @@ export function parseRelease(input: string): ParsedRelease {
     if (k === "ona") special = null; // ONA is a format, not a special marker in names
   }
 
+  // ---- creditless openings/endings: "NCOP2", "NC ED 01", "Creditless Opening 2", "Clean Ending", "Non-Credit OP"
+  const clM = /\bNC\s*[-_ ]?\s*(OP|ED)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|\b(?:creditless|clean|non[-\s]?credit(?:ed)?|textless)\s*[-_ ]?\s*(OP|ED|opening|ending)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|ノンクレジット(OP|ED)\s*0?(\d{1,2})?/i.exec(work);
+  const creditless = clM ? { kind: (/^(op|opening)$/i.test(clM[1] ?? clM[3] ?? clM[5] ?? "") ? "op" : "ed") as "op" | "ed", n: Number(clM[2] ?? clM[4] ?? clM[6] ?? "") || null } : null;
+  if (creditless && !special) special = creditless.kind === "op" ? "ncop" : "nced";
+
   // ---- choose markers: the title ends at the earliest strong marker.
   const strong = markers.filter((x) => !x.weak).sort((a, b) => a.at - b.at);
   const weak = markers.filter((x) => x.weak).sort((a, b) => a.at - b.at);
@@ -428,6 +435,7 @@ export function parseRelease(input: string): ParsedRelease {
   if (firstStrong) titleEnd = Math.min(titleEnd, firstStrong.at);
   // A special word before any marker ends the title too ("Another OVA - The Other -Karma-", "Long Series - NCOP").
   if (spM && spM.index! < titleEnd && special && ["ova", "oad", "ncop", "nced"].includes(special)) titleEnd = spM.index!;
+  if (clM && clM.index < titleEnd) titleEnd = clM.index;
   // "Special" inside the title ("Another Anime With Special Naming") is not a special marker.
   if (spM && special === "special" && spM.index! < titleEnd) special = null;
 
@@ -510,6 +518,7 @@ export function parseRelease(input: string): ParsedRelease {
     absolute,
     specialNumber,
     special,
+    creditless,
     version,
     batch,
     fullSeason: fullSeason && !episodes.length && !absolute.length,

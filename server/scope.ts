@@ -7,26 +7,32 @@
  * Defaults: ended shows "Missing only" (all seasons); continuing shows "Future + missing of the latest season".
  * (Long-runners: seasons are TVDB seasons for now; AniDB entries/cours come with the own metadata, step 4.)
  */
+import { isCreditlessTitle } from "./core/resolver.js";
+import { anidbSpecialKind } from "./anidb.js";
 import { cache, db } from "./db.js";
 import { getSettings } from "./settings.js";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
-export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean }
+export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; /** Creditless OP/ED (NCOP/NCED) specials, even when other specials are off. */ creditless: boolean }
 /** Default scopes (no own scope yet) keep honouring Sonarr's per-episode monitored flags, so upgrading never widens what an existing managed show searches. */
 export const SEASON_SCOPES: SeasonScope[] = ["all", "first", "latest", "recent"];
 export const EPISODE_SCOPES: EpisodeScope[] = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 
-interface Row { tvdb_id: number; seasons: SeasonScope; recent_n: number; episodes: EpisodeScope; specials: number; since: number }
+interface Row { tvdb_id: number; seasons: SeasonScope; recent_n: number; episodes: EpisodeScope; specials: number; creditless?: number; since: number }
+
+/** When creditless OP/ED became part of the default scope (shows managed before keep their search set). */
+const CREDITLESS_FROM = Date.parse("2026-10-26T20:00:00Z");
 
 /** The scope a show has: its own, else the default for its status. */
 export function scopeFor(tvdbId: number): Scope & { source: "show" | "default"; since: number; honourSonarr?: boolean } {
   const r = db.prepare("SELECT * FROM series_scope WHERE tvdb_id = ?").get(tvdbId) as Row | undefined;
-  if (r) return { seasons: r.seasons, recentN: r.recent_n, episodes: r.episodes, specials: !!r.specials, source: "show", since: r.since };
+  if (r) return { seasons: r.seasons, recentN: r.recent_n, episodes: r.episodes, specials: !!r.specials, creditless: r.creditless !== 0, source: "show", since: r.since };
   const status = (cache.prepare("SELECT status FROM series WHERE tvdb_id = ?").get(tvdbId) as { status: string } | undefined)?.status;
   const d = status === "ended" ? getSettings().scope.ended : getSettings().scope.continuing;
   const since = (db.prepare("SELECT since FROM managed WHERE tvdb_id = ?").get(tvdbId) as { since: number } | undefined)?.since ?? 0;
-  return { ...d, source: "default", since, honourSonarr: true };
+  // Creditless OP/ED on the default scope: for shows managed from now on, never widening what existing ones search.
+  return { ...d, creditless: d.creditless !== false && since >= CREDITLESS_FROM, source: "default", since, honourSonarr: true };
 }
 
 export function validateScope(x: Partial<Scope>): Scope {
@@ -34,7 +40,7 @@ export function validateScope(x: Partial<Scope>): Scope {
   if (!x.episodes || !EPISODE_SCOPES.includes(x.episodes)) throw Object.assign(new Error("Unknown episode scope"), { statusCode: 400 });
   const n = Math.round(Number(x.recentN ?? 1));
   if (!Number.isFinite(n) || n < 1 || n > 100) throw Object.assign(new Error("Most recent seasons: 1 to 100"), { statusCode: 400 });
-  return { seasons: x.seasons, recentN: n, episodes: x.episodes, specials: x.specials === true };
+  return { seasons: x.seasons, recentN: n, episodes: x.episodes, specials: x.specials === true, creditless: x.creditless !== false };
 }
 
 /** Sets (or clears, with null) a show's own scope. "Future" counts from when the episode mode was chosen. */
@@ -43,12 +49,12 @@ export function setScope(tvdbIds: number[], scope: Scope | null, now = Date.now(
     if (!scope) db.prepare("DELETE FROM series_scope WHERE tvdb_id = ?").run(id);
     else
       db.prepare(
-        "INSERT INTO series_scope (tvdb_id, seasons, recent_n, episodes, specials, since) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET seasons = excluded.seasons, recent_n = excluded.recent_n, specials = excluded.specials, since = CASE WHEN series_scope.episodes = excluded.episodes THEN series_scope.since ELSE excluded.since END, episodes = excluded.episodes",
-      ).run(id, scope.seasons, scope.recentN, scope.episodes, scope.specials ? 1 : 0, now);
+        "INSERT INTO series_scope (tvdb_id, seasons, recent_n, episodes, specials, creditless, since) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET seasons = excluded.seasons, recent_n = excluded.recent_n, specials = excluded.specials, creditless = excluded.creditless, since = CASE WHEN series_scope.episodes = excluded.episodes THEN series_scope.since ELSE excluded.since END, episodes = excluded.episodes",
+      ).run(id, scope.seasons, scope.recentN, scope.episodes, scope.specials ? 1 : 0, scope.creditless === false ? 0 : 1, now);
   }
 }
 
-export interface ScopeEp { id: number; season: number; air_utc: number | null; has_file: number; monitored?: number }
+export interface ScopeEp { id: number; season: number; air_utc: number | null; has_file: number; monitored?: number; creditless?: boolean }
 
 /** Which of a show's episodes are in scope (aired ones to search, plus future ones to watch for). */
 export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean }, eps: ScopeEp[], now = Date.now()) {
@@ -65,6 +71,8 @@ export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean 
   const aired = (e: ScopeEp) => e.air_utc !== null && e.air_utc <= now;
   const future = (e: ScopeEp) => e.air_utc === null || e.air_utc > since;
   return eps.filter((e) => {
+    // Creditless OP/ED: wanted on their own toggle (season 0 or not), whatever the season scope.
+    if (e.season === 0 && e.creditless && !scope.specials) return scope.creditless !== false && scope.episodes !== "none" && (scope.episodes === "existing" ? !!e.has_file : true);
     if (!seasons.has(e.season)) return false;
     if (scope.honourSonarr && e.monitored === 0) return false;
     switch (scope.episodes) {
@@ -85,10 +93,21 @@ export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean 
 }
 
 let epsStmt: ReturnType<typeof cache.prepare> | null = null;
+/** A show's episodes for scoping, with season-0 creditless OP/EDs marked (by title or AniDB's "credit" type). */
+function scopeEps(tvdbId: number, seriesId: number): ScopeEp[] {
+  epsStmt ??= cache.prepare("SELECT id, season, episode, title, air_utc, has_file, monitored FROM episodes WHERE series_id = ?");
+  const rows = epsStmt.all(seriesId) as unknown as (ScopeEp & { episode: number; title: string | null })[];
+  let kinds: Map<number, { type: string }> | null = null;
+  return rows.map((e) => {
+    if (e.season !== 0) return e;
+    kinds ??= anidbSpecialKind(tvdbId);
+    return { ...e, creditless: isCreditlessTitle(e.title) || kinds.get(e.episode)?.type === "credit" };
+  });
+}
+
 /** The episode ids a managed show's searches may cover (cached per call site by the caller). */
 export function scopedEpisodeIds(tvdbId: number, seriesId: number, now = Date.now()): Set<number> {
-  epsStmt ??= cache.prepare("SELECT id, season, air_utc, has_file, monitored FROM episodes WHERE series_id = ?");
-  const eps = epsStmt.all(seriesId) as unknown as ScopeEp[];
+  const eps = scopeEps(tvdbId, seriesId);
   return new Set(inScope(scopeFor(tvdbId), eps, now).map((e) => e.id));
 }
 
@@ -96,7 +115,7 @@ export function scopedEpisodeIds(tvdbId: number, seriesId: number, now = Date.no
 export function scopePreview(tvdbId: number, scope: Scope & { since?: number; honourSonarr?: boolean }, now = Date.now()) {
   const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
   if (!s) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
-  const eps = cache.prepare("SELECT id, season, air_utc, has_file, monitored FROM episodes WHERE series_id = ?").all(s.id) as unknown as ScopeEp[];
+  const eps = scopeEps(tvdbId, s.id);
   const list = inScope({ ...scope, since: scope.since ?? now }, eps, now);
   return { seasons: new Set(list.map((e) => e.season)).size, episodes: list.length, missing: list.filter((e) => !e.has_file && e.air_utc !== null && e.air_utc <= now).length, upcoming: list.filter((e) => e.air_utc === null || e.air_utc > now).length };
 }

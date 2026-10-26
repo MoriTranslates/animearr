@@ -52,6 +52,24 @@ export interface Resolution {
 const DAY = 86_400_000;
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Season-0 episodes that are creditless openings/endings (by title), with their kind and number. */
+export function creditlessOf(episodes: LibEpisode[]) {
+  return episodes
+    .filter((e) => e.season === 0 && isCreditlessTitle(e.title ?? null))
+    .sort((a, b) => a.episode - b.episode)
+    .map((e) => {
+      const t = e.title ?? "";
+      const kind: "op" | "ed" = /\b(ED|ending)\b|NCED/i.test(t) && !/\b(OP|opening)\b|NCOP/i.test(t) ? "ed" : "op";
+      const n = Number(/(?:\bOP|\bED|opening|ending|NCOP|NCED)\s*(?:#|no\.?)?\s*0?(\d{1,2})\b/i.exec(t)?.[1] ?? "") || null;
+      return { e, kind, n };
+    });
+}
+
+/** "Creditless Opening 2", "Clean Ending", "NCOP", "Non-Credit OP", "Textless ED", "Opening 1 (creditless)". */
+export function isCreditlessTitle(t: string | null) {
+  return !!t && (/\b(NCOP|NCED|creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) || /^\s*(opening|ending)(\s*(theme|\d+))?\s*$/i.test(t));
+}
+
 export function labelOf(eps: LibEpisode[]) {
   if (!eps.length) return "";
   const s = [...eps].sort((a, b) => a.season - b.season || a.episode - b.episode);
@@ -87,6 +105,15 @@ export function resolveRelease(
   const seasons = [...new Set(episodes.filter((e) => e.season > 0).map((e) => e.season))].sort((a, b) => a - b);
   const aired = (e: LibEpisode) => e.airUtc !== null && e.airUtc <= now + DAY;
 
+  // Creditless OP/ED: the show's own "Opening N"/"Ending N" special (by number, else the N-th of its kind).
+  if (p.creditless) {
+    const list = creditlessOf(episodes).filter((x) => x.kind === p.creditless!.kind);
+    const n = p.creditless.n ?? 1;
+    const hit = list.find((x) => x.n === n) ?? (list.every((x) => x.n === null) ? list[n - 1] : undefined);
+    const label = `${p.creditless.kind === "op" ? "OP" : "ED"}${p.creditless.n ?? ""}`;
+    if (!hit) return fail([...why, `creditless ${label}: this show has no matching opening/ending special`], "creditless");
+    return { ok: true, episodes: [hit.e], label: labelOf([hit.e]), confidence: 90, method: "creditless", why: [...why, `creditless ${label} → ${labelOf([hit.e])} (${hit.e.title ?? "special"})`], pack: false };
+  }
   if (p.special && p.special !== "movie" && !p.episodes.length && !p.absolute.length) return fail([...why, `special (${p.special}): pick the episode by hand`], "special");
   if (p.specialNumber !== null && !p.episodes.length) return fail([...why, `recap/special number ${p.specialNumber}: pick the episode by hand`], "special");
 

@@ -5,7 +5,7 @@ import { Toggle, useToast } from "./ui";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
-export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean }
+export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; creditless?: boolean }
 const EPISODES: EpisodeScope[] = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 const SEASONS: SeasonScope[] = ["all", "recent", "latest", "first"];
 
@@ -39,6 +39,7 @@ export function ScopeFields({ value, onChange }: { value: Scope; onChange: (s: S
         </span>
       </label>
       <Toggle checked={value.specials} onChange={(v) => onChange({ ...value, specials: v })} label={t("scope.specials")} />
+      <Toggle checked={value.creditless !== false} onChange={(v) => onChange({ ...value, creditless: v })} label={t("scope.creditless")} help={t("scope.creditlessHelp")} />
     </div>
   );
 }
@@ -51,15 +52,15 @@ export function ScopeEditor({ tvdbIds, previewFor, onSaved }: { tvdbIds: number[
   const [source, setSource] = useState<string>("default");
   const [preview, setPreview] = useState<{ seasons: number; episodes: number; missing: number; upcoming: number } | null>(null);
   useEffect(() => {
-    if (!one) return setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false });
+    if (!one) return setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true });
     void api<{ scope: Scope & { source: string }; preview: typeof preview }>(`/series/${one}/scope`)
-      .then((r) => (setValue({ seasons: r.scope.seasons, recentN: r.scope.recentN, episodes: r.scope.episodes, specials: r.scope.specials }), setSource(r.scope.source), setPreview(r.preview)))
-      .catch((e) => (toast((e as Error).message, true), setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false })));
+      .then((r) => (setValue({ seasons: r.scope.seasons, recentN: r.scope.recentN, episodes: r.scope.episodes, specials: r.scope.specials, creditless: r.scope.creditless }), setSource(r.scope.source), setPreview(r.preview)))
+      .catch((e) => (toast((e as Error).message, true), setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true })));
   }, [one]);
   useEffect(() => {
     if (!one || !value) return;
     const id = setTimeout(
-      () => void api<{ preview: typeof preview }>(`/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}`).then((r) => setPreview(r.preview)).catch(() => undefined),
+      () => void api<{ preview: typeof preview }>(`/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}&creditless=${value.creditless === false ? 0 : 1}`).then((r) => setPreview(r.preview)).catch(() => undefined),
       200,
     );
     return () => clearTimeout(id);

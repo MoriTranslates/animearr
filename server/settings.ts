@@ -174,6 +174,8 @@ export interface Settings {
     seriesFolderFormat: string;
     seasonFolderFormat: string;
     specialsFolderFormat: string;
+    /** Creditless OP/ED: as season-0 episodes ("s00") or as Plex extras in the show's "Other" folder ("extras"). */
+    creditlessAs?: "s00" | "extras";
     renameMovies: boolean;
     /** Radarr has its own colon setting; movies use it. */
     movieColonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
@@ -247,8 +249,8 @@ export interface Settings {
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
   scope: {
-    ended: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean };
-    continuing: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean };
+    ended: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean; creditless?: boolean };
+    continuing: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean; creditless?: boolean };
   };
   /** Staged fill-in queue (see fillin.ts). */
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
@@ -313,6 +315,7 @@ const DEFAULTS: Settings = {
     seriesFolderFormat: "{Series TitleYear}",
     seasonFolderFormat: "Season {season:00}",
     specialsFolderFormat: "Specials",
+    creditlessAs: "s00",
     renameMovies: true,
     movieColonReplacement: "smart",
     movieFormat: "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
@@ -339,7 +342,7 @@ const DEFAULTS: Settings = {
     importedFromArr: false,
   },
   importer: { engine: "animearr", allowReal: true, allowRename: false, realBudget: -1, movies: true, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
-  scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
+  scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false, creditless: true } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
   externalUrl: "",
@@ -369,6 +372,7 @@ const ENUMS: Record<string, readonly string[]> = {
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
+  "media.creditlessAs": ["s00", "extras"],
   "downloads.cleanup": ["off", "plan", "auto"],
   "media.movieColonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
   "media.multiEpisodeStyle": ["extend", "duplicate", "repeat", "scene", "range", "prefixedRange"],

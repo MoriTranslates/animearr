@@ -76,6 +76,14 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
         {fmt("seasonFolderFormat", "media.seasonFolder", "seasonFolder")}
         {fmt("specialsFolderFormat", "media.specialsFolder", "specialsFolder")}
         <label>
+          {t("media.creditlessAs")}
+          <select value={m.creditlessAs ?? "s00"} onChange={(e) => set({ creditlessAs: e.target.value as "s00" | "extras" })}>
+            <option value="s00">{t("media.creditlessAs.s00")}</option>
+            <option value="extras">{t("media.creditlessAs.extras")}</option>
+          </select>
+          <span className="muted small">{t("media.creditlessAsHelp")}</span>
+        </label>
+        <label>
           {t("media.multiStyle")}
           <select value={m.multiEpisodeStyle} onChange={(e) => set({ multiEpisodeStyle: e.target.value as MediaSettings["multiEpisodeStyle"] })}>
             {MULTI.map((o) => (

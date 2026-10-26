@@ -1091,3 +1091,6 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .folder-list { max-height: 320px; overflow-y: auto; gap: 2px; }
 .folder-list button { display: inline-flex; gap: 6px; align-items: center; text-decoration: none; color: var(--text); }
 .folder-list .lucide { width: 16px; height: 16px; color: var(--muted); }
+
+.openings > summary { padding: 10px 18px; }
+.openings-find { padding: 0 18px 10px; }

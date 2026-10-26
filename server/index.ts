@@ -837,11 +837,11 @@ app.post<{ Params: { id: string } }>("/api/movies/:id/scan", async (req) => {
   if (!m) throw fail("Unknown movie", 404);
   return scanFolder(m.path);
 });
-app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string } }>("/api/series/:tvdbId/scope", async (req) => {
+app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string; creditless?: string } }>("/api/series/:tvdbId/scope", async (req) => {
   const tvdbId = id(req.params.tvdbId);
   const current = scopeFor(tvdbId);
   const q = req.query;
-  const want = q.seasons ? validateScope({ seasons: q.seasons as never, recentN: Number(q.recentN ?? 1), episodes: q.episodes as never, specials: q.specials === "1" }) : current;
+  const want = q.seasons ? validateScope({ seasons: q.seasons as never, recentN: Number(q.recentN ?? 1), episodes: q.episodes as never, specials: q.specials === "1", creditless: q.creditless !== "0" }) : current;
   return { scope: current, preview: scopePreview(tvdbId, want) };
 });
 app.put<{ Body: { tvdbIds?: number[]; scope?: Record<string, unknown> | null } }>("/api/scope", async (req) => {

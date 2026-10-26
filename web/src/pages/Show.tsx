@@ -107,7 +107,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       return n;
     });
 
-  const missingAll = (d.data?.rows ?? []).filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
+  const missingAll = (d.data?.rows ?? []).filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
   const links = [
     { label: "AniList ↗", href: h.links.anilist },
     { label: "AniDB ↗", href: h.links.anidb },
@@ -261,7 +261,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         <>
           {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
       {seasons.map(([season, rows], i) => {
-        const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
+        const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
+        const openings = season === 0 ? rows.filter((r) => r.special?.cls === "creditless").sort((a, b) => a.episode - b.episode) : [];
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
         const aired = rows.filter((r) => r.status !== "unaired");
         const have = rows.filter((r) => r.status === "have");
@@ -272,7 +273,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
         const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
         const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "have" || (r.file && !r.file.subs.includes(lang) && !r.file.audio.includes(lang))));
-        const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId);
+        const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk" && r.special?.cls !== "creditless") : rows, nextId);
         return (
           <details key={season} className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
             <summary className="season-head">
@@ -329,6 +330,24 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   <EpRow key={r.id} r={r} lang={lang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
                 ))}
               </ul>
+            )}
+            {!grid && !!openings.length && (
+              <details className="later openings" open>
+                <summary className="small">
+                  <b>{t("special.openings", { n: openings.length })}</b>
+                  <span className="muted"> · {t("special.openingsHave", { have: openings.filter((r) => r.status === "have").length, n: openings.length })}</span>
+                </summary>
+                {openings.some((r) => r.status === "missing") && (
+                  <div className="openings-find">
+                    <SeasonSearch tvdbId={tvdbId} missing={openings.filter((r) => r.status === "missing")} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />
+                  </div>
+                )}
+                <ul className="ep-list">
+                  {openings.map((r) => (
+                    <EpRow key={r.id} r={{ ...r, title: `${opLabel(r.title)} ${r.title ?? ""}`.trim() }} lang={lang} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
+                  ))}
+                </ul>
+              </details>
             )}
             {!grid && season === 0 && rows.some((r) => r.special?.cls === "junk") && (
               <details className="later">
@@ -462,6 +481,14 @@ function EpRow({ r, lang, next = false, selecting, selected, onToggle, onOpen }:
       </button>
     </li>
   );
+}
+
+/** "OP1" / "ED2" from a creditless special's title (or nothing when it doesn't say). */
+function opLabel(title: string | null) {
+  const t2 = title ?? "";
+  const ed = /\b(ED|ending)\b|NCED/i.test(t2) && !/\b(OP|opening)\b|NCOP/i.test(t2);
+  const n = /(?:\bOP|\bED|opening|ending|NCOP|NCED)\s*(?:#|no\.?)?\s*0?(\d{1,2})\b/i.exec(t2)?.[1];
+  return `${ed ? "ED" : "OP"}${n ?? ""}`;
 }
 
 /** Season rows: the next unaired episode first, then aired ones newest first; later unaired ones go under "Upcoming". */

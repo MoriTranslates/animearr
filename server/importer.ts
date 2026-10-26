@@ -16,6 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
+import { isCreditlessTitle } from "./core/resolver.js";
 import { isTorrentClient } from "./arr/clients.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -136,6 +137,11 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
   if (usesSeasonFolders(s)) {
     folder = season === 0 ? renderSeasonFolder(m.specialsFolderFormat, 0, opts) : renderSeasonFolder(m.seasonFolderFormat, season, opts);
     if (!folder.trim() || /^\.+$/.test(folder)) throw err("the naming settings give an empty season folder");
+  }
+  // Creditless OP/ED as Plex extras: the show's "Other" folder, named after the special (Plex lists them as extras).
+  if (season === 0 && (m.creditlessAs ?? "s00") === "extras" && eps.every((e) => isCreditlessTitle(e.title))) {
+    const title = (titles[0] ?? `S00E${String(eps[0].episode).padStart(2, "0")}`).replace(/[\\/:*?"<>|]/g, " ").trim();
+    return `${s.path.replace(/\/+$/, "")}/Other/${title}-other${ctx.ext}`;
   }
   return `${s.path.replace(/\/+$/, "")}/${folder ? `${folder}/` : ""}${name}${ctx.ext}`;
 }
