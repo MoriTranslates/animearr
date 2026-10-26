@@ -106,7 +106,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     librarySeries: (cache.prepare("SELECT COUNT(*) AS n FROM series").get() as { n: number }).n,
     warnings: [...startupWarnings, ...(dbState.corrupt ? [`The database failed its integrity check (${dbState.detail}). AnimeArr is read-only until you restore a backup (System → Backups).`] : [])],
     uiLanguage: s.ui.language,
-    defaultPassword: await usingDefaultPassword(),
+    // LAN sessions without a login (bypassLocal) don't need the nag; the default password only matters off the LAN.
+    defaultPassword: a.via === "local" ? false : await usingDefaultPassword(),
     bypassLocal: s.auth.bypassLocal,
   };
 });
