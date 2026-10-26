@@ -25,6 +25,7 @@ export interface Profile {
   softOnly: boolean;
   preferUncensored: boolean;
   protocolOrder: ("usenet" | "torrent")[];
+  noProtocolPreference?: boolean;
   resolution: number;
   sizePreset?: "lean" | "balanced" | "best";
 }
@@ -219,9 +220,9 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   // ---- preference points
   let score = pct;
   const why: string[] = [`${pct}% ${L} (${best.src})`];
-  if (info.protocol === profile.protocolOrder[0]) {
+  if (!profile.noProtocolPreference && info.protocol === profile.protocolOrder[0]) {
     score += 15;
-    why.push(info.protocol === "usenet" ? "Usenet" : "torrent");
+    why.push(info.protocol === "usenet" ? "Usenet (preferred)" : "torrent (preferred)");
   } else why.push(info.protocol === "usenet" ? "Usenet" : `torrent${info.seeders != null ? `, ${info.seeders} seeders` : ""}`);
   if (burned && profile.softOnly) {
     score -= 40;

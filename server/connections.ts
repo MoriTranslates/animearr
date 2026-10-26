@@ -10,9 +10,12 @@ import { testSonarr } from "./arr/sonarr.js";
 import { testRadarr } from "./arr/radarr.js";
 import { testPlex } from "./plex.js";
 import { redactUrl } from "./arr/http.js";
+import { getSettings as settingsNow } from "./settings.js";
+import { nzbgetDriver, transmissionDriver } from "./arr/moreClients.js";
+import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
 export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
-export interface IndexerRow { id: number; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr"; grabs: number; failures: number; lastError: string | null }
+export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null }
 
 const TIMEOUT = 6000;
 async function probe<T>(fn: () => Promise<T>): Promise<{ ok: boolean; v: T | null; error: string | null }> {
@@ -28,6 +31,8 @@ const usage = (where: string, ...args: (string | number)[]) =>
   db.prepare(`SELECT COUNT(*) AS n, MAX(at) AS last FROM grabs WHERE dry_run = 0 AND client_ref IS NOT NULL AND ${where}`).get(...args) as { n: number; last: number | null };
 
 let cache: { at: number; v: Promise<Awaited<ReturnType<typeof build>>> } | null = null;
+/** After a change in Settings: the next overview is fresh. */
+export const invalidateConnections = () => void (cache = null);
 /** Cached for 20 s (the page polls; the services shouldn't be hammered). */
 export function connectionsOverview(fresh = false) {
   if (!fresh && cache && Date.now() - cache.at < 20_000) return cache.v;
@@ -71,13 +76,31 @@ async function build() {
       indexers.push({ id: ix.id, name: ix.name, protocol: ix.protocol === "torrent" ? "torrent" : "usenet", enabled: ix.enable, priority: ix.priority ?? null, source: "prowlarr", grabs: u.n, failures: f.n, lastError: f.n ? f.last : null });
     }
   }
+  // Added clients (NZBGet, Transmission) and direct indexers.
+  const extras = await Promise.all(
+    (settingsNow().extraClients ?? []).map(async (c) => {
+      const p = c.url ? await probe(() => (c.type === "nzbget" ? nzbgetDriver.test(c) : transmissionDriver.test(c))) : null;
+      const u = usage("client = ?", c.id);
+      return { key: c.id, type: c.type, name: c.name, configured: !!c.url, ok: p ? p.ok : null, version: p?.v?.version ?? null, error: p?.error ?? null, grabs: u.n, lastGrabAt: u.last, priority: c.priority, enabled: c.enabled };
+    }),
+  );
+  for (const ix of listIndexers())
+    indexers.push({ id: ix.numId, key: ix.id, name: ix.name, protocol: ix.protocol, enabled: ix.enabled, priority: ix.priority, source: "direct", kind: ix.kind, grabs: ix.grabs, failures: ix.failures, lastError: ix.lastError });
+  const prefs = s.clientPrefs ?? {};
   return {
-    clients: [st("sabnzbd", sab, usage("client = 'sabnzbd'")), st("qbittorrent", qbit, usage("client = 'qbittorrent'"))],
+    clients: [
+      { ...st("sabnzbd", sab, usage("client = 'sabnzbd'")), type: "sabnzbd", name: "SABnzbd", priority: prefs.sabnzbd?.priority ?? 1, enabled: prefs.sabnzbd?.enabled ?? true },
+      { ...st("qbittorrent", qbit, usage("client = 'qbittorrent'")), type: "qbittorrent", name: "qBittorrent", priority: prefs.qbittorrent?.priority ?? 1, enabled: prefs.qbittorrent?.enabled ?? true },
+      ...extras,
+    ],
+    duplicates: indexerDuplicates(indexers.filter((x) => x.source === "prowlarr").map((x) => x.name)),
+    delays: s.protocol ?? { usenetDelayMin: 0, torrentDelayMin: 0 },
     indexerSources: [st("prowlarr", prow, usage("indexer_id IS NOT NULL"))],
     indexers: indexers.sort((a, b) => (a.priority ?? 25) - (b.priority ?? 25) || a.name.localeCompare(b.name)),
     mediaServers: [st("plex", plex)],
     migration: [st("sonarr", sonarr), st("radarr", radarr)],
     // The default language profile's protocol order ("Usenet is tried first"); per-profile choice in Profiles.
     protocolOrder: (s.profiles.find((p) => p.id === s.defaultProfileId) ?? s.profiles[0])?.protocolOrder ?? ["usenet", "torrent"],
+    noPreference: !!(s.profiles.find((p) => p.id === s.defaultProfileId) ?? s.profiles[0])?.noProtocolPreference,
   };
 }

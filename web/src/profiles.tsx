@@ -5,7 +5,7 @@ import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast 
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 export const MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
-export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; resolution: number; sizePreset?: SizePreset }
+export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset }
 export type SizePreset = "lean" | "balanced" | "best";
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
@@ -103,9 +103,13 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
         </label>
         <label>
           {t("settings.profile.protocol")}
-          <select value={p.protocolOrder.join(",")} onChange={(e) => set({ protocolOrder: e.target.value.split(",") as ("usenet" | "torrent")[] })}>
-            <option value="usenet,torrent">Usenet → Torrent</option>
-            <option value="torrent,usenet">Torrent → Usenet</option>
+          <select
+            value={p.noProtocolPreference ? "none" : p.protocolOrder[0]}
+            onChange={(e) => set(e.target.value === "none" ? { noProtocolPreference: true } : { noProtocolPreference: false, protocolOrder: e.target.value === "usenet" ? ["usenet", "torrent"] : ["torrent", "usenet"] })}
+          >
+            <option value="usenet">{t("proto.preferUsenet")}</option>
+            <option value="torrent">{t("proto.preferTorrent")}</option>
+            <option value="none">{t("proto.noPreference")}</option>
           </select>
         </label>
         <label>

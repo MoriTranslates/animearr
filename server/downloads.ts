@@ -323,6 +323,8 @@ export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now()
     // Unknown to both clients and to AnimeArr: moved aside, never deleted — but never a torrent's data, never anything
     // recent or still being unpacked, and not while a grab is waiting whose folder the clients don't show.
     if (i.grab || i.torrent || i.client === "qbittorrent") continue;
+    // With NZBGet/Transmission set up, a folder here may be theirs: never move it aside on a guess.
+    if ((getSettings().extraClients ?? []).length) continue;
     if (/^_(UNPACK|FAILED)_/i.test(i.name) || now - i.mtime < 86_400_000 || pending.n > 0) continue;
     actions.push({ step: "quarantine", target: i.arr, why: "neither SABnzbd nor AnimeArr knows this folder; moved aside (not deleted) for you to look at", bytes: i.size, grabId: null, client: i.client, ref: null, destructive: false });
   }

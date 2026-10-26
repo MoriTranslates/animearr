@@ -86,6 +86,6 @@ export async function fetchReleaseFile(r: ProwlarrRelease): Promise<{ data?: Buf
     if (!res2.ok) throw new Error(`Download link failed (HTTP ${res2.status})`);
     return { data: Buffer.from(await res2.arrayBuffer()), filename: r.title };
   }
-  if (!res.ok) throw new Error(`Download link failed (HTTP ${res.status}) for ${redactUrl(r.downloadUrl).split("?")[0]}`);
+  if (!res.ok) throw new Error(`Download link failed (HTTP ${res.status}) at ${new URL(r.downloadUrl).host}`);
   return { data: Buffer.from(await res.arrayBuffer()), filename: r.title };
 }

@@ -34,6 +34,8 @@ export interface LanguageProfile {
   preferUncensored: boolean;
   /** Protocol order, e.g. usenet before torrent. */
   protocolOrder: ("usenet" | "torrent")[];
+  /** "No preference": the best release wins whatever its protocol (protocolOrder only breaks ties). */
+  noProtocolPreference?: boolean;
   /** Preferred resolution (lines). */
   resolution: number;
   /**
@@ -43,6 +45,47 @@ export interface LanguageProfile {
   sizePreset?: SizePreset;
 }
 export type SizePreset = "lean" | "balanced" | "best";
+
+/** A download client added with "+ Add" (beyond the SABnzbd/qBittorrent slots). */
+export interface ClientCfg {
+  id: string;
+  type: "nzbget" | "transmission";
+  name: string;
+  url: string;
+  username: string;
+  password: string;
+  /** NZBGet category; Transmission label + sub-folder of its download folder. */
+  category: string;
+  /** 1 = tried first (per protocol). */
+  priority: number;
+  enabled: boolean;
+  /** Remove finished jobs from the client after import (Usenet; torrents keep seeding by their rules). */
+  removeCompleted: boolean;
+  /** This client's path → AnimeArr's path. */
+  pathMappings: PathMapping[];
+}
+
+/** An indexer AnimeArr searches directly (without Prowlarr). */
+export interface IndexerCfg {
+  id: string;
+  /** newznab/torznab: the standard API; nyaa / rss / subsplease: built-in adapters for sites without one. */
+  kind: "newznab" | "torznab" | "nyaa" | "rss" | "subsplease";
+  protocol: "usenet" | "torrent";
+  name: string;
+  /** Base URL; for "rss" a search URL template with {q}. */
+  url: string;
+  apiPath: string;
+  apiKey: string;
+  categories: number[];
+  priority: number;
+  enabled: boolean;
+  /** Private trackers: seed at least this ratio / this many minutes (null = the client's default). */
+  seedRatio: number | null;
+  seedTimeMin: number | null;
+  tags: string[];
+  /** The catalogue entry it was added from. */
+  catalogId: string | null;
+}
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
 export interface Settings {
@@ -51,6 +94,14 @@ export interface Settings {
   prowlarr: { url: string; apiKey: string; /** Newznab categories searched. */ categories: number[]; indexerIds: number[] };
   sabnzbd: { url: string; apiKey: string; category: string };
   qbittorrent: { url: string; username: string; password: string; category: string };
+  /** Priority / enabled for the SABnzbd and qBittorrent slots (by id "sabnzbd" / "qbittorrent"). */
+  clientPrefs: Record<string, { priority: number; enabled: boolean }>;
+  /** Clients added with "+ Add" (NZBGet, Transmission). */
+  extraClients: ClientCfg[];
+  /** Indexers searched directly (in addition to Prowlarr's, or instead of them). */
+  indexers: IndexerCfg[];
+  /** Sonarr-style delays: a release of a protocol is only taken automatically once it is this old (minutes). */
+  protocol: { usenetDelayMin: number; torrentDelayMin: number };
   /** Download-client path → Sonarr path (like Sonarr's remote path mappings). */
   remotePathMappings: PathMapping[];
   /** Sonarr/client path → path on the machine running AnimeArr (for ffprobe and sidecar checks). */
@@ -229,6 +280,10 @@ const DEFAULTS: Settings = {
   prowlarr: { url: "", apiKey: "", categories: [5070, 5000, 2000], indexerIds: [] },
   sabnzbd: { url: "", apiKey: "", category: "animearr" },
   qbittorrent: { url: "", username: "", password: "", category: "animearr" },
+  clientPrefs: {},
+  extraClients: [],
+  indexers: [],
+  protocol: { usenetDelayMin: 0, torrentDelayMin: 0 },
   remotePathMappings: [],
   localPathMappings: [],
   allowedRoots: [],
@@ -296,7 +351,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -328,6 +383,8 @@ const ENUMS: Record<string, readonly string[]> = {
 };
 const RANGES: Record<string, [number, number]> = {
   "managed.searchDelayMin": [0, 1440],
+  "protocol.usenetDelayMin": [0, 10080],
+  "protocol.torrentDelayMin": [0, 10080],
   "managed.maxAttempts": [1, 100],
   "managed.rssMin": [0, 1440],
   "managed.minConfidence": [50, 100],
@@ -505,6 +562,9 @@ function setPath(o: Record<string, unknown>, p: string, v: unknown) {
 export function publicSettings() {
   const s = structuredClone(getSettings()) as unknown as Record<string, unknown>;
   for (const p of SECRET_PATHS) if (getPath(s, p)) setPath(s, p, MASK);
+  // Added clients and direct indexers: their passwords/keys never leave masked either.
+  s.extraClients = ((s.extraClients as ClientCfg[] | undefined) ?? []).map((c) => ({ ...c, password: c.password ? MASK : "" }));
+  s.indexers = ((s.indexers as IndexerCfg[] | undefined) ?? []).map((x) => ({ ...x, apiKey: x.apiKey ? MASK : "" }));
   const auth = s.auth as Record<string, unknown>;
   auth.hasPassword = !!auth.passwordHash;
   delete auth.passwordHash;

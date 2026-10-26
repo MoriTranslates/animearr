@@ -7,13 +7,15 @@
  * manual grabs need a confirmation and honour the global dry-run; never two downloads for one movie at once;
  * a pack or a series release is never taken for the movie.
  */
+import { seedLimitsFor } from "./indexers.js";
 import { grabGate, GrabsPausedError } from "./downloads.js";
 import { executeMovieImport, listVideos, planMovieImport } from "./importer.js";
 import { isNativeMovieId } from "./native.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
-import { prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
+import { type ProwlarrRelease } from "./arr/prowlarr.js";
+import { searchAll } from "./indexers.js";
 import { langList } from "./core/langs.js";
 import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
@@ -246,7 +248,7 @@ export function movieQueries(m: { title: string; original_title: string | null; 
 export interface MovieSearchResult extends Omit<SearchResult, "episodeIds" | "coversTarget" | "extra"> { episodeIds: number[] }
 
 /** Searches Prowlarr for a movie and ranks what matches. */
-export async function searchMovie(id: number, search: typeof prowlarrSearch = prowlarrSearch) {
+export async function searchMovie(id: number, search: typeof searchAll = searchAll) {
   const m = movieById(id);
   if (!m) throw Object.assign(new Error("That movie isn't in the synced Radarr library (or isn't anime)"), { statusCode: 404 });
   const info = { title: m.title, original_title: m.original_title, alt_titles: JSON.parse(m.alt_titles) as string[], year: m.year };
@@ -384,7 +386,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   try {
     const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
-    const job = c.protocol === "usenet" ? await deps.clients.addNzb(file.data!, c.title) : await deps.clients.addTorrent(file, c.title);
+    const job = c.protocol === "usenet" ? await deps.clients.addNzb(file.data!, c.title) : await deps.clients.addTorrent(file, c.title, seedLimitsFor(c.indexerId));
     if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
       await deps.clients.remove(job).catch(() => undefined);
       return { id, dryRun: false, message: "Cancelled", failed: true };

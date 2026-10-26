@@ -12,7 +12,7 @@
 import { grabGate } from "./downloads.js";
 import { isNativeMovieId, nativeMovies } from "./native.js";
 import { logDecision } from "./activity.js";
-import { prowlarrConfigured } from "./arr/prowlarr.js";
+import { searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "./arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { isReleased, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "./movies.js";
@@ -143,7 +143,7 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
 
 let running = false;
 export async function movieTick() {
-  if (running || !getSettings().movieSearch.enabled || !prowlarrConfigured() || (!radarrConfigured() && !nativeMovies().length)) return;
+  if (running || !getSettings().movieSearch.enabled || !searchConfigured() || (!radarrConfigured() && !nativeMovies().length)) return;
   running = true;
   try {
     const r = await moviePass();

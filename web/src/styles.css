@@ -1061,3 +1061,13 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 [data-theme="light"] .tag.bad { color: color-mix(in srgb, var(--bad) 80%, black); }
 [data-theme="light"] .tag.info { color: color-mix(in srgb, var(--info) 80%, black); }
 [data-theme="light"] .tag.warn { color: color-mix(in srgb, var(--warn) 85%, black); }
+
+/* ================================================================ protocol bar, catalogue */
+.proto-bar { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(120px, 1fr)); gap: 10px 16px; padding: 14px 16px; align-items: start; border-radius: var(--radius); }
+.proto-delay-help { grid-column: 1 / -1; }
+@media (max-width: 760px) { .proto-bar { grid-template-columns: 1fr 1fr; } .proto-bar > .field:first-child { grid-column: 1 / -1; } }
+.catalogue { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.cat-card { width: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 12px; text-align: left; justify-content: flex-start; background: var(--panel); }
+.cat-card:hover:not(:disabled) { border-color: var(--accent-2); }
+.conn-card.clickable { cursor: pointer; }
+.conn-card.clickable:hover { border-color: var(--accent-2); }

@@ -4,7 +4,8 @@
  * Read-only: searching never grabs anything.
  */
 import { indexerHealth } from "./health.js";
-import { prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
+import { type ProwlarrRelease } from "./arr/prowlarr.js";
+import { searchAll } from "./indexers.js";
 import { identify, type IdentifyContext } from "./core/identify.js";
 import { normalizeTitle, splitSeason } from "./core/normalize.js";
 import { rankRelease, compareRanked, type Known, type Ranked } from "./core/rank.js";
@@ -243,7 +244,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
         while (i < list.length) {
           const q = list[i++];
           try {
-            for (const r of await prowlarrSearch(q, allCats.has(q) ? { categories: [] } : {}))
+            for (const r of await searchAll(q, allCats.has(q) ? { categories: [] } : {}))
               if (!raw.has(r.guid)) {
                 raw.set(r.guid, r);
                 consider(r);

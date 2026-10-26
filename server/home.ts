@@ -2,6 +2,7 @@
  * Home: one summary for the dashboard (airing today, what needs you, downloading, just arrived, ready to binge, this
  * week), from data AnimeArr already has. The expensive counts (files without the profile's language) are memoized.
  */
+import { clientName } from "./arr/clients.js";
 import { cache, db } from "./db.js";
 import { calendar, episodeRows } from "./episodes.js";
 import { missingLanguage } from "./audit.js";
@@ -137,7 +138,7 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
     const m = cache.prepare("SELECT title, year, poster FROM movies WHERE id = ?").get(id) as { title: string; year: number | null; poster: string | null } | undefined;
     return { title: m ? `${m.title}${m.year ? ` (${m.year})` : ""}` : String(id), cover: m?.poster ?? null, color: null };
   };
-  const downloading = active.map((g) => ({ id: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id, ...(g.movie_id ? movieOf(g.movie_id) : showOf(g.tvdb_id)), label: g.movie_id ? "" : epLabel(JSON.parse(g.episode_ids) as number[]), release: g.release, protocol: g.protocol, client: g.client, state: g.state, progress: g.progress ?? 0 }));
+  const downloading = active.map((g) => ({ id: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id, ...(g.movie_id ? movieOf(g.movie_id) : showOf(g.tvdb_id)), label: g.movie_id ? "" : epLabel(JSON.parse(g.episode_ids) as number[]), release: g.release, protocol: g.protocol, client: g.client, clientName: clientName(g.client), state: g.state, progress: g.progress ?? 0 }));
 
   // Just arrived: what was imported in the last 7 days, newest first, one card per show+episode.
   const done = db.prepare("SELECT id, tvdb_id, movie_id, episode_ids, updated_at FROM grabs WHERE dry_run = 0 AND state = 'done' AND movie_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 60").all(now - 7 * DAY) as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; updated_at: number }[];

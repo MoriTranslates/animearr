@@ -11,6 +11,7 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
+import { seedLimitsFor } from "./indexers.js";
 import { supersededBy } from "./fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "./importer.js";
@@ -18,7 +19,7 @@ import { isNativeSeriesId } from "./native.js";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
-import { realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
+import { isTorrentClient, realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
@@ -214,7 +215,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     if (c.protocol === "usenet") {
       if (!file.data) throw new Error("No NZB data");
       job = await deps.clients.addNzb(file.data, c.title);
-    } else job = await deps.clients.addTorrent(file, c.title);
+    } else job = await deps.clients.addTorrent(file, c.title, seedLimitsFor(c.indexerId));
     if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
       // Closed while it was being sent: take it back out of the client.
       await deps.clients.remove(job).catch(() => undefined);
@@ -266,7 +267,7 @@ export function runTimeSec(rt: string | null | undefined): number | null {
  * ManualImport mode: torrents are copied (hardlinked when the *arr has hardlinks on) so they keep seeding; Usenet
  * downloads are moved. "auto" would move untracked downloads, which pulls files out from under qBittorrent.
  */
-export const importModeFor = (client: string | null): "copy" | "move" => (client === "qbittorrent" ? "copy" : "move");
+export const importModeFor = (client: string | null): "copy" | "move" => (isTorrentClient(client) ? "copy" : "move");
 
 /** After a restart: grabs caught mid-import need a look; grabs caught mid-send never reached a client. */
 export function recoverGrabs() {
@@ -475,7 +476,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   // Torrents that arrive as archives: unpack (in the background) into the grab's own subfolder first; Sonarr then
   // MOVES the unpacked files, so the archives keep seeding and nothing is left behind. SABnzbd unpacks by itself.
   let unpackRel: string | null = null;
-  if (!single && row.client === "qbittorrent" && getSettings().extraction.enabled && deps.extract) {
+  if (!single && isTorrentClient(row.client) && getSettings().extraction.enabled && deps.extract) {
     const local = deps.localPath(folder);
     if (!local) return attention(`can't reach ${folder} from AnimeArr to unpack it (check Settings → Paths)`);
     const x = await deps.extract(local, String(row.id), singleArchive ? [path.posix.basename(sonarrPath0)] : undefined);

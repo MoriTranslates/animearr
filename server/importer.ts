@@ -16,6 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
+import { isTorrentClient } from "./arr/clients.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
@@ -279,7 +280,7 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
   const byId = new Map(eps.map((e) => [e.id, e]));
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
-  const torrent = input.client === "qbittorrent";
+  const torrent = isTorrentClient(input.client);
   const binSet = !!m.recycleBin.trim();
   const items: PlanItem[] = [];
   const taken = new Set<string>();
@@ -582,7 +583,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   if (!files.length) return { movieId: mv.id, title: label, items: [], notes: ["no video files found"] };
   const bySize = files.map((f) => ({ f, size: fs.statSync(f).size })).sort((a, b) => b.size - a.size);
   const main = bySize[0];
-  const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: input.client === "qbittorrent" ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
+  const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
   if (bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand` }], notes };
   let probe: Probe | null = null;
   try {

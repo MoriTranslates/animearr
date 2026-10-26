@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
+import { addJackettTracker, deleteClient, deleteIndexer, indexerCatalog, jackettTrackers, listClients, listIndexers, saveClient, saveIndexer, setClientPrefs, testExtraClient, testIndexer } from "./connectionsAdmin.js";
 import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
-import { connectionsOverview } from "./connections.js";
+import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -266,6 +267,22 @@ app.get<{ Querystring: { u?: string; s?: string } }>("/api/img", async (req, rep
 });
 
 app.get<{ Querystring: { from?: string; managed?: string } }>("/api/home", async (req) => homeSummary(Date.now(), Number(req.query.from) || undefined, req.query.managed === "1"));
+
+// ---------------------------------------------------------------- indexers & download clients (Settings cards)
+app.get("/api/catalog/indexers", async () => indexerCatalog());
+app.get("/api/indexers", async () => ({ indexers: listIndexers() }));
+app.post<{ Body: Record<string, unknown> }>("/api/indexers", async (req) => (writable(), invalidateConnections(), saveIndexer(null, req.body ?? {})));
+app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), saveIndexer(req.params.id, req.body ?? {})));
+app.delete<{ Params: { id: string } }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), deleteIndexer(req.params.id), { ok: true }));
+app.post<{ Body: Record<string, unknown> }>("/api/indexers/test", async (req) => testIndexer(req.body ?? {}));
+app.post<{ Body: Record<string, unknown> }>("/api/jackett/trackers", async (req) => ({ trackers: await jackettTrackers(req.body ?? {}) }));
+app.post<{ Body: Record<string, unknown> }>("/api/jackett/add", async (req) => (writable(), invalidateConnections(), addJackettTracker(req.body ?? {})));
+app.get("/api/clients", async () => ({ clients: listClients() }));
+app.post<{ Body: Record<string, unknown> }>("/api/clients", async (req) => (writable(), invalidateConnections(), saveClient(null, req.body ?? {})));
+app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), saveClient(req.params.id, req.body ?? {})));
+app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), deleteClient(req.params.id), { ok: true }));
+app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id/prefs", async (req) => (writable(), invalidateConnections(), setClientPrefs(req.params.id, req.body ?? {})));
+app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => testExtraClient(req.body ?? {}));
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 

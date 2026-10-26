@@ -14,7 +14,7 @@
  */
 import { isWanted } from "./movies.js";
 import { logDecision } from "./activity.js";
-import { prowlarrConfigured } from "./arr/prowlarr.js";
+import { searchConfigured } from "./indexers.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState, setJob } from "./db.js";
@@ -267,7 +267,7 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
 
 let running = false;
 export async function upgradeTick() {
-  if (running || getSettings().dualUpgrade.mode === "off" || !prowlarrConfigured()) return;
+  if (running || getSettings().dualUpgrade.mode === "off" || !searchConfigured()) return;
   running = true;
   try {
     const r = await upgradePass();

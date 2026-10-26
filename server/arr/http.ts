@@ -37,7 +37,7 @@ export async function jsonCall<T>(app: string, conn: Conn, apiBase: string, meth
 /** Replaces any apikey=... in a string (URLs from Prowlarr carry keys). */
 export const redactUrl = (s: string) =>
   s
-    .replace(/([?&](?:apikey|api_key|key|token|passkey)=)[^&\s]+/gi, "$1***")
+    .replace(/([?&][\w-]*(?:apikey|api_key|passkey|key|token|pass|auth|rsskey)[\w-]*=)[^&\s]+/gi, "$1***")
     .replace(/(\/\/)[^/@\s]+@/g, "$1***@") // user:password@host
     .replace(/(Bearer\s+)[\w.-]+/gi, "$1***") // Authorization headers
     .replace(/\beyJ[\w-]{10,}\.[\w-]+\.[\w-]+/g, "***"); // a bare JWT (TMDB Read Access Token)

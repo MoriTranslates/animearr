@@ -1,4 +1,5 @@
-import { getSettings } from "../settings.js";
+import { getSettings, type ClientCfg, type Settings } from "../settings.js";
+import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
 
 /**
  * Download clients. AnimeArr sends its grabs with its own category ("animearr" by default), so Sonarr's own
@@ -6,10 +7,37 @@ import { getSettings } from "../settings.js";
  */
 
 export interface ClientJob {
-  /** SABnzbd nzo_id or qBittorrent info-hash. */
+  /** SABnzbd nzo_id, NZBGet NZBID, or a torrent's info-hash. */
   ref: string;
-  client: "sabnzbd" | "qbittorrent";
+  /** "sabnzbd" / "qbittorrent" (the primary slots) or an added client's id. */
+  client: string;
 }
+
+export type ClientType = "sabnzbd" | "qbittorrent" | "nzbget" | "transmission";
+export interface ResolvedClient { id: string; type: ClientType; name: string; protocol: "usenet" | "torrent"; priority: number; enabled: boolean; configured: boolean; category: string; cfg: ClientCfg | null }
+const PROTOCOL: Record<ClientType, "usenet" | "torrent"> = { sabnzbd: "usenet", nzbget: "usenet", qbittorrent: "torrent", transmission: "torrent" };
+
+/** Every download client: the SABnzbd/qBittorrent slots and the added ones, with priority and enabled. */
+export function clientList(s: Settings = getSettings()): ResolvedClient[] {
+  const pref = (id: string) => s.clientPrefs?.[id] ?? { priority: 1, enabled: true };
+  return [
+    { id: "sabnzbd", type: "sabnzbd" as const, name: "SABnzbd", protocol: "usenet" as const, ...pref("sabnzbd"), configured: !!(s.sabnzbd.url && s.sabnzbd.apiKey), category: s.sabnzbd.category, cfg: null },
+    { id: "qbittorrent", type: "qbittorrent" as const, name: "qBittorrent", protocol: "torrent" as const, ...pref("qbittorrent"), configured: !!s.qbittorrent.url, category: s.qbittorrent.category, cfg: null },
+    ...(s.extraClients ?? []).map((c) => ({ id: c.id, type: c.type, name: c.name, protocol: PROTOCOL[c.type], priority: c.priority, enabled: c.enabled, configured: !!c.url, category: c.category, cfg: c })),
+  ];
+}
+
+/** The clients a grab of this protocol goes to, best first (priority, then the order they were added). */
+export function clientsFor(protocol: "usenet" | "torrent", s: Settings = getSettings()) {
+  return clientList(s)
+    .filter((c) => c.protocol === protocol && c.enabled && c.configured)
+    .sort((a, b) => a.priority - b.priority);
+}
+const byId = (id: string) => clientList().find((c) => c.id === id) ?? null;
+/** A torrent client's job (seeding: imports copy/hardlink instead of moving; archives may need unpacking). */
+export const isTorrentClient = (id: string | null | undefined) => !!id && (byId(id)?.protocol ?? (id === "qbittorrent" ? "torrent" : "usenet")) === "torrent";
+/** The client's display name ("NZBGet", "Transmission", …). */
+export const clientName = (id: string | null | undefined) => (id ? (byId(id)?.name ?? id) : "");
 export interface ClientStatus {
   /** queued = waiting, paused or post-processing in the client (not stalling); error = the client needs a look. */
   state: "queued" | "downloading" | "completed" | "failed" | "missing" | "error";
@@ -28,7 +56,7 @@ export interface ClientStatus {
 /** Narrow interface so the pipeline can be tested with a mock. */
 export interface DownloadClients {
   addNzb(data: Buffer, name: string): Promise<ClientJob>;
-  addTorrent(src: { data?: Buffer; magnet?: string }, name: string): Promise<ClientJob>;
+  addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts?: { seedRatio?: number | null; seedTimeMin?: number | null }): Promise<ClientJob>;
   status(job: ClientJob): Promise<ClientStatus>;
   /** Removes the job from the client and deletes its downloaded data (never library files). */
   remove(job: ClientJob): Promise<void>;
@@ -100,8 +128,8 @@ function infoHash(src: { data?: Buffer; magnet?: string }): string | null {
 
 // ---------------------------------------------------------------- real implementation
 
-export const realClients: DownloadClients = {
-  async addNzb(data, name) {
+const primary = {
+  async addNzb(data: Buffer, name: string): Promise<ClientJob> {
     const form = new FormData();
     form.append("name", new Blob([new Uint8Array(data)], { type: "application/x-nzb" }), `${name.replace(/[\\/:*?"<>|]/g, "_")}.nzb`);
     const s = getSettings().sabnzbd;
@@ -109,7 +137,7 @@ export const realClients: DownloadClients = {
     if (!r.nzo_ids?.[0]) throw new Error("SABnzbd did not accept the NZB");
     return { client: "sabnzbd", ref: r.nzo_ids[0] };
   },
-  async addTorrent(src, name) {
+  async addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts: { seedRatio?: number | null; seedTimeMin?: number | null } = {}): Promise<ClientJob> {
     const s = getSettings().qbittorrent;
     const tag = `animearr-${Date.now().toString(36)}`;
     const form = new FormData();
@@ -131,6 +159,8 @@ export const realClients: DownloadClients = {
     if (src.magnet) form.append("urls", src.magnet);
     else if (src.data) form.append("torrents", new Blob([new Uint8Array(src.data)], { type: "application/x-bittorrent" }), `${name.replace(/[\\/:*?"<>|]/g, "_")}.torrent`);
     else throw new Error("Nothing to send to qBittorrent");
+    if (opts.seedRatio != null) form.append("ratioLimit", String(opts.seedRatio));
+    if (opts.seedTimeMin != null) form.append("seedingTimeLimit", String(opts.seedTimeMin));
     await qbit("/torrents/add", { method: "POST", body: form });
     const known = infoHash(src);
     if (known) return { client: "qbittorrent", ref: known };
@@ -141,7 +171,7 @@ export const realClients: DownloadClients = {
     }
     throw new Error("qBittorrent accepted the torrent but it did not appear");
   },
-  async status(job) {
+  async status(job: ClientJob): Promise<ClientStatus> {
     if (job.client === "sabnzbd") {
       const q = await sab<{ queue: { kbpersec?: string; slots: { nzo_id: string; percentage: string; status: string; timeleft?: string; mb?: string; mbleft?: string }[] } }>({ mode: "queue", nzo_ids: job.ref });
       const slot = q.queue.slots.find((x) => x.nzo_id === job.ref);
@@ -176,7 +206,7 @@ export const realClients: DownloadClients = {
     if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path, ...live };
     return { state: /queued|metaDL|checking|^paused|^stopped|moving/i.test(t.state) ? "queued" : "downloading", progress: t.progress, ...live };
   },
-  async remove(job) {
+  async remove(job: ClientJob): Promise<void> {
     // Only ever AnimeArr's own jobs: the job must still be in AnimeArr's category. Not found = already gone (fine).
     if (job.client === "sabnzbd") {
       const cat = getSettings().sabnzbd.category;
@@ -202,6 +232,72 @@ export const realClients: DownloadClients = {
     await qbit("/torrents/delete", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ hashes: job.ref, deleteFiles: "true" }) });
   },
 };
+
+/**
+ * Try the next client only when this one certainly didn't take the job (refused, unreachable before sending, not set
+ * up). A timeout or "accepted but did not appear" may have queued it: no second copy elsewhere.
+ */
+const fallBack = (e: unknown) => {
+  const m = String((e as Error)?.message ?? "");
+  return !/timeout|aborted|did not appear|returned no hash/i.test(m) && /unreachable|not configured|wrong username|login failed|refused|HTTP (4\d\d|5\d\d)|did not accept/i.test(m);
+};
+
+const driver = (c: ResolvedClient) => (c.type === "nzbget" ? nzbgetDriver : transmissionDriver);
+
+/**
+ * The download clients as the pipeline sees them: a grab goes to the best client of its protocol (priority); if that
+ * one refuses, the next one is tried. Status and removal go to the client that has the job.
+ */
+export const realClients: DownloadClients = {
+  async addNzb(data, name) {
+    const list = clientsFor("usenet");
+    if (!list.length) throw new Error("No Usenet download client is set up (Settings → Download clients)");
+    let last: Error | null = null;
+    for (const c of list) {
+      try {
+        if (c.type === "sabnzbd") return await primary.addNzb(data, name);
+        return { client: c.id, ref: await nzbgetDriver.add(c.cfg!, data, name) };
+      } catch (e) {
+        last = e as Error;
+        if (!fallBack(e)) break;
+      }
+    }
+    throw last!;
+  },
+  async addTorrent(src, name, opts) {
+    const list = clientsFor("torrent");
+    if (!list.length) throw new Error("No torrent download client is set up (Settings → Download clients)");
+    let last: Error | null = null;
+    for (const c of list) {
+      try {
+        if (c.type === "qbittorrent") return await primary.addTorrent(src, name, opts);
+        return { client: c.id, ref: await transmissionDriver.add(c.cfg!, src, opts) };
+      } catch (e) {
+        last = e as Error;
+        if (!fallBack(e)) break;
+      }
+    }
+    throw last!;
+  },
+  async status(job) {
+    if (job.client === "sabnzbd" || job.client === "qbittorrent") return primary.status(job);
+    const c = byId(job.client);
+    if (!c?.cfg) return { state: "error", progress: 0, message: `the download client "${job.client}" was removed from Settings` };
+    return driver(c).status(c.cfg, job.ref);
+  },
+  async remove(job) {
+    if (job.client === "sabnzbd" || job.client === "qbittorrent") return primary.remove(job);
+    const c = byId(job.client);
+    // The client was removed from Settings: nothing AnimeArr can remove there any more (treated as gone).
+    if (!c?.cfg) return;
+    return driver(c).remove(c.cfg, job.ref);
+  },
+};
+
+/** Connection test for an added client (before or after saving). */
+export async function testClient(c: ClientCfg) {
+  return c.type === "nzbget" ? nzbgetDriver.test(c) : transmissionDriver.test(c);
+}
 
 /** AnimeArr's own torrents (its category only), with what the folder rules and the clean-up need. Read-only. */
 export interface OwnTorrent { hash: string; name: string; contentPath: string; savePath: string; size: number; state: string; ratio: number; seedingTimeSec: number; completedOn: number | null; ratioLimit: number; seedingTimeLimitMin: number }

@@ -13,7 +13,8 @@ import { matchMovie } from "./movies.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { NATIVE_BASE } from "./native.js";
 import { logDecision } from "./activity.js";
-import { prowlarrConfigured, prowlarrSearch } from "./arr/prowlarr.js";
+import { searchConfigured } from "./indexers.js";
+import { searchAll } from "./indexers.js";
 import { setSeriesMonitored } from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
@@ -198,10 +199,10 @@ export function scheduleFor(tvdbId?: number, limit = 500) {
  * the profile's language, exactly the episodes asked for, no burn-ins (unless the user confirmed that's all there is),
  * no dead torrents. Best first (the results are ranked already).
  */
-export function automaticPicks(results: SearchResult[], tvdbId: number, season: number | null, opts: { allowPacks?: boolean } = {}) {
+export function automaticPicks(results: SearchResult[], tvdbId: number, season: number | null, opts: { allowPacks?: boolean; delays?: boolean } = {}) {
   const s = getSettings().managed;
   const burnedOk = profileFor(tvdbId).subLangs.some((l) => !!burnedInFact(tvdbId, season, l));
-  return results.filter(
+  const ok = results.filter(
     (r) =>
       r.rank.accept &&
       r.confidence >= s.minConfidence &&
@@ -209,8 +210,20 @@ export function automaticPicks(results: SearchResult[], tvdbId: number, season: 
       (opts.allowPacks ? r.episodeIds.length > 0 : r.coversTarget) &&
       r.extra <= 0 &&
       (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
-      !(r.protocol === "torrent" && !r.seeders),
+      !(r.protocol === "torrent" && r.seeders === 0),
   );
+  return opts.delays ? ok.filter((r) => delayLeftMin(r) === 0) : ok;
+}
+
+/**
+ * Sonarr-style delay (Settings → Download clients): an automatic grab of a protocol waits until the release is this
+ * many minutes old, so a Usenet release can show up before a torrent is taken (or the other way round).
+ */
+export function delayLeftMin(r: { protocol: "usenet" | "torrent"; ageHours: number | null }) {
+  const p = getSettings().protocol ?? { usenetDelayMin: 0, torrentDelayMin: 0 };
+  const delay = r.protocol === "usenet" ? p.usenetDelayMin : p.torrentDelayMin;
+  if (!delay || r.ageHours === null) return 0;
+  return Math.max(0, Math.ceil(delay - r.ageHours * 60));
 }
 
 export function toCandidate(r: SearchResult): Candidate {
@@ -236,7 +249,15 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const season = res.targets[0]?.season ?? null;
-  const ok = automaticPicks(res.results, st.tvdb_id, season);
+  const ok = automaticPicks(res.results, st.tvdb_id, season, { delays: true });
+  // Everything good is still inside its protocol delay: look again when the first one is old enough.
+  const waiting = ok.length ? [] : automaticPicks(res.results, st.tvdb_id, season).filter((r) => delayLeftMin(r) > 0);
+  if (waiting.length) {
+    const left = Math.min(...waiting.map(delayLeftMin));
+    const w = waiting.find((r) => delayLeftMin(r) === left)!;
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(now + left * 60_000 + 60_000, `Waiting ${left} min for the ${w.protocol === "usenet" ? "Usenet" : "torrent"} delay (${w.title})`, st.episode_id);
+    return;
+  }
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
   const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
@@ -398,7 +419,7 @@ export function backlogSummary(now = Date.now()) {
 let ticking = false;
 /** Scheduler tick: plan, then search episodes that are due (a few per tick, to be gentle on indexers). */
 export async function managedTick(now = Date.now()) {
-  if (ticking || dbState.corrupt || !prowlarrConfigured() || !listManaged().length) return;
+  if (ticking || dbState.corrupt || !searchConfigured() || !listManaged().length) return;
   ticking = true;
   try {
     planSchedule(now);
@@ -419,8 +440,8 @@ const rssSeen = new Map<string, number>(); // guid → first seen (each release 
  * wanted episode (managed show, any state that still wants a file) or a wanted movie brings that search forward at
  * once; the search then ranks every candidate, so RSS never grabs a release blindly.
  */
-export async function rssTick(now = Date.now(), deps = { search: prowlarrSearch }) {
-  if (dbState.corrupt || !prowlarrConfigured()) return { checked: 0, hits: 0 };
+export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
+  if (dbState.corrupt || !searchConfigured()) return { checked: 0, hits: 0 };
   const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog', 'gave-up')").all() as { episode_id: number; tvdb_id: number }[];
   const movies = db.prepare("SELECT movie_id FROM movie_search WHERE state IN ('waiting', 'retry', 'unreleased')").all() as { movie_id: number }[];
   if (!waiting.length && !movies.length) return { checked: 0, hits: 0 };

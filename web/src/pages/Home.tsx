@@ -14,7 +14,7 @@ interface HomeData {
   airingShows: number;
   airingToday: CalEntry[];
   needs: { missing: { n: number; sample: string | null }; failed: { n: number; sample: string | null }; noLang: { n: number; series: number; lang: string } };
-  downloading: { id: number; tvdbId: number; movieId: number | null; title: string; cover: string | null; color: string | null; label: string; release: string; protocol: string; client: string | null; state: string; progress: number }[];
+  downloading: { id: number; tvdbId: number; movieId: number | null; title: string; cover: string | null; color: string | null; label: string; release: string; protocol: string; client: string | null; clientName?: string; state: string; progress: number }[];
   justArrived: { tvdbId: number; title: string; cover: string | null; color: string | null; label: string; at: number }[];
   importsThisWeek: number;
   readyToBinge: { tvdbId: number; title: string; season: number; episodes: number; cover: string | null; color: string | null; finishedAt: number }[];
@@ -223,7 +223,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                         {g.label ? ` · ${g.label}` : ""}
                       </b>
                       <span className="muted small clamp1">
-                        {g.state === "importing" ? t("ep.importing") : `${g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}${g.client ? ` · ${g.client === "qbittorrent" ? "qBittorrent" : "SABnzbd"}` : ""}`}
+                        {g.state === "importing" ? t("ep.importing") : `${g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}${g.clientName ? ` · ${g.clientName}` : ""}`}
                       </span>
                     </span>
                     <span className="pc tnum">{Math.round(g.progress * 100)}%</span>

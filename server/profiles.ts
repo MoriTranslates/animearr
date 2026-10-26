@@ -47,6 +47,7 @@ export function validateProfile(input: Partial<LanguageProfile>, base: LanguageP
     softOnly: typeof input.softOnly === "boolean" ? input.softOnly : base.softOnly,
     preferUncensored: typeof input.preferUncensored === "boolean" ? input.preferUncensored : base.preferUncensored,
     protocolOrder: order.length ? order : base.protocolOrder,
+    noProtocolPreference: typeof input.noProtocolPreference === "boolean" ? input.noProtocolPreference : (base.noProtocolPreference ?? false),
     resolution,
     sizePreset: SIZE_PRESETS.includes(input.sizePreset as SizePreset) ? input.sizePreset : (base.sizePreset ?? "lean"),
   };

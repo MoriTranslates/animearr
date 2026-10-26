@@ -25,6 +25,7 @@ interface Item {
   error: string | null; fixes?: import("../api").Fix[];
   cover?: string | null;
   color?: string | null;
+  clientName?: string;
   progress: number | null;
   attempt: number;
   stage?: string | null;
@@ -114,7 +115,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
               </span>
               <span className="row qclient">
                 <span className="muted small">
-                  {g.client === "qbittorrent" ? "qBittorrent" : g.client === "sabnzbd" ? "SABnzbd" : g.protocol}
+                  {g.clientName || g.protocol}
                   {g.live?.sizeBytes ? ` · ${fmtSize(g.live.sizeBytes)}` : ""}
                   {g.attempt > 1 ? ` · #${g.attempt}` : ""}
                 </span>
@@ -167,7 +168,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
             }
           }}
         >
-          <p>{t("queue.removeBody", { release: remove.release, client: remove.client === "qbittorrent" ? "qBittorrent" : "SABnzbd" })}</p>
+          <p>{t("queue.removeBody", { release: remove.release, client: remove.clientName || remove.client || "" })}</p>
           <label className="check">
             <input type="checkbox" checked={opts.blocklist} onChange={(e) => setOpts({ ...opts, blocklist: e.target.checked })} /> {t("queue.blocklist")}
           </label>

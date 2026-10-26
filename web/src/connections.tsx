@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { api, type Settings as S } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Confirm, ListInput, Modal, relTime, SecretInput, Spinner, useLoad, useToast } from "./ui";
+import { Confirm, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
+import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, type CatalogEntry, type DirectIndexer, type ExtraClient } from "./connectionsEdit";
 
 /**
  * Settings → Indexers / Download clients / Media servers / Migration, Sonarr-style: one card per connection (what it
@@ -11,8 +12,9 @@ import { Confirm, ListInput, Modal, relTime, SecretInput, Spinner, useLoad, useT
  */
 
 export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
-export interface IndexerRow { id: number; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr"; grabs: number; failures: number; lastError: string | null }
-export interface Overview { clients: ConnStatus[]; indexerSources: ConnStatus[]; indexers: IndexerRow[]; mediaServers: ConnStatus[]; migration: ConnStatus[]; protocolOrder: ("usenet" | "torrent")[] }
+export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null }
+export interface ClientRow extends ConnStatus { type: "sabnzbd" | "qbittorrent" | "nzbget" | "transmission"; name: string; priority: number; enabled: boolean }
+export interface Overview { clients: ClientRow[]; indexerSources: ConnStatus[]; indexers: IndexerRow[]; mediaServers: ConnStatus[]; migration: ConnStatus[]; protocolOrder: ("usenet" | "torrent")[]; noPreference?: boolean; duplicates?: { id: string; name: string; with: string }[]; delays?: { usenetDelayMin: number; torrentDelayMin: number } }
 
 type Key = "sabnzbd" | "qbittorrent" | "prowlarr" | "plex" | "sonarr" | "radarr";
 type Protocol = "usenet" | "torrent";
@@ -20,9 +22,9 @@ type Protocol = "usenet" | "torrent";
 /** Every type the "+" pickers offer; `ready: false` ones arrive with multiple clients/indexers. */
 const TYPES: { id: string; name: string; protocol: Protocol | "both" | "media" | "migration"; kind: "client" | "indexer" | "media" | "migration"; key?: Key; ready: boolean; logo: string }[] = [
   { id: "sabnzbd", name: "SABnzbd", protocol: "usenet", kind: "client", key: "sabnzbd", ready: true, logo: "SAB" },
-  { id: "nzbget", name: "NZBGet", protocol: "usenet", kind: "client", ready: false, logo: "NZB" },
+  { id: "nzbget", name: "NZBGet", protocol: "usenet", kind: "client", ready: true, logo: "NZB" },
   { id: "qbittorrent", name: "qBittorrent", protocol: "torrent", kind: "client", key: "qbittorrent", ready: true, logo: "qB" },
-  { id: "transmission", name: "Transmission", protocol: "torrent", kind: "client", ready: false, logo: "Tr" },
+  { id: "transmission", name: "Transmission", protocol: "torrent", kind: "client", ready: true, logo: "Tr" },
   { id: "deluge", name: "Deluge", protocol: "torrent", kind: "client", ready: false, logo: "De" },
   { id: "rtorrent", name: "rTorrent", protocol: "torrent", kind: "client", ready: false, logo: "rT" },
   { id: "prowlarr", name: "Prowlarr", protocol: "both", kind: "indexer", key: "prowlarr", ready: true, logo: "Pr" },
@@ -123,7 +125,7 @@ function AddCard({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 /** "+ Add": the supported types, with the ones still to come shown (and not clickable). */
-function TypePicker({ title, types, configured, onPick, onClose }: { title: string; types: typeof TYPES; configured: (k?: Key) => boolean; onPick: (k: Key) => void; onClose: () => void }) {
+function TypePicker({ title, types, configured, onPick, onPickType, onClose }: { title: string; types: typeof TYPES; configured: (k?: Key) => boolean; onPick: (k: Key) => void; onPickType?: (id: string) => void; onClose: () => void }) {
   return (
     <Modal title={title} onClose={onClose}>
       <ul className="type-grid">
@@ -131,7 +133,7 @@ function TypePicker({ title, types, configured, onPick, onClose }: { title: stri
           const already = x.key ? configured(x.key) : false;
           return (
             <li key={x.id}>
-              <button className="type-card card" disabled={!x.ready || already} onClick={() => x.key && onPick(x.key)}>
+              <button className="type-card card" disabled={!x.ready || already} onClick={() => (x.key ? onPick(x.key) : onPickType?.(x.id))}>
                 <span className="conn-logo" aria-hidden="true">
                   {x.logo}
                 </span>
@@ -185,8 +187,50 @@ function EditConn({ k, s, saveNow, onClose, children }: { k: Key; s: S; saveNow:
       {children ? (
         children(draft, set)
       ) : (
-        <div className="form">
-          <label>
+        <PrimaryFields k={k} draft={draft} set={set} />
+      )}
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
+      <div className="row between">
+        <button className="danger" onClick={() => setDel(true)} disabled={busy}>
+          {t("common.delete")}
+        </button>
+        <div className="row">
+          <button onClick={() => void test()} disabled={busy}>
+            {t("common.test")}
+          </button>
+          <button className="primary" onClick={() => void save()} disabled={busy}>
+            {t("common.save")}
+          </button>
+        </div>
+      </div>
+      {del && (
+        <Confirm
+          danger
+          title={t("conn.deleteTitle", { name: NAME[k] })}
+          confirmLabel={t("common.delete")}
+          onClose={() => setDel(false)}
+          onConfirm={async () => {
+            if (await saveNow(cleared)) {
+              toast(t("conn.deleted", { name: NAME[k] }));
+              onClose();
+            }
+          }}
+        >
+          <p>{t(`conn.deleteBody.${k === "plex" ? "plex" : k === "sonarr" || k === "radarr" ? "migration" : "other"}` as I18nKey)}</p>
+        </Confirm>
+      )}
+    </Modal>
+  );
+}
+
+
+/** The fields of a primary connection (SABnzbd, qBittorrent, Prowlarr, Sonarr, Radarr). */
+function PrimaryFields({ k, draft, set }: { k: Key; draft: S; set: (fn: (x: S) => S) => void }) {
+  const c = (k === "plex" ? { url: draft.plex.url, apiKey: draft.plex.token } : draft[k]) as Record<string, unknown>;
+  const field = (f: string, v: unknown) => set((x) => ({ ...x, [k]: { ...(x[k] as object), [f]: v } }));
+  return (
+    <div className="form">
+      <label>
             {t("settings.url")}
             <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : "http://192.168.1.10:8989"} />
           </label>
@@ -226,56 +270,11 @@ function EditConn({ k, s, saveNow, onClose, children }: { k: Key; s: S; saveNow:
               <ListInput value={draft.radarr.animeRoots} onChange={(v) => set((x) => ({ ...x, radarr: { ...x.radarr, animeRoots: v } }))} label={t("settings.animeRoots")} placeholder="/media/Movies/Anime" />
             </label>
           )}
-        </div>
-      )}
-      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
-      <div className="row between">
-        <button className="danger" onClick={() => setDel(true)} disabled={busy}>
-          {t("common.delete")}
-        </button>
-        <div className="row">
-          <button onClick={() => void test()} disabled={busy}>
-            {t("common.test")}
-          </button>
-          <button className="primary" onClick={() => void save()} disabled={busy}>
-            {t("common.save")}
-          </button>
-        </div>
-      </div>
-      {del && (
-        <Confirm
-          danger
-          title={t("conn.deleteTitle", { name: NAME[k] })}
-          confirmLabel={t("common.delete")}
-          onClose={() => setDel(false)}
-          onConfirm={async () => {
-            if (await saveNow(cleared)) {
-              toast(t("conn.deleted", { name: NAME[k] }));
-              onClose();
-            }
-          }}
-        >
-          <p>{t(`conn.deleteBody.${k === "plex" ? "plex" : k === "sonarr" || k === "radarr" ? "migration" : "other"}` as I18nKey)}</p>
-        </Confirm>
-      )}
-    </Modal>
+    </div>
   );
 }
 
 const statusOf = (list: ConnStatus[] | undefined, k: Key) => list?.find((x) => x.key === k);
-
-/** "Usenet is tried first" (the default profile's order), linked to where it's chosen. */
-function ProtocolOrder({ order }: { order?: Protocol[] }) {
-  const first = order?.[0] ?? "usenet";
-  return (
-    <p className="small protocol-order">
-      {t(first === "usenet" ? "conn.order.usenet" : "conn.order.torrent")}{" "}
-      <button className="linklike" onClick={() => navigate("/settings?tab=profile")}>
-        {t("conn.order.change")}
-      </button>
-    </p>
-  );
-}
 
 function Column({ protocol, title, summary, children }: { protocol: Protocol; title: string; summary: string; children: ReactNode }) {
   return (
@@ -295,35 +294,83 @@ function Column({ protocol, title, summary, children }: { protocol: Protocol; ti
 export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const o = useOverview();
   const [edit, setEdit] = useState<Key | null>(null);
+  const [extra, setExtra] = useState<ExtraClient | null>(null);
   const [pick, setPick] = useState<Protocol | null>(null);
-  const st = (k: Key) => statusOf(o.data?.clients, k);
-  const configured = (k?: Key) => !!k && !!st(k)?.configured;
-  const col = (p: Protocol, keys: Key[]) => {
-    const list = keys.filter((k) => configured(k) || (!o.data && k));
-    const failing = list.filter((k) => st(k)?.ok === false).length;
+  const clients = useLoad(() => api<{ clients: { id: string; cfg: ExtraClient | null }[] }>("/clients"), []);
+  const refresh = () => (void o.fresh(), void clients.reload());
+  const rows = o.data?.clients ?? [];
+  const configured = (k?: Key) => !!k && !!rows.find((c) => c.key === k)?.configured;
+  const col = (p: Protocol) => {
+    const list = rows.filter((c) => c.configured && (p === "usenet" ? c.type === "sabnzbd" || c.type === "nzbget" : c.type === "qbittorrent" || c.type === "transmission")).sort((a, b) => a.priority - b.priority);
+    const failing = list.filter((c) => c.ok === false).length;
     return (
-      <Column protocol={p} title={t(p === "usenet" ? "conn.col.usenetClients" : "conn.col.torrentClients")} summary={o.data ? `${t("conn.count", { n: keys.filter(configured).length })}${failing ? ` · ${t("conn.failing", { n: failing })}` : ""}` : ""}>
-        {keys.filter(configured).map((k) => (
-          <ConnCard key={k} k={k} st={st(k)} loading={o.loading} onEdit={() => setEdit(k)} />
-        ))}
+      <Column protocol={p} title={t(p === "usenet" ? "conn.col.usenetClients" : "conn.col.torrentClients")} summary={o.data ? `${t("conn.count", { n: list.length })}${failing ? ` · ${t("conn.failing", { n: failing })}` : ""}` : ""}>
+        {!o.data && <ConnCard k={p === "usenet" ? "sabnzbd" : "qbittorrent"} loading onEdit={() => undefined} />}
+        {list.map((c) =>
+          c.type === "sabnzbd" || c.type === "qbittorrent" ? (
+            <ConnCard key={c.key} k={c.type} st={c} loading={o.loading} onEdit={() => setEdit(c.type as Key)} extra={<ClientFlags priority={c.priority} enabled={c.enabled} />} />
+          ) : (
+            <button key={c.key} className="conn-card card" onClick={() => setExtra(clients.data?.clients.find((x) => x.id === c.key)?.cfg ? { ...clients.data.clients.find((x) => x.id === c.key)!.cfg!, id: c.key } : null)}>
+              <span className="conn-logo" aria-hidden="true">
+                {logoOf(c.type)}
+              </span>
+              <span className="conn-text">
+                <span className="strong">{c.name}</span>
+                <span className="muted small">{t(p === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {c.type === "nzbget" ? "NZBGet" : "Transmission"}</span>
+                <StatusLine st={c} loading={o.loading} />
+                {c.grabs > 0 && <span className="muted small">{t("conn.usedFor", { n: c.grabs, when: c.lastGrabAt ? relTime(c.lastGrabAt) : "—" })}</span>}
+                <ClientFlags priority={c.priority} enabled={c.enabled} />
+              </span>
+            </button>
+          ),
+        )}
         <AddCard label={t(p === "usenet" ? "conn.add.usenetClient" : "conn.add.torrentClient")} onClick={() => setPick(p)} />
       </Column>
     );
   };
+  const primaryRow = edit === "sabnzbd" || edit === "qbittorrent" ? rows.find((c) => c.key === edit) : null;
   return (
     <div className="stack">
-      <SectionIntro icon="↓" text={t("conn.intro.clients")}>
-        <ProtocolOrder order={o.data?.protocolOrder} />
-      </SectionIntro>
+      <SectionIntro icon="↓" text={t("conn.intro.clients")} />
+      <ProtocolBar onChanged={refresh} />
       <HowItFits here="clients" />
-      {o.loading && !o.data && <Spinner label={t("conn.checking")} />}
       <div className="proto-cols">
-        {col("usenet", ["sabnzbd"])}
-        {col("torrent", ["qbittorrent"])}
+        {col("usenet")}
+        {col("torrent")}
       </div>
-      {pick && <TypePicker title={t(pick === "usenet" ? "conn.add.usenetClient" : "conn.add.torrentClient")} types={TYPES.filter((x) => x.kind === "client" && x.protocol === pick)} configured={configured} onPick={(k) => (setPick(null), setEdit(k))} onClose={() => setPick(null)} />}
-      {edit && <EditConn k={edit} s={s} saveNow={async (fn) => { const ok = await saveNow(fn); if (ok) void o.fresh(); return ok; }} onClose={() => setEdit(null)} />}
+      {pick && (
+        <TypePicker
+          title={t(pick === "usenet" ? "conn.add.usenetClient" : "conn.add.torrentClient")}
+          types={TYPES.filter((x) => x.kind === "client" && x.protocol === pick)}
+          configured={configured}
+          onPick={(k) => (setPick(null), setEdit(k))}
+          onPickType={(id) => (setPick(null), setExtra(newClient(id as "nzbget" | "transmission")))}
+          onClose={() => setPick(null)}
+        />
+      )}
+      {edit && (
+        <EditConn k={edit} s={s} saveNow={async (fn) => { const ok = await saveNow(fn); if (ok) refresh(); return ok; }} onClose={() => setEdit(null)}>
+          {primaryRow
+            ? (draft, set) => (
+                <>
+                  <PrimaryFields k={edit} draft={draft} set={set} />
+                  <PrimaryPrefs id={edit as "sabnzbd" | "qbittorrent"} priority={primaryRow.priority} enabled={primaryRow.enabled} onSaved={refresh} />
+                </>
+              )
+            : undefined}
+        </EditConn>
+      )}
+      {extra && <ExtraClientDialog initial={extra} onClose={() => setExtra(null)} onSaved={refresh} />}
     </div>
+  );
+}
+
+function ClientFlags({ priority, enabled }: { priority: number; enabled: boolean }) {
+  return (
+    <span className="lib-flags">
+      <span className="tag neutral">{t("conn.priority", { n: priority })}</span>
+      {!enabled && <span className="tag warn">{t("clients.disabled")}</span>}
+    </span>
   );
 }
 
@@ -331,22 +378,39 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const o = useOverview();
   const [edit, setEdit] = useState<Key | null>(null);
   const [pick, setPick] = useState<Protocol | null>(null);
+  const [ixEdit, setIxEdit] = useState<{ ix: DirectIndexer; entry: CatalogEntry | null } | null>(null);
+  const [jackett, setJackett] = useState(false);
+  const direct = useLoad(() => api<{ indexers: (DirectIndexer & { id: string })[] }>("/indexers"), []);
+  const refresh = () => (void o.fresh(), void direct.reload());
   const prow = statusOf(o.data?.indexerSources, "prowlarr");
-  const configured = (k?: Key) => k === "prowlarr" && !!prow?.configured;
   const col = (p: Protocol) => {
     const list = (o.data?.indexers ?? []).filter((x) => x.protocol === p);
     const failing = list.filter((x) => x.failures > 0).length;
     return (
       <Column protocol={p} title={t(p === "usenet" ? "conn.col.usenetIndexers" : "conn.col.torrentIndexers")} summary={o.data ? `${t("conn.indexerCount", { n: list.length })}${failing ? ` · ${t("conn.failing", { n: failing })}` : ""}` : ""}>
         {list.map((x) => (
-          <div key={x.id} className={`conn-card card indexer${x.enabled ? "" : " off"}`}>
+          <div
+            key={x.key ?? x.id}
+            className={`conn-card card indexer${x.enabled ? "" : " off"}${x.source === "direct" ? " clickable" : ""}`}
+            role={x.source === "direct" ? "button" : undefined}
+            tabIndex={x.source === "direct" ? 0 : undefined}
+            onClick={() => {
+              const d = x.source === "direct" ? direct.data?.indexers.find((y) => y.id === x.key) : null;
+              if (d) setIxEdit({ ix: d, entry: null });
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const d = x.source === "direct" ? direct.data?.indexers.find((y) => y.id === x.key) : null;
+              if (d) setIxEdit({ ix: d, entry: null });
+            }}
+          >
             <span className="conn-logo" aria-hidden="true">
               {x.name.slice(0, 2)}
             </span>
             <span className="conn-text">
               <span className="strong">{x.name}</span>
               <span className="muted small">
-                {t(p === "usenet" ? "conn.proto.usenet" : "conn.proto.torrent")} · {t("conn.viaProwlarr")}
+                {t(p === "usenet" ? "conn.proto.usenet" : "conn.proto.torrent")} · {x.source === "direct" ? t("conn.direct") : t("conn.viaProwlarr")}
                 {x.priority !== null ? ` · ${t("conn.priority", { n: x.priority })}` : ""}
               </span>
               {!x.enabled ? (
@@ -360,7 +424,7 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
             </span>
           </div>
         ))}
-        {o.data && !list.length && prow?.configured && <p className="muted small">{t("conn.noneOfProto")}</p>}
+        {o.data && !list.length && <p className="muted small">{t(prow?.configured ? "conn.noneOfProto" : "conn.noneYet")}</p>}
         <AddCard label={t(p === "usenet" ? "conn.add.usenetIndexer" : "conn.add.torrentIndexer")} onClick={() => setPick(p)} />
       </Column>
     );
@@ -368,8 +432,8 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   return (
     <div className="stack">
       <SectionIntro icon="⌕" text={t("conn.intro.indexers")}>
-        <ProtocolOrder order={o.data?.protocolOrder} />
       </SectionIntro>
+      <ProtocolBar onChanged={() => void o.fresh()} />
       <HowItFits here="indexers" />
       <h2 className="eyebrow">{t("conn.managers")}</h2>
       <div className="conn-grid managers">
@@ -398,28 +462,48 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
             </span>
           </button>
         )}
-        <div className="conn-card card suggest disabled" aria-disabled="true">
+        <button className="conn-card card suggest" onClick={() => setJackett(true)}>
           <span className="conn-logo" aria-hidden="true">Ja</span>
           <span className="conn-text">
             <span className="strong">Jackett</span>
             <span className="muted small">{t("conn.suggest.jackett")}</span>
-            <span className="muted small">{t("conn.soon")}</span>
           </span>
-        </div>
-        <div className="conn-card card suggest disabled" aria-disabled="true">
+        </button>
+        <button className="conn-card card suggest" onClick={() => setPick("torrent")}>
           <span className="conn-logo" aria-hidden="true">?</span>
           <span className="conn-text">
             <span className="strong">{t("conn.suggest.noneTitle")}</span>
             <span className="muted small">{t("conn.suggest.none")}</span>
-            <span className="muted small">{t("conn.soon")}</span>
           </span>
-        </div>
+        </button>
       </div>
+      {!!o.data?.duplicates?.length && (
+        <div className="banner warn small">
+          {t("ix.dupes")}
+          <ul className="plain">
+            {o.data.duplicates.map((d) => (
+              <li key={`${d.id}${d.with}`}>
+                {d.name} ↔ {d.with}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="proto-cols">
         {col("usenet")}
         {col("torrent")}
       </div>
-      {pick && <TypePicker title={t(pick === "usenet" ? "conn.add.usenetIndexer" : "conn.add.torrentIndexer")} types={TYPES.filter((x) => x.kind === "indexer" && (x.protocol === pick || x.protocol === "both"))} configured={configured} onPick={(k) => (setPick(null), setEdit(k))} onClose={() => setPick(null)} />}
+      {pick && (
+        <CataloguePicker
+          protocol={pick}
+          prowlarr={!!prow?.configured}
+          added={(direct.data?.indexers ?? []).map((x) => x.catalogId ?? "").filter(Boolean)}
+          onPick={(ix, entry) => (setPick(null), setIxEdit({ ix, entry }))}
+          onClose={() => setPick(null)}
+        />
+      )}
+      {ixEdit && <IndexerDialog initial={ixEdit.ix} entry={ixEdit.entry} onClose={() => setIxEdit(null)} onSaved={refresh} />}
+      {jackett && <JackettDialog onClose={() => setJackett(false)} onSaved={refresh} />}
       {edit && <EditConn k={edit} s={s} saveNow={async (fn) => { const ok = await saveNow(fn); if (ok) void o.fresh(); return ok; }} onClose={() => setEdit(null)} />}
     </div>
   );
