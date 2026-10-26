@@ -120,7 +120,8 @@ export function render(format: string, values: Record<string, string>, opts: Nam
 function fixChars(s: string, opts: NamingOptions) {
   let x = s;
   const colon = { delete: "", dash: "-", spaceDash: " -", spaceDashSpace: " - ", smart: "" }[opts.colonReplacement];
-  if (opts.colonReplacement === "smart") x = x.replace(/(\d):(\d)/g, "$1-$2").replace(/\s*:\s*/g, " - ");
+  // Smart (Sonarr): "Title: Sub" → "Title - Sub", "Re:Zero" / "12:30" → "Re-Zero" / "12-30".
+  if (opts.colonReplacement === "smart") x = x.replace(/\s*:\s+/g, " - ").replace(/:/g, "-");
   else x = x.replace(/:/g, colon);
   // Sonarr's replacements: \ / → +, ? → !, * → -, < > | " removed.
   if (opts.replaceIllegalCharacters) x = x.replace(/[\\/]/g, "+").replace(/\?/g, "!").replace(/\*/g, "-").replace(/["<>|]/g, "");
@@ -173,7 +174,7 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   const abs = c.episodes.map((e) => e.absolute).filter((x): x is number => !!x);
   // Like Sonarr: trailing " ", "." and "?" are trimmed from episode titles; "X (1)" + "X (2)" / "X Part 1" + "X Part 2"
   // become "X"; other multi-episode titles are joined with " + ".
-  const titles = [...new Set(c.episodes.map((e) => e.title?.replace(/[ .?]+$/, "")).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
+  const titles = [...new Set(c.episodes.map((e) => e.title?.replace(/[ .?]+$/, "").replace(/^[ .]+/, "")).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
   const multiPart = /:?\s?(?:\(\d+\)|(?:Part|Pt\.?)\s?\d+)$/i;
   const cleaned = [...new Set(titles.map((t) => t.replace(multiPart, "").replace(/[ .?]+$/, "")))];
   const title = titles.length > 1 && cleaned.length === 1 && titles.every((t) => multiPart.test(t)) ? cleaned[0] : titles.join(" + ");
