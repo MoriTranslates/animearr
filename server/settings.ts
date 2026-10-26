@@ -162,6 +162,11 @@ export interface Settings {
     realBudget: number;
     /** Movies through AnimeArr's own importer (off until the first movie import plan is reviewed; Radarr imports meanwhile). */
     movies: boolean;
+    /**
+     * AnimeArr's own download category folders (as Sonarr/AnimeArr see them). Automatic imports only ever take files
+     * from inside these; anything else needs the user's explicit manual import.
+     */
+    sourceRoots: string[];
   };
   /** Optional metadata providers (AniList, Anime-Lists and the AniDB dump need nothing). */
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
@@ -250,7 +255,7 @@ const DEFAULTS: Settings = {
     renameAfterReencode: false,
     importedFromArr: false,
   },
-  importer: { engine: "sonarr", allowReal: false, allowRename: false, realBudget: 0, movies: false },
+  importer: { engine: "sonarr", allowReal: false, allowRename: false, realBudget: 0, movies: false, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },

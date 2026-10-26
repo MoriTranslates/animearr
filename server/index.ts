@@ -652,7 +652,7 @@ app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean; r
   writable();
   const b = req.body ?? {};
   const cur = getSettings().importer;
-  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0), movies: typeof b.movies === "boolean" ? b.movies : !!cur.movies };
+  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename, realBudget: Number.isInteger(b.realBudget) && b.realBudget! >= -1 && b.realBudget! <= 1000 ? b.realBudget! : (cur.realBudget ?? 0), movies: typeof b.movies === "boolean" ? b.movies : !!cur.movies, sourceRoots: cur.sourceRoots ?? ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] };
   patchSettings((x) => ({ ...x, importer: next }));
   logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? (next.realBudget < 0 ? "on" : `on for ${next.realBudget} more`) : "off"}; renames ${next.allowRename ? "on" : "off"}` });
   return next;

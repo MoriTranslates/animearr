@@ -439,7 +439,7 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   if ((native || imp.engine === "animearr") && imp.movies && imp.allowReal && budgetOk && preVerified) {
     try {
       const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
-      const plan = await planMovieImport({ movieId: m.id, path: main.path, release: row.release, client: row.client, live: native ? undefined : { path: live.path, currentFile: liveFile } });
+      const plan = await planMovieImport({ movieId: m.id, path: main.path, release: row.release, client: row.client, automatic: true, live: native ? undefined : { path: live.path, currentFile: liveFile } });
       const res = await executeMovieImport(plan);
       const bad = res.find((r) => !r.done);
       if (bad || !res.length) return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);

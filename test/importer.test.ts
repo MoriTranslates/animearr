@@ -186,3 +186,14 @@ test("rename route: Sonarr renames while it owns the show (RenameFiles), with it
   assert.equal(r.results[0].done, true);
   patchSettings((s) => ({ ...s, importer: { ...s.importer, allowRename: false } }));
 });
+
+test("automatic imports only take files from AnimeArr's own category folders; manual imports may come from elsewhere", async () => {
+  write(path.join(DL, "qbittorrent", "completed", "sonarr", "Frieren.S01E02.other.mkv"));
+  write(path.join(DL, "completed", "animearr", "Frieren.S01E02.ours.mkv"));
+  await assert.rejects(planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/sonarr/Frieren.S01E02.other.mkv", episodeIds: [102], automatic: true }, { probe, minBytes: 0 }), /only a manual import/);
+  await assert.rejects(planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/Frieren.S01E02.other.mkv", episodeIds: [102], automatic: true }, { probe, minBytes: 0 }), /can't reach|only a manual import/);
+  const ok = await planImport({ tvdbId: 424536, path: "/data/completed/animearr/Frieren.S01E02.ours.mkv", episodeIds: [102], automatic: true }, { probe, minBytes: 0 });
+  assert.equal(ok.items.length, 1);
+  const manual = await planImport({ tvdbId: 424536, path: "/data/qbittorrent/completed/sonarr/Frieren.S01E02.other.mkv", episodeIds: [102] }, { probe, minBytes: 0 });
+  assert.equal(manual.items.length, 1, "an explicit manual import may pick any download folder");
+});

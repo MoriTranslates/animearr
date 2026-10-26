@@ -74,3 +74,13 @@ test("two big files: import by hand; removing the movie keeps its files", async 
   assert.ok(fs.existsSync(path.join(LIB, "Suzume (2022)")));
   void db;
 });
+
+test("automatic movie imports only from AnimeArr's own category folders", async () => {
+  const { addMovie: add } = await import("../server/native.js");
+  const r = await add({ anilistId: 142771, rootFolder: "/media/Movies/Anime" }, { media: async (ids) => ids.map((i) => ({ ...media(i), title: { romaji: "Other", english: "Other Movie", native: null } })), fribb });
+  write(path.join(DL, "qbittorrent", "completed", "radarr", "Other.Movie.2022.mkv"));
+  await assert.rejects(planMovieImport({ movieId: r.movieId, path: "/data/qbittorrent/completed/radarr/Other.Movie.2022.mkv", automatic: true }, { probe, minBytes: 0 }), /only a manual import/);
+  write(path.join(DL, "qbittorrent", "completed", "animearr", "Other.Movie.2022.mkv"));
+  const ok = await planMovieImport({ movieId: r.movieId, path: "/data/qbittorrent/completed/animearr/Other.Movie.2022.mkv", automatic: true }, { probe, minBytes: 0 });
+  assert.equal(ok.items.length, 1);
+});
