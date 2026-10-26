@@ -61,7 +61,7 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   const withFile = sonarrEps.filter((e) => e.file_id);
   const fileRows = cache.prepare("SELECT id, path FROM files WHERE series_id = ?").all(s.id) as { id: number; path: string }[];
   const scanned = fileRows.filter((f) => db.prepare("SELECT 1 FROM media_files WHERE path = ?").get(f.path)).length;
-  const specials = withFile.filter((e) => e.season === 0);
+  const specials = withFile.filter((e) => e.season === 0); // refined below: specials AniDB places on S0 are tracked
   const base = { tvdbId: s.tvdb_id, sonarrId: s.id, title: s.title, path: s.path, sonarrEpisodes: sonarrEps.length, files: fileRows.length, filesScanned: scanned, specialsWithFiles: specials.length, adopted };
   if (!first) {
     blockers.push("AnimeArr's catalog has no AniList entry for this TVDB series yet (Settings → Metadata refresh, or it isn't on AniList)");
@@ -69,10 +69,12 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   }
   const built = buildEpisodes({ id: 0, tvdb_id: s.tvdb_id, anilist_id: first.anilist_id, synthetic: 0 });
   const missing = withFile.filter((e) => e.season > 0 && !built.byKey.has(`${e.season}x${e.episode}`));
-  const coveredFiles = new Set(withFile.filter((e) => e.season > 0 && built.byKey.has(`${e.season}x${e.episode}`)).map((e) => e.file_id)).size;
+  // Specials AniDB places on TVDB season 0 are tracked like any episode; only the rest need a confirmation.
+  const untracked = specials.filter((e) => !built.byKey.has(`0x${e.episode}`));
+  const coveredFiles = new Set(withFile.filter((e) => built.byKey.has(`${e.season}x${e.episode}`)).map((e) => e.file_id)).size;
   if (missing.length) blockers.push(`${missing.length} episode(s) with files don't exist in AnimeArr's numbering (${missing.slice(0, 4).map((e) => label(e.season, e.episode)).join(", ")}${missing.length > 4 ? "…" : ""}); they would be left untracked`);
   if (scanned < fileRows.length) blockers.push(`${fileRows.length - scanned} of Sonarr's ${fileRows.length} files aren't in AnimeArr's own file records yet (Library files scan); without them AnimeArr would search those episodes again`);
-  if (specials.length && !opts.acceptSpecials) blockers.push(`${specials.length} special(s) with files (season 0) wouldn't be tracked by AnimeArr (the files stay); confirm to go ahead anyway`);
+  if (untracked.length && !opts.acceptSpecials) blockers.push(`${untracked.length} special(s) with files (season 0) wouldn't be tracked by AnimeArr (${untracked.slice(0, 4).map((e) => label(0, e.episode)).join(", ")}${untracked.length > 4 ? "…" : ""}; AniDB doesn't place them yet); the files stay — confirm to go ahead anyway`);
   // Numbering differences, season by season (both ways).
   const seasons = new Set([...sonarrEps.filter((e) => e.season > 0).map((e) => e.season), ...built.eps.map((e) => e.season)]);
   const diffs: string[] = [];
@@ -85,7 +87,7 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   const lost = sonarrEps.filter((e) => e.season > 0 && !e.file_id && e.monitored && !built.byKey.has(`${e.season}x${e.episode}`));
   if (lost.length) warnings.push(`${lost.length} monitored episode(s) without a file aren't in AnimeArr's numbering and wouldn't be searched (${lost.slice(0, 3).map((e) => label(e.season, e.episode)).join(", ")}${lost.length > 3 ? "…" : ""})`);
   if (built.entries.some((e) => e.tvdb_season === "a")) warnings.push("an AniList entry is mapped by absolute numbering and is numbered as season 1 in AnimeArr");
-  return { ...base, entries: built.entries.length, animearrEpisodes: built.eps.length, filesCovered: coveredFiles, blockers, warnings };
+  return { ...base, specialsWithFiles: untracked.length, entries: built.entries.length, animearrEpisodes: built.eps.filter((e) => e.season > 0).length, filesCovered: coveredFiles, blockers, warnings };
 }
 
 /** AniList candidates for a TMDB movie (catalog first, then the Fribb mapping). */
@@ -164,7 +166,7 @@ function linkFiles(sonarrSeriesId: number, tvdbId: number, nativeRow: number, an
   const built = buildEpisodes({ id: nativeRow, tvdb_id: tvdbId, anilist_id: anilistId, synthetic: 0 });
   const files = cache.prepare("SELECT id, path, scene_name, release_group, quality, revision FROM files WHERE series_id = ?").all(sonarrSeriesId) as { id: number; path: string; scene_name: string | null; release_group: string | null; quality: string | null; revision: string | null }[];
   for (const f of files) {
-    const eps = cache.prepare("SELECT season, episode FROM episodes WHERE file_id = ? AND season > 0").all(f.id) as { season: number; episode: number }[];
+    const eps = cache.prepare("SELECT season, episode FROM episodes WHERE file_id = ?").all(f.id) as { season: number; episode: number }[];
     const ids = eps.map((e) => built.byKey.get(`${e.season}x${e.episode}`)?.id).filter((x): x is number => !!x);
     if (ids.length) db.prepare("INSERT OR REPLACE INTO file_links (path, tvdb_id, episode_ids, at) VALUES (?, ?, ?, ?)").run(f.path, tvdbId, JSON.stringify(ids), Date.now());
     db.prepare("INSERT OR REPLACE INTO file_meta (path, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?)").run(f.path, f.scene_name, f.release_group, f.quality, f.revision);

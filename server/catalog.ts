@@ -288,9 +288,9 @@ export function catalogStatus() {
     withTitles: n("SELECT COUNT(*) AS n FROM entry_episodes WHERE title IS NOT NULL"),
     withoutTvdb: n("SELECT COUNT(*) AS n FROM entries WHERE tvdb_id IS NULL AND kind IN ('TV', 'TV_SHORT', 'ONA')"),
     donghua: n("SELECT COUNT(*) AS n FROM entries WHERE country = 'CN'"),
-    providers: { anilist: true, animeLists: animeListEntries().size > 0, tmdb: !!s.tmdbKey },
+    providers: { anilist: true, animeLists: animeListEntries().size > 0, tmdb: !!s.tmdbKey, anidb: !!s.anidbClient },
     /** Saved, but not used yet (coming with later rounds). */
-    pending: { anidb: !!s.anidbClient, tvdb: !!s.tvdbKey },
+    pending: { tvdb: !!s.tvdbKey },
     lastJob: (cache.prepare("SELECT state, detail, finished_at FROM jobs WHERE name = 'catalog'").get() as { state: string; detail: string; finished_at: number } | undefined) ?? null,
   };
 }
@@ -327,7 +327,7 @@ export async function testTmdb(key: string, fetcher: typeof fetch = fetch) {
 }
 
 /** Fills episode titles/air dates from TMDB for entries mapped to a TMDB TV season (one request per season, cached a week). */
-export async function tmdbEpisodes(limit = 40, fetcher: typeof fetch = fetch, now = Date.now()) {
+export async function tmdbEpisodes(limit = 300, fetcher: typeof fetch = fetch, now = Date.now()) {
   const key = getSettings().metadata.tmdbKey;
   if (!key) return 0;
   const rows = db.prepare("SELECT anilist_id, tmdb_tv, tmdb_season, tmdb_offset, episodes FROM entries WHERE tmdb_tv IS NOT NULL AND tmdb_season IS NOT NULL AND (tmdb_fetched_at IS NULL OR tmdb_fetched_at < ?) ORDER BY tmdb_fetched_at IS NOT NULL, tmdb_fetched_at LIMIT ?").all(now - 7 * DAY, limit) as { anilist_id: number; tmdb_tv: number; tmdb_season: number; tmdb_offset: number; episodes: number | null }[];

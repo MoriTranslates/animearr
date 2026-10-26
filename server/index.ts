@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { anidbStatus, anidbTick } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
 import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
@@ -1036,6 +1037,14 @@ setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
 setTimeout(() => void importMediaDefaultsOnce(), 20_000);
 every(5 * 60_000, () => managedTick(), "managed");
 every(5 * 60_000, () => downloadsTick(), "download rules");
+// AniDB: a few library entries every 15 minutes (never a crawl); shows blocked in the cutover first.
+every(15 * 60_000, async () => {
+  const blocked = (await cutoverPlan().catch(() => null))?.shows.filter((s) => s.blockers.length).map((s) => s.tvdbId) ?? [];
+  const aids = blocked.flatMap((t) => (JSON.parse((cache.prepare("SELECT anidb_ids FROM series WHERE tvdb_id = ?").get(t) as { anidb_ids: string } | undefined)?.anidb_ids ?? "[]") as { aid: number }[]).map((x) => x.aid));
+  const r = await anidbTick(aids);
+  if (r.fetched) materializeAll(); // native shows pick up AniDB's episodes
+}, "anidb");
+app.get("/api/anidb", async () => anidbStatus());
 setTimeout(() => void downloadsTick().catch(() => undefined), 30_000);
 let lastRss = 0;
 every(60_000, async () => {

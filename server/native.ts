@@ -10,6 +10,7 @@
  * episodes, files, alt_titles) are materialized from the catalog and AnimeArr's own file records, so every other part
  * of AnimeArr (search, grabs, scopes, calendar, the Show page) works on it like on a Sonarr show.
  */
+import { anidbForTvdb } from "./anidb.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
@@ -80,10 +81,25 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
       byKey.set(key, { id: episodeId(n.id, e.season, ep), season: e.season, episode: ep, absolute: e.tvdb_season === "a" ? ep : 0, title: x?.title ?? null, air: x?.air_utc ?? (e.next_ep === k ? e.next_at : null), runtime: e.duration });
     }
   }
-  // Absolute numbers: in (season, episode) order; "a" entries already are absolute.
+  // AniDB (when fetched): fills episodes AniList's entries don't cover (e.g. a season mapped only on AniDB), missing
+  // titles and air dates, and season 0 — specials placed by Anime-Lists' mapping lists.
+  if (!n.synthetic)
+    for (const a of anidbForTvdb(n.tvdb_id)) {
+      const key = `${a.season}x${a.episode}`;
+      const have = byKey.get(key);
+      if (have) {
+        have.title ??= a.title;
+        have.air ??= a.air;
+        have.runtime ??= a.length;
+        continue;
+      }
+      if (a.episode <= 0 || a.episode >= 10_000) continue;
+      byKey.set(key, { id: episodeId(n.id, a.season, a.episode), season: a.season, episode: a.episode, absolute: 0, title: a.title, air: a.air, runtime: a.length });
+    }
+  // Absolute numbers: in (season, episode) order, regular seasons only; "a" entries already are absolute.
   const eps = [...byKey.values()].sort((a, b) => a.season - b.season || a.episode - b.episode);
   let abs = 0;
-  for (const e of eps) e.absolute = e.absolute || ++abs;
+  for (const e of eps) if (e.season > 0) e.absolute = e.absolute || ++abs;
   return { entries, eps, byKey };
 }
 
@@ -156,7 +172,7 @@ export function materialize(n: NativeRow, now = Date.now()) {
         first?.cover ?? null, new Date(n.added_at).toISOString(), first?.description ?? null, first?.genres ?? "[]", now,
       );
     const insE = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, air_date, air_utc, runtime, monitored, has_file, file_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
-    for (const e of eps) insE.run(e.id, sid, e.season, e.episode, e.absolute, e.title, e.air ? new Date(e.air).toISOString().slice(0, 10) : null, e.air, e.runtime, fileOf.has(e.id) ? 1 : 0, fileOf.get(e.id) ?? null);
+    for (const e of eps) insE.run(e.id, sid, e.season, e.episode, e.season > 0 ? e.absolute : null, e.title, e.air ? new Date(e.air).toISOString().slice(0, 10) : null, e.air, e.runtime, fileOf.has(e.id) ? 1 : 0, fileOf.get(e.id) ?? null);
     const insF = cache.prepare("INSERT OR REPLACE INTO files (id, series_id, season, path, size, audio_langs, sub_langs, resolution, date_added, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const f of files) {
       // Release info kept from Sonarr's records (cutover), so upgrades and learning still know the release.
