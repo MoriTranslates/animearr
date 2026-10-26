@@ -268,11 +268,41 @@ export async function searchMovie(id: number, search: typeof prowlarrSearch = pr
     }),
   );
   const fileScene = m.file ? (JSON.parse(m.file) as MovieFile).sceneName : null;
+  // The other anime movies of the library: a release that fits one of them at least as well isn't this movie
+  // (e.g. "The Quintessential Quintuplets Movie" vs the later "The Quintessential Quintuplets*" special).
+  const others = (cache.prepare("SELECT id, title, original_title, alt_titles, year FROM movies WHERE is_anime = 1 AND id != ?").all(id) as { id: number; title: string; original_title: string | null; alt_titles: string; year: number | null }[]).map((o) => ({
+    id: o.id,
+    label: o.year ? `${o.title} (${o.year})` : o.title,
+    info: { title: o.title, original_title: o.original_title, alt_titles: (() => {
+      try {
+        return JSON.parse(o.alt_titles) as string[];
+      } catch {
+        return [];
+      }
+    })(), year: o.year },
+  }));
   for (const r of raw.values()) {
     const p = parseRelease(r.title);
     const match = matchMovie(p, info);
     if (!match.confidence) {
       skipped[match.why] = (skipped[match.why] ?? 0) + 1;
+      continue;
+    }
+    // On a tie, the movie whose own title shares more words with the release's title wins ("… Movie" vs "…*").
+    const words = (t: string) => new Set(t.toLowerCase().normalize("NFKC").split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+    const overlap = (t: string) => {
+      const a = words(p.title);
+      const b = words(t);
+      return [...a].filter((x) => b.has(x)).length / Math.max(1, new Set([...a, ...b]).size);
+    };
+    const mine = Math.max(overlap(info.title), ...info.alt_titles.map(overlap));
+    const rival = others.find((o) => {
+      const c = matchMovie(p, o.info).confidence;
+      return c > match.confidence || (c === match.confidence && c > 0 && Math.max(overlap(o.info.title), ...o.info.alt_titles.map(overlap)) >= mine);
+    });
+    if (rival) {
+      const why = `fits ${rival.label} at least as well`;
+      skipped[why] = (skipped[why] ?? 0) + 1;
       continue;
     }
     const learned = learnedFor(p.group, p.platform ?? sourceKey(r.title, null, p.source));

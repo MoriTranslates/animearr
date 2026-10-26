@@ -127,3 +127,14 @@ test("a movie that has a file is only grabbed when replacing was confirmed", asy
   const g = await startMovieGrab({ movieId: 1, candidate: cand("[X] Suzume (2022) new"), fallbacks: [], origin: "manual", replace: true }, deps().d);
   assert.equal((db.prepare("SELECT replace_file FROM grabs WHERE id = ?").get(g.id) as { replace_file: number }).replace_file, 1);
 });
+
+test("a release that fits another library movie better isn't grabbed for this one", async () => {
+  const { searchMovie } = await import("../server/movies.js");
+  cache.prepare("INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, alt_titles, is_anime, synced_at) VALUES (9101, 9101, 'The Quintessential Quintuplets Movie', 2022, '/media/Movies/Anime/Q1', 1, 0, '[]', 1, 0)").run();
+  cache.prepare("INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, alt_titles, is_anime, synced_at) VALUES (9102, 9102, 'The Quintessential Quintuplets＊', 2024, '/media/Movies/Anime/Q2', 1, 0, '[]', 1, 0)").run();
+  const rel = { guid: "q", title: "[RUDY] The Quintessential Quintuplets Movie [REPACK] (BD 1080p HEVC x265 10-bit) (Opus 5.1)", indexerId: 1, indexer: "X", protocol: "torrent", size: 3e9, seeders: 10, downloadUrl: "x" };
+  const special = await searchMovie(9102, (async () => [rel]) as never);
+  assert.equal(special.results.length, 0, "not the 2024 special");
+  const movie = await searchMovie(9101, (async () => [rel]) as never);
+  assert.equal(movie.results.length, 1, "it is the 2022 movie");
+});
