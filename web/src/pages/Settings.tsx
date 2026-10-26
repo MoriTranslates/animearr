@@ -50,7 +50,12 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
           </button>
         ))}
       </div>
-      {tab === "connections" && <Connections s={s} upd={upd} />}
+      {tab === "connections" && (
+        <>
+          <Connections s={s} upd={upd} />
+          <PlexCard s={s} upd={upd} />
+        </>
+      )}
       {tab === "profile" && <ProfilesEditor />}
       {tab === "media" && <MediaManagement s={s} upd={upd} />}
       {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
@@ -405,6 +410,49 @@ function MappingList({ value, onChange, title, help }: { value: PathMapping[]; o
       <button className="small self-start" onClick={() => onChange([...value, { from: "", to: "" }])}>
         {t("common.add")}
       </button>
+    </div>
+  );
+}
+
+/** Plex: partial scans after AnimeArr's own imports and renames (token stored encrypted; read-only otherwise). */
+function PlexCard({ s, upd }: { s: S; upd: Upd }) {
+  const toast = useToast();
+  const p = s.plex;
+  const set = (patch: Partial<S["plex"]>) => upd((x) => ({ ...x, plex: { ...x.plex, ...patch } }));
+  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
+  return (
+    <div className="card pad stack">
+      <div className="row between">
+        <h2>Plex</h2>
+        <button
+          className="small"
+          onClick={async () => {
+            try {
+              const r = await api<{ version: string; name: string; sections: { title: string; locations: string[] }[] }>("/test/plex", { body: { url: p.url, apiKey: p.token } });
+              setRes({ ok: true, text: t("plex.testOk", { name: r.name, version: r.version, libs: r.sections.map((x) => `${x.title} (${x.locations.join(", ")})`).join("; ") }) });
+            } catch (e) {
+              setRes({ ok: false, text: (e as Error).message });
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          {t("common.test")}
+        </button>
+      </div>
+      <p className="muted small">{t("plex.help")}</p>
+      <div className="form">
+        <label>
+          {t("settings.url")}
+          <input value={p.url} onChange={(e) => set({ url: e.target.value })} placeholder="http://192.168.1.10:32400" />
+        </label>
+        <label className="field">
+          {t("plex.token")}
+          <SecretInput value={p.token} onChange={(v) => set({ token: v })} label={t("plex.token")} />
+        </label>
+        <Toggle checked={p.enabled} onChange={(v) => set({ enabled: v })} label={t("plex.enabled")} />
+      </div>
+      <MappingList value={p.pathMappings} onChange={(v) => set({ pathMappings: v })} title={t("plex.paths")} help={t("plex.pathsHelp")} />
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
     </div>
   );
 }

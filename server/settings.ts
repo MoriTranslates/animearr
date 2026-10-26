@@ -168,6 +168,8 @@ export interface Settings {
      */
     sourceRoots: string[];
   };
+  /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
+  plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
   downloads: {
     rules: import("./downloads.js").FolderRule[];
@@ -237,6 +239,7 @@ const DEFAULTS: Settings = {
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
+  plex: { url: "", token: "", enabled: false, pathMappings: [] },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
@@ -285,9 +288,9 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey"] as const;
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -295,6 +298,7 @@ const SECRET_FOR_URL: [string, string][] = [
   ["prowlarr.url", "prowlarr.apiKey"],
   ["sabnzbd.url", "sabnzbd.apiKey"],
   ["qbittorrent.url", "qbittorrent.password"],
+  ["plex.url", "plex.token"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
 const SEASONS = ["all", "first", "latest", "recent"];
@@ -363,7 +367,7 @@ function merge<T>(base: T, over: unknown): T {
 
 /** Coerces an untrusted patch into the shape of `shape`, dropping unknown keys and wrong types. */
 function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
-  if (path === "remotePathMappings" || path === "localPathMappings") {
+  if (path === "remotePathMappings" || path === "localPathMappings" || path === "plex.pathMappings") {
     if (!Array.isArray(patch)) return undefined;
     return patch
       .filter((x) => x && typeof x === "object")

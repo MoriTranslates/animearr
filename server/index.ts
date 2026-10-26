@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -255,6 +256,10 @@ app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", 
     case "sabnzbd": {
       const c = withSecret(b.url, b.apiKey, s.sabnzbd.url, s.sabnzbd.apiKey);
       return testSab({ url: c.url, apiKey: c.secret, category: String(b.category || s.sabnzbd.category) });
+    }
+    case "plex": {
+      const c = withSecret(b.url, b.apiKey, s.plex.url, s.plex.token);
+      return testPlex({ url: c.url, token: c.secret });
     }
     case "qbittorrent": {
       const c = withSecret(b.url, b.password, s.qbittorrent.url, s.qbittorrent.password, false);
