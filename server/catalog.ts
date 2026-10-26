@@ -95,8 +95,17 @@ export function upsertMedia(m: AniMedia, anidbId: number | null, now = Date.now(
   for (const e of m.relations?.edges ?? []) if (e.node.type === "ANIME") db.prepare("INSERT OR IGNORE INTO entry_relations (from_id, to_id, type) VALUES (?, ?, ?)").run(m.id, e.node.id, e.relationType);
 }
 
+/** User/auto matches (catalog_overrides) win over Anime-Lists/Fribb: re-applied after every mapping pass. */
+export function applyOverrides() {
+  for (const o of db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides").all() as { anilist_id: number; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_movie: number | null }[]) {
+    if (o.tvdb_id) db.prepare("UPDATE entries SET tvdb_id = ?, tvdb_season = ?, tvdb_offset = ? WHERE anilist_id = ?").run(o.tvdb_id, o.tvdb_season ?? "1", o.tvdb_offset, o.anilist_id);
+    if (o.tmdb_movie) db.prepare("UPDATE entries SET tmdb_movie = ? WHERE anilist_id = ?").run(o.tmdb_movie, o.anilist_id);
+  }
+}
+
 /** Recomputes franchises: connected entries through franchise relations; id = smallest AniList id, title = the earliest TV entry's. */
 export function rebuildFranchises(now = Date.now()) {
+  applyOverrides(); // runs at the end of every catalog refresh: overrides survive re-mapping
   const ids = (db.prepare("SELECT anilist_id FROM entries").all() as { anilist_id: number }[]).map((r) => r.anilist_id);
   const parent = new Map<number, number>(ids.map((i) => [i, i]));
   const find = (x: number): number => {
@@ -143,6 +152,7 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
   for (const e of al.values()) if ((e.tvdbId && tvdbs.has(e.tvdbId)) || (e.tmdbMovie && tmdbs.has(e.tmdbMovie))) if (f.anidbToAnilist.has(e.aid)) seeds.add(f.anidbToAnilist.get(e.aid)!);
   for (const [alId, tm] of f.anilistToTmdb) if (tmdbs.has(tm)) seeds.add(alId);
   for (const r of db.prepare("SELECT anilist_id FROM catalog_pins").all() as { anilist_id: number }[]) seeds.add(r.anilist_id);
+  for (const r of db.prepare("SELECT anilist_id FROM catalog_overrides").all() as { anilist_id: number }[]) seeds.add(r.anilist_id);
   // Exactly one hop out from the seeds (sequels, prequels, side stories, movies…): never a crawl.
   const want = new Set(seeds);
   const hop = seeds.size ? (db.prepare(`SELECT to_id, type FROM entry_relations WHERE from_id IN (${[...seeds].map(() => "?").join(",")})`).all(...seeds) as { to_id: number; type: string }[]) : [];

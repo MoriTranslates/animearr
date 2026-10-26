@@ -23,6 +23,7 @@ export function Cutover() {
   const [specials, setSpecials] = useState(false);
   const [ask, setAsk] = useState<null | { shows: ShowCut[]; movies: MovieCut[] }>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState<null | { kind: "show" | "movie"; id: number; title: string }>(null);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const p = d.data;
@@ -113,6 +114,31 @@ export function Cutover() {
                       {b}
                     </span>
                   ))}
+                  {!s.adopted && (
+                    <span className="row">
+                      {s.blockers.some((b) => /no AniList entry|numbering/.test(b)) && (
+                        <button className="small" onClick={(e) => (e.preventDefault(), setPicking({ kind: "show", id: s.tvdbId, title: s.title }))}>
+                          {t("cut.pickShow")}
+                        </button>
+                      )}
+                      {s.blockers.some((b) => /special/.test(b)) && (
+                        <button className="small" onClick={(e) => (e.preventDefault(), void run("/cutover/ack-specials", { tvdbId: s.tvdbId }, () => t("cut.acked")))}>
+                          {t("cut.ackSpecials")}
+                        </button>
+                      )}
+                    </span>
+                  )}
+                  {picking?.kind === "show" && picking.id === s.tvdbId && (
+                    <AniPicker
+                      initial={s.title}
+                      movie={false}
+                      onClose={() => setPicking(null)}
+                      onPick={async (anilistId, season) => {
+                        setPicking(null);
+                        await run("/cutover/match-show", { tvdbId: s.tvdbId, anilistId, season }, () => t("cut.matched"));
+                      }}
+                    />
+                  )}
                   {s.warnings.map((b) => (
                     <span key={b} className="muted">
                       {b}
@@ -127,7 +153,11 @@ export function Cutover() {
 
       <div className="card pad stack">
         <h2>{t("cut.movies")}</h2>
+        <p className="muted small">{t("cut.matchHelp")}</p>
         <div className="row">
+          <button className="small" disabled={busy} onClick={() => void run("/cutover/match-movies", {}, () => t("cut.matching"))}>
+            {t("cut.matchMovies")}
+          </button>
           <button className="small" disabled={busy} onClick={() => setMsel(new Set(p.movies.filter((m) => !m.blockers.length && !m.adopted).map((m) => m.movieId)))}>
             {t("cut.selectReady")}
           </button>
@@ -155,6 +185,22 @@ export function Cutover() {
                       {b}
                     </span>
                   ))}
+                  {!m.adopted && m.blockers.some((b) => /AniList/.test(b)) && (
+                    <button className="small self-start" onClick={(e) => (e.preventDefault(), setPicking({ kind: "movie", id: m.movieId, title: m.title }))}>
+                      {t("cut.pickMovie")}
+                    </button>
+                  )}
+                  {picking?.kind === "movie" && picking.id === m.movieId && (
+                    <AniPicker
+                      initial={m.title}
+                      movie
+                      onClose={() => setPicking(null)}
+                      onPick={async (anilistId) => {
+                        setPicking(null);
+                        await run("/cutover/match-movie", { movieId: m.movieId, anilistId }, () => t("cut.matched"));
+                      }}
+                    />
+                  )}
                 </span>
               </label>
             </li>
@@ -182,6 +228,58 @@ export function Cutover() {
           </ul>
         </Confirm>
       )}
+    </div>
+  );
+}
+
+interface Hit { anilistId: number; title: string; romaji: string | null; kind: string | null; year: number | null; episodes: number | null }
+
+/** A small AniList picker (search, pick one), for matching a blocked show or movie by hand. */
+function AniPicker({ initial, movie, onPick, onClose }: { initial: string; movie: boolean; onPick: (anilistId: number, season: number) => Promise<void>; onClose: () => void }) {
+  const [q, setQ] = useState(initial);
+  const [hits, setHits] = useState<Hit[] | null>(null);
+  const [season, setSeason] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const search = async () => {
+    setBusy(true);
+    try {
+      setHits((await api<{ results: Hit[] }>(`/add/search?q=${encodeURIComponent(q)}`)).results.filter((h) => (movie ? h.kind === "MOVIE" : h.kind !== "MOVIE")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Inside a row's <label>: keep clicks here from ticking the row's checkbox.
+  return (
+    <div className="card pad stack" onClick={(e) => e.preventDefault()}>
+      <div className="row">
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} aria-label={t("cut.pickSearch")} className="grow" />
+        <button className="small" disabled={busy} onClick={() => void search()}>
+          {t("cut.pickSearch")}
+        </button>
+        {!movie && (
+          <label className="row small">
+            {t("cut.season")}
+            <input type="number" min={1} max={99} value={season} onChange={(e) => setSeason(Number(e.target.value) || 1)} style={{ width: 60 }} />
+          </label>
+        )}
+        <button className="small ghost" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+      </div>
+      {hits && !hits.length && <p className="muted small">{t("add.none")}</p>}
+      <ul className="small">
+        {hits?.slice(0, 10).map((h) => (
+          <li key={h.anilistId} className="row">
+            <button className="small" disabled={busy} onClick={async () => (setBusy(true), await onPick(h.anilistId, season).finally(() => setBusy(false)))}>
+              {t("cut.pick")}
+            </button>
+            <span>
+              {h.title} {h.romaji && h.romaji !== h.title ? <span className="muted">({h.romaji})</span> : null} · {h.kind} · {h.year ?? "?"}
+              {h.episodes ? ` · ${h.episodes} eps` : ""} · <a href={`https://anilist.co/anime/${h.anilistId}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>AniList ↗</a>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -15,8 +15,11 @@
 import { logDecision } from "./activity.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
+import { mediaByIds, searchMedia, type AniMedia } from "./anilist.js";
+import { applyOverrides, upsertMedia } from "./catalog.js";
+import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
-import { cache, db, dbState, tx } from "./db.js";
+import { cache, db, dbState, setJob, tx } from "./db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
 import { ACTIVE } from "./pipeline.js";
 import { getSettings, patchSettings } from "./settings.js";
@@ -49,6 +52,7 @@ function firstEntry(tvdbId: number) {
 
 /** One Sonarr series: what AnimeArr would make of it. */
 export function showCut(s: { id: number; tvdb_id: number; title: string; path: string }, opts: { acceptSpecials?: boolean } = {}): ShowCut {
+  if (!opts.acceptSpecials && db.prepare("SELECT 1 FROM cutover_acks WHERE tvdb_id = ? AND specials = 1").get(s.tvdb_id)) opts = { ...opts, acceptSpecials: true };
   const blockers: string[] = [];
   const warnings: string[] = [];
   const first = firstEntry(s.tvdb_id);
@@ -87,8 +91,12 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
 /** AniList candidates for a TMDB movie (catalog first, then the Fribb mapping). */
 function movieCandidates(tmdbId: number | null, map: Map<number, number[]>) {
   if (!tmdbId) return [];
+  // A user's pick wins outright; then the catalog, the Fribb mapping and title+year matches.
+  const user = db.prepare("SELECT anilist_id FROM catalog_overrides WHERE tmdb_movie = ? AND source = 'user' ORDER BY at DESC LIMIT 1").get(tmdbId) as { anilist_id: number } | undefined;
+  if (user) return [user.anilist_id];
   const fromCatalog = (db.prepare("SELECT anilist_id FROM entries WHERE tmdb_movie = ? AND kind = 'MOVIE' ORDER BY anilist_id").all(tmdbId) as { anilist_id: number }[]).map((r) => r.anilist_id);
-  return [...new Set([...fromCatalog, ...(map.get(tmdbId) ?? [])])].sort((a, b) => a - b);
+  const auto = (db.prepare("SELECT anilist_id FROM catalog_overrides WHERE tmdb_movie = ? AND source = 'auto'").all(tmdbId) as { anilist_id: number }[]).map((r) => r.anilist_id);
+  return [...new Set([...fromCatalog, ...(map.get(tmdbId) ?? []), ...auto])].sort((a, b) => a - b);
 }
 
 function movieCut(m: { id: number; tmdb_id: number | null; title: string; year: number | null; path: string; has_file: number }, map: Map<number, number[]>): MovieCut {
@@ -350,4 +358,87 @@ export async function switchToAnimeArr(input: { tvdbIds?: number[]; movieIds?: n
 export function setArrWrites(on: boolean) {
   patchSettings((x) => ({ ...x, cutover: { ...x.cutover, allowArrWrites: on } }));
   logDecision("info", { why: on ? "Cutover: removing adopted shows/movies from Sonarr/Radarr is switched on" : "Cutover: writes to Sonarr/Radarr switched off" });
+}
+
+// ---------------------------------------------------------------- resolving blocked items (user picks, auto matches)
+
+/** The user's pick: this AniList entry is (a season of) this TVDB show. Fetched into the catalog if needed. */
+export async function matchShow(tvdbId: number, anilistId: number, season = 1, offset = 0, deps = { media: mediaByIds, fribb }) {
+  const s = cache.prepare(`SELECT title FROM series WHERE tvdb_id = ? AND id < ${NATIVE_BASE}`).get(tvdbId) as { title: string } | undefined;
+  if (!s) throw err("Not a Sonarr series", 404);
+  if (!Number.isInteger(season) || season < 1 || season > 99 || !Number.isInteger(offset) || offset < 0 || offset > 5000) throw err("Season 1–99, offset 0–5000");
+  if (!db.prepare("SELECT 1 FROM entries WHERE anilist_id = ?").get(anilistId)) {
+    const f = await deps.fribb();
+    const got = await deps.media([anilistId], undefined, { priority: true });
+    if (!got.length) throw err("AniList didn't return that entry", 404);
+    tx(db, () => upsertMedia(got[0], f.anilistToAnidb.get(anilistId) ?? null));
+  }
+  db.prepare("INSERT OR REPLACE INTO catalog_overrides (anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie, source, at) VALUES (?, ?, ?, ?, NULL, 'user', ?)").run(anilistId, tvdbId, String(season), offset, Date.now());
+  db.prepare("INSERT OR IGNORE INTO catalog_pins (anilist_id, at) VALUES (?, ?)").run(anilistId, Date.now());
+  applyOverrides();
+  logDecision("info", { tvdbId, title: s.title, why: `Cutover: AniList entry ${anilistId} set as season ${season}${offset ? ` (from episode ${offset + 1})` : ""} of ${s.title}` });
+  return showCut(cache.prepare("SELECT id, tvdb_id, title, path FROM series WHERE tvdb_id = ? AND id < ?").get(tvdbId, NATIVE_BASE) as never);
+}
+
+export function unmatch(anilistId: number) {
+  db.prepare("DELETE FROM catalog_overrides WHERE anilist_id = ?").run(anilistId);
+}
+
+/** The user confirms: specials (season 0) with files may stay untracked by AnimeArr for this show. */
+export function ackSpecials(tvdbId: number, on: boolean) {
+  if (on) db.prepare("INSERT OR REPLACE INTO cutover_acks (tvdb_id, specials, at) VALUES (?, 1, ?)").run(tvdbId, Date.now());
+  else db.prepare("DELETE FROM cutover_acks WHERE tvdb_id = ?").run(tvdbId);
+}
+
+/** The user's pick for a Radarr movie. */
+export function matchMovieManual(movieId: number, anilistId: number) {
+  const m = cache.prepare(`SELECT tmdb_id, title FROM movies WHERE id = ? AND id < ${NATIVE_BASE}`).get(movieId) as { tmdb_id: number | null; title: string } | undefined;
+  if (!m?.tmdb_id) throw err("Not a Radarr movie with a TMDB id", 404);
+  db.prepare("INSERT OR REPLACE INTO catalog_overrides (anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie, source, at) VALUES (?, NULL, NULL, 0, ?, 'user', ?)").run(anilistId, m.tmdb_id, Date.now());
+  logDecision("info", { title: m.title, why: `Cutover: ${m.title} matched to AniList entry ${anilistId}` });
+}
+
+let matchRunning = false;
+
+/**
+ * Title + year matching for Radarr movies that no mapping knows: an AniList MOVIE whose English/romaji/native title
+ * or synonym equals one of Radarr's titles, released within a year. Only unambiguous matches are kept (source "auto");
+ * the rest are listed for a manual pick. Runs in the background (AniList allows ~30 requests a minute).
+ */
+export function autoMatchMovies(deps = { search: searchMedia, fribb }) {
+  if (matchRunning) return { started: false };
+  matchRunning = true;
+  void (async () => {
+    const map = await tmdbMap(deps);
+    const rows = cache.prepare(`SELECT id, tmdb_id, title, original_title, alt_titles, year FROM movies WHERE id < ${NATIVE_BASE} AND is_anime = 1 AND tmdb_id IS NOT NULL`).all() as { id: number; tmdb_id: number; title: string; original_title: string | null; alt_titles: string; year: number | null }[];
+    const todo = rows.filter((m) => !movieCandidates(m.tmdb_id, map).length);
+    let matched = 0;
+    let n = 0;
+    for (const m of todo) {
+      setJob("movie-match", "running", `Matching ${++n} of ${todo.length} movies with AniList (${matched} found)`);
+      let alts: string[] = [];
+      try {
+        alts = JSON.parse(m.alt_titles) as string[];
+      } catch {
+        alts = [];
+      }
+      const names = new Set([m.title, m.original_title ?? "", ...alts].filter(Boolean).map((t) => compactKey(t)).filter(Boolean));
+      let found: AniMedia[] = [];
+      try {
+        found = await deps.search(m.title, 10, undefined, { interactive: false }); // background: never jumps ahead of someone typing
+      } catch {
+        continue;
+      }
+      const year = (a: AniMedia) => a.seasonYear ?? a.startDate?.year ?? null;
+      const hits = found.filter((a) => a.format === "MOVIE" && (!m.year || year(a) === null || Math.abs(year(a)! - m.year) <= 1) && [a.title.english, a.title.romaji, a.title.native, ...(a.synonyms ?? [])].some((t) => !!t && names.has(compactKey(t))));
+      if (hits.length !== 1) continue;
+      db.prepare("INSERT OR IGNORE INTO catalog_overrides (anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie, source, at) VALUES (?, NULL, NULL, 0, ?, 'auto', ?)").run(hits[0].id, m.tmdb_id, Date.now());
+      matched++;
+    }
+    setJob("movie-match", "done", `${matched} of ${todo.length} movies matched with AniList by title and year`);
+    logDecision("info", { why: `Cutover: ${matched} of ${todo.length} movies matched with AniList by title and year (the rest can be picked by hand)` });
+  })()
+    .catch((e) => setJob("movie-match", "error", (e as Error).message))
+    .finally(() => (matchRunning = false));
+  return { started: true };
 }

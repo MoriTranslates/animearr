@@ -111,9 +111,9 @@ export async function mediaByIds(ids: number[], fetcher?: typeof fetch, opts: { 
 }
 
 /** Title search (English, romaji, native, synonyms), anime only. */
-export async function searchMedia(q: string, perPage = 15, fetcher?: typeof fetch): Promise<AniMedia[]> {
+export async function searchMedia(q: string, perPage = 15, fetcher?: typeof fetch, opts: { interactive?: boolean } = { interactive: true }): Promise<AniMedia[]> {
   // Only what a search result shows (the full entry is fetched when something is added); first in the queue.
   const slim = "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color }";
-  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`, { q, n: perPage }, fetcher, { priority: true, supersede: true });
+  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`, { q, n: perPage }, fetcher, opts.interactive === false ? {} : { priority: true, supersede: true });
   return d.Page?.media ?? [];
 }

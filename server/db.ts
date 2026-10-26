@@ -323,6 +323,9 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE file_meta (path TEXT PRIMARY KEY, scene_name TEXT, release_group TEXT, quality TEXT, revision TEXT);`,
   // 17: the in-app notification bell
   `CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, event TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0);`,
+  // 18: user/auto matches the mappings don't have (AniList entry ↔ TVDB season / TMDB movie), and cutover confirmations
+  `CREATE TABLE catalog_overrides (anilist_id INTEGER PRIMARY KEY, tvdb_id INTEGER, tvdb_season TEXT, tvdb_offset INTEGER NOT NULL DEFAULT 0, tmdb_movie INTEGER, source TEXT NOT NULL, at INTEGER NOT NULL);
+   CREATE TABLE cutover_acks (tvdb_id INTEGER PRIMARY KEY, specials INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

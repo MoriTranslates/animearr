@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { bell, markRead, send } from "./notify.js";
-import { adoptMovies, adoptShows, cutoverPlan, setArrWrites, switchToAnimeArr } from "./cutover.js";
+import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -625,6 +625,30 @@ app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; acceptSpecials?: boo
   const out = await switchToAnimeArr({ tvdbIds: (b.tvdbIds ?? []).map(Number), movieIds: (b.movieIds ?? []).map(Number), acceptSpecials: b.acceptSpecials === true });
   invalidateIndex();
   return { results: out };
+});
+app.post<{ Body: { tvdbId: number; anilistId: number; season?: number; offset?: number } }>("/api/cutover/match-show", async (req) => {
+  writable();
+  const b = req.body ?? ({} as never);
+  return matchShow(id(b.tvdbId), id(b.anilistId), Number(b.season ?? 1), Number(b.offset ?? 0));
+});
+app.post<{ Body: { movieId: number; anilistId: number } }>("/api/cutover/match-movie", async (req) => {
+  writable();
+  matchMovieManual(id(req.body?.movieId), id(req.body?.anilistId));
+  return { ok: true };
+});
+app.post<{ Body: { anilistId: number } }>("/api/cutover/unmatch", async (req) => {
+  writable();
+  unmatch(id(req.body?.anilistId));
+  return { ok: true };
+});
+app.post<{ Body: { tvdbId: number; on?: boolean } }>("/api/cutover/ack-specials", async (req) => {
+  writable();
+  ackSpecials(id(req.body?.tvdbId), req.body?.on !== false);
+  return { ok: true };
+});
+app.post("/api/cutover/match-movies", async () => {
+  writable();
+  return autoMatchMovies();
 });
 app.put<{ Body: { allowArrWrites?: boolean } }>("/api/cutover/allow", async (req) => {
   writable();

@@ -63,3 +63,18 @@ test("the switch: gated; refused while downloading; moves state to AnimeArr's id
   assert.equal((db.prepare("SELECT episode_ids FROM grabs WHERE tvdb_id = 555").get() as { episode_ids: string }).episode_ids, JSON.stringify([eps[0].id]), "grab history follows");
   assert.equal((cache.prepare("SELECT scene_name FROM files WHERE path LIKE '%one.mkv'").get() as { scene_name: string }).scene_name, "Show.S01E01.1080p.WEB-GRP", "release info kept");
 });
+
+test("resolving: a user's AniList pick unblocks a show; specials can be confirmed", async () => {
+  const { matchShow, ackSpecials, showCut } = await import("../server/cutover.js");
+  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id) VALUES (801, 8, 1, 1, 1, 0, NULL)").run();
+  db.prepare("INSERT INTO entries (anilist_id, kind, title_english, synonyms, status, start_date, episodes, fetched_at) VALUES (950, 'TV', 'Unknown', '[]', 'FINISHED', '2019-01-01', 1, 1)").run();
+  const cut = await matchShow(666, 950, 1, 0, { media: async () => [], fribb } as never);
+  assert.deepEqual(cut.blockers, []);
+  const row = cache.prepare("SELECT id, tvdb_id, title, path FROM series WHERE tvdb_id = 666").get() as never;
+  cache.prepare("INSERT INTO files (id, series_id, season, path) VALUES (81, 8, 0, '/media/Anime/Unknown/Specials/sp.mkv')").run();
+  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id) VALUES (802, 8, 0, 1, 1, 1, 81)").run();
+  db.prepare("INSERT INTO media_files (path, root, size, mtime, seen_at) VALUES ('/media/Anime/Unknown/Specials/sp.mkv', '/media/Anime', 5, 1, 1)").run();
+  assert.match(showCut(row).blockers.join(" "), /special/);
+  ackSpecials(666, true);
+  assert.deepEqual(showCut(row).blockers, []);
+});
