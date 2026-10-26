@@ -3,6 +3,7 @@ import { api, fmtSize, store, type PathMapping, type Settings as S, type Status 
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
+import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
@@ -55,6 +56,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
         <>
           <Connections s={s} upd={upd} />
           <PlexCard s={s} upd={upd} />
+          <NotifyCard s={s} upd={upd} />
         </>
       )}
       {tab === "profile" && <ProfilesEditor />}

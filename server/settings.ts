@@ -168,6 +168,8 @@ export interface Settings {
      */
     sourceRoots: string[];
   };
+  /** Notifications (minimal): Discord webhook and/or ntfy, per event. Webhook URL and ntfy token are stored encrypted. */
+  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean } };
   /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
   cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
@@ -243,6 +245,7 @@ const DEFAULTS: Settings = {
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
   cutover: { allowArrWrites: false },
+  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true } },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
@@ -291,9 +294,9 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token"] as const;
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -302,6 +305,7 @@ const SECRET_FOR_URL: [string, string][] = [
   ["sabnzbd.url", "sabnzbd.apiKey"],
   ["qbittorrent.url", "qbittorrent.password"],
   ["plex.url", "plex.token"],
+  ["notify.ntfyUrl", "notify.ntfyToken"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
 const SEASONS = ["all", "first", "latest", "recent"];
@@ -380,6 +384,14 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
   if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
+  if (path === "notify.discordWebhook") {
+    const v = String(patch ?? "").trim();
+    return v === "" || /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(v) || v === MASK ? v : undefined;
+  }
+  if (path === "notify.ntfyUrl") {
+    const v = String(patch ?? "").trim().replace(/\/+$/, "");
+    return v === "" || (/^https?:\/\/[^\s/]+\/[\w-]+$/.test(v) && !/^https?:\/\/(169\.254\.|0\.|\[?fe80:)/i.test(v)) ? v : undefined;
+  }
   if (path === "downloads.rules") {
     if (!Array.isArray(patch)) return undefined;
     const pick = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);

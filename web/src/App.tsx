@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BellButton } from "./notify";
 import { api, store, type Status } from "./api";
 import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
@@ -119,6 +120,7 @@ export function App() {
               </Link>
             ))}
           </nav>
+          <BellButton />
           {status.dryRun && (
             <Link to="/settings?tab=safety" className="mode-chip dry">
               {t("chip.dryRun")}

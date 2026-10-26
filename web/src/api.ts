@@ -179,6 +179,7 @@ export interface Settings {
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   media: MediaSettings;
   plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
+  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean } };
   downloads: { rules: import("./downloads").FolderRule[]; freeSpaceGb: number; freeSpacePath: string; excludeSeeding: boolean; cleanup: "off" | "plan" | "auto"; allowDelete: boolean; minRatio: number; minSeedDays: number; maxSeedDays: number };
   importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean; realBudget: number; movies: boolean; sourceRoots: string[] };
   sync: { intervalHours: number };

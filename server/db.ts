@@ -321,6 +321,8 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE file_links (path TEXT PRIMARY KEY, tvdb_id INTEGER, episode_ids TEXT NOT NULL, at INTEGER NOT NULL);`,
   // 16: release info of files AnimeArr took over from Sonarr (scene name, group, quality, revision)
   `CREATE TABLE file_meta (path TEXT PRIMARY KEY, scene_name TEXT, release_group TEXT, quality TEXT, revision TEXT);`,
+  // 17: the in-app notification bell
+  `CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, event TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

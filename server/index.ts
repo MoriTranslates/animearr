@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { bell, markRead, send } from "./notify.js";
 import { adoptMovies, adoptShows, cutoverPlan, setArrWrites, switchToAnimeArr } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
@@ -589,6 +590,22 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
   patchSettings((x) => ({ ...x, downloads: { ...x.downloads, allowDelete: on } }));
   logDecision("info", { why: on ? "Download clean-up may now delete (leftovers, junk, finished torrents in AnimeArr's own folders)" : "Download clean-up deletions switched off" });
   return getSettings().downloads;
+});
+
+// ---------------------------------------------------------------- notifications (bell + test)
+
+app.get("/api/notifications", async () => bell());
+app.post("/api/notifications/read", async () => {
+  writable();
+  markRead();
+  return bell();
+});
+app.post("/api/notifications/test", async () => {
+  const s = getSettings().notify;
+  if (!s.discordWebhook && !s.ntfyUrl) throw fail("Set up Discord or ntfy first (and save)", 400);
+  const out = await send("imported", "Test", "AnimeArr can reach this channel.");
+  if (!out.length) throw fail("The 'imported' event is switched off, or too many notifications this minute", 400);
+  return { results: out };
 });
 
 // ---------------------------------------------------------------- cutover (Sonarr/Radarr → AnimeArr)

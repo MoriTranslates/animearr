@@ -1,4 +1,5 @@
 import { db, dbState } from "./db.js";
+import { onDecision } from "./notify.js";
 
 /**
  * Activity log: every action and decision with a plain-language "why" (design principle: helpful but transparent,
@@ -35,6 +36,7 @@ export function logDecision(kind: DecisionKind, d: { tvdbId?: number | null; tit
   const r = db
     .prepare("INSERT INTO decisions (at, kind, tvdb_id, title, episode_ids, release, why, detail, undo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(Date.now(), kind, d.tvdbId ?? null, d.title ?? "", JSON.stringify(d.episodeIds ?? []), d.release ?? null, d.why, JSON.stringify(d.detail ?? {}), d.undo ? JSON.stringify(d.undo) : null);
+  onDecision(kind, d); // the bell + Discord/ntfy for grabbed/imported/failed/paused
   return Number(r.lastInsertRowid);
 }
 
