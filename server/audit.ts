@@ -192,6 +192,22 @@ export function classifySpecial(title: string | null, runtime: number | null): {
   return { cls: "unknown", why: runtime ? `${runtime} min, title unclear` : "no runtime or clear title" };
 }
 
+/** A finer label for a special, for the UI: OVA, Movie, Recap, Promo/PV, Picture drama, Extra episode… */
+export function specialType(title: string | null, runtime: number | null): { type: string; cls: SpecialClass } {
+  const t = title ?? "";
+  const c = classifySpecial(title, runtime);
+  if (c.cls === "movie") return { type: "movie", cls: c.cls };
+  if (/\b(OVA|OAD)\b/i.test(t)) return { type: "ova", cls: c.cls };
+  if (/\bONA\b/i.test(t)) return { type: "ona", cls: c.cls };
+  if (/\b(recap|digest|summary|highlights?)\b/i.test(t)) return { type: "recap", cls: "junk" };
+  if (/\b(PV|CM|trailer|teaser|promo(tion(al)?)?|preview|announcement|spot|web preview)\b/i.test(t)) return { type: "promo", cls: "junk" };
+  if (/\bpicture drama\b/i.test(t)) return { type: "pictureDrama", cls: "junk" };
+  if (/\b(NCOP|NCED|creditless|opening|ending|music video|MV|character song)\b/i.test(t)) return { type: "music", cls: "junk" };
+  if (c.cls === "junk") return { type: "extra", cls: c.cls };
+  if (c.cls === "real") return { type: "episode", cls: c.cls };
+  return { type: "special", cls: c.cls };
+}
+
 export function specials() {
   const movies = cache.prepare("SELECT id, tmdb_id, title, original_title, year, alt_titles, has_file FROM movies").all() as { id: number; tmdb_id: number | null; title: string; original_title: string | null; year: number; alt_titles: string; has_file: number }[];
   const movieKeys = new Map<string, (typeof movies)[number]>();

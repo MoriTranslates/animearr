@@ -20,6 +20,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [ ] 6. RSS/new-release monitoring via Prowlarr feeds
 - [ ] 7. Migration/cutover tool (import, parallel mode, final removal checklist; never deletes without confirmation)
 - [ ] 8. Notifications (Discord, ntfy/Gotify)
+- [ ] **Release gate:** a separate parity-audit run against Sonarr/Radarr, the proposal's anime features and the absorbed tools (Cleanuparr, Unpackerr, Huntarr, indexer health), using the living [PARITY.md](PARITY.md) matrix
 
 ## 0.x steps to 1.0
 

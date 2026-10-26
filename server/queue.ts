@@ -7,8 +7,8 @@ import { logDecision } from "./activity.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
 const label = (id: number) => {
-  const e = cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(id) as { season: number; episode: number } | undefined;
-  return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : `#${id}`;
+  const e = cache.prepare("SELECT season, episode, title FROM episodes WHERE id = ?").get(id) as { season: number; episode: number; title: string | null } | undefined;
+  return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}${e.title && !/^TBA$/i.test(e.title) ? ` · ${e.title.length > 40 ? `${e.title.slice(0, 39)}…` : e.title}` : ""}` : `#${id}`;
 };
 const seriesTitle = (tvdbId: number) => (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? String(tvdbId);
 

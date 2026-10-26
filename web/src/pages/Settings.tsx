@@ -150,15 +150,47 @@ function Connections({ s, upd }: { s: S; upd: Upd }) {
   );
 }
 
+/** Per-show dry-run overrides (managed shows). */
+function ShowDryRuns() {
+  const toast = useToast();
+  const d = useLoad(() => api<{ shows: { tvdbId: number; title: string; dryRun: boolean }[] }>("/managed"), []);
+  if (!d.data?.shows.length) return null;
+  const set = async (tvdbId: number, dryRun: boolean) => {
+    try {
+      await api(`/managed/${tvdbId}`, { method: "PUT", body: { dryRun } });
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  const on = d.data.shows.filter((x) => x.dryRun);
+  return (
+    <div className="stack">
+      <p className="small">{on.length ? t("dry.showsOn", { n: on.length }) : t("dry.showsNone")}</p>
+      <ul className="plain stack">
+        {d.data.shows.map((x) => (
+          <li key={x.tvdbId}>
+            <Toggle checked={x.dryRun} onChange={(v) => void set(x.tvdbId, v)} label={x.title} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Safety({ s, upd }: { s: S; upd: Upd }) {
   const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null }>("/sonarr/rootfolders"), []);
   const m = s.managed;
   const setM = (fn: (x: S["managed"]) => S["managed"]) => upd((x) => ({ ...x, managed: fn(x.managed) }));
   return (
     <div className="stack">
-      <div className="card pad stack">
+      <details className="card pad stack" open={m.dryRun}>
+        <summary>
+          <strong>{t("dry.section")}</strong> <span className="muted small">{t("dry.sectionHelp")}</span>
+        </summary>
         <Toggle checked={m.dryRun} onChange={(v) => setM((x) => ({ ...x, dryRun: v }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
-      </div>
+        <ShowDryRuns />
+      </details>
       <div className="card pad stack">
         <h2>{t("settings.safety.roots")}</h2>
         <p className="muted small">{t("settings.safety.rootsHelp")}</p>

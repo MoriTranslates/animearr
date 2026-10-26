@@ -9,6 +9,7 @@ import * as sonarr from "./arr/sonarr.js";
 import { recycleSetting } from "./recycle.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { recordFor } from "./mediafiles.js";
+import { specialType } from "./audit.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -98,6 +99,8 @@ export interface EpisodeRow {
   file: FileInfo | null;
   /** This S0 "episode" is really a movie, handled by Radarr (never grabbed as an episode). */
   movie?: { movieId: number | null; title: string } | null;
+  /** Season 0 only: what kind of special this is (OVA, movie, recap, promo, …); junk ones are collapsed in lists. */
+  special?: { type: string; cls: string } | null;
 }
 
 export function episodeRows(seriesId: number): EpisodeRow[] {
@@ -115,7 +118,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null };
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialType(e.title, e.runtime) : null };
   });
 }
 

@@ -12,7 +12,7 @@ import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "
 import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
-import { gaps, listFacts, missingLanguage, specials } from "./audit.js";
+import { gaps, listFacts, missingLanguage, specials, coverFor } from "./audit.js";
 import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs, setMoviePrefs } from "./profiles.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
@@ -30,6 +30,7 @@ import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick } from "./movieSearch.js";
 import { fileScanTick, fileSummary, scanLibrary, scanRunning } from "./mediafiles.js";
+import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -111,6 +112,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     uiLanguage: s.ui.language,
     // LAN sessions without a login (bypassLocal) don't need the nag; the default password only matters off the LAN.
     defaultPassword: a.via === "local" ? false : await usingDefaultPassword(),
+    // Shows in dry-run (the global switch, or their own), so the UI only mentions dry-run when something is in it.
+    dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
   };
 });
@@ -247,9 +250,9 @@ app.post<{ Body: { full?: boolean } }>("/api/library/sync", async (req) => {
 app.get("/api/library/candidates", async () => candidates());
 app.get<{ Querystring: { q?: string } }>("/api/series", async (req) => {
   const q = compactKey(String(req.query.q ?? ""));
-  const rows = cache.prepare("SELECT tvdb_id, title, poster, status FROM series ORDER BY sort_title").all() as { tvdb_id: number; title: string; poster: string | null; status: string }[];
+  const rows = cache.prepare("SELECT tvdb_id, title, poster, status, year FROM series ORDER BY sort_title").all() as { tvdb_id: number; title: string; poster: string | null; status: string; year: number | null }[];
   const alt = q ? new Set((cache.prepare("SELECT s.tvdb_id FROM alt_titles a JOIN series s ON s.id = a.series_id WHERE a.key LIKE ?").all(`%${q}%`) as { tvdb_id: number }[]).map((r) => r.tvdb_id)) : null;
-  return rows.filter((r) => !q || compactKey(r.title).includes(q) || alt?.has(r.tvdb_id)).slice(0, 50).map((r) => ({ tvdbId: r.tvdb_id, title: r.title, status: r.status }));
+  return rows.filter((r) => !q || compactKey(r.title).includes(q) || alt?.has(r.tvdb_id)).slice(0, 50).map((r) => ({ tvdbId: r.tvdb_id, title: r.title, status: r.status, year: r.year, cover: coverFor(r) }));
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
   const tvdbId = id(req.params.tvdbId);
@@ -513,6 +516,16 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
+  writable();
+  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
+});
+app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:id/autosearch", async (req) => {
+  writable();
+  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  return autoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
+});
 app.get("/api/files/summary", async () => fileSummary());
 app.post<{ Body: { full?: boolean } }>("/api/files/scan", async (req) => {
   writable();

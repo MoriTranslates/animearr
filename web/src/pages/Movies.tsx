@@ -98,6 +98,20 @@ export function MoviePage({ id }: { id: number }) {
   const [res, setRes] = useState<MovieSearch | null>(null);
   const [searching, setSearching] = useState(false);
   const [grab, setGrab] = useState<SearchResult | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [confirmAuto, setConfirmAuto] = useState(false);
+  const auto = async () => {
+    setAutoBusy(true);
+    try {
+      const r = await api<{ outcome: string; release?: string; why: string }>(`/movies/${id}/autosearch`, { body: { replace: !!d.data?.file } });
+      toast(`${t(`auto.${r.outcome}` as never)}${r.release ? ` · ${r.release}` : ""} · ${r.why}`, r.outcome === "failed", r.outcome === "needs-look" ? { label: t("auto.openList"), run: () => void search() } : undefined);
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setAutoBusy(false);
+    }
+  };
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const m = d.data;
@@ -175,8 +189,17 @@ export function MoviePage({ id }: { id: number }) {
       </div>
       {!m.allowed && <p className="banner warn">{t("movies.notAllowed", { path: m.path })}</p>}
       <div className="row">
-        <button className="primary" disabled={searching} onClick={() => void search()}>
-          {searching ? t("common.working") : t("movies.search")}
+        {m.allowed && (
+          <button
+            className="primary"
+            disabled={autoBusy}
+            onClick={() => (m.file ? setConfirmAuto(true) : void auto())}
+          >
+            ⚡ {autoBusy ? t("common.working") : t("auto.button")}
+          </button>
+        )}
+        <button disabled={searching} onClick={() => void search()}>
+          🔍 {searching ? t("common.working") : t("auto.interactive")}
         </button>
       </div>
       {res && (
@@ -202,6 +225,11 @@ export function MoviePage({ id }: { id: number }) {
             </p>
           ))}
         </div>
+      )}
+      {confirmAuto && (
+        <Confirm title={t("auto.button")} confirmLabel={t("auto.button")} onClose={() => setConfirmAuto(false)} onConfirm={async () => (setConfirmAuto(false), await auto())}>
+          <p className="warn-text">⚠ {t("movies.replaceWarn", { file: m.file?.path ?? "" })}</p>
+        </Confirm>
       )}
       {grab && res && (
         <Confirm

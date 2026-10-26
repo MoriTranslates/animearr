@@ -7,7 +7,7 @@ import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
 export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[] }
-export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null }
+export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
@@ -62,11 +62,38 @@ export function ShowLink({ tvdbId, title, children, className = "", to }: { tvdb
 
 // ---------------------------------------------------------------- episode actions (shared by sheet, rows and bulk bar)
 
+/** Opens the interactive (🔍) list for these episodes; when the search page is already open it runs there. */
+export function openInteractive(tvdbId: number, ids: number[]) {
+  navigate(`/search?tvdbId=${tvdbId}&eps=${ids.join(",")}`);
+  window.dispatchEvent(new CustomEvent("animearr:interactive", { detail: { tvdbId, ids } }));
+}
+
 interface ActionProps { tvdbId: number; episodes: { id: number; label: string; release?: string | null; file?: string | null; fileEpisodes?: string[] }[]; managedLive: boolean; dryRun: boolean; onDone: () => void }
 
 export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDone }: ActionProps) {
   const toast = useToast();
-  const [dialog, setDialog] = useState<"regrab" | "delete" | "searchAgain" | null>(null);
+  const [dialog, setDialog] = useState<"regrab" | "delete" | "searchAgain" | "autoMany" | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const interactive = () => openInteractive(tvdbId, ids);
+  /** ⚡ Automatic search: grabs the best release, or says it needs a look (then 🔍 is one tap away). */
+  const runAuto = async () => {
+    setAutoBusy(true);
+    try {
+      const r = await api<{ results: { episodeIds: number[]; label: string; outcome: string; release?: string; why: string }[] }>("/autosearch", { body: { tvdbId, episodeIds: ids } });
+      const look = r.results.filter((x) => x.outcome === "needs-look");
+      const got = r.results.filter((x) => x.outcome === "grabbed" || x.outcome === "would-grab");
+      const msg =
+        r.results.length === 1
+          ? `${r.results[0].label}: ${t(`auto.${r.results[0].outcome}` as I18nKey)}${r.results[0].release ? ` · ${r.results[0].release}` : ""} · ${r.results[0].why}`
+          : t("auto.summary", { got: got.length, look: look.length, other: r.results.length - got.length - look.length });
+      toast(msg, r.results.every((x) => x.outcome === "failed"), look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, look.flatMap((x) => x.episodeIds)) } : undefined);
+      onDone();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setAutoBusy(false);
+    }
+  };
   // The episodes a delete actually emptied (kept here: the caller clears its selection right after).
   const [afterIds, setAfterIds] = useState<number[]>([]);
   const ids = episodes.map((e) => e.id);
@@ -124,6 +151,20 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
           </ul>
         </Confirm>
       )}
+      {dialog === "autoMany" && (
+        <Confirm
+          title={t("auto.manyTitle", { n: episodes.length })}
+          confirmLabel={t("auto.button")}
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            setDialog(null);
+            await runAuto();
+          }}
+        >
+          <p>{t("auto.manyBody")}</p>
+          {dryRun && <p className="warn-text">{t("ep.regrabDry")}</p>}
+        </Confirm>
+      )}
       {dialog === "searchAgain" && managedLive && (
         <Confirm
           title={t("ep.searchAgainTitle")}
@@ -147,7 +188,9 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
   return {
     ui,
     open: dialog !== null,
-    search: () => navigate(`/search?tvdbId=${tvdbId}&eps=${ids.join(",")}`),
+    search: interactive,
+    auto: () => (episodes.length > 26 ? toast(t("auto.tooMany"), true) : episodes.length > 1 ? setDialog("autoMany") : void runAuto()),
+    autoBusy,
     regrab: () => setDialog("regrab"),
     remove: () => setDialog("delete"),
   };
@@ -242,8 +285,13 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             )}
             {!d.movie && (
             <div className="row sheet-actions">
-              <button className="primary" onClick={actions.search}>
-                ⌕ {t("ep.search")}
+              {!d.file && (
+                <button className="primary" onClick={actions.auto} disabled={actions.autoBusy}>
+                  ⚡ {actions.autoBusy ? t("common.working") : t("auto.button")}
+                </button>
+              )}
+              <button className={d.file ? "primary" : undefined} onClick={actions.search}>
+                🔍 {t("auto.interactive")}
               </button>
               {(d.file || d.status !== "unaired") && <button onClick={actions.regrab}>↻ {t("ep.regrab")}</button>}
               {d.file && (

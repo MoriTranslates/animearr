@@ -116,9 +116,11 @@ export function App() {
               </Link>
             ))}
           </nav>
-          <span className={`mode-chip ${status.dryRun ? "dry" : "live"}`} title={status.dryRun ? t("home.dryRunOn") : t("home.dryRunOff")}>
-            {status.dryRun ? t("chip.dryRun") : t("chip.live")}
-          </span>
+          {status.dryRun && (
+            <Link to="/settings?tab=safety" className="mode-chip dry">
+              {t("chip.dryRun")}
+            </Link>
+          )}
         </header>
         <main id="main" tabIndex={-1}>
           {status.defaultPassword && !dismissed && (
@@ -136,6 +138,7 @@ export function App() {
               {w}
             </p>
           ))}
+          <DryRunBanner status={status} />
           {path === "/" && <Home status={status} onChanged={refreshStatus} />}
           {section === "/managed" && <Managed status={status} />}
           {section === "/shows" && <Shows status={status} />}
@@ -165,5 +168,16 @@ export function App() {
         </nav>
       </div>
     </ToastProvider>
+  );
+}
+
+/** A slim banner, only while something is in dry-run (nothing at all otherwise). */
+function DryRunBanner({ status }: { status: Status }) {
+  const shows = status.dryRunShows ?? [];
+  if (!status.dryRun && !shows.length) return null;
+  return (
+    <p className="banner slim">
+      {status.dryRun ? t("dry.global") : t("dry.shows", { n: shows.length })} · <Link to="/settings?tab=safety">{t("dry.manage")}</Link>
+    </p>
   );
 }

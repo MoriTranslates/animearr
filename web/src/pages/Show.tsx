@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
-import { t } from "../i18n";
+import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
@@ -165,7 +165,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </div>
       </div>
       {seasons.map(([season, rows], i) => {
-        const missing = rows.filter((r) => r.status === "missing" && !r.movie);
+        const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
         return (
           <details key={season} className="season card" open={i === 0}>
@@ -174,11 +174,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               <span className="muted small">
                 {rows.filter((r) => r.status === "have").length}/{rows.filter((r) => r.status !== "unaired").length}
               </span>
-              {!!missing.length && (
-                <button className="small" onClick={(e) => (e.preventDefault(), navigate(`/search?tvdbId=${tvdbId}&eps=${missing.slice(0, 26).map((r) => r.id).join(",")}`))}>
-                  {t("ep.searchMissing", { n: missing.length })}
-                </button>
-              )}
+              {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
               {selecting && (
                 <button className="small ghost" onClick={(e) => (e.preventDefault(), setSel((x) => new Set([...x, ...rows.map((r) => r.id)])))}>
                   {t("shows.selectAll")}
@@ -199,18 +195,20 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               </div>
             ) : (
               <ul className="ep-list">
-                {ordered(rows, nextId).main.map((r) => (
+                {ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).main.map((r) => (
                   <li key={r.id} className={`ep-row${r.id === nextId ? " next" : ""}${sel.has(r.id) ? " selected" : ""}`}>
                     {selecting && <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={sxe(r.season, r.episode)} />}
                     <button className="ep-main" onClick={() => (selecting ? toggle(r.id) : setOpen(r.id))}>
                       <span className="ep-num">{r.episode}</span>
                       <span className="ep-text">
-                        <span className="ep-title clamp2">
+                        <span className="ep-title clamp2" title={r.title ?? undefined}>
                           {r.title ?? t("ep.tba")} {r.id === nextId && <Chip tone="accent">{t("ep.next")}</Chip>}
                           {r.movie && <Chip tone="info">🎬 {t("ep.movieChip")}</Chip>}
+                          {r.special && !r.movie && <Chip tone={r.special.cls === "junk" ? "info" : "accent"}>{t(`special.${r.special.type}` as I18nKey)}</Chip>}
                         </span>
                         <span className="ep-meta muted small">
                           {airLabel(r.airUtc)}
+                          {season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
                           {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}
                         </span>
                       </span>
@@ -222,11 +220,39 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 ))}
               </ul>
             )}
-            {!grid && ordered(rows, nextId).later.length > 0 && (
+            {!grid && season === 0 && rows.some((r) => r.special?.cls === "junk") && (
               <details className="later">
-                <summary className="muted small">{t("ep.upcoming", { n: ordered(rows, nextId).later.length })}</summary>
+                <summary className="muted small">{t("special.minor", { n: rows.filter((r) => r.special?.cls === "junk").length })}</summary>
                 <ul className="ep-list">
-                  {ordered(rows, nextId).later.map((r) => (
+                  {rows
+                    .filter((r) => r.special?.cls === "junk")
+                    .map((r) => (
+                      <li key={r.id} className="ep-row">
+                        <button className="ep-main" onClick={() => setOpen(r.id)}>
+                          <span className="ep-num">{r.episode}</span>
+                          <span className="ep-text">
+                            <span className="ep-title clamp2" title={r.title ?? undefined}>
+                              {r.title ?? t("ep.tba")} <Chip tone="info">{t(`special.${r.special!.type}` as I18nKey)}</Chip>
+                            </span>
+                            <span className="ep-meta muted small">
+                              {airLabel(r.airUtc)}
+                              {r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
+                            </span>
+                          </span>
+                          <span className="ep-status">
+                            <StatusPill e={r} lang={lang} />
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </details>
+            )}
+            {!grid && ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.length > 0 && (
+              <details className="later">
+                <summary className="muted small">{t("ep.upcoming", { n: ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.length })}</summary>
+                <ul className="ep-list">
+                  {ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk") : rows, nextId).later.map((r) => (
                     <li key={r.id} className="ep-row">
                       <button className="ep-main" onClick={() => setOpen(r.id)}>
                         <span className="ep-num">{r.episode}</span>
@@ -257,7 +283,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         <div className="bulkbar card">
           <span>{t("ep.selected", { n: sel.size })}</span>
           <div className="row">
-            <button onClick={bulk.search}>⌕ {t("ep.search")}</button>
+            <button className="primary" onClick={bulk.auto} disabled={bulk.autoBusy}>
+              ⚡ {t("auto.button")}
+            </button>
+            <button onClick={bulk.search}>🔍 {t("auto.interactive")}</button>
             <button onClick={bulk.regrab}>↻ {t("ep.regrab")}</button>
             <button className="danger" onClick={bulk.remove} disabled={!selected.some((r) => r.file)}>
               🗑 {t("ep.delete")}
@@ -488,5 +517,22 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
         </div>
       )}
     </div>
+  );
+}
+
+/** ⚡ / 🔍 for a season's missing episodes (⚡ asks once; it prefers a season pack that covers them). */
+function SeasonSearch({ tvdbId, missing, dryRun, onDone }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void }) {
+  const list = missing.slice(0, 26);
+  const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
+  return (
+    <span className="row season-search" onClick={(e) => e.preventDefault()}>
+      <button className="small" onClick={a.auto} disabled={a.autoBusy} title={t("auto.seasonHelp")}>
+        ⚡ {t("ep.searchMissing", { n: missing.length })}
+      </button>
+      <button className="small ghost" onClick={a.search} aria-label={t("auto.interactive")}>
+        🔍
+      </button>
+      {a.ui}
+    </span>
   );
 }

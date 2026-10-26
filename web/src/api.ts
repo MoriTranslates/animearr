@@ -31,6 +31,7 @@ export interface Status {
   via?: "session" | "local" | "apikey";
   connected?: { sonarr: boolean; radarr: boolean; prowlarr: boolean; sabnzbd: boolean; qbittorrent: boolean };
   dryRun?: boolean;
+  dryRunShows?: { tvdbId: number; title: string }[];
   allowedRoots?: string[];
   lastSync?: number | null;
   syncing?: boolean;

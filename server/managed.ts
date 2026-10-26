@@ -180,6 +180,26 @@ export function scheduleFor(tvdbId?: number, limit = 500) {
   });
 }
 
+/**
+ * The releases an automatic grab may take (the scheduler, ⚡ automatic search): accepted, confident mapping, likely
+ * the profile's language, exactly the episodes asked for, no burn-ins (unless the user confirmed that's all there is),
+ * no dead torrents. Best first (the results are ranked already).
+ */
+export function automaticPicks(results: SearchResult[], tvdbId: number, season: number | null, opts: { allowPacks?: boolean } = {}) {
+  const s = getSettings().managed;
+  const burnedOk = profileFor(tvdbId).subLangs.some((l) => !!burnedInFact(tvdbId, season, l));
+  return results.filter(
+    (r) =>
+      r.rank.accept &&
+      r.confidence >= s.minConfidence &&
+      r.rank.langProb >= 0.5 &&
+      (opts.allowPacks ? r.episodeIds.length > 0 : r.coversTarget) &&
+      r.extra <= 0 &&
+      (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
+      !(r.protocol === "torrent" && !r.seeders),
+  );
+}
+
 export function toCandidate(r: SearchResult): Candidate {
   return { guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds };
 }
@@ -197,19 +217,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const season = res.targets[0]?.season ?? null;
-  const burnedOk = profileFor(st.tvdb_id).subLangs.some((l) => !!burnedInFact(st.tvdb_id, season, l));
-  // Automatic grabs are stricter than manual ones: confident mapping, likely profile language, only this episode,
-  // no burn-ins (unless the user confirmed that's all there is), and no dead torrents.
-  const ok = res.results.filter(
-    (r) =>
-      r.rank.accept &&
-      r.confidence >= s.minConfidence &&
-      r.rank.langProb >= 0.5 &&
-      r.coversTarget &&
-      r.extra <= 0 &&
-      (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
-      !(r.protocol === "torrent" && !r.seeders),
-  );
+  const ok = automaticPicks(res.results, st.tvdb_id, season);
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
   const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;

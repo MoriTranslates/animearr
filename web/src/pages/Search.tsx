@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, fmtSize, sxe, type Episode, type SearchResponse, type SearchResult } from "../api";
+import { api, fmtSize, type SearchResponse, type SearchResult } from "../api";
+import { EpisodePicker, ShowPicker, type PickedShow } from "../picker";
 import { Link, query } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
 export function Search() {
   usePageTitle(t("search.title"));
@@ -23,42 +24,12 @@ export function Search() {
   );
 }
 
-function SeriesPicker({ value, onPick }: { value: { tvdbId: number; title: string } | null; onPick: (s: { tvdbId: number; title: string }) => void }) {
-  const [q, setQ] = useState(value?.title ?? "");
-  const [list, setList] = useState<{ tvdbId: number; title: string }[]>([]);
-  useEffect(() => setQ(value?.title ?? ""), [value]);
-  useEffect(() => {
-    if (!q.trim() || q === value?.title) return setList([]);
-    const ac = new AbortController();
-    const id = setTimeout(() => void api<{ tvdbId: number; title: string }[]>(`/series?q=${encodeURIComponent(q)}`, { signal: ac.signal }).then(setList).catch(() => undefined), 200);
-    return () => (clearTimeout(id), ac.abort());
-  }, [q, value]);
-  return (
-    <div className="picker">
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search.pickShowPlaceholder")} aria-label={t("search.pickShow")} />
-      {!!list.length && (
-        <ul className="picker-list card">
-          {list.slice(0, 8).map((s) => (
-            <li key={s.tvdbId}>
-              <button className="ghost block" onClick={() => (onPick(s), setList([]))}>
-                {s.title}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 function DeepSearch() {
   const toast = useToast();
   const qp = query();
-  const [series, setSeries] = useState<{ tvdbId: number; title: string; cover?: string | null } | null>(null);
-  const [eps, setEps] = useState<Episode[]>([]);
-  const [sel, setSel] = useState<Set<number>>(new Set((qp.get("eps") ?? "").split(",").filter(Boolean).map(Number)));
-  const [missingOnly, setMissingOnly] = useState(true);
-  const [season, setSeason] = useState<number | null>(null);
+  const [series, setSeries] = useState<PickedShow | null>(null);
+  const initial = useMemo(() => (qp.get("eps") ?? "").split(",").filter(Boolean).map(Number), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<SearchResponse | null>(null);
   const [partial, setPartial] = useState<{ searched: number; total: number; tier: number; found: number; results: SearchResult[] } | null>(null);
@@ -67,32 +38,39 @@ function DeepSearch() {
 
   useEffect(() => {
     const id = Number(qp.get("tvdbId"));
-    if (id) void api<{ tvdbId: number; title: string; cover: string | null }>(`/series/${id}`).then((s) => setSeries({ tvdbId: s.tvdbId, title: s.title, cover: s.cover })).catch(() => undefined);
+    if (!id) return;
+    void api<{ tvdbId: number; title: string; cover: string | null }>(`/series/${id}`)
+      .then((x) => {
+        setSeries({ tvdbId: x.tvdbId, title: x.title, cover: x.cover });
+        // Coming from a "needs a look" or 🔍 button: show the list right away.
+        if (initial.length) void run(initial, false, x.tvdbId);
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // "Open the list" / 🔍 from elsewhere while this page is open.
   useEffect(() => {
-    if (!series) return;
-    void api<{ episodes: Episode[]; cover: string | null }>(`/series/${series.tvdbId}`).then((s) => {
-      setEps(s.episodes);
-      const first = s.episodes.find((e) => sel.has(e.id));
-      setSeason(first?.season ?? s.episodes.filter((e) => e.season > 0).at(-1)?.season ?? null);
-      if (sel.size && first) void run([...sel]);
-    });
+    const on = (e: Event) => {
+      const { tvdbId, ids } = (e as CustomEvent<{ tvdbId: number; ids: number[] }>).detail;
+      void api<{ tvdbId: number; title: string; cover: string | null }>(`/series/${tvdbId}`).then((x) => {
+        setSeries({ tvdbId: x.tvdbId, title: x.title, cover: x.cover });
+        void run(ids, false, tvdbId);
+      });
+    };
+    window.addEventListener("animearr:interactive", on);
+    return () => window.removeEventListener("animearr:interactive", on);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series]);
-
-  const seasons = useMemo(() => [...new Set(eps.map((e) => e.season))].sort((a, b) => a - b), [eps]);
-  const shown = eps.filter((e) => e.season === season && (!missingOnly || !e.hasFile || sel.has(e.id)));
+  }, []);
 
   /** Starts a search job and polls it: progress and partial results show while it runs. */
-  async function run(ids = [...sel], full = false) {
-    if (!series || !ids.length) return toast(t("search.selectEpisodes"), true);
+  async function run(ids: number[], full = false, tvdbId = series?.tvdbId) {
+    if (!tvdbId || !ids.length) return toast(t("search.selectEpisodes"), true);
     setBusy(true);
     setErr(null);
     setRes(null);
     setPartial(null);
     try {
-      const { jobId } = await api<{ jobId: string }>("/search/start", { body: { tvdbId: series.tvdbId, episodeIds: ids, full } });
+      const { jobId } = await api<{ jobId: string }>("/search/start", { body: { tvdbId, episodeIds: ids, full } });
       for (;;) {
         await new Promise((r) => setTimeout(r, 700));
         const j = await api<{ done: boolean; progress: { searched: number; total: number; tier: number; found: number }; results?: SearchResult[]; result: SearchResponse | null; error: string | null }>(`/search/job/${jobId}`);
@@ -113,56 +91,18 @@ function DeepSearch() {
 
   return (
     <div className="stack">
-      <p className="muted">{t("search.intro")}</p>
+      <p className="muted small">
+        {t("search.introShort")} <span className="info-tip" title={t("search.intro")} aria-label={t("search.intro")}>ⓘ</span>
+      </p>
       <div className="card pad stack">
-        <SeriesPicker
-          value={series}
-          onPick={(s) => {
-            setSel(new Set());
-            setRes(null);
-            setSeries(s);
-          }}
-        />
-        {series && (
+        {!series ? (
+          <ShowPicker onPick={(x) => (setRes(null), setSeries(x))} />
+        ) : (
           <>
-            <div className="row between">
-              <div className="chips pickable" role="group" aria-label={t("search.pickEpisodes")}>
-                {seasons.map((s) => (
-                  <button key={s} className={`chip${season === s ? " on" : ""}`} onClick={() => setSeason(s)}>
-                    {s === 0 ? "S00" : t("common.season", { n: s })}
-                  </button>
-                ))}
-              </div>
-              <label className="check">
-                <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} /> {t("search.missingOnly")}
-              </label>
-            </div>
-            <div className="chips pickable">
-              {shown.map((e) => {
-                const on = sel.has(e.id);
-                return (
-                  <button
-                    key={e.id}
-                    className={`chip${on ? " on" : ""}${e.hasFile ? "" : " missing"}`}
-                    aria-pressed={on}
-                    title={e.title ?? ""}
-                    onClick={() =>
-                      setSel((x) => {
-                        const n = new Set(x);
-                        if (on) n.delete(e.id);
-                        else n.add(e.id);
-                        return n;
-                      })
-                    }
-                  >
-                    {sxe(e.season, e.episode)}
-                  </button>
-                );
-              })}
-            </div>
-            <button className="primary self-start" disabled={busy || !sel.size} onClick={() => run()}>
-              {t("search.run")}
+            <button className="link small self-end" onClick={() => (setSeries(null), setRes(null))}>
+              {t("picker.change")}
             </button>
+            <EpisodePicker key={series.tvdbId} show={series} initial={series.tvdbId === Number(qp.get("tvdbId")) ? initial : []} dryRun={status.data?.dryRun ?? true} onChange={() => undefined} onInteractive={(ids) => void run(ids)} />
           </>
         )}
       </div>

@@ -3,7 +3,7 @@ import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
 import { Link } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, relTime, Spinner, Toggle, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, relTime, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
 const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { waiting: "info", retry: "warn", "would-grab": "accent", grabbed: "good", "gave-up": "bad", done: "good", backlog: "info", replace: "warn" };
 
@@ -18,15 +18,6 @@ export function Managed({ status }: { status: Status }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [confirm, setConfirm] = useState<ManagedShow | null>(null);
-
-  async function setDry(m: ManagedShow, dryRun: boolean) {
-    try {
-      await api(`/managed/${m.tvdbId}`, { method: "PUT", body: { dryRun } });
-      await data.reload();
-    } catch (e) {
-      toast((e as Error).message, true);
-    }
-  }
 
   return (
     <section>
@@ -47,7 +38,6 @@ export function Managed({ status }: { status: Status }) {
           </button>
         </div>
       </div>
-      <div className={`banner ${status.dryRun ? "" : "warn"}`}>{status.dryRun ? t("home.dryRunOn") : t("home.dryRunOff")}</div>
       {data.error && <ErrorBox error={data.error} retry={data.reload} />}
       {data.loading && !data.data && <Spinner label={t("app.loading")} />}
       {data.data && !data.data.shows.length && <Empty>{t("managed.empty")}</Empty>}
@@ -62,7 +52,11 @@ export function Managed({ status }: { status: Status }) {
               </span>
             </ShowLink>
             <div className="show-body">
-              <Toggle checked={m.dryRun} onChange={(v) => setDry(m, v)} label={t("managed.showDryRun")} />
+              {m.dryRun && (
+                <Chip tone="info" title={t("dry.showChipHelp")}>
+                  {t("chip.dryRun")}
+                </Chip>
+              )}
               {!m.unmonitoredInSonarr && (
                 <button className="small ghost self-start" onClick={() => setConfirm(m)}>
                   {t("managed.sonarrMonitor")}

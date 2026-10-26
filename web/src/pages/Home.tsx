@@ -37,7 +37,6 @@ export function Home({ status, onChanged }: { status: Status; onChanged: () => v
 
   return (
     <section>
-      <div className={`banner ${status.dryRun ? "" : "warn"}`}>{status.dryRun ? t("home.dryRunOn") : t("home.dryRunOff")}</div>
       {steps.some((s) => !s.done) && (
         <div className="card pad stack">
           <h2>{t("home.start")}</h2>

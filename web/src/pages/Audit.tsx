@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, fmtSize, sxe } from "../api";
 import { Link, navigate, query } from "../App";
-import { ShowLink } from "../episodes";
+import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
@@ -76,9 +76,7 @@ function Gaps() {
                   {s.missing.length > 24 && <span className="muted small">+{s.missing.length - 24}</span>}
                 </div>
               )}
-              <button className="small self-start" onClick={() => navigate(`/search?tvdbId=${s.tvdbId}&eps=${s.missing.slice(0, 26).map((e) => e.id).join(",")}`)} disabled={!s.missing.length}>
-                {t("audit.gaps.deep")}
-              </button>
+              {!!s.missing.length && <GapSearch tvdbId={s.tvdbId} missing={s.missing} onDone={() => void d.reload()} />}
             </div>
           </article>
         ))}
@@ -374,6 +372,23 @@ function Upgrades() {
           </article>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** ⚡ / 🔍 for a show's missing episodes on the Gaps list. */
+function GapSearch({ tvdbId, missing, onDone }: { tvdbId: number; missing: { id: number; season: number; episode: number }[]; onDone: () => void }) {
+  const list = missing.slice(0, 26);
+  const a = useEpisodeActions({ tvdbId, episodes: list.map((e) => ({ id: e.id, label: sxe(e.season, e.episode) })), managedLive: false, dryRun: false, onDone });
+  return (
+    <div className="row">
+      <button className="small primary" onClick={a.auto} disabled={a.autoBusy}>
+        ⚡ {t("ep.searchMissing", { n: list.length })}
+      </button>
+      <button className="small" onClick={a.search}>
+        🔍 {t("auto.interactive")}
+      </button>
+      {a.ui}
     </div>
   );
 }

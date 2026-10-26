@@ -85,6 +85,8 @@ export interface GrabRequest {
   attempt?: number;
   /** "dual-upgrade": replaces a sub-only placeholder, so the file must really have the dub (checked strictly). */
   purpose?: "dual-upgrade" | null;
+  /** ⚡ automatic search: also honour the show's own dry-run (interactive grabs only follow the global switch). */
+  automatic?: boolean;
 }
 
 export interface GrabRow {
@@ -166,7 +168,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you allowed in Settings → Safety.`), { statusCode: 403 });
   }
   const c = req.candidate;
-  const dryRun = req.origin === "manual" ? getSettings().managed.dryRun : isDryRun(managedDryRun(req.tvdbId));
+  const dryRun = req.origin === "manual" ? getSettings().managed.dryRun || (!!req.automatic && managedDryRun(req.tvdbId) === true) : isDryRun(managedDryRun(req.tvdbId));
   // Import only what was asked for, plus episodes of the release that have no file yet: a pack must never replace
   // files the library already has (the user's rule: never delete library files).
   // S0 "episodes" that are really movies belong to Radarr: never grab them as episodes (double download).
