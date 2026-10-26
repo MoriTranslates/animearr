@@ -19,6 +19,8 @@ const MAX_CACHE = 600 * 1024 * 1024; // pruned (oldest first) above this
 export function sizedUrl(u: string, size: ThumbSize): string {
   if (/s4\.anilist\.co\/.*\/cover\/(?:small|medium|large|extraLarge)\//i.test(u)) return u.replace(/\/cover\/(?:small|medium|large|extraLarge)\//i, `/cover/${size === "sm" || size === "md" ? "medium" : size === "lg" ? "large" : "extraLarge"}/`);
   if (/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\//.test(u)) return u.replace(/\/t\/p\/(?:original|w\d+)\//, `/t/p/${size === "sm" ? "w154" : size === "md" ? "w185" : size === "lg" ? "w342" : "w500"}/`);
+  // TVDB keeps a ~340 px "_t" thumbnail next to each artwork.
+  if ((size === "sm" || size === "md") && /artworks\.thetvdb\.com\/banners\/.+(?<!_t)\.(?:jpg|png)$/i.test(u)) return u.replace(/\.(jpg|png)$/i, "_t.$1");
   return u;
 }
 

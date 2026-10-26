@@ -344,7 +344,7 @@ export function Cover({ src, alt, size = "md", hero = false }: { src: string | n
   return (
     <div className={`cover ${size}${loaded ? " loaded" : ""}`}>
       {src && !broken ? (
-        <img src={thumbUrl(src, hero ? "xl" : size)} alt="" width={w} height={h} loading={hero ? "eager" : "lazy"} decoding="async" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />
+        <img src={thumbUrl(src, hero ? "lg" : size === "lg" ? "md" : size)} alt="" width={w} height={h} loading={hero ? "eager" : "lazy"} decoding="async" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />
       ) : (
         <div className="noimg" aria-hidden="true">
           {alt.slice(0, 1)}

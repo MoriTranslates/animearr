@@ -13,7 +13,9 @@ test("sizes map to the provider's renditions", () => {
   assert.equal(sizedUrl("https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx1-a.jpg", "sm"), "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx1-a.jpg");
   assert.equal(sizedUrl("https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx1-a.jpg", "xl"), "https://s4.anilist.co/file/anilistcdn/media/anime/cover/extraLarge/bx1-a.jpg");
   assert.equal(sizedUrl("https://image.tmdb.org/t/p/original/x.jpg", "md"), "https://image.tmdb.org/t/p/w185/x.jpg");
-  assert.equal(sizedUrl("https://artworks.thetvdb.com/banners/posters/1.jpg", "sm"), "https://artworks.thetvdb.com/banners/posters/1.jpg");
+  assert.equal(sizedUrl("https://artworks.thetvdb.com/banners/v4/series/1/posters/a.jpg", "sm"), "https://artworks.thetvdb.com/banners/v4/series/1/posters/a_t.jpg");
+  assert.equal(sizedUrl("https://artworks.thetvdb.com/banners/v4/series/1/posters/a_t.jpg", "md"), "https://artworks.thetvdb.com/banners/v4/series/1/posters/a_t.jpg");
+  assert.equal(sizedUrl("https://artworks.thetvdb.com/banners/v4/series/1/posters/a.jpg", "lg"), "https://artworks.thetvdb.com/banners/v4/series/1/posters/a.jpg");
 });
 
 test("only known image hosts over https (no open proxy)", () => {
