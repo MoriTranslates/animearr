@@ -308,7 +308,7 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
 interface PlanItem { source: string; destArr: string; label: string; action: string; sidecars: unknown[]; replaces: string | null; problem: string | null }
 
 /** Show page: manual import of a folder or file (plan first; importing needs real imports switched on). */
-export function ManualImport({ tvdbId, onDone }: { tvdbId: number; onDone: () => void }) {
+export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number; onDone: () => void; initiallyOpen?: boolean }) {
   const toast = useToast();
   const [p, setP] = useState("");
   const [plan, setPlan] = useState<{ items: PlanItem[]; notes: string[]; path: string } | null>(null);
@@ -331,7 +331,7 @@ export function ManualImport({ tvdbId, onDone }: { tvdbId: number; onDone: () =>
     }
   };
   return (
-    <details className="card pad stack">
+    <details className="card pad stack" open={initiallyOpen}>
       <summary>{t("import.title")}</summary>
       <p className="muted small">{t("import.help")}</p>
       <div className="row">

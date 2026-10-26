@@ -29,8 +29,8 @@ export const prowlarrConfigured = () => !!(getSettings().prowlarr.url && getSett
 export async function testProwlarr(c: Conn) {
   const s = await call<{ version: string; appName?: string }>("GET", "/system/status", undefined, c);
   if (s.appName && s.appName !== "Prowlarr") throw new Error(`That's ${s.appName}, not Prowlarr`);
-  const indexers = await call<{ id: number; name: string; protocol: string; enable: boolean }[]>("GET", "/indexer", undefined, c);
-  return { version: s.version, indexers: indexers.map(({ id, name, protocol, enable }) => ({ id, name, protocol, enable })) };
+  const indexers = await call<{ id: number; name: string; protocol: string; enable: boolean; priority?: number }[]>("GET", "/indexer", undefined, c);
+  return { version: s.version, indexers: indexers.map(({ id, name, protocol, enable, priority }) => ({ id, name, protocol, enable, priority: priority ?? null })) };
 }
 
 export async function prowlarrIndexers() {

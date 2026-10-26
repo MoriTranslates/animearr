@@ -4,7 +4,7 @@ import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
 
 interface Item {
   id: number;
@@ -58,7 +58,7 @@ export function Queue() {
       </div>
       {tab === "queue" ? (
         <>
-          <Downloading />
+          <Downloading onHistory={() => (setTab("history"), history.replaceState(null, "", "/queue?tab=history"))} />
           <SonarrProblems />
         </>
       ) : (
@@ -68,7 +68,7 @@ export function Queue() {
   );
 }
 
-function Downloading() {
+function Downloading({ onHistory }: { onHistory: () => void }) {
   const toast = useToast();
   const d = useLoad(() => api<{ items: Item[] }>("/queue"), []);
   const [remove, setRemove] = useState<Item | null>(null);
@@ -82,18 +82,21 @@ function Downloading() {
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
     <div className="list">
-      {!d.data.items.length && <Empty>{t("queue.empty")}</Empty>}
+      {!d.data.items.length && <Empty icon="↓" title={t("queue.quiet")} action={{ label: t("queue.tab.history"), run: onHistory }}>{t("queue.empty")}</Empty>}
       {d.data.items.map((g) => {
         const pct = Math.round((g.live?.progress ?? g.progress ?? 0) * 100);
         return (
           <article key={g.id} className="card pad stack">
-            <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined}>
-              <span className="stack">
-                <span className="strong clamp2">{g.series}</span>
-                <span className="mono small">{g.episodes.join(", ")}</span>
-              </span>
-            </ShowLink>
-            <p className="mono small muted">{g.release}</p>
+            <div className="row between no-wrap">
+              <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined}>
+                <span className="stack">
+                  <span className="strong clamp2">{g.series}</span>
+                  <span className="mono small">{g.episodes.join(", ")}</span>
+                </span>
+              </ShowLink>
+              <Menu label={`${g.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => setRemove(g), hidden: !(g.state === "downloading" || g.state === "needs-attention") }]} />
+            </div>
+            <ReleaseLine release={g.release} />
             <div className="row">
               <StateChip state={g.state} />
               <Chip>{g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}</Chip>
@@ -109,9 +112,10 @@ function Downloading() {
                 <p className="small">{g.live?.etaSec ? t("queue.progress", { pct, eta: eta(g.live.etaSec), speed: fmtSize(g.live.speed ?? 0) }) : t("queue.progressNoEta", { pct })}</p>
               </>
             )}
-            <Why lines={[g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
-            <FixButtons fixes={g.fixes} />
+            {g.state === "needs-attention" && g.error && <p className="warn-text small">{g.error}</p>}
+            <Why lines={[g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
+              <FixButtons fixes={g.fixes} />
               {g.state === "needs-attention" && (
                 <button
                   className="small"
@@ -126,11 +130,6 @@ function Downloading() {
                   }}
                 >
                   {t("managed.retryImport")}
-                </button>
-              )}
-              {(g.state === "downloading" || g.state === "needs-attention") && (
-                <button className="small danger" onClick={() => setRemove(g)}>
-                  {t("queue.remove")}
                 </button>
               )}
             </div>
@@ -191,7 +190,7 @@ function History() {
         ))}
       </div>
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
-      {d.data && !all.length && <Empty>{t("queue.historyEmpty")}</Empty>}
+      {d.data && !all.length && <Empty icon="≡">{t("queue.historyEmpty")}</Empty>}
       <div className="list">
         {all.map((g) => (
           <article key={g.id} className="card pad stack">
@@ -206,8 +205,9 @@ function History() {
               <StateChip state={g.state} />
               <span className="muted small">{dateTime(g.at)}</span>
             </div>
-            <p className="mono small muted">{g.release}</p>
-            <Why lines={[g.why, ...(g.error ? [g.error] : [])]} />
+            <ReleaseLine release={g.release} />
+            {g.state === "failed" && g.error && <p className="small warn-text clamp2">{g.error}</p>}
+            <Why lines={[g.why, ...(g.error && g.state !== "failed" ? [g.error] : [])]} />
             <FixButtons fixes={g.fixes} />
           </article>
         ))}
@@ -252,7 +252,7 @@ function SonarrProblems() {
               <span className="strong clamp2">{p.series}</span>
               {!!p.episodes.length && <span className="mono small">{p.episodes.join(", ")}</span>}
             </span>
-            <p className="mono small muted">{p.release}</p>
+            <ReleaseLine release={p.release} />
             <div className="row">
               <Chip tone={PROBLEM_TONE[p.problem] ?? "info"}>
                 <span aria-hidden="true">⚠ </span>
@@ -262,10 +262,8 @@ function SonarrProblems() {
             </div>
             {!!p.messages.length && <Why lines={p.messages} />}
             {p.problem !== "sonarr-handling" && (
-              <div className="row">
-                <button className="small danger" onClick={() => (setBlocklist(true), setRemove(p))}>
-                  {t("queue.remove")}
-                </button>
+              <div className="row end">
+                <Menu label={`${p.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => (setBlocklist(true), setRemove(p)) }]} />
               </div>
             )}
           </article>
@@ -295,5 +293,15 @@ function SonarrProblems() {
         </Confirm>
       )}
     </div>
+  );
+}
+
+/** A release name: one muted line; tap to see all of it. */
+export function ReleaseLine({ release }: { release: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button className={`release-line mono small muted${open ? "" : " clamp1"}`} title={release} aria-expanded={open} onClick={() => setOpen(!open)}>
+      {release}
+    </button>
   );
 }

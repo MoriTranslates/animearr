@@ -3,7 +3,7 @@ import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
@@ -45,6 +45,8 @@ interface ShowData {
   movies: FranchiseMovie[];
 }
 
+type ShowTab = "episodes" | "movies" | "details" | "history";
+
 interface FranchiseMovie { movieId: number | null; tmdbId: number | null; title: string; year: number | null; cover: string | null; inRadarr: boolean; hasFile: boolean; s0Episode: number | null; source: "anime-lists" | "title" | "manual" }
 
 export function Show({ tvdbId }: { tvdbId: number }) {
@@ -56,6 +58,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
+  const [tab, setTabState] = useState<ShowTab>(() => (["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes"));
+  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "remove">(() => (query().get("rename") === "1" ? "rename" : null));
+  const [linking, setLinking] = useState(false);
   const toast = useToast();
 
   // Poll while something is downloading so status moves on by itself.
@@ -97,13 +102,56 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       return n;
     });
 
+  const missingAll = (d.data?.rows ?? []).filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
+  const links = [
+    { label: "AniList ↗", href: h.links.anilist },
+    { label: "AniDB ↗", href: h.links.anidb },
+    { label: "TVDB ↗", href: h.links.tvdb },
+  ].filter((l) => !!l.href);
+  const setTab = (x: ShowTab) => {
+    setTabState(x);
+    const u = new URL(location.href);
+    if (x === "episodes") u.searchParams.delete("tab");
+    else u.searchParams.set("tab", x);
+    history.replaceState(null, "", u.pathname + u.search);
+  };
+  const refreshScan = async () => {
+    try {
+      const r = await api<{ files: number; probed: number; removed: number }>(`/series/${tvdbId}/scan`, { body: {} });
+      toast(t("files.scanned", { files: r.files, probed: r.probed }));
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  const tabs: { id: ShowTab; label: string; hidden?: boolean }[] = [
+    { id: "episodes", label: t("show.episodes") },
+    { id: "movies", label: `${t("franchise.title")} (${s.movies.length})`, hidden: !s.movies.length && !linking },
+    { id: "details", label: t("show.details") },
+    { id: "history", label: t("show.history") },
+  ];
+
   return (
     <section>
-      {/* ---------------- header */}
+      {/* ---------------- header: what the show is, how complete it is, and its one main action */}
       <header className="series-hero card" style={h.banner ? { backgroundImage: `linear-gradient(180deg, color-mix(in srgb, var(--panel) 55%, transparent), var(--panel) 85%), url(${h.banner})` } : undefined}>
         <Cover src={h.cover} alt={h.title} size="lg" />
         <div className="stack hero-body">
-          <h1 className="clamp2">{h.title}</h1>
+          <div className="row between hero-title">
+            <h1 className="clamp2 grow">{h.title}</h1>
+            <Menu
+              label={t("show.manage")}
+              items={[
+                { label: t("scope.menu"), onSelect: () => setPanel("scope"), hidden: !h.managed },
+                { label: t("rename.menu"), onSelect: () => setPanel("rename"), hidden: !h.allowed },
+                { label: t("import.menu"), onSelect: () => setPanel("import"), hidden: !h.allowed },
+                { label: t("files.refreshScan"), onSelect: () => void refreshScan() },
+                { label: t("franchise.linkMenu"), onSelect: () => (setLinking(true), setTab("movies")) },
+                ...links.map((l) => ({ label: l.label, onSelect: () => window.open(l.href!, "_blank", "noopener,noreferrer") })),
+                { label: t("add.remove"), onSelect: () => setPanel("remove"), hidden: !h.native, danger: true },
+              ]}
+            />
+          </div>
           <div className="chips">
             <Chip tone={h.status === "continuing" ? "good" : "info"}>{h.status === "continuing" ? `● ${t("series.airing")}` : h.status === "ended" ? t("series.ended") : h.status}</Chip>
             {h.network && <Chip>{h.network}</Chip>}
@@ -119,98 +167,71 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <p>
             {t("series.have", { have: h.counts.have, aired: h.counts.aired })}
             {h.counts.missing ? <span className="warn-text"> · {t("series.missing", { n: h.counts.missing })}</span> : null}
+            {!!h.language.have && h.language.withLang !== h.language.have && (
+              <span className="warn-text"> · {t("series.langSome", { lang: h.language.lang.toUpperCase(), n: h.language.withLang, have: h.language.have })}</span>
+            )}
+            {!!h.language.have && h.language.withLang === h.language.have && <span className="muted"> · {t("series.langAll", { lang: h.language.lang.toUpperCase() })}</span>}
           </p>
-          {!!h.language.have && (
-            <p className={h.language.withLang === h.language.have ? "good-text small" : "warn-text small"}>
-              {h.language.withLang === h.language.have ? t("series.langAll", { lang: h.language.lang.toUpperCase() }) : t("series.langSome", { lang: h.language.lang.toUpperCase(), n: h.language.withLang, have: h.language.have })}
-            </p>
-          )}
-          <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
-          {h.native && (
-            <p className="small muted row">
-              {t("add.nativeNote")} <RemoveNative tvdbId={tvdbId} title={h.title} />
-            </p>
-          )}
-          <div className="row small">
-            {h.links.anilist && (
-              <a href={h.links.anilist} target="_blank" rel="noreferrer">
-                AniList ↗
-              </a>
-            )}
-            {h.links.anidb && (
-              <a href={h.links.anidb} target="_blank" rel="noreferrer">
-                AniDB ↗
-              </a>
-            )}
-            {h.links.tvdb && (
-              <a href={h.links.tvdb} target="_blank" rel="noreferrer">
-              TVDB ↗
-            </a>
-            )}
+          {h.overview && <Synopsis text={h.overview} />}
+          <div className="row hero-actions">
+            {!!missingAll.length && <SeasonSearch tvdbId={tvdbId} missing={missingAll} dryRun={dryRun} primary onDone={() => (void d.reload(), void act.reload())} />}
+            <button className="small" onClick={() => setPanel("watch")} aria-haspopup="dialog">
+              {t("profiles.watchAs")}: {h.profile.name} · {t(`mode.${h.profile.watchMode}` as I18nKey)}
+            </button>
           </div>
         </div>
       </header>
-      {h.overview && (
-        <details className="card pad synopsis-box">
-          <summary>{t("series.synopsis")}</summary>
-          <p className="muted">{h.overview}</p>
-        </details>
-      )}
       {!h.allowed && <p className="banner warn">{t("series.outsideRoot")}</p>}
-      {h.managed && (
-        <details className="card pad stack">
-          <summary>
-            <strong>{t("scope.title")}</strong> <span className="muted small">{t("scope.titleHelp")}</span>
-          </summary>
-          <ScopeEditor tvdbIds={[tvdbId]} onSaved={() => void d.reload()} />
-        </details>
-      )}
 
-      {h.allowed && (
+      <div className="tabs" role="tablist" aria-label={h.title}>
+        {tabs
+          .filter((x) => !x.hidden)
+          .map((x) => (
+            <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "on" : ""} onClick={() => setTab(x.id)}>
+              {x.label}
+            </button>
+          ))}
+      </div>
+
+      {tab === "movies" && !s.movies.length && !linking && <Empty>{t("franchise.none")}</Empty>}
+      {tab === "movies" && <FranchiseMovies tvdbId={tvdbId} movies={s.movies} adding={linking} setAdding={setLinking} onChanged={() => void d.reload()} />}
+      {tab === "details" && (
         <>
-          <RenamePreview tvdbId={tvdbId} initiallyOpen={query().get("rename") === "1"} onDone={() => void d.reload()} />
-          <ManualImport tvdbId={tvdbId} onDone={() => void d.reload()} />
+          {h.native && <p className="muted small">{t("add.nativeNote")}</p>}
+          <Franchise tvdbId={tvdbId} />
+          <AnidbEntries tvdbId={tvdbId} onChanged={() => void d.reload()} />
+          <Advanced s={s} tvdbId={tvdbId} path={h.path} onChanged={() => (void d.reload(), void act.reload())} />
         </>
       )}
-
-      {/* ---------------- franchise (AnimeArr's own catalog) */}
-      <Franchise tvdbId={tvdbId} />
-      <AnidbEntries tvdbId={tvdbId} onChanged={() => void d.reload()} />
-
-      {/* ---------------- movies & specials (the franchise's movies live in Radarr) */}
-      <FranchiseMovies tvdbId={tvdbId} movies={s.movies} onChanged={() => void d.reload()} />
-
-      {/* ---------------- episodes */}
-      <div className="row between episodes-toolbar">
-        <h2>{t("show.episodes")}</h2>
-        <div className="row">
-          <div className="seg" role="group">
-            <button className={!grid ? "on" : ""} onClick={() => (setGrid(false), store.set("episodeGrid", false))}>
-              {t("ep.list")}
-            </button>
-            <button className={grid ? "on" : ""} onClick={() => (setGrid(true), store.set("episodeGrid", true))}>
-              {t("ep.grid")}
-            </button>
-          </div>
-          <button
-            className="small ghost"
-            onClick={async () => {
-              try {
-                const r = await api<{ files: number; probed: number; removed: number }>(`/series/${tvdbId}/scan`, { body: {} });
-                toast(t("files.scanned", { files: r.files, probed: r.probed }));
-                await d.reload();
-              } catch (e) {
-                toast((e as Error).message, true);
-              }
-            }}
-          >
-            ↻ {t("files.refreshScan")}
-          </button>
-          <button className="small" onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
-            {selecting ? t("ep.selectDone") : t("ep.select")}
-          </button>
+      {tab === "history" && (
+        <div className="list">
+          {act.data && !act.data.length && <Empty icon="≡">{t("show.noHistory")}</Empty>}
+          {(act.data ?? []).slice(0, 50).map((x) => (
+            <DecisionCard key={x.id} d={x} onUndone={act.reload} />
+          ))}
         </div>
-      </div>
+      )}
+
+      {/* ---------------- episodes (what you open the page for) */}
+      {tab === "episodes" && (
+        <>
+          <div className="row between episodes-toolbar">
+            <span className="muted small">{t("show.epCount", { n: s.rows.filter((r) => !r.movie).length })}</span>
+            <div className="row">
+              <div className="seg" role="group" aria-label={t("ep.view")}>
+                <button className={!grid ? "on" : ""} aria-pressed={!grid} onClick={() => (setGrid(false), store.set("episodeGrid", false))}>
+                  {t("ep.list")}
+                </button>
+                <button className={grid ? "on" : ""} aria-pressed={grid} onClick={() => (setGrid(true), store.set("episodeGrid", true))}>
+                  {t("ep.grid")}
+                </button>
+              </div>
+              <button className="small" aria-pressed={selecting} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
+                {selecting ? t("ep.selectDone") : t("ep.select")}
+              </button>
+            </div>
+          </div>
+          {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
       {seasons.map(([season, rows], i) => {
         const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk");
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
@@ -320,31 +341,68 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           </details>
         );
       })}
-
-      {/* ---------------- advanced (power-user settings) */}
-      <Advanced s={s} tvdbId={tvdbId} path={h.path} onChanged={() => (void d.reload(), void act.reload())} />
-
-      <h2 className="section-title">{t("nav.activity")}</h2>
-      <div className="list">{(act.data ?? []).slice(0, 10).map((x) => <DecisionCard key={x.id} d={x} onUndone={act.reload} />)}</div>
+        </>
+      )}
 
       {selecting && !!sel.size && (
         <div className="bulkbar card">
           <span>{t("ep.selected", { n: sel.size })}</span>
-          <div className="row">
-            <button className="primary" onClick={bulk.auto} disabled={bulk.autoBusy}>
-              ⚡ {t("auto.button")}
-            </button>
-            <button onClick={bulk.search}>🔍 {t("auto.interactive")}</button>
-            <button onClick={bulk.regrab}>↻ {t("ep.regrab")}</button>
-            <button className="danger" onClick={bulk.remove} disabled={!selected.some((r) => r.file)}>
-              🗑 {t("ep.delete")}
-            </button>
-          </div>
+          <SplitButton
+            up
+            label={`⚡ ${t("auto.button")}`}
+            onClick={bulk.auto}
+            disabled={bulk.autoBusy}
+            items={[
+              { label: t("auto.chooseRelease"), onSelect: bulk.search },
+              { label: t("ep.regrab"), onSelect: bulk.regrab },
+              { label: t("ep.delete"), onSelect: bulk.remove, danger: true, disabled: !selected.some((r) => r.file) },
+            ]}
+          />
         </div>
       )}
       {bulk.ui}
       {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => (void d.reload(), void act.reload())} managedLive={managedLive} dryRun={dryRun} lang={lang} />}
+
+      {/* ---------------- the ⋯ tools, each in its own dialog */}
+      {panel === "scope" && (
+        <Modal title={t("scope.title")} onClose={() => setPanel(null)}>
+          <p className="muted small">{t("scope.titleHelp")}</p>
+          <ScopeEditor tvdbIds={[tvdbId]} onSaved={() => (setPanel(null), void d.reload())} />
+        </Modal>
+      )}
+      {panel === "rename" && h.allowed && (
+        <Modal title={t("rename.title")} onClose={() => setPanel(null)}>
+          <RenamePreview tvdbId={tvdbId} initiallyOpen onDone={() => void d.reload()} />
+        </Modal>
+      )}
+      {panel === "import" && (
+        <Modal title={t("import.title")} onClose={() => setPanel(null)}>
+          <ManualImport tvdbId={tvdbId} initiallyOpen onDone={() => void d.reload()} />
+        </Modal>
+      )}
+      {panel === "watch" && (
+        <Modal title={t("profiles.watchAs")} onClose={() => setPanel(null)}>
+          <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
+        </Modal>
+      )}
+      {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
     </section>
+  );
+}
+
+/** The synopsis inside the hero: three lines, "More" for the rest. */
+function Synopsis({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 220;
+  return (
+    <p className="muted synopsis">
+      <span className={open || !long ? "" : "clamp3"}>{text}</span>
+      {long && (
+        <button className="linklike small" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? t("common.less") : t("common.more")}
+        </button>
+      )}
+    </p>
   );
 }
 
@@ -491,9 +549,8 @@ function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number;
 }
 
 /** The franchise's movies (Radarr keeps the files; AnimeArr shows them with their show). Links can be corrected. */
-function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies: FranchiseMovie[]; onChanged: () => void }) {
+function FranchiseMovies({ tvdbId, movies, adding, setAdding, onChanged }: { tvdbId: number; movies: FranchiseMovie[]; adding: boolean; setAdding: (v: boolean) => void; onChanged: () => void }) {
   const toast = useToast();
-  const [adding, setAdding] = useState(false);
   const all = useLoad(() => (adding ? api<{ id: number; title: string; year: number | null }[]>("/movies") : Promise.resolve([])), [adding]);
   const link = async (movieId: number, on: boolean) => {
     try {
@@ -507,8 +564,7 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
   };
   return (
     <div className="stack">
-      <div className="row between">
-        <h2>{t("franchise.title")}</h2>
+      <div className="row end">
         <button className="small ghost" onClick={() => setAdding(!adding)}>
           {adding ? t("common.cancel") : `+ ${t("franchise.link")}`}
         </button>
@@ -530,7 +586,7 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
             ))}
         </select>
       )}
-      {!movies.length && !adding && <p className="muted small">{t("franchise.none")}</p>}
+      {!movies.length && !adding && <Empty>{t("franchise.none")}</Empty>}
       {!!movies.length && (
         <div className="poster-grid small-posters">
           {movies.map((m) => (
@@ -549,15 +605,16 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
                   <span className="poster-title clamp2">{m.title}</span>
                 </div>
               )}
-              <div className="poster-body">
+              <div className="poster-body row between">
                 <div className="chips">
-                  {!m.inRadarr ? <Chip tone="warn">{t("franchise.notInRadarr")}</Chip> : m.hasFile ? <Chip tone="good">✓ {t("ep.status.have")}</Chip> : <Chip tone="bad">! {t("ep.status.missing")}</Chip>}
+                  {!m.inRadarr ? <Chip tone="warn">{t("franchise.notInRadarr")}</Chip> : m.hasFile ? <span className="quiet-status"><span className="dot good" aria-hidden="true" />{t("ep.status.have")}</span> : <Chip tone="bad">! {t("ep.status.missing")}</Chip>}
                   {m.s0Episode !== null && <Chip>{t("franchise.s0", { n: m.s0Episode })}</Chip>}
                 </div>
                 {m.movieId && (
-                  <button className="small ghost" onClick={() => window.confirm(t("franchise.unlinkConfirm", { title: m.title })) && void link(m.movieId!, false)} title={t("franchise.unlinkHelp")} aria-label={`${m.title}: ${t("franchise.unlink")}`}>
-                    {t("franchise.unlink")}
-                  </button>
+                  <Menu
+                    label={`${m.title}: ${t("common.moreActions")}`}
+                    items={[{ label: t("franchise.unlink"), danger: true, onSelect: () => window.confirm(t("franchise.unlinkConfirm", { title: m.title })) && void link(m.movieId!, false) }]}
+                  />
                 )}
               </div>
             </article>
@@ -568,18 +625,13 @@ function FranchiseMovies({ tvdbId, movies, onChanged }: { tvdbId: number; movies
   );
 }
 
-/** ⚡ / 🔍 for a season's missing episodes (⚡ asks once; it prefers a season pack that covers them). */
-function SeasonSearch({ tvdbId, missing, dryRun, onDone }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void }) {
+/** "Find missing (n)" for a season or the whole show: finds automatically (asks once; prefers a season pack); the caret picks a release. */
+function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void; primary?: boolean }) {
   const list = missing.slice(0, 26);
   const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
   return (
-    <span className="row season-search" onClick={(e) => e.preventDefault()}>
-      <button className="small" onClick={a.auto} disabled={a.autoBusy} title={t("auto.seasonHelp")}>
-        ⚡ {t("ep.searchMissing", { n: missing.length })}
-      </button>
-      <button className="small ghost" onClick={a.search} aria-label={t("auto.interactive")}>
-        🔍
-      </button>
+    <span className="season-search" onClick={(e) => e.preventDefault()}>
+      <SplitButton small primary={primary} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
       {a.ui}
     </span>
   );
@@ -611,9 +663,9 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
     </li>
   );
   return (
-    <details className="card pad stack">
+    <details className="card pad stack" open>
       <summary>
-        <strong>{t("catalog.title", { name: d.data.franchise?.title ?? d.data.entries[0]?.title ?? d.data.related[0]?.title ?? "" })}</strong> <span className="muted small">{t("catalog.count", { n: d.data.entries.length + d.data.related.length })}</span>
+        <strong className="clamp1">{t("catalog.title", { name: d.data.franchise?.title ?? d.data.entries[0]?.title ?? d.data.related[0]?.title ?? "" })}</strong> <span className="muted small">{t(d.data.entries.length + d.data.related.length === 1 ? "catalog.countOne" : "catalog.count", { n: d.data.entries.length + d.data.related.length })}</span>
       </summary>
       <ul className="plain stack">{d.data.entries.map(row)}</ul>
       {!!d.data.related.length && (

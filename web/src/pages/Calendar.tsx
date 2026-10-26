@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, store, sxe } from "../api";
-import { navigate } from "../App";
+import { navigate, Link } from "../App";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
@@ -45,7 +45,8 @@ function dayTitle(key: number) {
 
 /** The range a view shows around an anchor date. */
 function rangeOf(view: View, anchor: number, compact: boolean): [number, number] {
-  if (compact) return [addDays(startOfDay(Date.now()), -2), addDays(startOfDay(Date.now()), 4)];
+  // Home: from today (what aired days ago is in Activity), a week ahead; the list is capped below.
+  if (compact) return [startOfDay(Date.now()), addDays(startOfDay(Date.now()), 7)];
   if (view === "week") {
     const s = startOfWeek(anchor);
     return [s, addDays(s, 7)];
@@ -187,6 +188,8 @@ function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) 
   );
 }
 
+const entriesCount = (days: [number, Entry[]][]) => days.reduce((n, [, l]) => n + l.length, 0);
+
 function Agenda({ byDay, compact, onOpen }: { byDay: Map<number, Entry[]>; compact: boolean; onOpen: (e: Entry) => void }) {
   const days = [...byDay].sort((a, b) => a[0] - b[0]);
   const scrolled = useRef(false);
@@ -195,11 +198,19 @@ function Agenda({ byDay, compact, onOpen }: { byDay: Map<number, Entry[]>; compa
     scrolled.current = true;
     document.getElementById("cal-today")?.scrollIntoView({ block: "start" });
   }, [days.length, compact]);
-  if (!days.length) return <Empty>{t("cal.empty")}</Empty>;
+  if (!days.length) return <Empty icon="▤">{t("cal.empty")}</Empty>;
   const today = startOfDay(Date.now());
+  // Compact (Home): the first 8 entries, then "Full calendar".
+  let left = compact ? 8 : Infinity;
+  const shown = days.map(([k, list]) => {
+    const take = list.slice(0, Math.max(0, left));
+    left -= take.length;
+    return [k, take] as [number, Entry[]];
+  }).filter(([, l]) => l.length);
+  const more = compact && entriesCount(days) > 8;
   return (
     <div className="agenda">
-      {days.map(([key, list]) => (
+      {shown.map(([key, list]) => (
         <div key={key} className={`agenda-day${key === today ? " today" : ""}`} id={key === today ? "cal-today" : undefined}>
           <h2 className="agenda-date">{dayTitle(key)}</h2>
           <ul className="plain">
@@ -211,6 +222,11 @@ function Agenda({ byDay, compact, onOpen }: { byDay: Map<number, Entry[]>; compa
           </ul>
         </div>
       ))}
+      {more && (
+        <Link to="/calendar" className="small">
+          {t("cal.full", { n: entriesCount(days) - 8 })}
+        </Link>
+      )}
     </div>
   );
 }

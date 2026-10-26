@@ -1,7 +1,8 @@
 import { api } from "../api";
-import { Link } from "../App";
+import { Link, navigate } from "../App";
+import { AutomateTabs } from "./Managed";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 interface Item { tvdbId: number; title: string; cover: string | null; state: "queued" | "active" | "done" | "skipped"; wave: number | null; position: number; startMissing: number | null; missing: number | null; note: string; activatedAt: number | null; doneAt: number | null; scope: { seasons: string; recentN: number; episodes: string; specials: boolean } }
 interface View { settings: { paused: boolean; waveSize: number; advancePct: number; stallDays: number }; backlogEnabled: boolean; perHour: number; remaining: number; etaHours: number; items: Item[] }
@@ -39,14 +40,17 @@ export function FillIn() {
   ];
   return (
     <section className="stack">
-      <h1>{t("fill.title")}</h1>
+      <div className="row between">
+        <h1>{t("fill.title")}</h1>
+        <AutomateTabs current="fillin" />
+      </div>
       <p className="muted">{t("fill.intro", { size: v.settings.waveSize, pct: v.settings.advancePct, days: v.settings.stallDays })}</p>
       {!v.backlogEnabled && <p className="banner warn">{t("fill.backlogOff")} <Link to="/settings?tab=safety">{t("nav.settings")} →</Link></p>}
       <div className="card pad stack">
         <p>{t("fill.eta", { n: v.remaining, per: v.perHour, h: v.etaHours, d: Math.ceil(v.etaHours / 24) })}</p>
         <Toggle checked={v.settings.paused} onChange={(x) => void setPaused(x)} label={t("fill.paused")} help={t("fill.pausedHelp")} />
       </div>
-      {!v.items.length && <Empty>{t("fill.empty")}</Empty>}
+      {!v.items.length && <Empty icon="⇣" action={{ label: t("managed.choose"), run: () => navigate("/shows") }}>{t("fill.empty")}</Empty>}
       {groups.map(
         ([k, list]) =>
           !!list.length && (
@@ -80,31 +84,16 @@ export function FillIn() {
                           </div>
                         )}
                       </div>
-                      <div className="row fill-actions">
-                        {i.state === "queued" && (
-                          <>
-                            <button className="small ghost" aria-label={t("fill.up")} onClick={() => void act(i.tvdbId, "up")}>
-                              ↑
-                            </button>
-                            <button className="small ghost" aria-label={t("fill.down")} onClick={() => void act(i.tvdbId, "down")}>
-                              ↓
-                            </button>
-                          </>
-                        )}
-                        {(i.state === "queued" || i.state === "active") && (
-                          <button className="small ghost" onClick={() => void act(i.tvdbId, "skip")}>
-                            {t("fill.skip")}
-                          </button>
-                        )}
-                        {(i.state === "skipped" || i.state === "done") && (
-                          <button className="small ghost" onClick={() => void act(i.tvdbId, "requeue")}>
-                            {t("fill.requeue")}
-                          </button>
-                        )}
-                        <button className="small ghost" onClick={() => void act(i.tvdbId, "remove")}>
-                          {t("fill.remove")}
-                        </button>
-                      </div>
+                      <Menu
+                        label={`${i.title}: ${t("common.moreActions")}`}
+                        items={[
+                          { label: t("fill.up"), onSelect: () => void act(i.tvdbId, "up"), hidden: i.state !== "queued" },
+                          { label: t("fill.down"), onSelect: () => void act(i.tvdbId, "down"), hidden: i.state !== "queued" },
+                          { label: t("fill.skip"), onSelect: () => void act(i.tvdbId, "skip"), hidden: !(i.state === "queued" || i.state === "active") },
+                          { label: t("fill.requeue"), onSelect: () => void act(i.tvdbId, "requeue"), hidden: !(i.state === "skipped" || i.state === "done") },
+                          { label: t("fill.remove"), onSelect: () => void act(i.tvdbId, "remove"), danger: true },
+                        ]}
+                      />
                     </li>
                   );
                 })}

@@ -3,6 +3,7 @@ import { api, fmtSize, store, type PathMapping, type Settings as S, type Status 
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
+import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type SaveNow } from "../connections";
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
 import { MediaManagement } from "../media";
@@ -10,20 +11,54 @@ import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "connections" | "profile" | "media" | "downloads" | "safety" | "paths" | "metadata" | "cutover" | "security" | "system";
-const TABS: Tab[] = ["connections", "profile", "media", "downloads", "safety", "paths", "metadata", "cutover", "security", "system"];
+type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
+
+/** Settings, grouped like Sonarr's: a left sub-nav on desktop, a list on phones. */
+const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: string }[] }[] = [
+  { label: "settings.group.connect", tabs: [{ id: "indexers", icon: "⌕" }, { id: "clients", icon: "↓" }, { id: "mediaservers", icon: "▶" }, { id: "notifications", icon: "🔔" }, { id: "migration", icon: "⇄" }] },
+  { label: "settings.group.library", tabs: [{ id: "profile", icon: "◐" }, { id: "media", icon: "▦" }, { id: "paths", icon: "⤳" }, { id: "metadata", icon: "ⓘ" }] },
+  { label: "settings.group.automation", tabs: [{ id: "safety", icon: "★" }, { id: "downloads", icon: "⛁" }] },
+  { label: "settings.group.general", tabs: [{ id: "appearance", icon: "◑" }, { id: "security", icon: "🔒" }, { id: "system", icon: "⚙" }] },
+];
+const TABS = SECTIONS.flatMap((x) => x.tabs.map((y) => y.id));
+/** Old links (?tab=connections, ?tab=cutover) still land in the right place. */
+const ALIAS: Record<string, Tab> = { connections: "indexers", cutover: "migration", plex: "mediaservers" };
+/** Tabs whose fields save with the page's Save button (the connection tabs save in their own dialogs). */
+const FORM_TABS: Tab[] = ["notifications", "media", "downloads", "safety", "paths", "metadata"];
 
 export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
   usePageTitle(t("settings.title"));
   const toast = useToast();
-  const initial = query().get("tab") as Tab;
-  const [tab, setTab] = useState<Tab>(TABS.includes(initial) ? initial : "connections");
+  const q = query().get("tab") ?? "";
+  const initial = (ALIAS[q] ?? q) as Tab;
+  const [tab, setTabState] = useState<Tab | null>(TABS.includes(initial) ? initial : null);
   const loaded = useLoad(() => api<S>("/settings"), []);
   const [s, setS] = useState<S | null>(null);
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (loaded.data) setS(loaded.data);
   }, [loaded.data]);
+  useEffect(() => {
+    const onPop = () => {
+      const x = query().get("tab") ?? "";
+      const t2 = (ALIAS[x] ?? x) as Tab;
+      // Leaving a tab with the browser's Back drops its unsaved edits (they'd otherwise ride along with a later save).
+      setDirty((d) => {
+        if (d && loaded.data) setS(loaded.data);
+        return false;
+      });
+      setTabState(TABS.includes(t2) ? t2 : null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const setTab = (x: Tab | null) => {
+    if (dirty && !window.confirm(t("settings.unsavedLeave"))) return;
+    if (dirty && loaded.data) (setS(loaded.data), setDirty(false));
+    setTabState(x);
+    history.pushState(null, "", x ? `/settings?tab=${x}` : "/settings");
+    window.scrollTo(0, 0);
+  };
   const upd = (fn: (x: S) => S) => {
     setS((x) => (x ? fn(structuredClone(x)) : x));
     setDirty(true);
@@ -40,130 +75,153 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       toast((e as Error).message, true);
     }
   }
+  /** Connection dialogs save straight away (only their own change, on top of what's saved). */
+  const saveNow: SaveNow = async (fn) => {
+    try {
+      const base = loaded.data ?? s!;
+      const next = await api<S>("/settings", { method: "PUT", body: fn(structuredClone(base)) });
+      loaded.setData(next);
+      if (!dirty) setS(next);
+      toast(t("common.saved"));
+      onSaved();
+      return true;
+    } catch (e) {
+      toast((e as Error).message, true);
+      return false;
+    }
+  };
   if (loaded.error) return <ErrorBox error={loaded.error} retry={loaded.reload} />;
   if (!s) return <Spinner label={t("app.loading")} />;
-  return (
-    <section>
-      <h1>{t("settings.title")}</h1>
-      <div className="tabs" role="tablist">
-        {TABS.map((x) => (
-          <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => (setTab(x), history.replaceState(null, "", `/settings?tab=${x}`))}>
-            {t(`settings.tab.${x}`)}
-          </button>
-        ))}
-      </div>
-      {tab === "connections" && (
-        <>
-          <Connections s={s} upd={upd} />
-          <PlexCard s={s} upd={upd} />
-          <NotifyCard s={s} upd={upd} />
-        </>
-      )}
-      {tab === "profile" && <ProfilesEditor />}
-      {tab === "media" && <MediaManagement s={s} upd={upd} />}
-      {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
-      {tab === "cutover" && <Cutover />}
-      {tab === "safety" && <Safety s={s} upd={upd} />}
-      {tab === "paths" && <Paths s={s} upd={upd} />}
-      {tab === "metadata" && <Metadata s={s} upd={upd} />}
-      {tab === "system" && <System status={status} />}
-      {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-      {tab !== "system" && tab !== "security" && tab !== "profile" && tab !== "cutover" && (
-        <div className="sticky-actions">
-          <button className="primary" disabled={!dirty} onClick={save}>
-            {t("common.save")}
-          </button>
+  const nav = (
+    <nav className="settings-nav" aria-label={t("settings.title")}>
+      {SECTIONS.map((g) => (
+        <div key={g.label} className="settings-group">
+          <h2 className="eyebrow">{t(g.label)}</h2>
+          <ul className="plain">
+            {g.tabs.map((x) => (
+              <li key={x.id}>
+                <a
+                  href={`/settings?tab=${x.id}`}
+                  className={tab === x.id ? "active" : ""}
+                  aria-current={tab === x.id ? "page" : undefined}
+                  onClick={(e) => (e.preventDefault(), setTab(x.id))}
+                >
+                  <span aria-hidden="true" className="more-icon">
+                    {x.icon}
+                  </span>
+                  <span className="grow">{t(`settings.tab.${x.id}` as I18nKey)}</span>
+                  <span className="chevron" aria-hidden="true">
+                    ›
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
+      ))}
+    </nav>
+  );
+  return (
+    <section className={`settings${tab ? " has-tab" : ""}`}>
+      <div className="row between settings-title">
+        {tab ? (
+          <button className="linklike settings-back" onClick={() => setTab(null)}>
+            ‹ {t("settings.title")}
+          </button>
+        ) : null}
+        <h1>{tab ? t(`settings.tab.${tab}` as I18nKey) : t("settings.title")}</h1>
+      </div>
+      <div className="settings-layout">
+        {nav}
+        <div className="settings-body stack">
+          {!tab && <p className="muted small settings-pick">{t("settings.pick")}</p>}
+          {tab === "indexers" && <Indexers s={s} saveNow={saveNow} />}
+          {tab === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
+          {tab === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} />}
+          {tab === "notifications" && (
+            <>
+              <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
+              <NotifyCard s={s} upd={upd} />
+            </>
+          )}
+          {tab === "migration" && (
+            <Migration s={s} saveNow={saveNow}>
+              <Cutover />
+            </Migration>
+          )}
+          {tab === "profile" && <ProfilesEditor />}
+          {tab === "media" && <MediaManagement s={s} upd={upd} />}
+          {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
+          {tab === "safety" && <Safety s={s} upd={upd} />}
+          {tab === "paths" && <Paths s={s} upd={upd} />}
+          {tab === "metadata" && <Metadata s={s} upd={upd} />}
+          {tab === "appearance" && <Appearance />}
+          {tab === "system" && <System status={status} />}
+          {tab === "security" && <Security s={s} status={status} onChanged={onSaved} />}
+          {tab && FORM_TABS.includes(tab) && (
+            <div className="sticky-actions row">
+              <button className="primary" disabled={!dirty} onClick={save}>
+                {t("common.save")}
+              </button>
+              {dirty && (
+                <>
+                  <span className="muted small">{t("settings.unsaved")}</span>
+                  <button className="ghost small" onClick={() => (loaded.data && setS(loaded.data), setDirty(false))}>
+                    {t("settings.discard")}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
 
-type Upd = (fn: (x: S) => S) => void;
-
-const SERVICES = [
-  { key: "sonarr", name: "Sonarr" },
-  { key: "radarr", name: "Radarr" },
-  { key: "prowlarr", name: "Prowlarr" },
-  { key: "sabnzbd", name: "SABnzbd" },
-  { key: "qbittorrent", name: "qBittorrent" },
-] as const;
-
-function Connections({ s, upd }: { s: S; upd: Upd }) {
-  const toast = useToast();
-  const [results, setResults] = useState<Record<string, { ok: boolean; text: string }>>({});
-  async function test(key: (typeof SERVICES)[number]["key"], name: string) {
-    const c = s[key] as Record<string, unknown>;
-    try {
-      const r = await api<{ version: string; categoryExists?: boolean }>(`/test/${key}`, { body: c });
-      const text = t("settings.testOk", { app: name, version: r.version }) + (r.categoryExists === false ? ` — ${t("settings.categoryMissing", { cat: String(c.category), app: name })}` : "");
-      setResults((x) => ({ ...x, [key]: { ok: r.categoryExists !== false, text } }));
-    } catch (e) {
-      setResults((x) => ({ ...x, [key]: { ok: false, text: (e as Error).message } }));
-      toast((e as Error).message, true);
-    }
-  }
+/** Appearance (this device): theme, and how messages pop up. */
+function Appearance() {
+  const [theme, setTheme] = useState(store.get("theme", "dark"));
+  const [toastStyle, setToastStyle] = useState(store.get("toastStyle", "bubble"));
   return (
     <div className="stack">
-      {SERVICES.map(({ key, name }) => {
-        const c = s[key] as Record<string, string>;
-        const set = (field: string, v: string) => upd((x) => ({ ...x, [key]: { ...(x[key] as object), [field]: v } }));
-        return (
-          <div key={key} className="card pad stack">
-            <div className="row between">
-              <h2>{name}</h2>
-              <button className="small" onClick={() => test(key, name)}>
-                {t("common.test")}
-              </button>
-            </div>
-            <div className="form">
-              <label>
-                {t("settings.url")}
-                <input value={c.url} onChange={(e) => set("url", e.target.value)} placeholder="http://192.168.1.10:8989" />
-              </label>
-              {key === "qbittorrent" ? (
-                <>
-                  <label>
-                    {t("settings.username")}
-                    <input value={c.username} onChange={(e) => set("username", e.target.value)} autoComplete="off" />
-                  </label>
-                  <label className="field">
-                    {t("settings.password")}
-                    <SecretInput value={c.password} onChange={(v) => set("password", v)} label={t("settings.password")} />
-                  </label>
-                </>
-              ) : (
-                <label className="field">
-                  {t("settings.apiKey")}
-                  <SecretInput value={c.apiKey} onChange={(v) => set("apiKey", v)} label={`${name} ${t("settings.apiKey")}`} />
-                </label>
-              )}
-              {(key === "sabnzbd" || key === "qbittorrent") && (
-                <label>
-                  {t("settings.category")}
-                  <input value={c.category} onChange={(e) => set("category", e.target.value)} />
-                </label>
-              )}
-              {key === "sonarr" && (
-                <label>
-                  {t("settings.animeTag")}
-                  <input value={c.animeTag} onChange={(e) => set("animeTag", e.target.value)} />
-                </label>
-              )}
-              {key === "radarr" && (
-                <label>
-                  {t("settings.animeRoots")}
-                  <ListInput value={s.radarr.animeRoots} onChange={(v) => upd((x) => ({ ...x, radarr: { ...x.radarr, animeRoots: v } }))} label={t("settings.animeRoots")} placeholder="/media/Movies/Anime" />
-                </label>
-              )}
-            </div>
-            {results[key] && <p className={results[key].ok ? "good-text" : "warn-text"}>{results[key].text}</p>}
-          </div>
-        );
-      })}
+      <SectionIntro icon="◑" text={t("appearance.intro")} />
+      <div className="card pad form">
+        <label>
+          {t("settings.system.theme")}
+          <select
+            value={theme}
+            onChange={(e) => {
+              setTheme(e.target.value);
+              store.set("theme", e.target.value);
+              applyTheme(e.target.value);
+            }}
+          >
+            <option value="dark">{t("settings.system.dark")}</option>
+            <option value="light">{t("settings.system.light")}</option>
+          </select>
+        </label>
+        <label>
+          {t("appearance.toasts")}
+          <select
+            value={toastStyle}
+            onChange={(e) => {
+              setToastStyle(e.target.value);
+              store.set("toastStyle", e.target.value);
+              applyTheme(store.get("theme", "dark"));
+            }}
+          >
+            <option value="bubble">{t("appearance.toasts.bubble")}</option>
+            <option value="standard">{t("appearance.toasts.standard")}</option>
+          </select>
+          <span className="muted small">{t("appearance.toastsHelp")}</span>
+        </label>
+      </div>
     </div>
   );
 }
+
+type Upd = (fn: (x: S) => S) => void;
 
 /** Per-show dry-run overrides (managed shows). */
 function ShowDryRuns() {
@@ -419,15 +477,15 @@ function MappingList({ value, onChange, title, help }: { value: PathMapping[]; o
 }
 
 /** Plex: partial scans after AnimeArr's own imports and renames (token stored encrypted; read-only otherwise). */
-function PlexCard({ s, upd }: { s: S; upd: Upd }) {
+function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) {
   const toast = useToast();
   const p = s.plex;
   const set = (patch: Partial<S["plex"]>) => upd((x) => ({ ...x, plex: { ...x.plex, ...patch } }));
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
   return (
-    <div className="card pad stack">
+    <div className={bare ? "stack" : "card pad stack"}>
       <div className="row between">
-        <h2>Plex</h2>
+        {!bare && <h2>Plex</h2>}
         <button
           className="small"
           onClick={async () => {
@@ -440,7 +498,7 @@ function PlexCard({ s, upd }: { s: S; upd: Upd }) {
             }
           }}
         >
-          {t("common.test")}
+          {bare ? t("plex.testLibraries") : t("common.test")}
         </button>
       </div>
       <p className="muted small">{t("plex.help")}</p>
@@ -633,7 +691,6 @@ function System({ status }: { status: Status }) {
   const d = useLoad(() => api<SystemInfo>("/system"), []);
   const [restore, setRestore] = useState<string | null>(null);
   const [pw, setPw] = useState("");
-  const [theme, setTheme] = useState(store.get("theme", "dark"));
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const x = d.data;
@@ -702,20 +759,6 @@ function System({ status }: { status: Status }) {
         </button>
       </div>
       <div className="card pad stack">
-        <label>
-          {t("settings.system.theme")}
-          <select
-            value={theme}
-            onChange={(e) => {
-              setTheme(e.target.value);
-              store.set("theme", e.target.value);
-              applyTheme(e.target.value);
-            }}
-          >
-            <option value="dark">{t("settings.system.dark")}</option>
-            <option value="light">{t("settings.system.light")}</option>
-          </select>
-        </label>
         <p className="muted small">
           AnimeArr v{x.version} · {status.via}
         </p>

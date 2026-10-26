@@ -31,7 +31,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((x) => (
           <div key={x.id} className={`toast${x.error ? " err" : ""}`} aria-hidden={x.error || undefined}>
-            <span>{x.msg}</span>
+            <span className="toast-emote" aria-hidden="true">
+              {x.error ? "💢" : x.action ? "💦" : "✨"}
+            </span>
+            <span className="toast-msg">{x.msg}</span>
             {x.action && (
               <button className="primary" onClick={() => (x.action!.run(), close(x.id))}>
                 {x.action.label}
@@ -122,8 +125,108 @@ export function ErrorBox({ error, retry }: { error: string; retry?: () => void }
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <p className="empty muted">{children}</p>;
+/** An empty state: one sentence and (ideally) one action, never a dashed box alone. */
+export function Empty({ children, title, icon, action }: { children?: ReactNode; title?: string; icon?: string; action?: { label: string; run: () => void } | ReactNode }) {
+  return (
+    <div className="empty">
+      {icon && (
+        <span className="empty-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
+      {title && <p className="empty-title">{title}</p>}
+      {children && <p className="muted">{children}</p>}
+      {action && typeof action === "object" && "run" in (action as object) ? (
+        <button className="small" onClick={(action as { run: () => void }).run}>
+          {(action as { label: string }).label}
+        </button>
+      ) : (
+        (action as ReactNode)
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- overflow menu (⋯) and split button
+
+export interface MenuItem { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hidden?: boolean }
+
+/** A ⋯ menu: the less-used actions of a page/row live here instead of a wall of buttons. Arrow keys, Escape, outside click. */
+export function Menu({ items, label, trigger = "⋯", className = "", align = "right", up = false }: { items: MenuItem[]; label?: string; trigger?: ReactNode; className?: string; align?: "left" | "right"; up?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const shown = items.filter((i) => !i.hidden);
+  useEffect(() => {
+    if (!open) return;
+    const first = wrap.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])");
+    first?.focus();
+    const onDown = (e: MouseEvent | TouchEvent) => !wrap.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [open]);
+  if (!shown.length) return null;
+  const onKey = (e: React.KeyboardEvent) => {
+    const list = [...(wrap.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setOpen(false), btn.current?.focus());
+    else if (e.key === "ArrowDown") (e.preventDefault(), list[(i + 1) % list.length]?.focus());
+    else if (e.key === "ArrowUp") (e.preventDefault(), list[(i - 1 + list.length) % list.length]?.focus());
+    else if (e.key === "Home") (e.preventDefault(), list[0]?.focus());
+    else if (e.key === "End") (e.preventDefault(), list[list.length - 1]?.focus());
+    else if (e.key === "Tab") setOpen(false);
+  };
+  return (
+    <span className={`menu ${className}`} ref={wrap} onKeyDown={onKey}>
+      <button
+        ref={btn}
+        type="button"
+        className="icon menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label ?? t("common.moreActions")}
+        onClick={(e) => (e.preventDefault(), e.stopPropagation(), setOpen(!open))}
+      >
+        {trigger}
+      </button>
+      {open && (
+        <ul className={`menu-pop card ${align}${up ? " up" : ""}`} role="menu" aria-label={label ?? t("common.moreActions")}>
+          {shown.map((i, n) => (
+            <li key={`${n}-${i.label}`} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className={`menu-item${i.danger ? " danger-text" : ""}`}
+                disabled={i.disabled}
+                onClick={(e) => (e.preventDefault(), e.stopPropagation(), setOpen(false), btn.current?.focus(), i.onSelect())}
+              >
+                {i.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </span>
+  );
+}
+
+/**
+ * One "Find" control everywhere: the main button finds automatically; the caret holds "Choose release…" and the
+ * rest (re-grab, delete…), so pages don't repeat Search / Interactive / Re-grab side by side.
+ */
+export function SplitButton({ label, onClick, items, disabled, primary = true, small = false, menuLabel, up = false }: { label: ReactNode; onClick: () => void; items: MenuItem[]; disabled?: boolean; primary?: boolean; small?: boolean; menuLabel?: string; up?: boolean }) {
+  return (
+    <span className={`split${primary ? " primary" : ""}${small ? " small" : ""}`}>
+      <button type="button" className={`${primary ? "primary" : ""}${small ? " small" : ""}`} disabled={disabled} onClick={onClick}>
+        {label}
+      </button>
+      <Menu items={items} trigger="▾" label={menuLabel ?? t("common.moreOptions")} up={up} />
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------- inputs

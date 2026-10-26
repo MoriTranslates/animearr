@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, fmtSize, sxe } from "./api";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Chip, Confirm, dateTime, Spinner, useLoad, useToast, Why } from "./ui";
+import { Chip, Confirm, dateTime, Spinner, SplitButton, useLoad, useToast, Why } from "./ui";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -23,10 +23,26 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
   if (e.status === "downloading" && e.stage === "importing") label = `⇢ ${t("ep.importing")}`;
   else if (e.status === "downloading" && e.stage === "waiting") label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
   else if (e.status === "downloading" && e.progress !== null) label += ` ${Math.round(e.progress * 100)}%`;
-  if (e.status === "have" && e.file) {
-    const parts = [[resLabel(e.file.resolution), e.file.source].filter(Boolean).join(" "), e.file.subs.includes(lang) ? t("ep.subs", { lang: lang.toUpperCase() }) : e.file.audio.includes(lang) ? t("ep.audioLang", { lang: lang.toUpperCase() }) : t("ep.noSubs", { lang: lang.toUpperCase() })].filter(Boolean);
-    label = [label, ...parts].join(" · ");
+  // Healthy rows are quiet (a dot and muted words); a colour chip is kept for what needs you.
+  if (e.status === "have" && (!e.file || e.file.subs.includes(lang) || e.file.audio.includes(lang))) {
+    const q = e.file ? [resLabel(e.file.resolution), e.file.source].filter(Boolean).join(" ") : "";
+    return (
+      <span className="quiet-status">
+        <span className="dot good" aria-hidden="true" />
+        <span className="sr-only">{t("ep.status.have")}</span>
+        {q || <span aria-hidden="true">{t("ep.status.have")}</span>}
+        {e.file && !e.file.subs.includes(lang) && e.file.audio.includes(lang) ? ` · ${t("ep.audioLang", { lang: lang.toUpperCase() })}` : ""}
+      </span>
+    );
   }
+  if (e.status === "unaired") {
+    return (
+      <span className="quiet-status">
+        <span aria-hidden="true">◷</span> {label}
+      </span>
+    );
+  }
+  if (e.status === "have" && e.file) label = `${label} · ${t("ep.noSubs", { lang: lang.toUpperCase() })}`;
   return (
     <Chip tone={e.status === "have" && e.file && !e.file.subs.includes(lang) && !e.file.audio.includes(lang) ? "warn" : TONE[e.status]}>
       <span aria-hidden="true">{ICON[e.status]} </span>
@@ -287,19 +303,28 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             )}
             {!d.movie && (
             <div className="row sheet-actions">
-              {!d.file && (
-                <button className="primary" onClick={actions.auto} disabled={actions.autoBusy}>
-                  ⚡ {actions.autoBusy ? t("common.working") : t("auto.button")}
-                </button>
-              )}
-              <button className={d.file ? "primary" : undefined} onClick={actions.search}>
-                🔍 {t("auto.interactive")}
-              </button>
-              {(d.file || d.status !== "unaired") && <button onClick={actions.regrab}>↻ {t("ep.regrab")}</button>}
-              {d.file && (
-                <button className="danger" onClick={actions.remove}>
-                  🗑 {t("ep.delete")}
-                </button>
+              {!d.file ? (
+                <SplitButton
+                  up
+                  label={`⚡ ${actions.autoBusy ? t("common.working") : t("auto.find")}`}
+                  onClick={actions.auto}
+                  disabled={actions.autoBusy}
+                  items={[
+                    { label: t("auto.chooseRelease"), onSelect: actions.search },
+                    { label: t("ep.regrab"), onSelect: actions.regrab, hidden: d.status === "unaired" },
+                  ]}
+                />
+              ) : (
+                <SplitButton
+                  up
+                  primary={false}
+                  label={t("auto.chooseRelease")}
+                  onClick={actions.search}
+                  items={[
+                    { label: t("ep.regrab"), onSelect: actions.regrab },
+                    { label: t("ep.delete"), onSelect: actions.remove, danger: true },
+                  ]}
+                />
               )}
             </div>
             )}

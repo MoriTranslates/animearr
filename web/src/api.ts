@@ -56,6 +56,7 @@ export interface Status {
   uiLanguage?: string;
   defaultPassword?: boolean;
   bypassLocal?: boolean;
+  queue?: { active: number; attention: number };
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -73,6 +74,7 @@ export interface Decision {
   undo: { action: string } | null;
   undoneAt: number | null;
   fixes?: Fix[];
+  detail?: Record<string, unknown>;
 }
 
 export interface LibraryShow {

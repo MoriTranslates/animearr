@@ -3,37 +3,70 @@ import { api, fmtSize, sxe } from "../api";
 import { Link, navigate, query } from "../App";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, dateTime, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { ReleaseLine } from "./Queue";
 
-type Tab = "language" | "gaps" | "specials" | "checks" | "upgrades" | "recycle";
+type Tab = "gaps" | "language" | "specials" | "maintenance";
+type Maint = "checks" | "upgrades" | "recycle";
 
+/** Audit: three read-only reports, plus Maintenance (after-import checks, dual-audio upgrades, recycle bin). */
 export function Audit() {
   usePageTitle(t("audit.title"));
-  const initial = (query().get("tab") as Tab) || "gaps";
-  const [tab, setTab] = useState<Tab>(["language", "gaps", "specials", "checks", "upgrades", "recycle"].includes(initial) ? initial : "gaps");
-  const pick = (x: Tab) => {
+  const q = query().get("tab") ?? "gaps";
+  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
+  const [maint, setMaint] = useState<Maint>(["upgrades", "recycle"].includes(q) ? (q as Maint) : "checks");
+  const pick = (x: Tab, m: Maint = maint) => {
     setTab(x);
-    history.replaceState(null, "", `/audit?tab=${x}`);
+    setMaint(m);
+    history.replaceState(null, "", `/audit?tab=${x === "maintenance" ? m : x}`);
   };
   return (
     <section>
       <h1>{t("audit.title")}</h1>
-      <p className="muted small">{t(tab === "checks" || tab === "upgrades" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       <div className="tabs" role="tablist">
-        {(["gaps", "language", "specials", "checks", "upgrades", "recycle"] as Tab[]).map((x) => (
+        {(["gaps", "language", "specials", "maintenance"] as Tab[]).map((x) => (
           <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
-            {t(`audit.tab.${x}`)}
+            {t(`audit.tab.${x}` as I18nKey)}
           </button>
         ))}
       </div>
+      <p className="muted small">{t(tab === "maintenance" && maint !== "recycle" ? "repair.notReadOnly" : "audit.readOnly")}</p>
+      {tab === "maintenance" && (
+        <div className="seg self-start" role="group" aria-label={t("audit.tab.maintenance")}>
+          {(["checks", "upgrades", "recycle"] as Maint[]).map((m) => (
+            <button key={m} className={maint === m ? "on" : ""} aria-pressed={maint === m} onClick={() => pick("maintenance", m)}>
+              {t(`audit.tab.${m}` as I18nKey)}
+            </button>
+          ))}
+        </div>
+      )}
       {tab === "gaps" && <Gaps />}
       {tab === "language" && <Language />}
       {tab === "specials" && <Specials />}
-      {tab === "checks" && <Checks />}
-      {tab === "recycle" && <Recycle />}
-      {tab === "upgrades" && <Upgrades />}
+      {tab === "maintenance" && maint === "checks" && <Checks />}
+      {tab === "maintenance" && maint === "recycle" && <Recycle />}
+      {tab === "maintenance" && maint === "upgrades" && <Upgrades />}
     </section>
   );
+}
+
+/** "S1 · 1–12, 15" per season: a summary instead of a wall of episode links. */
+function ranges(eps: { season: number; episode: number }[]) {
+  const bySeason = new Map<number, number[]>();
+  for (const e of eps) bySeason.set(e.season, [...(bySeason.get(e.season) ?? []), e.episode]);
+  return [...bySeason]
+    .sort((a, b) => a[0] - b[0])
+    .map(([season, list]) => {
+      const nums = [...new Set(list)].sort((a, b) => a - b);
+      const parts: string[] = [];
+      for (let i = 0; i < nums.length; ) {
+        let j = i;
+        while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+        parts.push(j > i ? `${nums[i]}–${nums[j]}` : `${nums[i]}`);
+        i = j + 1;
+      }
+      return { season, text: parts.join(", "), n: nums.length };
+    });
 }
 
 interface GapSeries { seriesId: number; tvdbId: number; title: string; cover: string | null; status: string; missing: { id: number; season: number; episode: number; title: string | null; airUtc: number | null }[]; missingSeasons: { season: number; aired: number; monitored: boolean }[] }
@@ -48,7 +81,7 @@ function Gaps() {
       <p>
         <strong>{t("audit.gaps.total", { episodes: d.data.episodes, seasons: d.data.seasons })}</strong>
       </p>
-      {!d.data.series.length && <Empty>{t("audit.gaps.empty")}</Empty>}
+      {!d.data.series.length && <Empty icon="✓" title={t("audit.allGood")}>{t("audit.gaps.empty")}</Empty>}
       <div className="list">
         {d.data.series.map((s) => (
           <article key={s.tvdbId} className="card show-card">
@@ -67,14 +100,13 @@ function Gaps() {
                 </div>
               )}
               {!!s.missing.length && (
-                <div className="chips">
-                  {s.missing.slice(0, 24).map((e) => (
-                    <button key={e.id} className="chip link" title={e.title ?? ""} onClick={() => navigate(`/search?tvdbId=${s.tvdbId}&eps=${e.id}`)}>
-                      {sxe(e.season, e.episode)}
-                    </button>
+                <ul className="plain small gap-ranges">
+                  {ranges(s.missing).map((r) => (
+                    <li key={r.season}>
+                      <span className="mono">{r.season === 0 ? t("series.specials") : `S${r.season}`}</span> · {t("audit.gaps.range", { eps: r.text, n: r.n })}
+                    </li>
                   ))}
-                  {s.missing.length > 24 && <span className="muted small">+{s.missing.length - 24}</span>}
-                </div>
+                </ul>
               )}
               {!!s.missing.length && <GapSearch tvdbId={s.tvdbId} missing={s.missing} onDone={() => void d.reload()} />}
             </div>
@@ -101,36 +133,41 @@ function Language() {
         <input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> {t("audit.lang.sidecars")}
       </label>
       <p className="muted small">{t("audit.lang.checked", { n: d.data.checkedFiles })}</p>
-      {!d.data.series.length && !d.data.movies.length && <Empty>{t("audit.lang.empty")}</Empty>}
+      {!d.data.series.length && !d.data.movies.length && <Empty icon="✓" title={t("audit.allGood")}>{t("audit.lang.empty")}</Empty>}
       <div className="list">
         {d.data.series.map((g) => (
           <article key={`${g.tvdbId}-${g.season}`} className="card show-card">
             <div className="show-body">
-              <ShowLink tvdbId={g.tvdbId} title={g.title} className="show-card-head">
-                <Cover src={g.cover} alt={g.title} size="sm" />
-                <span className="stack">
-                  <span className="strong clamp2">{g.title}</span>
-                  <Chip tone="info">
-                    {t("common.season", { n: g.season })} · {t("audit.lang.files", { n: g.files.length })}
-                  </Chip>
-                </span>
-              </ShowLink>
+              <div className="row between no-wrap">
+                <ShowLink tvdbId={g.tvdbId} title={g.title} className="show-card-head">
+                  <Cover src={g.cover} alt={g.title} size="sm" />
+                  <span className="stack">
+                    <span className="strong clamp2">{g.title}</span>
+                    <span className="muted small">
+                      {t("common.season", { n: g.season })} · {t("audit.lang.files", { n: g.files.length })}
+                    </span>
+                  </span>
+                </ShowLink>
+                <Menu
+                  label={`${g.title}: ${t("common.moreActions")}`}
+                  items={[
+                    {
+                      label: t("audit.lang.markBurned", { lang }),
+                      onSelect: async () => {
+                        try {
+                          await api("/facts", { body: { tvdbId: g.tvdbId, season: g.season, kind: "burned_in", lang } });
+                          toast(t("audit.lang.marked", { season: g.season }));
+                          await d.reload();
+                        } catch (e) {
+                          toast((e as Error).message, true);
+                        }
+                      },
+                    },
+                  ]}
+                />
+              </div>
               <p className="small muted">{g.files[0].reason}</p>
-              <Why summary={t("common.more")} lines={g.files.map((f) => `${f.name}${f.group ? ` [${f.group}]` : ""}: ${f.reason}`)} />
-              <button
-                className="small self-start"
-                onClick={async () => {
-                  try {
-                    await api("/facts", { body: { tvdbId: g.tvdbId, season: g.season, kind: "burned_in", lang } });
-                    toast(t("audit.lang.marked", { season: g.season }));
-                    await d.reload();
-                  } catch (e) {
-                    toast((e as Error).message, true);
-                  }
-                }}
-              >
-                {t("audit.lang.markBurned", { lang })}
-              </button>
+              {g.files.length > 1 && <Why summary={t("audit.lang.allFiles", { n: g.files.length })} lines={g.files.map((f) => `${f.name}${f.group ? ` [${f.group}]` : ""}: ${f.reason}`)} />}
             </div>
           </article>
         ))}
@@ -197,14 +234,21 @@ function Specials() {
                 </ShowLink>
                 <ul className="plain">
                   {s.items.map((i) => (
-                    <li key={i.id} className="special-row">
-                      <span className="mono">S00E{String(i.episode).padStart(2, "0")}</span>
-                      <Chip tone={tone[i.cls]}>{t(`audit.specials.${i.cls}`)}</Chip>
-                      <span className="clamp2">{i.title ?? "—"}</span>
-                      {i.hasFile && <Chip tone="good">✓</Chip>}
-                      {i.radarr && <Chip tone={i.radarr.inRadarr ? "good" : "warn"}>{i.radarr.inRadarr ? t("audit.specials.inRadarr", { title: i.radarr.title }) : t("audit.specials.notInRadarr")}</Chip>}
-                      {i.radarr?.movieId && <Link to={`/movie/${i.radarr.movieId}`}>🎬 {t("ep.openMovie")}</Link>}
-                      <Why lines={[i.why]} />
+                    <li key={i.id}>
+                      <details className="special-item">
+                        <summary className="special-row">
+                          <span className={`dot ${tone[i.cls] === "accent" ? "info" : tone[i.cls]}`} aria-hidden="true" />
+                          <span className="mono">S00E{String(i.episode).padStart(2, "0")}</span>
+                          <span className="muted small">{t(`audit.specials.${i.cls}`)}</span>
+                          <span className="clamp1 grow">{i.title ?? "—"}</span>
+                          {i.hasFile && <span className="quiet-status"><span className="dot good" aria-hidden="true" />{t("ep.status.have")}</span>}
+                        </summary>
+                        <div className="stack small special-detail">
+                          <p className="muted">{i.why}</p>
+                          {i.radarr && <span className={i.radarr.inRadarr ? "good-text" : "warn-text"}>{i.radarr.inRadarr ? t("audit.specials.inRadarr", { title: i.radarr.title }) : t("audit.specials.notInRadarr")}</span>}
+                          {i.radarr?.movieId && <Link to={`/movie/${i.radarr.movieId}`}>{t("ep.openMovie")} →</Link>}
+                        </div>
+                      </details>
                     </li>
                   ))}
                 </ul>
@@ -224,6 +268,7 @@ const CHECK_TONE: Record<string, "good" | "accent" | "info" | "warn" | "bad"> = 
 function Checks() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(false);
   const d = useLoad(() => api<{ mode: string; checks: Check[] }>("/repair/recent"), []);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
@@ -246,9 +291,14 @@ function Checks() {
       <button className="small self-start" disabled={busy || d.data.mode === "off"} onClick={() => void run()}>
         {busy ? t("common.working") : t("repair.runNow")}
       </button>
-      {!d.data.checks.length && <Empty>{t("repair.empty")}</Empty>}
+      {!d.data.checks.length && <Empty icon="✓">{t("repair.empty")}</Empty>}
+      {d.data.checks.some((c) => c.action === "skipped" || c.action === "unchecked") && (
+        <label className="check small">
+          <input type="checkbox" checked={showSkipped} onChange={(e) => setShowSkipped(e.target.checked)} /> {t("repair.showSkipped", { n: d.data.checks.filter((c) => c.action === "skipped" || c.action === "unchecked").length })}
+        </label>
+      )}
       <div className="list">
-        {d.data.checks.map((c) => (
+        {d.data.checks.filter((c) => showSkipped || (c.action !== "skipped" && c.action !== "unchecked")).map((c) => (
           <article key={c.history_id} className="card pad stack">
             <div className="row between">
               <Chip tone={CHECK_TONE[c.action] ?? "info"}>
@@ -265,7 +315,7 @@ function Checks() {
                 </span>
               </ShowLink>
             )}
-            <p className="mono small">{c.release}</p>
+            <ReleaseLine release={c.release} />
             <p className="small">{c.why}</p>
           </article>
         ))}
@@ -376,18 +426,13 @@ function Upgrades() {
   );
 }
 
-/** ⚡ / 🔍 for a show's missing episodes on the Gaps list. */
+/** "Find missing (n)" for a show on the Gaps list; the caret picks releases (or opens the show). */
 function GapSearch({ tvdbId, missing, onDone }: { tvdbId: number; missing: { id: number; season: number; episode: number }[]; onDone: () => void }) {
   const list = missing.slice(0, 26);
   const a = useEpisodeActions({ tvdbId, episodes: list.map((e) => ({ id: e.id, label: sxe(e.season, e.episode) })), managedLive: false, dryRun: false, onDone });
   return (
     <div className="row">
-      <button className="small primary" onClick={a.auto} disabled={a.autoBusy}>
-        ⚡ {t("ep.searchMissing", { n: list.length })}
-      </button>
-      <button className="small" onClick={a.search}>
-        🔍 {t("auto.interactive")}
-      </button>
+      <SplitButton small label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }, { label: t("audit.openShow"), onSelect: () => navigate(`/show/${tvdbId}`) }]} />
       {a.ui}
     </div>
   );

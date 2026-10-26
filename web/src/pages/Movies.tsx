@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { LibraryHead } from "./Shows";
 import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
 import { Link } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
 
@@ -38,7 +39,7 @@ export function Movies() {
   }, [d.data, filter, q]);
   return (
     <section>
-      <h1>{t("movies.title")}</h1>
+      <LibraryHead current="movies" />
       <p className="muted">{t("movies.intro")}</p>
       <div className="filters card pad">
         <div className="chips pickable" role="group" aria-label={t("common.filter")}>
@@ -147,6 +148,8 @@ export function MoviePage({ id }: { id: number }) {
   const [grab, setGrab] = useState<SearchResult | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
   const [confirmAuto, setConfirmAuto] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const auto = async () => {
     setAutoBusy(true);
     try {
@@ -167,6 +170,23 @@ export function MoviePage({ id }: { id: number }) {
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const m = d.data;
+  const rescan = async () => {
+    try {
+      const r = await api<{ files: number; probed: number }>(`/movies/${id}/scan`, { body: {} });
+      toast(t("files.scanned", { files: r.files, probed: r.probed }));
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  const toggleWanted = async () => {
+    try {
+      await api("/movies/wanted", { body: { movieIds: [id], wanted: !m.monitored } });
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
   const search = async () => {
     setSearching(true);
     try {
@@ -179,22 +199,25 @@ export function MoviePage({ id }: { id: number }) {
   };
   return (
     <section className="stack">
-      <p className="small">
-        <Link to="/movies">← {t("movies.title")}</Link>
-        {id >= 900_000_000 && (
-          <>
-            {" · "}
-            {t("add.nativeMovieNote")} <RemoveNative movieId={id} title={m.title} />
-          </>
-        )}
-      </p>
+      <nav className="crumbs small muted" aria-label={t("nav.library")}>
+        <Link to="/movies">{t("nav.library")} · {t("lib.movies")}</Link>
+      </nav>
       <header className="series-hero card">
         <Cover src={m.cover} alt={m.title} size="lg" />
         <div className="stack hero-body">
-          <h1 className="clamp2">
-            {m.title}
-            {m.year ? ` (${m.year})` : ""}
-          </h1>
+          <div className="row between hero-title">
+            <h1 className="clamp2 grow">
+              {m.title}
+              {m.year ? ` (${m.year})` : ""}
+            </h1>
+            <Menu
+              items={[
+                { label: t("files.refreshScan"), onSelect: () => void rescan() },
+                { label: m.monitored ? t("movies.unwantThis") : t("movies.wantThis"), onSelect: () => void toggleWanted() },
+                { label: t("add.remove"), onSelect: () => setRemoving(true), hidden: id < 900_000_000, danger: true },
+              ]}
+            />
+          </div>
           {m.originalTitle && m.originalTitle !== m.title && <p className="muted small">{m.originalTitle}</p>}
           {!!m.series.length && (
             <p className="small">
@@ -207,26 +230,32 @@ export function MoviePage({ id }: { id: number }) {
               ))}
             </p>
           )}
-          <WatchAs tvdbId={m.id} endpoint={`/movies/${m.id}/prefs`} prefs={m.prefs} effective={m.profile} onChanged={() => void d.reload()} />
+          <p className="muted small">
+            {[m.dates.digital ? t("movies.digital", { date: dateOnly(m.dates.digital) }) : null, m.dates.physical ? t("movies.physical", { date: dateOnly(m.dates.physical) }) : null, m.runtime ? t("movies.runtime", { min: m.runtime }) : null].filter(Boolean).join(" · ")}
+          </p>
           <div className="chips">
-            {m.dates.digital ? <Chip>{t("movies.digital", { date: dateOnly(m.dates.digital) })}</Chip> : null}
-            {m.dates.physical ? <Chip>{t("movies.physical", { date: dateOnly(m.dates.physical) })}</Chip> : null}
             {!m.released && <Chip tone="info">{t("movies.status.unreleased")}</Chip>}
-            {m.runtime ? <Chip>{t("movies.runtime", { min: m.runtime })}</Chip> : null}
-            <button
-              className="small"
-              onClick={async () => {
-                try {
-                  await api("/movies/wanted", { body: { movieIds: [id], wanted: !m.monitored } });
-                  await d.reload();
-                } catch (e) {
-                  toast((e as Error).message, true);
-                }
-              }}
-            >
-              {m.monitored ? `✓ ${t("movies.wanted")}` : t("movies.notWanted")}
-            </button>
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
+            <button className="small" aria-pressed={m.monitored} onClick={() => void toggleWanted()} title={t("movies.wantedHelp")}>
+              {m.monitored ? `★ ${t("movies.wanted")}` : `☆ ${t("movies.notWanted")}`}
+            </button>
+          </div>
+          <div className="row hero-actions">
+            {m.allowed ? (
+              <SplitButton
+                label={`⚡ ${autoBusy ? t("common.working") : t("auto.find")}`}
+                disabled={autoBusy}
+                onClick={() => (m.file ? setConfirmAuto(true) : void auto())}
+                items={[{ label: searching ? t("common.working") : t("auto.chooseRelease"), onSelect: () => void search(), disabled: searching }]}
+              />
+            ) : (
+              <button disabled={searching} onClick={() => void search()}>
+                {searching ? t("common.working") : t("auto.chooseRelease")}
+              </button>
+            )}
+            <button className="small" onClick={() => setWatchOpen(true)} aria-haspopup="dialog">
+              {t("profiles.watchAs")}: {m.profile.name}
+            </button>
           </div>
         </div>
       </header>
@@ -258,34 +287,6 @@ export function MoviePage({ id }: { id: number }) {
         )}
       </div>
       {!m.allowed && <p className="banner warn">{t("movies.notAllowed", { path: m.path })}</p>}
-      <div className="row">
-        {m.allowed && (
-          <button
-            className="primary"
-            disabled={autoBusy}
-            onClick={() => (m.file ? setConfirmAuto(true) : void auto())}
-          >
-            ⚡ {autoBusy ? t("common.working") : t("auto.button")}
-          </button>
-        )}
-        <button
-          className="ghost"
-          onClick={async () => {
-            try {
-              const r = await api<{ files: number; probed: number }>(`/movies/${id}/scan`, { body: {} });
-              toast(t("files.scanned", { files: r.files, probed: r.probed }));
-              await d.reload();
-            } catch (e) {
-              toast((e as Error).message, true);
-            }
-          }}
-        >
-          ↻ {t("files.refreshScan")}
-        </button>
-        <button disabled={searching} onClick={() => void search()}>
-          🔍 {searching ? t("common.working") : t("auto.interactive")}
-        </button>
-      </div>
       {res && (
         <div className="stack">
           <p className="muted small">{t("movies.searchSummary", { matched: res.matched, found: res.found, s: (res.tookMs / 1000).toFixed(1) })}</p>
@@ -310,6 +311,12 @@ export function MoviePage({ id }: { id: number }) {
           ))}
         </div>
       )}
+      {watchOpen && (
+        <Modal title={t("profiles.watchAs")} onClose={() => setWatchOpen(false)}>
+          <WatchAs tvdbId={m.id} endpoint={`/movies/${m.id}/prefs`} prefs={m.prefs} effective={m.profile} onChanged={() => void d.reload()} />
+        </Modal>
+      )}
+      {removing && <RemoveNative movieId={id} title={m.title} asked onClose={() => setRemoving(false)} />}
       {confirmAuto && (
         <Confirm title={t("auto.button")} confirmLabel={t("auto.button")} onClose={() => setConfirmAuto(false)} onConfirm={async () => (setConfirmAuto(false), await auto())}>
           <p className="warn-text">⚠ {t("movies.replaceWarn", { file: m.file?.path ?? "" })}</p>

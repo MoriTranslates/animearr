@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FixHost } from "./fixes";
 import { BellButton } from "./notify";
 import { api, store, type Status } from "./api";
@@ -19,18 +19,33 @@ import { Show } from "./pages/Show";
 import { Shows } from "./pages/Shows";
 import { ToastProvider } from "./ui";
 
-const NAV: { path: string; label: I18nKey; icon: string; phone: boolean }[] = [
-  { path: "/", label: "nav.home", icon: "⌂", phone: true },
-  { path: "/calendar", label: "nav.calendar", icon: "▤", phone: true },
-  { path: "/managed", label: "nav.managed", icon: "★", phone: true },
-  { path: "/add", label: "nav.add", icon: "+", phone: true },
-  { path: "/shows", label: "nav.shows", icon: "▦", phone: false },
-  { path: "/movies", label: "nav.movies", icon: "▶", phone: false },
-  { path: "/audit", label: "nav.audit", icon: "✓", phone: true },
-  { path: "/search", label: "nav.search", icon: "⌕", phone: false },
-  { path: "/queue", label: "nav.queue", icon: "↓", phone: false },
-  { path: "/activity", label: "nav.activity", icon: "≡", phone: false },
-  { path: "/settings", label: "nav.settings", icon: "⚙", phone: true },
+/**
+ * Navigation. Desktop: one row, grouped (Watch · Get · Automate · Maintain · Settings). Phone: 5 tabs
+ * (Home · Calendar · Library · Search · More); More opens a sheet with the rest, so nothing is unreachable.
+ */
+interface NavItem { path: string; label: I18nKey; icon: string }
+const GROUPS: { label: I18nKey; items: NavItem[] }[] = [
+  { label: "nav.group.watch", items: [{ path: "/", label: "nav.home", icon: "⌂" }, { path: "/calendar", label: "nav.calendar", icon: "▤" }, { path: "/shows", label: "nav.library", icon: "▦" }] },
+  { label: "nav.group.get", items: [{ path: "/find", label: "nav.find", icon: "⌕" }, { path: "/queue", label: "nav.queue", icon: "↓" }] },
+  { label: "nav.group.automate", items: [{ path: "/managed", label: "nav.managed", icon: "★" }] },
+  { label: "nav.group.maintain", items: [{ path: "/audit", label: "nav.audit", icon: "✓" }, { path: "/activity", label: "nav.activity", icon: "≡" }] },
+  { label: "nav.settings", items: [{ path: "/settings", label: "nav.settings", icon: "⚙" }] },
+];
+const PHONE_TABS: NavItem[] = [
+  { path: "/", label: "nav.home", icon: "⌂" },
+  { path: "/calendar", label: "nav.calendar", icon: "▤" },
+  { path: "/shows", label: "nav.library", icon: "▦" },
+  { path: "/find", label: "nav.find", icon: "⌕" },
+];
+const MORE: NavItem[] = [
+  { path: "/queue", label: "nav.queue", icon: "↓" },
+  { path: "/managed", label: "nav.managed", icon: "★" },
+  { path: "/fillin", label: "nav.fillin", icon: "⇣" },
+  { path: "/audit", label: "nav.audit", icon: "✓" },
+  { path: "/activity", label: "nav.activity", icon: "≡" },
+  { path: "/search", label: "nav.deepSearch", icon: "⌕" },
+  { path: "/search?tab=identify", label: "nav.identify", icon: "?" },
+  { path: "/settings", label: "nav.settings", icon: "⚙" },
 ];
 
 export function navigate(to: string) {
@@ -51,6 +66,8 @@ export const query = () => new URLSearchParams(location.search);
 
 export function applyTheme(theme: string) {
   document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+  // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
+  document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
 }
 
 export function App() {
@@ -59,6 +76,7 @@ export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Dismissed for a day, then it comes back while the default password is still in use.
+  const [moreOpen, setMoreOpen] = useState(false);
   const [dismissed, setDismissed] = useState(() => Date.now() - store.get("dismissDefaultPw", 0) < 86_400_000);
 
   const refreshStatus = useCallback(async () => {
@@ -78,12 +96,18 @@ export function App() {
     const onPop = () => {
       setPath(location.pathname);
       setSearch(location.search);
+      setMoreOpen(false);
       document.getElementById("main")?.focus();
     };
     const onAuth = () => void refreshStatus();
     window.addEventListener("popstate", onPop);
     window.addEventListener("animearr:auth", onAuth);
+    window.addEventListener("animearr:changed", onAuth);
+    // Keeps the Queue badge and banners current.
+    const poll = setInterval(() => document.visibilityState === "visible" && void refreshStatus(), 60_000);
     return () => {
+      clearInterval(poll);
+      window.removeEventListener("animearr:changed", onAuth);
       window.removeEventListener("popstate", onPop);
       window.removeEventListener("animearr:auth", onAuth);
     };
@@ -101,7 +125,16 @@ export function App() {
   if (!status.loggedIn) return <Login onDone={refreshStatus} />;
 
   const section = "/" + (path.split("/")[1] ?? "");
-  const active = (p: string) => (p === "/" ? path === "/" : section === p || (p === "/shows" && section === "/show") || (p === "/movies" && section === "/movie") || (p === "/managed" && section === "/fillin"));
+  const active = (p: string) =>
+    p === "/"
+      ? path === "/"
+      : section === p.split("?")[0] ||
+        (p === "/shows" && ["/show", "/movies", "/movie"].includes(section)) ||
+        (p === "/find" && (section === "/add" || section === "/search")) ||
+        (p === "/managed" && section === "/fillin");
+  const moreActive = !PHONE_TABS.some((x) => active(x.path));
+  const q = status.queue ?? { active: 0, attention: 0 };
+  const badge = q.attention ? <span className="nav-badge warn" aria-label={t("nav.queueBadge", { n: q.attention })}>{q.attention}</span> : q.active ? <span className="nav-badge">{q.active}</span> : null;
 
   return (
     <ToastProvider>
@@ -115,19 +148,26 @@ export function App() {
             <span>{t("app.name")}</span>
           </Link>
           <nav className="topnav" aria-label="Main">
-            {NAV.map((n) => (
-              <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>
-                {t(n.label)}
-              </Link>
+            {GROUPS.map((g) => (
+              <span key={g.label} className="nav-group" role="group" aria-label={t(g.label)}>
+                {g.items.map((n) => (
+                  <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>
+                    {t(n.label)}
+                    {n.path === "/queue" && badge}
+                  </Link>
+                ))}
+              </span>
             ))}
           </nav>
-          <BellButton />
+          <span className="topbar-end">
+            {status.dryRun && (
+              <Link to="/settings?tab=safety" className="mode-chip dry">
+                {t("chip.dryRun")}
+              </Link>
+            )}
+            <BellButton />
+          </span>
           <FixHost />
-          {status.dryRun && (
-            <Link to="/settings?tab=safety" className="mode-chip dry">
-              {t("chip.dryRun")}
-            </Link>
-          )}
         </header>
         <main id="main" tabIndex={-1}>
           {status.defaultPassword && !dismissed && (
@@ -156,10 +196,10 @@ export function App() {
           {path === "/" && <Home status={status} onChanged={refreshStatus} />}
           {section === "/managed" && <Managed status={status} />}
           {section === "/shows" && <Shows status={status} />}
-          {section === "/add" && <Add />}
-          {section === "/show" && <Show tvdbId={Number(path.split("/")[2])} />}
+          {(section === "/add" || section === "/find") && <Add />}
+          {section === "/show" && <Show key={path} tvdbId={Number(path.split("/")[2])} />}
           {section === "/movies" && <Movies />}
-          {section === "/movie" && <MoviePage id={Number(path.split("/")[2])} />}
+          {section === "/movie" && <MoviePage key={path} id={Number(path.split("/")[2])} />}
           {section === "/calendar" && <Calendar />}
           {section === "/fillin" && <FillIn />}
           {section === "/queue" && <Queue />}
@@ -175,13 +215,19 @@ export function App() {
           </a>
         </footer>
         <nav className="tabbar" aria-label="Main">
-          {NAV.filter((n) => n.phone).map((n) => (
+          {PHONE_TABS.map((n) => (
             <Link key={n.path} to={n.path} className={active(n.path) ? "active" : ""} current={active(n.path)}>
               <span aria-hidden="true">{n.icon}</span>
               {t(n.label)}
             </Link>
           ))}
+          <button type="button" className={`tab-more${moreActive || moreOpen ? " active" : ""}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => setMoreOpen(true)}>
+            <span aria-hidden="true">⋯</span>
+            {t("nav.more")}
+            {badge}
+          </button>
         </nav>
+        {moreOpen && <MoreSheet active={active} badge={badge} version={status.version} onClose={() => setMoreOpen(false)} />}
       </div>
     </ToastProvider>
   );
@@ -195,5 +241,48 @@ function DryRunBanner({ status }: { status: Status }) {
     <p className="banner slim">
       {status.dryRun ? t("dry.global") : t("dry.shows", { n: shows.length })} · <Link to="/settings?tab=safety">{t("dry.manage")}</Link>
     </p>
+  );
+}
+
+/** Phone "More": everything that isn't one of the four tabs. */
+function MoreSheet({ active, badge, version, onClose }: { active: (p: string) => boolean; badge: React.ReactNode; version: string; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>("a")?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close.current();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      prev?.focus();
+    };
+  }, []);
+  return (
+    <div className="sheet-back" onClick={onClose}>
+      <div className="sheet card more-sheet" role="dialog" aria-modal="true" aria-label={t("nav.more")} ref={ref} onClick={(e) => e.stopPropagation()}>
+        <span className="sheet-grip" aria-hidden="true" />
+        <ul className="more-list">
+          {MORE.map((n) => (
+            <li key={n.path}>
+              <Link to={n.path} className={active(n.path) && !n.path.includes("?") ? "active" : ""}>
+                <span aria-hidden="true" className="more-icon">
+                  {n.icon}
+                </span>
+                <span className="grow">{t(n.label)}</span>
+                {n.path === "/queue" && badge}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <p className="muted small">
+          {t("app.footer", { version })} ·{" "}
+          <a href="https://ko-fi.com/moritranslates" target="_blank" rel="noreferrer">
+            {t("app.support")}
+          </a>
+        </p>
+      </div>
+    </div>
   );
 }

@@ -74,8 +74,8 @@ export function Shows({ status }: { status: Status }) {
 
   return (
     <section>
-      <h1>{t("shows.title")}</h1>
-      <p className="muted">{t("shows.intro")}</p>
+      <LibraryHead current="shows" />
+      <p className="muted small">{t("shows.intro")}</p>
       {!status.allowedRoots?.length && (
         <p className="banner warn">
           {t("shows.noRoots")} <Link to="/settings?tab=safety">{t("nav.settings")} →</Link>
@@ -120,7 +120,7 @@ export function Shows({ status }: { status: Status }) {
               )}
             </div>
           </div>
-          {!shown.length && <Empty>{t("shows.empty")}</Empty>}
+          {!shown.length && <Empty icon="▦" action={filter !== "all" ? { label: t("shows.filter.all"), run: () => setFilter("all") } : { label: t("nav.find"), run: () => navigate("/find") }}>{t("shows.empty")}</Empty>}
           <div className="poster-grid">
             {shown.map((s) => (
               <article key={s.tvdbId} className={`poster-card${sel.has(s.tvdbId) ? " selected" : ""}`}>
@@ -131,8 +131,9 @@ export function Shows({ status }: { status: Status }) {
                 </ShowLink>
                 <div className="poster-body">
                   <div className="chips">
-                    {s.managed && <Chip tone="accent">{t("chip.managed")}{s.dryRun ? ` · ${t("chip.dryRun")}` : ""}</Chip>}
-                    {s.airingThisSeason && <Chip tone="good">{t("chip.airing")}</Chip>}
+                    {s.managed && filter !== "managed" && <Chip tone="accent">{t("chip.managed")}{s.dryRun ? ` · ${t("chip.dryRun")}` : ""}</Chip>}
+                    {s.managed && filter === "managed" && s.dryRun && <Chip tone="accent">{t("chip.dryRun")}</Chip>}
+                    {s.airingThisSeason && filter !== "airing" && <Chip tone="good">{t("chip.airing")}</Chip>}
                     {!s.allowed && <Chip tone="warn" title={s.path}>{t("chip.outsideRoot")}</Chip>}
                     {s.anidb !== "matched" && <Chip tone="warn">{t("chip.unmatched")}</Chip>}
                   </div>
@@ -192,5 +193,22 @@ export function Shows({ status }: { status: Status }) {
         </Modal>
       )}
     </section>
+  );
+}
+
+/** Library = Shows and Movies behind one segmented control (one nav entry for both). */
+export function LibraryHead({ current }: { current: "shows" | "movies" }) {
+  return (
+    <div className="row between">
+      <h1>{t("nav.library")}</h1>
+      <div className="seg" role="group" aria-label={t("nav.library")}>
+        <button className={current === "shows" ? "on" : ""} aria-pressed={current === "shows"} onClick={() => current !== "shows" && navigate("/shows")}>
+          {t("lib.shows")}
+        </button>
+        <button className={current === "movies" ? "on" : ""} aria-pressed={current === "movies"} onClick={() => current !== "movies" && navigate("/movies")}>
+          {t("lib.movies")}
+        </button>
+      </div>
+    </div>
   );
 }

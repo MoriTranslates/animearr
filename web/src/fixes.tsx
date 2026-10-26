@@ -68,7 +68,7 @@ export function FixHost() {
             }
           })();
         case "indexerHealth":
-          return navigate("/settings?tab=connections");
+          return navigate("/settings?tab=indexers");
       }
     };
     window.addEventListener("animearr:fix", on);

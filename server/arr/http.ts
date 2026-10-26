@@ -38,5 +38,6 @@ export async function jsonCall<T>(app: string, conn: Conn, apiBase: string, meth
 export const redactUrl = (s: string) =>
   s
     .replace(/([?&](?:apikey|api_key|key|token|passkey)=)[^&\s]+/gi, "$1***")
+    .replace(/(\/\/)[^/@\s]+@/g, "$1***@") // user:password@host
     .replace(/(Bearer\s+)[\w.-]+/gi, "$1***") // Authorization headers
     .replace(/\beyJ[\w-]{10,}\.[\w-]+\.[\w-]+/g, "***"); // a bare JWT (TMDB Read Access Token)

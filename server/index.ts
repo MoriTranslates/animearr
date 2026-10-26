@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { connectionsOverview } from "./connections.js";
 import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -153,6 +154,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     // Shows in dry-run (the global switch, or their own), so the UI only mentions dry-run when something is in it.
     dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
+    // The nav's Queue badge: what's downloading, and what needs a look.
+    queue: db.prepare("SELECT COALESCE(SUM(state IN ('sending', 'downloading', 'importing')), 0) AS active, COALESCE(SUM(state = 'needs-attention'), 0) AS attention FROM grabs WHERE dry_run = 0").get() as { active: number; attention: number },
   };
 });
 
@@ -248,6 +251,8 @@ app.post<{ Body: { key?: string } }>("/api/test/tmdb", async (req) => {
   if (!key) throw fail("Enter a TMDB API key or Read Access Token", 400);
   return testTmdb(key);
 });
+app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
+
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
   const s = getSettings();
   const b = req.body ?? {};
