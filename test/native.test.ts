@@ -98,3 +98,9 @@ test("a TVDB-mapped show: entries on their seasons, overlaps de-duplicated, abso
 test("root folders must be one of the allowed ones exactly", async () => {
   await assert.rejects(addShow({ anilistId: 101, rootFolder: "/media/Anime/../../etc" }, { media: async (ids) => ids.map((i) => media(i)), fribb }), /allowed root folders/);
 });
+
+test("search keys: CJK titles match themselves, not everything", async () => {
+  const r = (await searchAdd("魔道祖师", { search: async () => [], fribb, timeoutMs: 1000 })).results;
+  assert.ok(r.every((x) => x.native === "魔道祖师"));
+  assert.ok(r.length >= 1);
+});

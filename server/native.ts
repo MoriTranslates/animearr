@@ -201,6 +201,9 @@ const initials = (t: string) =>
     .join("")
     .toLowerCase();
 
+/** Comparable key: Latin titles compacted; CJK and other scripts (which compactKey drops) kept, NFKC-normalised. */
+const searchKey = (s: string) => compactKey(s) || s.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+
 const cacheQ = new Map<string, { at: number; v: AniMedia[] }>();
 
 /** Searches AniList (titles in English/romaji/native, synonyms) plus the local catalog (abbreviations, aliases). */
@@ -212,12 +215,13 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
   const query = q.trim();
   if (query.length < 2) return { results: [], anilist: "ok" };
   let anilist: "ok" | "busy" | "error" | "cached" = "ok";
-  const key = compactKey(query);
+  const key = searchKey(query);
+  if (!key) return { results: [], anilist: "ok" };
   // Local catalog first: exact/contains on every title and synonym, or the initials ("sao", "konosuba" via synonyms).
   const local = (db.prepare("SELECT * FROM entries").all() as unknown as (EntryRow & { tvdb_id: number | null; tmdb_movie: number | null })[])
     .map((e) => {
       const titles = [e.title_english, e.title_romaji, e.title_native, ...(JSON.parse(e.synonyms) as string[])].filter((t): t is string => !!t);
-      const keys = titles.map(compactKey);
+      const keys = titles.map(searchKey).filter(Boolean);
       const score = keys.some((k) => k === key) ? 3 : keys.some((k) => k.startsWith(key)) ? 2 : keys.some((k) => k.includes(key)) ? 1 : titles.some((t) => initials(t) === query.toLowerCase().replace(/\s+/g, "")) ? 1.5 : 0;
       return { e, score, by: score === 1.5 ? "abbreviation" : "title" };
     })
