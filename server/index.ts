@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
 import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
@@ -237,6 +238,14 @@ app.post("/api/settings/apikey/regenerate", async (req) => {
 });
 
 type TestBody = { url?: string; apiKey?: string; username?: string; password?: string; category?: string };
+
+/** Settings → Metadata: TMDB key/token test (the saved one when the field still shows the mask). */
+app.post<{ Body: { key?: string } }>("/api/test/tmdb", async (req) => {
+  const k = String(req.body?.key ?? "");
+  const key = !k || isMasked(k) ? getSettings().metadata.tmdbKey : k;
+  if (!key) throw fail("Enter a TMDB API key or Read Access Token", 400);
+  return testTmdb(key);
+});
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
   const s = getSettings();
   const b = req.body ?? {};

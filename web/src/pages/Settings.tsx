@@ -528,7 +528,23 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
         <h2>{t("meta.providers")}</h2>
         <label>
           {t("meta.tmdb")}
-          <SecretInput value={m.tmdbKey} onChange={(v) => setM((x) => ({ ...x, tmdbKey: v }))} label={t("meta.tmdb")} />
+          <span className="row">
+            <SecretInput value={m.tmdbKey} onChange={(v) => setM((x) => ({ ...x, tmdbKey: v.trim() }))} label={t("meta.tmdb")} />
+            <button
+              type="button"
+              className="small"
+              onClick={async () => {
+                try {
+                  const r = await api<{ kind: string }>("/test/tmdb", { body: { key: m.tmdbKey } });
+                  toast(t("meta.tmdbOk", { kind: r.kind === "token" ? "Read Access Token" : "API key" }));
+                } catch (e) {
+                  toast((e as Error).message, true);
+                }
+              }}
+            >
+              {t("meta.tmdbTest")}
+            </button>
+          </span>
           <span className="muted small">{t("meta.tmdbHelp")}</span>
         </label>
         <label>

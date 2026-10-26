@@ -326,6 +326,10 @@ const USER_MIGRATIONS: string[] = [
   // 18: user/auto matches the mappings don't have (AniList entry ↔ TVDB season / TMDB movie), and cutover confirmations
   `CREATE TABLE catalog_overrides (anilist_id INTEGER PRIMARY KEY, tvdb_id INTEGER, tvdb_season TEXT, tvdb_offset INTEGER NOT NULL DEFAULT 0, tmdb_movie INTEGER, source TEXT NOT NULL, at INTEGER NOT NULL);
    CREATE TABLE cutover_acks (tvdb_id INTEGER PRIMARY KEY, specials INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL);`,
+  // 19: AniDB HTTP API cache (episodes with types/titles/lengths) and its request state (a ban survives restarts)
+  `CREATE TABLE anidb_anime (aid INTEGER PRIMARY KEY, fetched_at INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, type TEXT, episode_count INTEGER, missing INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE anidb_episodes (aid INTEGER NOT NULL, epno TEXT NOT NULL, type TEXT NOT NULL, number INTEGER NOT NULL, length INTEGER, airdate TEXT, title_en TEXT, title_xjat TEXT, title_ja TEXT, PRIMARY KEY (aid, epno));
+   CREATE TABLE anidb_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

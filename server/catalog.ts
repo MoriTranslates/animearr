@@ -297,6 +297,35 @@ export function catalogStatus() {
 
 // ---------------------------------------------------------------- optional: TMDB episode titles (when a key is set)
 
+/**
+ * A TMDB request with either credential TMDB hands out: the v3 API key (32 hex characters → ?api_key=) or the API
+ * Read Access Token (a JWT, "eyJ…" → Authorization: Bearer). Never logged; errors never include the URL.
+ */
+export function tmdbFetch(pathAndQuery: string, key: string, fetcher: typeof fetch = fetch) {
+  const k = key.trim();
+  const bearer = /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
+  const sep = pathAndQuery.includes("?") ? "&" : "?";
+  const url = `https://api.themoviedb.org/3${pathAndQuery}${bearer ? "" : `${sep}api_key=${encodeURIComponent(k)}`}`;
+  return fetcher(url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...(bearer ? { Authorization: `Bearer ${k}` } : {}) }, signal: AbortSignal.timeout(20_000) });
+}
+
+/** What kind of TMDB credential this looks like (for the settings page). */
+export const tmdbKeyKind = (key: string) => (/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(key.trim()) ? "token" : /^[0-9a-f]{32}$/i.test(key.trim()) ? "apiKey" : "unknown");
+
+/** Settings → Metadata test: /3/configuration with the given (or saved) credential. */
+export async function testTmdb(key: string, fetcher: typeof fetch = fetch) {
+  if (tmdbKeyKind(key) === "unknown") throw Object.assign(new Error("That doesn't look like a TMDB API key (32 hex characters) or a Read Access Token (starts with eyJ)"), { statusCode: 400 });
+  let res: Response;
+  try {
+    res = await tmdbFetch("/configuration", key, fetcher);
+  } catch (e) {
+    throw Object.assign(new Error(`TMDB unreachable (${(e as Error).message})`), { statusCode: 502 });
+  }
+  if (res.status === 401) throw Object.assign(new Error("TMDB refused it (401): check the key or token"), { statusCode: 400 });
+  if (!res.ok) throw Object.assign(new Error(`TMDB HTTP ${res.status}`), { statusCode: 502 });
+  return { ok: true, kind: tmdbKeyKind(key) };
+}
+
 /** Fills episode titles/air dates from TMDB for entries mapped to a TMDB TV season (one request per season, cached a week). */
 export async function tmdbEpisodes(limit = 40, fetcher: typeof fetch = fetch, now = Date.now()) {
   const key = getSettings().metadata.tmdbKey;
@@ -305,8 +334,8 @@ export async function tmdbEpisodes(limit = 40, fetcher: typeof fetch = fetch, no
   let n = 0;
   for (const r of rows) {
     try {
-      const res = await fetcher(`https://api.themoviedb.org/3/tv/${r.tmdb_tv}/season/${r.tmdb_season}?api_key=${encodeURIComponent(key)}&language=en-US`, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(20_000) });
-      if (res.status === 401) throw new Error("TMDB rejected the API key");
+      const res = await tmdbFetch(`/tv/${r.tmdb_tv}/season/${r.tmdb_season}?language=en-US`, key, fetcher);
+      if (res.status === 401) throw new Error("TMDB rejected the API key / token");
       if (res.status === 429) break;
       if (!res.ok) {
         db.prepare("UPDATE entries SET tmdb_fetched_at = ? WHERE anilist_id = ?").run(now, r.anilist_id); // not on TMDB: try again next week
