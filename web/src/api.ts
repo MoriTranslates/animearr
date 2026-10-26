@@ -31,6 +31,7 @@ export interface Status {
   via?: "session" | "local" | "apikey";
   connected?: { sonarr: boolean; radarr: boolean; prowlarr: boolean; sabnzbd: boolean; qbittorrent: boolean };
   dryRun?: boolean;
+  grabsPaused?: { why: string; disk: { freeGb: number; animearrGb: number; otherGb: number } | null; diskRule: boolean } | null;
   dryRunShows?: { tvdbId: number; title: string }[];
   allowedRoots?: string[];
   lastSync?: number | null;
@@ -177,6 +178,7 @@ export interface Settings {
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   media: MediaSettings;
+  downloads: { rules: import("./downloads").FolderRule[]; freeSpaceGb: number; excludeSeeding: boolean; cleanup: "off" | "plan" | "auto"; allowDelete: boolean; minRatio: number; minSeedDays: number; maxSeedDays: number };
   importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean; realBudget: number; movies: boolean; sourceRoots: string[] };
   sync: { intervalHours: number };
   externalUrl: string;

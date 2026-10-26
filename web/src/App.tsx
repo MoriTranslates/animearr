@@ -142,6 +142,13 @@ export function App() {
             </p>
           ))}
           <DryRunBanner status={status} />
+          {status.grabsPaused && (
+            <p className="banner warn" role="status">
+              {t("dl.banner", { why: status.grabsPaused.why })}
+              {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}` : ""}{" "}
+              <Link to="/settings?tab=downloads">{t("dl.bannerLink")}</Link>
+            </p>
+          )}
           {path === "/" && <Home status={status} onChanged={refreshStatus} />}
           {section === "/managed" && <Managed status={status} />}
           {section === "/shows" && <Shows status={status} />}

@@ -190,3 +190,22 @@ export const realClients: DownloadClients = {
     await qbit("/torrents/delete", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ hashes: job.ref, deleteFiles: "true" }) });
   },
 };
+
+/** AnimeArr's own torrents (its category only), with what the folder rules and the clean-up need. Read-only. */
+export interface OwnTorrent { hash: string; name: string; contentPath: string; savePath: string; size: number; state: string; ratio: number; seedingTimeSec: number; completedOn: number | null; ratioLimit: number; seedingTimeLimitMin: number }
+export async function ownTorrents(): Promise<OwnTorrent[]> {
+  const s = getSettings().qbittorrent;
+  if (!s.url) return [];
+  const list = (await (await qbit(`/torrents/info?category=${encodeURIComponent(s.category)}`)).json()) as { hash: string; name: string; content_path: string; save_path: string; size: number; state: string; ratio: number; seeding_time?: number; completion_on?: number; ratio_limit?: number; seeding_time_limit?: number; category: string }[];
+  return list
+    .filter((t) => t.category === s.category)
+    .map((t) => ({ hash: t.hash, name: t.name, contentPath: t.content_path, savePath: t.save_path, size: t.size, state: t.state, ratio: t.ratio, seedingTimeSec: t.seeding_time ?? 0, completedOn: t.completion_on && t.completion_on > 0 ? t.completion_on * 1000 : null, ratioLimit: t.ratio_limit ?? -2, seedingTimeLimitMin: t.seeding_time_limit ?? -2 }));
+}
+
+/** AnimeArr's own SABnzbd history (its category only): where each finished job was stored. Read-only. */
+export async function ownSabHistory(): Promise<{ nzoId: string; storage: string; status: string }[]> {
+  const s = getSettings().sabnzbd;
+  if (!s.url || !s.apiKey) return [];
+  const h = await sab<{ history: { slots: { nzo_id: string; storage: string; status: string; category: string }[] } }>({ mode: "history", category: s.category, limit: "2000" });
+  return h.history.slots.filter((x) => x.category === s.category).map((x) => ({ nzoId: x.nzo_id, storage: x.storage, status: x.status }));
+}

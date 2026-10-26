@@ -11,6 +11,7 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
+import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "./importer.js";
 import { isNativeSeriesId } from "./native.js";
 import path from "node:path";
@@ -181,6 +182,12 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   // A pack that also contains a movie special: the special is left to Radarr (not imported as an episode).
   const importIds = c.episodeIds.filter((id) => !asMovie.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
   if (!importIds.length) throw Object.assign(new Error("This release doesn't cover the episodes asked for"), { statusCode: 400 });
+  // Download-folder rules (the strictest wins). Free space applies to every attempt; the folder rules to new grabs
+  // (a fallback after a failure isn't one), and a grab the user starts by hand may pass them.
+  if (!dryRun) {
+    const gate = grabGate("show", episodesAreNew(importIds), { manual: req.origin === "manual" && !req.automatic });
+    if (gate.paused && ((req.attempt ?? 1) === 1 || /free/.test(gate.why))) throw new GrabsPausedError(`Grabs are paused: ${gate.why}`);
+  }
   // Never two downloads for the same episode at once (manual + scheduled, or a double click).
   if (!dryRun) {
     const active = db.prepare(`SELECT id, episode_ids, release FROM grabs WHERE state IN (${ACTIVE.map(() => "?").join(",")})`).all(...ACTIVE) as { id: number; episode_ids: string; release: string }[];

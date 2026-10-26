@@ -8,6 +8,7 @@
  *   P(profile language) ≥ 50%.
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
+import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { NATIVE_BASE } from "./native.js";
 import { logDecision } from "./activity.js";
 import { prowlarrConfigured, prowlarrSearch } from "./arr/prowlarr.js";
@@ -220,6 +221,12 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const backlog = st.kind === "backlog" && st.state !== "replace";
   const m = listManaged().find((x) => x.tvdbId === st.tvdb_id);
   if (!m) return;
+  // Grabs paused by a download-folder rule: wait without searching or using up an attempt.
+  const gate = grabGate("show", episodesAreNew([st.episode_id], now));
+  if (gate.paused) {
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(now + 30 * 60_000, `Grabs are paused: ${gate.why}`, st.episode_id);
+    return;
+  }
   const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
   // Prowlarr down: every query failed. Try again later without using up an attempt.
   if (res.errors.length && res.errors.length >= res.queries.length) {
@@ -264,6 +271,10 @@ async function decideSafely(st: StateRow, now: number) {
   try {
     await decideEpisode(st, now);
   } catch (e) {
+    if (e instanceof GrabsPausedError) {
+      db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(now + 30 * 60_000, e.message, st.episode_id);
+      return;
+    }
     // Errors count as an attempt, so a permanently broken episode (removed series, outside the allowed roots)
     // ends in "gave-up" instead of retrying forever. Backlog rows just wait a day.
     const attempts = st.attempts + 1;

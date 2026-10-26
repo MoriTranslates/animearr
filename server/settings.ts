@@ -168,6 +168,22 @@ export interface Settings {
      */
     sourceRoots: string[];
   };
+  /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
+  downloads: {
+    rules: import("./downloads.js").FolderRule[];
+    /** Always on: under this many GB free on the download disk, every grab pauses. */
+    freeSpaceGb: number;
+    /** Imported payloads that are still seeding don't count toward the size/items rules. */
+    excludeSeeding: boolean;
+    /** off: never; plan: show what it would do; auto: a pause-and-clean rule runs it. */
+    cleanup: "off" | "plan" | "auto";
+    /** Real deletions by the clean-up (off until the first clean-up plan was reviewed). */
+    allowDelete: boolean;
+    /** A torrent's seeding is done at this ratio after minSeedDays, or after maxSeedDays regardless. */
+    minRatio: number;
+    minSeedDays: number;
+    maxSeedDays: number;
+  };
   /** Optional metadata providers (AniList, Anime-Lists and the AniDB dump need nothing). */
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
@@ -219,6 +235,7 @@ const DEFAULTS: Settings = {
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
+  downloads: { rules: [], freeSpaceGb: 50, excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
     replaceIllegalCharacters: true,
@@ -268,7 +285,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -284,6 +301,7 @@ const ENUMS: Record<string, readonly string[]> = {
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
+  "downloads.cleanup": ["off", "plan", "auto"],
   "media.movieColonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
   "media.multiEpisodeStyle": ["extend", "duplicate", "repeat", "scene", "range", "prefixedRange"],
   "media.episodeTitleRequired": ["always", "bulkSeasonReleases", "never"],
@@ -312,6 +330,10 @@ const RANGES: Record<string, [number, number]> = {
   "fillIn.waveSize": [1, 50],
   "metadata.anidbClientVer": [1, 99],
   "media.minimumFreeSpaceMb": [0, 1_000_000],
+  "downloads.freeSpaceGb": [1, 100_000],
+  "downloads.minRatio": [0, 100],
+  "downloads.minSeedDays": [0, 365],
+  "downloads.maxSeedDays": [1, 3650],
   "media.recycleBinCleanupDays": [0, 365],
   "fillIn.advancePct": [50, 100],
   "fillIn.stallDays": [1, 60],
@@ -348,6 +370,29 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
       .slice(0, 20);
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
+  if (path === "downloads.allowDelete") return undefined; // switched on through its own confirmed endpoint only
+  if (path === "downloads.rules") {
+    if (!Array.isArray(patch)) return undefined;
+    const pick = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);
+    return patch
+      .filter((x) => x && typeof x === "object")
+      .slice(0, 20)
+      .map((x, i) => {
+        const r = x as Record<string, unknown>;
+        const n = (v: unknown, d: number) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.min(1_000_000, Math.round(Number(v))) : d);
+        return {
+          id: /^[\w-]{1,40}$/.test(String(r.id ?? "")) ? String(r.id) : `rule-${Date.now().toString(36)}-${i}`,
+          name: String(r.name ?? "Rule").trim().slice(0, 60) || "Rule",
+          metric: pick(r.metric, ["sizeGb", "items"] as const, "sizeGb"),
+          threshold: n(r.threshold, 100),
+          action: pick(r.action, ["pauseUntilUnder", "pauseUntilCleared", "pauseAndClean"] as const, "pauseUntilUnder"),
+          resumeAt: r.resumeAt === null || r.resumeAt === undefined || r.resumeAt === "" ? null : n(r.resumeAt, 0),
+          scope: pick(r.scope, ["shows", "movies", "both"] as const, "both"),
+          applies: pick(r.applies, ["all", "backlog"] as const, "all"),
+          enabled: r.enabled !== false,
+        };
+      });
+  }
   if (Array.isArray(shape)) {
     if (!Array.isArray(patch)) return undefined;
     if (NUMERIC_ARRAYS.has(path)) return patch.map(Number).filter((x) => Number.isFinite(x) && x >= 0).slice(0, 50);

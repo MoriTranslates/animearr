@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
 import path from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -128,6 +129,12 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     via: a.via,
     connected: { sonarr: !!(s.sonarr.url && s.sonarr.apiKey), radarr: !!(s.radarr.url && s.radarr.apiKey), prowlarr: !!(s.prowlarr.url && s.prowlarr.apiKey), sabnzbd: !!(s.sabnzbd.url && s.sabnzbd.apiKey), qbittorrent: !!s.qbittorrent.url },
     dryRun: s.managed.dryRun,
+    grabsPaused: (() => {
+      const d = downloadsStatus();
+      if (!d.why) return null;
+      const disk = d.measure?.disk;
+      return { why: d.why, disk: disk ? { freeGb: Math.round(disk.freeGb), animearrGb: Math.round(disk.animearrGb), otherGb: Math.round(disk.otherGb) } : null, diskRule: d.rules.some((r) => r.id === "free-space" && r.paused) };
+    })(),
     allowedRoots: s.allowedRoots,
     lastSync: lastSync(),
     syncing: syncRunning(),
@@ -210,6 +217,7 @@ app.put<{ Body: Partial<Settings> }>("/api/settings", async (req) => {
   writable();
   const before = getSettings();
   const next = updateSettings(req.body);
+  if (JSON.stringify(before.downloads) !== JSON.stringify(next.downloads)) reevaluate(); // rule edits apply at once
   if (before.managed.dryRun !== next.managed.dryRun) {
     logDecision("info", { why: next.managed.dryRun ? "Global dry-run turned ON: nothing will be grabbed" : "Global dry-run turned OFF: shows whose own dry-run is off will be grabbed for real" });
     if (!next.managed.dryRun) for (const m of listManaged()) if (!m.dryRun) releaseDryRunDecisions(m.tvdbId);
@@ -552,6 +560,31 @@ app.post("/api/catalog/refresh", async () => {
   return { started: true };
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/catalog", async (req) => entriesForSeries(id(req.params.tvdbId)));
+// ---------------------------------------------------------------- download-folder rules + clean-up
+
+app.get("/api/downloads/status", async () => {
+  await measure();
+  return { ...downloadsStatus(), presets: PRESETS, settings: getSettings().downloads };
+});
+app.post("/api/downloads/cleanup/plan", async () => {
+  const p = await cleanupPlan();
+  return { actions: p.actions, measure: { byScope: p.measure.byScope, disk: p.measure.disk, errors: p.measure.errors }, allowDelete: getSettings().downloads.allowDelete };
+});
+app.post<{ Body: { only?: string[] } }>("/api/downloads/cleanup/run", async (req) => {
+  writable();
+  if (getSettings().downloads.cleanup === "off") throw fail("The clean-up is switched off (Settings → Downloads)", 409);
+  const steps = ["retry", "leftover", "quarantine"] as const;
+  const only = req.body?.only?.filter((x): x is (typeof steps)[number] => (steps as readonly string[]).includes(x));
+  return { results: await runCleanup({ only, userAsked: true }) };
+});
+app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", async (req) => {
+  writable();
+  const on = req.body?.allowDelete === true;
+  patchSettings((x) => ({ ...x, downloads: { ...x.downloads, allowDelete: on } }));
+  logDecision("info", { why: on ? "Download clean-up may now delete (leftovers, junk, finished torrents in AnimeArr's own folders)" : "Download clean-up deletions switched off" });
+  return getSettings().downloads;
+});
+
 // ---------------------------------------------------------------- native Add (no Sonarr/Radarr)
 
 app.get<{ Querystring: { q?: string } }>("/api/add/search", async (req) => searchAdd(String(req.query.q ?? "").slice(0, 200)));
@@ -922,6 +955,8 @@ setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);
 setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
 setTimeout(() => void importMediaDefaultsOnce(), 20_000);
 every(5 * 60_000, () => managedTick(), "managed");
+every(5 * 60_000, () => downloadsTick(), "download rules");
+setTimeout(() => void downloadsTick().catch(() => undefined), 30_000);
 let lastRss = 0;
 every(60_000, async () => {
   const m = getSettings().managed.rssMin;

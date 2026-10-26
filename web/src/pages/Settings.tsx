@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
+import { DownloadRules } from "../downloads";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "connections" | "profile" | "media" | "safety" | "paths" | "metadata" | "security" | "system";
-const TABS: Tab[] = ["connections", "profile", "media", "safety", "paths", "metadata", "security", "system"];
+type Tab = "connections" | "profile" | "media" | "downloads" | "safety" | "paths" | "metadata" | "security" | "system";
+const TABS: Tab[] = ["connections", "profile", "media", "downloads", "safety", "paths", "metadata", "security", "system"];
 
 export function Settings({ status, onSaved }: { status: Status; onSaved: () => void }) {
   usePageTitle(t("settings.title"));
@@ -52,6 +53,7 @@ export function Settings({ status, onSaved }: { status: Status; onSaved: () => v
       {tab === "connections" && <Connections s={s} upd={upd} />}
       {tab === "profile" && <ProfilesEditor />}
       {tab === "media" && <MediaManagement s={s} upd={upd} />}
+      {tab === "downloads" && <DownloadRules s={s} upd={upd} />}
       {tab === "safety" && <Safety s={s} upd={upd} />}
       {tab === "paths" && <Paths s={s} upd={upd} />}
       {tab === "metadata" && <Metadata s={s} upd={upd} />}

@@ -9,6 +9,7 @@
  * - Same acceptance as the episode scheduler: accepted, confident match, likely the profile's language, no burn-in,
  *   torrents with seeders. Off by default (it grabs for real).
  */
+import { grabGate } from "./downloads.js";
 import { isNativeMovieId, nativeMovies } from "./native.js";
 import { logDecision } from "./activity.js";
 import { prowlarrConfigured } from "./arr/prowlarr.js";
@@ -92,6 +93,12 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
   const due = db.prepare("SELECT * FROM movie_search WHERE state IN ('waiting', 'retry') AND next_at <= ? ORDER BY release_at DESC LIMIT ?").all(now, take) as unknown as Row[];
   let searched = 0;
   for (const r of due) {
+    // Grabs paused by a download-folder rule: wait without searching or using up the backoff.
+    const gate = grabGate("movie", false);
+    if (gate.paused) {
+      db.prepare("UPDATE movie_search SET next_at = ?, last_why = ? WHERE movie_id = ?").run(now + 30 * 60_000, `Grabs are paused: ${gate.why}`, r.movie_id);
+      continue;
+    }
     const m = cache.prepare("SELECT title, year FROM movies WHERE id = ?").get(r.movie_id) as { title: string; year: number | null } | undefined;
     const label = m ? (m.year ? `${m.title} (${m.year})` : m.title) : `movie ${r.movie_id}`;
     if (db.prepare("SELECT 1 FROM grabs WHERE movie_id = ? AND state IN ('sending', 'downloading', 'importing', 'needs-attention')").get(r.movie_id)) {

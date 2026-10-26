@@ -7,6 +7,7 @@
  * manual grabs need a confirmation and honour the global dry-run; never two downloads for one movie at once;
  * a pack or a series release is never taken for the movie.
  */
+import { grabGate, GrabsPausedError } from "./downloads.js";
 import { executeMovieImport, listVideos, planMovieImport } from "./importer.js";
 import { isNativeMovieId } from "./native.js";
 import fs from "node:fs";
@@ -308,6 +309,12 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   if (m.has_file && !req.replace) throw Object.assign(new Error(`${m.title} already has a file; confirm replacing it`), { statusCode: 409 });
   const c = req.candidate;
   const dryRun = getSettings().managed.dryRun;
+  if (!dryRun) {
+    const mv = movieById(req.movieId);
+    const rel = mv ? releaseAt(mv) : null;
+    const gate = grabGate("movie", rel !== null && Date.now() - rel < 30 * 86_400_000, { manual: req.origin === "manual" && !(req as { automatic?: boolean }).automatic });
+    if (gate.paused && ((req.attempt ?? 1) === 1 || /free/.test(gate.why))) throw new GrabsPausedError(`Grabs are paused: ${gate.why}`);
+  }
   if (!dryRun) {
     const busy = db.prepare(`SELECT id, release FROM grabs WHERE movie_id = ? AND state IN (${[...ACTIVE, "needs-attention"].map(() => "?").join(",")})`).get(req.movieId, ...ACTIVE, "needs-attention") as { id: number; release: string } | undefined;
     if (busy) throw Object.assign(new Error(`There's already a download for this movie (${busy.release}, grab ${busy.id}); remove it from the queue first`), { statusCode: 409 });
