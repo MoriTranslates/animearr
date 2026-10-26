@@ -27,9 +27,18 @@ const PALETTE: Record<SeasonKey, { dark: [string, string, string, string]; light
 };
 
 /** Sets the season accent on the page (the light theme gets darker variants for contrast). */
+const MERRY: { dark: [string, string, string, string]; light: [string, string, string, string] } = { dark: ["#e0a15a", "#f0c48c", "#2a1605", "#4aa3d8"], light: ["#9a5b1e", "#7d4813", "#ffffff", "#1f6fa3"] };
+
 export function applySeason(theme: "dark" | "light", ms = Date.now()) {
   const s = seasonOf(ms);
-  const [a, a2, ink, deep] = PALETTE[s.key][theme];
+  const merry = (() => {
+    try {
+      return localStorage.getItem("animearr.palette") === '"merry"';
+    } catch {
+      return false;
+    }
+  })();
+  const [a, a2, ink, deep] = merry ? MERRY[theme] : PALETTE[s.key][theme];
   const st = document.documentElement.style;
   st.setProperty("--accent", a);
   st.setProperty("--accent-2", a2);

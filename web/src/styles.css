@@ -1094,3 +1094,38 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 
 .openings > summary { padding: 10px 18px; }
 .openings-find { padding: 0 18px 10px; }
+
+/* ================================================================ the sheep ship (Merry), 404 */
+.sheep-ship .ss-sea { fill: color-mix(in srgb, #4aa3d8 55%, transparent); }
+.sheep-ship .ss-hull { fill: #b9773a; stroke: #6b3f17; stroke-width: 2; stroke-linejoin: round; }
+.sheep-ship .ss-rail, .sheep-ship .ss-plank { stroke: #6b3f17; stroke-width: 1.6; fill: none; }
+.sheep-ship .ss-mast { fill: #7a4a20; }
+.sheep-ship .ss-sail { fill: #fbf7ee; stroke: #c9bfa8; stroke-width: 1.5; }
+.sheep-ship .ss-mark { fill: var(--accent); }
+.sheep-ship .ss-flag { fill: var(--accent); }
+.sheep-ship .ss-wool { fill: #fbf7ee; stroke: #d8cfbb; stroke-width: 1; }
+.sheep-ship .ss-face { fill: #f3e6cf; stroke: #b39a74; stroke-width: 1; }
+.sheep-ship .ss-horn { fill: none; stroke: #8a6a3a; stroke-width: 2; stroke-linecap: round; }
+.sheep-ship .ss-eye { fill: #2a1a0a; }
+.lost { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+.lost h1 { font-family: var(--mincho); font-size: 30px; }
+@media (prefers-reduced-motion: no-preference) {
+  .sheep-ship.bob { animation: bob 3.2s ease-in-out infinite; transform-origin: 50% 80%; }
+  @keyframes bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }
+  [data-toasts="bubble"] .toast .sail-by { animation: sail-by 3.6s ease-in-out forwards; }
+  @keyframes sail-by { from { transform: translateX(-60px); opacity: 0; } 15% { opacity: 1; } to { transform: translateX(160px); opacity: 0.9; } }
+}
+.toast .sail-by { position: absolute; left: 10px; bottom: 100%; pointer-events: none; display: none; }
+[data-toasts="bubble"] .toast .sail-by { display: block; }
+/* Merry palette: warm wood behind the page */
+[data-palette="merry"] body { background: radial-gradient(1100px 560px at 12% -12%, color-mix(in srgb, #4aa3d8 12%, transparent), transparent 70%) fixed, var(--bg); }
+
+/* ================================================================ episode sheet body: a key/value list */
+.sheet dl.facts { display: flex; flex-direction: column; gap: 0; }
+.sheet dl.facts > div { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.sheet dl.facts > div:last-child { border-bottom: 0; }
+.sheet dl.facts dt { color: var(--muted); font-size: 13px; }
+.sheet dl.facts dd { text-align: right; font-variant-numeric: tabular-nums; }
+.sheet dl.facts > div.wide { flex-direction: column; gap: 4px; }
+.sheet dl.facts > div.wide dd { text-align: left; background: var(--panel-2); border-radius: 10px; padding: 8px 10px; }
+.sheet h3 { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); font-family: var(--font); margin-top: 6px; }

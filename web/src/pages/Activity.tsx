@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { merryOn } from "../merry";
 import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
@@ -211,7 +212,7 @@ export function Activity() {
   }
   return (
     <section>
-      <h1>{t("activity.title")}</h1>
+      <h1>{merryOn() ? t("merry.shipsLog") : t("activity.title")}</h1>
       <p className="muted small">{t("activity.intro")}</p>
       <div className="chips pickable" role="group" aria-label={t("common.filter")}>
         {FILTERS.map((f) => (

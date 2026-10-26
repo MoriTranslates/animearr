@@ -71,7 +71,7 @@ export function FillIn() {
                             {t(`fill.state.${i.state}` as I18nKey)}
                             {i.wave ? ` · ${t("fill.wave", { n: i.wave })}` : ""}
                           </Chip>
-                          <Chip>{t(`scope.ep.${i.scope.episodes}` as I18nKey)} · {i.scope.seasons === "recent" ? t("scope.recentShort", { n: i.scope.recentN }) : t(`scope.season.${i.scope.seasons}` as I18nKey)}</Chip>
+                          <span className="muted small">{t(`scope.ep.${i.scope.episodes}` as I18nKey)} · {i.scope.seasons === "recent" ? t("scope.recentShort", { n: i.scope.recentN }) : t(`scope.season.${i.scope.seasons}` as I18nKey)}</span>
                         </div>
                         <p className="small">
                           {i.state === "active" && pct !== null ? t("fill.progress", { pct, missing: i.missing ?? 0, start: i.startMissing ?? 0 }) : t("fill.missing", { n: i.missing ?? 0 })}

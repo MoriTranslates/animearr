@@ -202,6 +202,7 @@ function Appearance() {
   const [toastStyle, setToastStyle] = useState(store.get("toastStyle", "bubble"));
   const [font, setFont] = useState(store.get("font", "inter"));
   const [exclaim, setExclaim] = useState(store.get("exclaim", "sometimes"));
+  const [palette, setPalette] = useState(store.get("palette", "season"));
   const toast = useToast();
   return (
     <div className="stack">
@@ -235,6 +236,21 @@ function Appearance() {
             <option value="standard">{t("appearance.toasts.standard")}</option>
           </select>
           <span className="muted small">{t("appearance.toastsHelp")}</span>
+        </label>
+        <label>
+          {t("appearance.palette")}
+          <select
+            value={palette}
+            onChange={(e) => {
+              setPalette(e.target.value);
+              store.set("palette", e.target.value);
+              applyTheme(store.get("theme", "dark"));
+            }}
+          >
+            <option value="season">{t("appearance.palette.season")}</option>
+            <option value="merry">{t("appearance.palette.merry")}</option>
+          </select>
+          <span className="muted small">{t("appearance.paletteHelp")}</span>
         </label>
         <label>
           {t("appearance.font")}

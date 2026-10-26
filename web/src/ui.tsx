@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { SheepShip } from "./merry";
 import { Zap } from "lucide-react";
 import { fixesForMessage, runFix, type Flag } from "./api";
 import { t, type I18nKey } from "./i18n";
@@ -65,6 +66,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <small>{x.burst.jp}</small>
               </span>
             )}
+            {x.kind === "complete" && <SheepShip size={56} className="sail-by" />}
             {x.cover && <img className="toast-cover" src={thumbUrl(x.cover, "sm")} alt="" width={34} height={50} />}
             <span className="toast-emote" aria-hidden="true">
               {EMOTE[x.kind]}

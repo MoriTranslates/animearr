@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LostAtSea } from "./merry";
 import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
 import { BellButton } from "./notify";
@@ -53,6 +54,8 @@ const MORE: NavItem[] = [
   { path: "/settings", label: "nav.settings", icon: SettingsIcon },
 ];
 
+const KNOWN = ["/", "/welcome", "/managed", "/shows", "/add", "/find", "/show", "/movies", "/movie", "/calendar", "/fillin", "/queue", "/audit", "/search", "/activity", "/settings"];
+
 export function navigate(to: string) {
   history.pushState(null, "", to);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -72,6 +75,8 @@ export const query = () => new URLSearchParams(location.search);
 export function applyTheme(theme: string) {
   document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
   applySeason(theme === "light" ? "light" : "dark");
+  // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
+  document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
   applyFont(store.get<string>("font", "inter"));
   // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
   document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
@@ -244,6 +249,7 @@ export function App() {
             {section === "/search" && <Search />}
             {section === "/activity" && <Activity />}
             {section === "/settings" && <Settings status={status} onSaved={refreshStatus} />}
+            {!KNOWN.includes(section) && <LostAtSea />}
           </main>
           <footer className="foot">
             {t("app.footer", { version: status.version })} ·{" "}
