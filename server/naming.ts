@@ -98,7 +98,8 @@ export function render(format: string, values: Record<string, string>, opts: Nam
     const [, prefix, rawName, fmt, suffix] = m;
     const sep = /[._]/.test(rawName.replace(/^mediainfo[._ ]/i, "")) && !/\s/.test(rawName) ? (rawName.includes("_") ? "_" : ".") : null;
     const key = rawName.replace(/[._]/g, " ").toLowerCase();
-    let v = fmt !== undefined ? (values[`${key}#num`] !== undefined ? pad(Number(values[`${key}#num`]), fmt) : "") : (values[key] ?? "");
+    const num = values[`${key}#num`];
+    let v = fmt !== undefined ? (num !== undefined ? pad(Number(num), fmt) : "") : (values[key] ?? num ?? ""); // {season} = unpadded
     if (!v) return "";
     v = fixChars(v, opts); // colons/illegal characters in the value, before separators (like Sonarr)
     if (sep) v = v.replace(/\s+/g, sep).split(`${sep}-${sep}`).join(sep);
@@ -164,8 +165,8 @@ function episodeNumbers(format: string, eps: number[], style: MultiStyle, epFmt:
 
 /** Renders an episode file name (no extension) for a standard or absolute (anime) format. */
 export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions) {
-  const epFmt = /\{episode:(0+)\}/i.exec(format)?.[1] ?? "00";
-  const absFmt = /\{absolute:(0+)\}/i.exec(format)?.[1] ?? "000";
+  const epFmt = /\{episode(?::(0+))?\}/i.exec(format)?.[1] ?? "";
+  const absFmt = /\{absolute(?::(0+))?\}/i.exec(format)?.[1] ?? "";
   const eps = c.episodes.map((e) => e.episode);
   const abs = c.episodes.map((e) => e.absolute).filter((x): x is number => !!x);
   const titles = [...new Set(c.episodes.map((e) => e.title).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
@@ -175,10 +176,10 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   const epText = episodeNumbers(format, eps, opts.multiEpisodeStyle, epFmt);
   const absText = abs.length ? (abs.length === 1 ? pad(abs[0], absFmt) : `${pad(abs[0], absFmt)}-${pad(abs[abs.length - 1], absFmt)}`) : "";
   // Duplicate (Sonarr): "S01E01 - S01E02", the season+episode pattern repeated per episode.
-  const dupe = opts.multiEpisodeStyle === "duplicate" && eps.length > 1 ? /S\{season:(0+)\}E\{episode:(0+)\}/i.exec(format) : null;
+  const dupe = opts.multiEpisodeStyle === "duplicate" && eps.length > 1 ? /S\{season(?::(0+))?\}E\{episode(?::(0+))?\}/i.exec(format) : null;
   const f0 = dupe ? format.replace(dupe[0], "\u0001DU\u0001") : format;
   const duText = dupe ? eps.map((n) => `S${pad(c.season, dupe[1])}E${pad(n, dupe[2])}`).join(" - ") : "";
-  const f = f0.replace(/\{episode:0+\}/gi, "\u0001EP\u0001").replace(/\{absolute:0+\}/gi, absText ? "\u0001AB\u0001" : "");
+  const f = f0.replace(/\{episode(?::0+)?\}/gi, "\u0001EP\u0001").replace(/\{absolute(?::0+)?\}/gi, absText ? "\u0001AB\u0001" : "");
   const values: Record<string, string> = {
     "series title": c.seriesTitle,
     "series titleyear": withYear(c.seriesTitle, c.seriesYear),

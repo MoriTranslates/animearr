@@ -47,6 +47,9 @@ test("illegal characters and colon modes", () => {
 test("folders and movies", () => {
   assert.equal(renderSeriesFolder("{Series TitleYear} [tvdbid-{TvdbId}]", { seriesTitle: "Bleach", seriesYear: 2004, tvdbId: 74796 }, opts), "Bleach (2004) [tvdbid-74796]");
   assert.equal(renderSeasonFolder("Season {season:00}", 3, opts), "Season 03");
+  assert.equal(renderSeasonFolder("Season {season}", 3, opts), "Season 3");
+  assert.equal(renderEpisode("{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}", { ...ep, mediaInfo: undefined }, opts), "Frieren - Beyond Journey's End - S01E05 - Phantoms of the Dead WEBDL-1080p");
+  assert.equal(renderEpisode("{Series Title} {season}x{episode}", ep, opts), "Frieren - Beyond Journey's End 1x5");
   assert.equal(renderMovie("{Movie CleanTitle} ({Release Year}) {[Quality Full]}{-Release Group}", { movieTitle: "Suzume", year: 2022, quality: "Bluray-1080p", releaseGroup: null }, opts), "Suzume (2022) [Bluray-1080p]");
   const radarr = "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{-Release Group}";
   assert.equal(renderMovie(radarr, { movieTitle: "Suzume", year: 2022, quality: "Bluray-1080p" }, opts), "Suzume (2022) [Bluray-1080p]");
