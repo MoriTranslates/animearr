@@ -254,7 +254,7 @@ export async function searchMovie(id: number, search: typeof prowlarrSearch = pr
     const learned = learnedFor(p.group, p.platform ?? sourceKey(r.title, null, p.source));
     const blocked = isBlocked({ guid: r.guid, title: r.title });
     // Size sanity: a movie is worth several episodes.
-    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime ?? 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId) });
+    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime || 100) / 24)), runtimeMin: (m.runtime || 100) / Math.max(1, Math.round((m.runtime || 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId) });
     const pub = r.publishDate ? Date.parse(r.publishDate) : null;
     results.push({
       guid: r.guid,

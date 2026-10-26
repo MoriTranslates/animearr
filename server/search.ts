@@ -184,6 +184,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const errors: string[] = [];
   const prof = profileFor(tvdbId);
   const targetIds = new Set(targets.map((t) => t.id));
+  const runtimeOf = new Map(all.map((e) => [e.id, e.runtime]));
   const results: SearchResult[] = [];
   const skipped: Record<string, number> = {};
   const queries: string[] = [];
@@ -209,7 +210,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
     const ss = eps[0]?.season ?? null;
     const known = knownFor(r, series, ss, !id.parsed.group);
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
-    const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length }, prof, learned, known);
+    const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length, runtimeMin: runtimeOf.get(eps[0]?.id) ?? null }, prof, learned, known);
     results.push({
       guid: r.guid,
       title: r.title,

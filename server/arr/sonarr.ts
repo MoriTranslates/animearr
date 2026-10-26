@@ -164,6 +164,14 @@ export interface SonarrQueueItem {
 /** Media management settings (read-only): where Sonarr's recycle bin is and how long it keeps files. */
 export const getMediaManagement = () => call<{ recycleBin?: string; recycleBinCleanupDays?: number }>("GET", "/config/mediamanagement");
 
+/** Naming and media-management settings (read-only), to start AnimeArr's media management from the same values. */
+export const getNamingConfig = () => call<Record<string, unknown>>("GET", "/config/naming");
+export const getMediaManagementFull = () => call<Record<string, unknown>>("GET", "/config/mediamanagement");
+/** Asks Sonarr to re-read a series folder (after AnimeArr's own importer or renamer touched it). */
+export async function rescanSeries(seriesId: number) {
+  return call<{ id: number }>("POST", "/command", { name: "RescanSeries", seriesId });
+}
+
 /** Sonarr's download queue, with series and episode (read-only). */
 export async function getQueue() {
   const out: SonarrQueueItem[] = [];

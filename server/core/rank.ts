@@ -26,7 +26,13 @@ export interface Profile {
   preferUncensored: boolean;
   protocolOrder: ("usenet" | "torrent")[];
   resolution: number;
+  sizePreset?: "lean" | "balanced" | "best";
 }
+
+/** Lean's ceiling in MB per minute by resolution (1080p: ~2 GB per 24-minute episode). */
+export const LEAN_MB_PER_MIN: Record<number, number> = { 2160: 170, 1080: 85, 720: 45, 480: 25 };
+const LOSSLESS = /\b(flac|truehd|dts[ .-]?hd|dts[ .-]?ma|l?pcm)\b/i;
+const MINI = /\b(mini|tiny|small(er)?[ .-]?size|reenc(ode)?)\b/i;
 
 export interface ReleaseInfo {
   protocol: "usenet" | "torrent";
@@ -35,6 +41,8 @@ export interface ReleaseInfo {
   indexer?: string;
   /** Number of episodes the release covers (for size sanity). */
   episodeCount: number;
+  /** Minutes per episode (or the movie's runtime / episodeCount), for the size preset; 24 when unknown. */
+  runtimeMin?: number | null;
 }
 
 export interface LearnedLang {
@@ -245,7 +253,46 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     score -= 30;
     flags.push({ key: "small", label: "Very small (sample?)", tone: "bad" });
     why.push("very small file");
-  } else if (perEp > 8e9) score -= 10;
+  } else if (perEp > 8e9 && profile.sizePreset !== "best") score -= 10;
+  // ---- size preset (MB per minute, like Sonarr's quality definitions)
+  if (info.size > 0 && perEp >= 90e6) {
+    const preset = profile.sizePreset ?? "lean";
+    const mbMin = perEp / 1e6 / (info.runtimeMin && info.runtimeMin >= 5 ? info.runtimeMin : 24); // runtime 0 = unknown
+    const res = p.resolution ?? profile.resolution;
+    const cap = LEAN_MB_PER_MIN[res] ?? (res > 1080 ? LEAN_MB_PER_MIN[2160] : res > 720 ? LEAN_MB_PER_MIN[1080] : res > 480 ? LEAN_MB_PER_MIN[720] : LEAN_MB_PER_MIN[480]);
+    const gb = (perEp / 1e9).toFixed(1);
+    const remux = /\bremux\b/i.test(p.raw);
+    if (preset === "lean") {
+      if (mbMin > cap) {
+        score -= 35;
+        flags.push({ key: "size", label: `Big for Lean (${gb} GB/ep)`, tone: "warn" });
+        why.push(`${gb} GB per episode is over the Lean size (~${((cap * 24) / 1000).toFixed(1)} GB per 24 min)`);
+      } else if (p.source === "web") score += 3;
+    } else if (preset === "balanced") {
+      if (p.source === "web") {
+        score += 6;
+        why.push("WEB-DL (preferred by Balanced)");
+      }
+    } else {
+      if (remux) {
+        score += 25;
+        flags.push({ key: "size", label: "REMUX", tone: "good" });
+        why.push("REMUX (best source)");
+      } else if (p.source === "bluray" && mbMin > cap * 1.4) {
+        score += 15;
+        why.push(`high-bitrate Blu-ray (${gb} GB/ep)`);
+      } else if (p.source === "web") score += 5;
+      if (!remux && (MINI.test(p.raw) || ((p.codec === "hevc" || p.codec === "x265" || /\b(x265|hevc)\b/i.test(p.raw)) && mbMin < cap * 0.5))) {
+        score -= 20;
+        flags.push({ key: "size", label: "Small re-encode", tone: "warn" });
+        why.push("a small re-encode (Best source prefers the original)");
+      }
+      if (LOSSLESS.test(p.raw)) {
+        score += 8;
+        why.push("lossless audio");
+      }
+    }
+  }
   if (info.protocol === "torrent" && info.seeders === 0) {
     score -= 25;
     why.push("no seeders");

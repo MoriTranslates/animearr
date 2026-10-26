@@ -7,6 +7,8 @@ import { Chip, Cover, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from 
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
+import { ManualImport, RenamePreview } from "../media";
+import { query } from "../App";
 
 interface Header {
   seriesId: number;
@@ -152,6 +154,13 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           </summary>
           <ScopeEditor tvdbIds={[tvdbId]} onSaved={() => void d.reload()} />
         </details>
+      )}
+
+      {h.allowed && (
+        <>
+          <RenamePreview tvdbId={tvdbId} initiallyOpen={query().get("rename") === "1"} onDone={() => void d.reload()} />
+          <ManualImport tvdbId={tvdbId} onDone={() => void d.reload()} />
+        </>
       )}
 
       {/* ---------------- franchise (AnimeArr's own catalog) */}

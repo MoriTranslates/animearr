@@ -108,6 +108,8 @@ async function syncSonarr(full: boolean, res: SyncResult) {
       upsertSeries.run(x.id, x.tvdbId, x.tmdbId ?? null, x.imdbId ?? null, x.title, x.sortTitle ?? null, x.year ?? null, x.status, x.seriesType, x.path, x.rootFolderPath ?? null, x.monitored ? 1 : 0,
         x.qualityProfileId, JSON.stringify(x.tags), x.network ?? null, x.runtime ?? null, x.originalLanguage?.name ?? null, JSON.stringify(x.seasons.map((z) => ({ season: z.seasonNumber, monitored: z.monitored, files: z.statistics?.episodeFileCount ?? 0, episodes: z.statistics?.episodeCount ?? 0, total: z.statistics?.totalEpisodeCount ?? 0 }))),
         x.firstAired ?? null, x.nextAiring ?? null, x.previousAiring ?? null, JSON.stringify(aids), aids.length ? "matched" : "review", poster, x.added ?? null, needs ? null : sig, (x as { overview?: string }).overview ?? null, JSON.stringify((x as { genres?: string[] }).genres ?? []), needs ? (p?.synced_at ?? 0) : p!.synced_at);
+      const sf = (x as { seasonFolder?: boolean }).seasonFolder;
+      cache.prepare("UPDATE series SET season_folder = ? WHERE id = ?").run(typeof sf === "boolean" ? (sf ? 1 : 0) : null, x.id);
       cache.prepare("DELETE FROM alt_titles WHERE series_id = ?").run(x.id);
       for (const a of x.alternateTitles ?? []) {
         const season = a.sceneSeasonNumber !== undefined && a.sceneSeasonNumber !== null && a.sceneSeasonNumber >= 1 ? a.sceneSeasonNumber : null;

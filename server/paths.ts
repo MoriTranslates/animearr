@@ -25,6 +25,11 @@ export function localPath(p: string): string | null {
   }
 }
 
+/** Sonarr/library path → this machine's path, by the mappings only (for files that don't exist yet). */
+export function mappedPath(p: string): string {
+  return apply(p, getSettings().localPathMappings) ?? p;
+}
+
 /** Download-client path → Sonarr path (remote path mappings); unchanged when none applies. */
 export function clientToSonarr(p: string): string {
   return apply(p, getSettings().remotePathMappings) ?? p.replace(/\\/g, "/");

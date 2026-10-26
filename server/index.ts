@@ -50,9 +50,14 @@ async function catalogTick(force = false) {
   }
 }
 import { listMovies, movieCalendar, movieDetail, searchMovie, startMovieGrab } from "./movies.js";
+import { applyRename, executeImport, planImport, planRename, renameBack } from "./importer.js";
+import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
+
+// UMASK (like the *arr images): files and folders AnimeArr's importer creates get the usual 775/664 with UMASK=002.
+if (/^0?[0-7]{3}$/.test(process.env.UMASK ?? "")) process.umask(parseInt(process.env.UMASK!, 8));
 
 const WEB_DIR = path.join(ROOT_DIR, "dist", "web");
 const PORT = Number(process.env.PORT ?? 8484);
@@ -317,11 +322,11 @@ app.delete<{ Params: { id: string } }>("/api/profiles/:id", async (req) => {
   deleteProfile(String(req.params.id));
   return { ok: true };
 });
-app.put<{ Params: { tvdbId: string }; Body: { profileId?: string | null; watchMode?: string | null } }>("/api/series/:tvdbId/prefs", async (req) => {
+app.put<{ Params: { tvdbId: string }; Body: { profileId?: string | null; watchMode?: string | null; sizePreset?: string | null } }>("/api/series/:tvdbId/prefs", async (req) => {
   writable();
   const tvdbId = id(req.params.tvdbId);
   if (!seriesByTvdb(tvdbId)) throw fail("Unknown series", 404);
-  return setSeriesPrefs(tvdbId, req.body?.profileId || null, (req.body?.watchMode || null) as Parameters<typeof setSeriesPrefs>[2]);
+  return setSeriesPrefs(tvdbId, req.body?.profileId || null, (req.body?.watchMode || null) as Parameters<typeof setSeriesPrefs>[2], req.body?.sizePreset === undefined ? undefined : ((req.body.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]));
 });
 
 // ---------------------------------------------------------------- episodes: detail, delete, re-grab, calendar
@@ -545,6 +550,55 @@ app.post("/api/catalog/refresh", async () => {
   return { started: true };
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/catalog", async (req) => entriesForSeries(id(req.params.tvdbId)));
+// ---------------------------------------------------------------- AnimeArr's own importer + renamer (plans first)
+
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null } }>("/api/import/plan", async (req) => {
+  const b = req.body ?? ({} as never);
+  if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
+  return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
+});
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; dryRun?: boolean } }>("/api/import/run", async (req) => {
+  writable();
+  const b = req.body ?? ({} as never);
+  if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
+  const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
+  return { plan, results: await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only }) };
+});
+app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/rename", async (req) => planRename(id(req.params.tvdbId)));
+app.post<{ Params: { tvdbId: string }; Body: { fileIds: number[] } }>("/api/series/:tvdbId/rename", async (req) => {
+  writable();
+  return { results: await applyRename(id(req.params.tvdbId), (req.body?.fileIds ?? []).map(Number)) };
+});
+app.get("/api/media/rename-all", async () => {
+  const rows = cache.prepare("SELECT tvdb_id, title FROM series ORDER BY sort_title").all() as { tvdb_id: number; title: string }[];
+  const out: { tvdbId: number; title: string; count: number }[] = [];
+  for (const r of rows) {
+    try {
+      const n = planRename(r.tvdb_id).items.length;
+      if (n) out.push({ tvdbId: r.tvdb_id, title: r.title, count: n });
+    } catch {
+      /* skip */
+    }
+  }
+  return { series: out, total: out.reduce((a, b) => a + b.count, 0) };
+});
+app.post<{ Body: Record<string, unknown> }>("/api/media/preview", async (req) => previewNaming((req.body ?? {}) as never));
+app.get("/api/media/status", async () => ({ importer: getSettings().importer, importedFromArr: getSettings().media.importedFromArr }));
+/** Who imports, and whether real imports/renames are on (switched on after the first plans were reviewed). */
+app.put<{ Body: { engine?: string; allowReal?: boolean; allowRename?: boolean } }>("/api/media/importer", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  const cur = getSettings().importer;
+  const next = { engine: b.engine === "animearr" || b.engine === "sonarr" ? b.engine : cur.engine, allowReal: typeof b.allowReal === "boolean" ? b.allowReal : cur.allowReal, allowRename: typeof b.allowRename === "boolean" ? b.allowRename : cur.allowRename };
+  patchSettings((x) => ({ ...x, importer: next }));
+  logDecision("info", { why: `Importer: ${next.engine === "animearr" ? "AnimeArr's own" : "through Sonarr/Radarr"}; real imports ${next.allowReal ? "on" : "off"}; renames ${next.allowRename ? "on" : "off"}` });
+  return next;
+});
+app.post("/api/media/import-defaults", async () => {
+  writable();
+  return importMediaDefaults();
+});
+
 app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/scan", async (req) => {
   const s = seriesByTvdb(id(req.params.tvdbId));
   if (!s) throw fail("Unknown series", 404);
@@ -685,6 +739,9 @@ app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
     case "manage":
       setManaged([Number(a.tvdbId)], true);
       break;
+    case "rename-back":
+      await renameBack(d.undo.args as unknown as Parameters<typeof renameBack>[0]);
+      break;
     case "delete-alias":
       db.prepare("DELETE FROM aliases WHERE id = ?").run(Number(a.id));
       invalidateIndex();
@@ -797,6 +854,7 @@ every(30 * 60_000, () => fillInTick(), "fill-in");
 every(6 * 3_600_000, () => catalogTick(), "catalog");
 setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);
 setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
+setTimeout(() => void importMediaDefaultsOnce(), 20_000);
 every(5 * 60_000, () => managedTick(), "managed");
 let lastRss = 0;
 every(60_000, async () => {

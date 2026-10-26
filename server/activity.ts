@@ -23,7 +23,7 @@ export type DecisionKind =
   | "info";
 
 export interface Undo {
-  action: "unmanage" | "manage" | "delete-alias" | "delete-rule" | "delete-fact" | "remonitor" | "unblock";
+  action: "unmanage" | "manage" | "delete-alias" | "delete-rule" | "delete-fact" | "remonitor" | "unblock" | "rename-back";
   args: Record<string, unknown>;
 }
 

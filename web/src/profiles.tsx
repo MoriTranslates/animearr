@@ -5,7 +5,9 @@ import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast 
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 export const MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
-export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; resolution: number }
+export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; resolution: number; sizePreset?: SizePreset }
+export type SizePreset = "lean" | "balanced" | "best";
+export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
 /** Settings → Profiles: named language profiles; one is the default for every show without its own choice. */
 export function ProfilesEditor() {
@@ -116,7 +118,18 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
             ))}
           </select>
         </label>
+        <label>
+          {t("size.preset")}
+          <select value={p.sizePreset ?? "lean"} onChange={(e) => set({ sizePreset: e.target.value as SizePreset })}>
+            {SIZE_PRESETS.map((s) => (
+              <option key={s} value={s}>
+                {t(`size.${s}` as I18nKey)}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+      <p className="muted small">{t(`size.${p.sizePreset ?? "lean"}.help` as I18nKey)}</p>
       <p className="muted small">{t("settings.profile.help")}</p>
       <Toggle checked={p.softOnly} onChange={(v) => set({ softOnly: v })} label={t("settings.profile.softOnly")} />
       <Toggle checked={p.preferUncensored} onChange={(v) => set({ preferUncensored: v })} label={t("settings.profile.uncensored")} />
@@ -145,12 +158,12 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
 }
 
 /** Per-show "Watch as" control: profile + watch mode override (empty = follow the default). */
-export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvdbId: number; prefs: { profile_id: string | null; watch_mode: WatchMode | null }; effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode }; onChanged: () => void; endpoint?: string }) {
+export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvdbId: number; prefs: { profile_id: string | null; watch_mode: WatchMode | null; size_preset?: SizePreset | null }; effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode; sizePreset?: SizePreset }; onChanged: () => void; endpoint?: string }) {
   const toast = useToast();
   const d = useLoad(() => api<{ profiles: LanguageProfile[]; defaultProfileId: string }>("/profiles"), []);
-  const save = async (profileId: string | null, watchMode: WatchMode | null) => {
+  const save = async (profileId: string | null, watchMode: WatchMode | null, sizePreset?: SizePreset | null) => {
     try {
-      await api(endpoint ?? `/series/${tvdbId}/prefs`, { method: "PUT", body: { profileId, watchMode } });
+      await api(endpoint ?? `/series/${tvdbId}/prefs`, { method: "PUT", body: { profileId, watchMode, ...(sizePreset !== undefined ? { sizePreset } : {}) } });
       toast(t("common.saved"));
       onChanged();
     } catch (e) {
@@ -176,6 +189,16 @@ export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvd
           </option>
         ))}
       </select>
+      {!endpoint && (
+        <select value={prefs.size_preset ?? ""} onChange={(e) => save(prefs.profile_id, prefs.watch_mode, (e.target.value || null) as SizePreset | null)} aria-label={t("size.preset")}>
+          <option value="">{t("size.profileDefault")}</option>
+          {SIZE_PRESETS.map((s) => (
+            <option key={s} value={s}>
+              {t(`size.${s}` as I18nKey)}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

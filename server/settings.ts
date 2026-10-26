@@ -36,7 +36,14 @@ export interface LanguageProfile {
   protocolOrder: ("usenet" | "torrent")[];
   /** Preferred resolution (lines). */
   resolution: number;
+  /**
+   * Size preset: "lean" (≤ ~2 GB per 24-min 1080p episode), "balanced" (WEB-DL preferred, no cap below the sanity
+   * max) or "best" (best source for re-encoding yourself: REMUX > high-bitrate BD > WEB-DL, lossless audio preferred).
+   */
+  sizePreset?: SizePreset;
 }
+export type SizePreset = "lean" | "balanced" | "best";
+export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
 export interface Settings {
   sonarr: { url: string; apiKey: string; /** Optional: also import series with this Sonarr tag even when not seriesType=anime. */ animeTag: string };
@@ -104,6 +111,48 @@ export interface Settings {
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   /** AnimeArr's own file records: scan the library roots and ffprobe every file (read-only). */
   library: { scan: boolean };
+  /** Media management (mirrors Sonarr/Radarr; defaults read from their config). */
+  media: {
+    renameEpisodes: boolean;
+    replaceIllegalCharacters: boolean;
+    colonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
+    multiEpisodeStyle: "extend" | "duplicate" | "repeat" | "scene" | "range" | "prefixedRange";
+    standardEpisodeFormat: string;
+    dailyEpisodeFormat: string;
+    animeEpisodeFormat: string;
+    seriesFolderFormat: string;
+    seasonFolderFormat: string;
+    specialsFolderFormat: string;
+    renameMovies: boolean;
+    movieFormat: string;
+    movieFolderFormat: string;
+    createEmptyFolders: boolean;
+    deleteEmptyFolders: boolean;
+    episodeTitleRequired: "always" | "bulkSeasonReleases" | "never";
+    skipFreeSpaceCheck: boolean;
+    minimumFreeSpaceMb: number;
+    useHardlinks: boolean;
+    importExtraFiles: boolean;
+    extraFileExtensions: string;
+    propers: "preferAndUpgrade" | "doNotUpgrade" | "doNotPrefer";
+    unmonitorDeleted: boolean;
+    fileDate: "none" | "localAirDate" | "utcAirDate";
+    recycleBin: string;
+    recycleBinCleanupDays: number;
+    rescanAfterRefresh: "always" | "afterManual" | "never";
+    analyseVideoFiles: boolean;
+    setPermissions: boolean;
+    chmodFolder: string;
+    chownGroup: string;
+    renameAfterReencode: boolean;
+    /** Set once the defaults were read from Sonarr/Radarr. */
+    importedFromArr: boolean;
+  };
+  /**
+   * Who imports finished downloads: "sonarr" (ManualImport through Sonarr/Radarr; today) or "animearr" (AnimeArr's own
+   * importer). allowReal stays false until the first real import plan was reviewed; renames likewise.
+   */
+  importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean };
   /** Optional metadata providers (AniList, Anime-Lists and the AniDB dump need nothing). */
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
@@ -155,6 +204,42 @@ const DEFAULTS: Settings = {
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
+  media: {
+    renameEpisodes: true,
+    replaceIllegalCharacters: true,
+    colonReplacement: "smart",
+    multiEpisodeStyle: "prefixedRange",
+    standardEpisodeFormat: "{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
+    dailyEpisodeFormat: "{Series TitleYear} - {Air-Date} - {Episode CleanTitle} [{Quality Full}]{-Release Group}",
+    animeEpisodeFormat: "{Series TitleYear} - S{season:00}E{episode:00} - {absolute:000} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{MediaInfo VideoBitDepth}bit]{[MediaInfo VideoCodec]}[{Mediainfo AudioCodec} { Mediainfo AudioChannels}]{MediaInfo AudioLanguages}{-Release Group}",
+    seriesFolderFormat: "{Series TitleYear}",
+    seasonFolderFormat: "Season {season:00}",
+    specialsFolderFormat: "Specials",
+    renameMovies: true,
+    movieFormat: "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
+    movieFolderFormat: "{Movie CleanTitle} ({Release Year})",
+    createEmptyFolders: false,
+    deleteEmptyFolders: false,
+    episodeTitleRequired: "always",
+    skipFreeSpaceCheck: false,
+    minimumFreeSpaceMb: 100,
+    useHardlinks: true,
+    importExtraFiles: true,
+    extraFileExtensions: "srt,ass,ssa,sub,idx,sup",
+    propers: "preferAndUpgrade",
+    unmonitorDeleted: false,
+    fileDate: "none",
+    recycleBin: "/media/Recycle/animearr/",
+    recycleBinCleanupDays: 14,
+    rescanAfterRefresh: "always",
+    analyseVideoFiles: true,
+    setPermissions: false,
+    chmodFolder: "775",
+    chownGroup: "",
+    renameAfterReencode: false,
+    importedFromArr: false,
+  },
+  importer: { engine: "sonarr", allowReal: false, allowRename: false },
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
@@ -167,7 +252,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey"] as const;
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -182,6 +267,12 @@ const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "n
 const ENUMS: Record<string, readonly string[]> = {
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
+  "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
+  "media.multiEpisodeStyle": ["extend", "duplicate", "repeat", "scene", "range", "prefixedRange"],
+  "media.episodeTitleRequired": ["always", "bulkSeasonReleases", "never"],
+  "media.propers": ["preferAndUpgrade", "doNotUpgrade", "doNotPrefer"],
+  "media.fileDate": ["none", "localAirDate", "utcAirDate"],
+  "media.rescanAfterRefresh": ["always", "afterManual", "never"],
   "scope.ended.seasons": SEASONS,
   "scope.ended.episodes": EPISODES,
   "scope.continuing.seasons": SEASONS,
@@ -203,6 +294,8 @@ const RANGES: Record<string, [number, number]> = {
   "scope.continuing.recentN": [1, 100],
   "fillIn.waveSize": [1, 50],
   "metadata.anidbClientVer": [1, 99],
+  "media.minimumFreeSpaceMb": [0, 1_000_000],
+  "media.recycleBinCleanupDays": [0, 365],
   "fillIn.advancePct": [50, 100],
   "fillIn.stallDays": [1, 60],
   "movieSearch.perHour": [1, 12],

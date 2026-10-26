@@ -31,7 +31,7 @@ export interface MediaRecord {
   mtime: number;
   duration: number | null;
   container: string | null;
-  video: { codec: string | null; width: number | null; height: number | null; hdr: boolean } | null;
+  video: { codec: string | null; width: number | null; height: number | null; hdr: boolean; /** Absent in records made before it was probed. */ bitDepth?: number | null } | null;
   audio: AudioTrack[];
   subs: SubTrack[];
   sidecars: { file: string; lang: string | null; forced: boolean }[];
@@ -39,12 +39,12 @@ export interface MediaRecord {
 
 const FULL = /\b(full|dialog(ue)?|complete)\b/i;
 
-interface RawStream { index: number; codec_type: string; codec_name?: string; width?: number; height?: number; channels?: number; color_transfer?: string; disposition?: { default?: number; forced?: number }; tags?: { language?: string; title?: string } }
+interface RawStream { index: number; codec_type: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; bits_per_raw_sample?: string; channels?: number; color_transfer?: string; disposition?: { default?: number; forced?: number }; tags?: { language?: string; title?: string } }
 
 /** ffprobe with everything the records need. */
 export function probeFile(file: string, bin = process.env.FFPROBE_PATH || "ffprobe"): Promise<Omit<MediaRecord, "path" | "root" | "size" | "mtime" | "sidecars">> {
   return new Promise((resolve, reject) => {
-    execFile(bin, ["-v", "error", "-show_entries", "stream=index,codec_type,codec_name,width,height,channels,color_transfer:stream_disposition=default,forced:stream_tags=language,title:format=duration,format_name", "-of", "json", file], { timeout: 120_000, maxBuffer: 16 << 20 }, (err, stdout) => {
+    execFile(bin, ["-v", "error", "-show_entries", "stream=index,codec_type,codec_name,width,height,channels,color_transfer,pix_fmt,bits_per_raw_sample:stream_disposition=default,forced:stream_tags=language,title:format=duration,format_name", "-of", "json", file], { timeout: 120_000, maxBuffer: 16 << 20 }, (err, stdout) => {
       if (err) return reject(new Error(`ffprobe failed: ${err.message.split("\n")[0]}`));
       try {
         const j = JSON.parse(stdout) as { streams?: RawStream[]; format?: { duration?: string; format_name?: string } };
@@ -57,7 +57,7 @@ export function probeFile(file: string, bin = process.env.FFPROBE_PATH || "ffpro
         resolve({
           duration: j.format?.duration ? Number(j.format.duration) : null,
           container: j.format?.format_name ?? null,
-          video: v ? { codec: v.codec_name ?? null, width: v.width ?? null, height: v.height ?? null, hdr: /smpte2084|arib-std-b67/.test(v.color_transfer ?? "") } : null,
+          video: v ? { codec: v.codec_name ?? null, width: v.width ?? null, height: v.height ?? null, hdr: /smpte2084|arib-std-b67/.test(v.color_transfer ?? ""), bitDepth: Number(v.bits_per_raw_sample) || (/p12/.test(v.pix_fmt ?? "") ? 12 : /p10/.test(v.pix_fmt ?? "") ? 10 : v.pix_fmt ? 8 : null) } : null,
           audio: (j.streams ?? []).filter((s) => s.codec_type === "audio").map((s) => ({ ...base(s), channels: s.channels ?? null })),
           subs: (j.streams ?? []).filter((s) => s.codec_type === "subtitle").map((s) => {
             const t = base(s);

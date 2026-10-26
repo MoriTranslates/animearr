@@ -309,6 +309,8 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE franchises (id INTEGER PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL);
    CREATE TABLE catalog_pins (anilist_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);
    CREATE TABLE catalog_missing (anilist_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);`,
+  // 12: per-show size preset override
+  `ALTER TABLE series_prefs ADD COLUMN size_preset TEXT;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
@@ -379,6 +381,9 @@ migrateCache();
   const cols = new Set((cache.prepare("PRAGMA table_info(movies)").all() as { name: string }[]).map((c) => c.name));
   for (const [c, type] of [["status", "TEXT"], ["is_available", "INTEGER NOT NULL DEFAULT 0"], ["in_cinemas", "INTEGER"], ["digital_release", "INTEGER"], ["physical_release", "INTEGER"]] as const)
     if (!cols.has(c)) cache.exec(`ALTER TABLE movies ADD COLUMN ${c} ${type}`);
+  const scols = new Set((cache.prepare("PRAGMA table_info(series)").all() as { name: string }[]).map((c) => c.name));
+  // Sonarr's "Season folder" flag per show (null until the next sync; the importer then infers it from the files).
+  if (!scols.has("season_folder")) cache.exec("ALTER TABLE series ADD COLUMN season_folder INTEGER");
 }
 
 /** Runs fn in one write transaction on the given database. */

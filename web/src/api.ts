@@ -120,6 +120,41 @@ export interface SearchResponse {
 }
 
 export interface PathMapping { from: string; to: string }
+export interface MediaSettings {
+  renameEpisodes: boolean;
+  replaceIllegalCharacters: boolean;
+  colonReplacement: "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
+  multiEpisodeStyle: "extend" | "duplicate" | "repeat" | "scene" | "range" | "prefixedRange";
+  standardEpisodeFormat: string;
+  dailyEpisodeFormat: string;
+  animeEpisodeFormat: string;
+  seriesFolderFormat: string;
+  seasonFolderFormat: string;
+  specialsFolderFormat: string;
+  renameMovies: boolean;
+  movieFormat: string;
+  movieFolderFormat: string;
+  createEmptyFolders: boolean;
+  deleteEmptyFolders: boolean;
+  episodeTitleRequired: "always" | "bulkSeasonReleases" | "never";
+  skipFreeSpaceCheck: boolean;
+  minimumFreeSpaceMb: number;
+  useHardlinks: boolean;
+  importExtraFiles: boolean;
+  extraFileExtensions: string;
+  propers: "preferAndUpgrade" | "doNotUpgrade" | "doNotPrefer";
+  unmonitorDeleted: boolean;
+  fileDate: "none" | "localAirDate" | "utcAirDate";
+  recycleBin: string;
+  recycleBinCleanupDays: number;
+  rescanAfterRefresh: "always" | "afterManual" | "never";
+  analyseVideoFiles: boolean;
+  setPermissions: boolean;
+  chmodFolder: string;
+  chownGroup: string;
+  renameAfterReencode: boolean;
+  importedFromArr: boolean;
+}
 export interface Settings {
   sonarr: { url: string; apiKey: string; animeTag: string };
   radarr: { url: string; apiKey: string; animeRoots: string[]; animeProfileIds: number[] };
@@ -140,6 +175,8 @@ export interface Settings {
   scope: { ended: import("./scope").Scope; continuing: import("./scope").Scope };
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
+  media: MediaSettings;
+  importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean };
   sync: { intervalHours: number };
   externalUrl: string;
   ui: { language: string };

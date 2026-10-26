@@ -11,6 +11,7 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
+import { executeImport, planImport } from "./importer.js";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
@@ -515,6 +516,21 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     downloadId: row.client_ref ?? undefined,
   }));
   const startedImport = Date.now();
+  // AnimeArr's own importer (once switched on): only when every file was checked here before import.
+  const imp = getSettings().importer;
+  if (imp.engine === "animearr" && imp.allowReal && plan.every((p) => preVerified.has(p.item.path))) {
+    for (const p of plan) {
+      try {
+        const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client });
+        const res = await executeImport(ip);
+        const bad = res.find((r) => !r.done);
+        if (bad || !res.length) return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
+      } catch (e) {
+        return attention(`AnimeArr's importer: ${(e as Error).message}`);
+      }
+    }
+    return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
+  }
   const cmd = await deps.sonarr.importFiles(files, unpacked ? "move" : importModeFor(row.client));
   logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file(s) as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
   let status = "queued";
@@ -544,6 +560,10 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Imported and checked ${path.posix.basename(ef.path)}: ${v.why}`, detail: { grabId: row.id } });
     }
   }
+  return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
+}
+
+async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof seriesByTvdb>>, mapped: number[], eps: ReturnType<typeof episodesFor>, verdicts: string[], unpacked: string | null, deps: PipelineDeps) {
   setState(row.id, "done");
   if (unpacked) {
     try {

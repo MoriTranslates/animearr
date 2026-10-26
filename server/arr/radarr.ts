@@ -76,3 +76,9 @@ export async function radarrManualImport(files: { path: string; movieId: number;
 /** Radarr's own queue for one movie (to avoid a second download when Radarr is already getting it). */
 export const radarrQueueFor = async (movieId: number) =>
   ((await call<{ records: { id: number; movieId?: number; title: string; status: string }[] }>("GET", `/queue?movieIds=${movieId}&pageSize=200`)).records ?? []).filter((r) => r.movieId === movieId);
+
+export const getRadarrNaming = () => call<Record<string, unknown>>("GET", "/config/naming");
+/** Asks Radarr to re-read a movie folder (after AnimeArr's importer or renamer touched it). */
+export async function rescanMovie(movieId: number) {
+  return call<{ id: number }>("POST", "/command", { name: "RescanMovie", movieId });
+}

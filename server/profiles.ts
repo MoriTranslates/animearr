@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import { logDecision } from "./activity.js";
 import { toLang } from "./core/langs.js";
 import { cache, db, dbState } from "./db.js";
-import { getSettings, patchSettings, WATCH_MODES, type LanguageProfile, type WatchMode } from "./settings.js";
+import { getSettings, patchSettings, SIZE_PRESETS, WATCH_MODES, type LanguageProfile, type SizePreset, type WatchMode } from "./settings.js";
 
 export interface EffectiveProfile extends LanguageProfile {
   /** Original audio language(s) of the show (e.g. ["ja"], ["zh"] for donghua). */
@@ -48,6 +48,7 @@ export function validateProfile(input: Partial<LanguageProfile>, base: LanguageP
     preferUncensored: typeof input.preferUncensored === "boolean" ? input.preferUncensored : base.preferUncensored,
     protocolOrder: order.length ? order : base.protocolOrder,
     resolution,
+    sizePreset: SIZE_PRESETS.includes(input.sizePreset as SizePreset) ? input.sizePreset : (base.sizePreset ?? "lean"),
   };
 }
 
@@ -80,15 +81,17 @@ export function deleteProfile(id: string) {
 }
 
 export function seriesPrefs(tvdbId: number) {
-  return (db.prepare("SELECT profile_id, watch_mode FROM series_prefs WHERE tvdb_id = ?").get(tvdbId) as { profile_id: string | null; watch_mode: WatchMode | null } | undefined) ?? { profile_id: null, watch_mode: null };
+  return (db.prepare("SELECT profile_id, watch_mode, size_preset FROM series_prefs WHERE tvdb_id = ?").get(tvdbId) as { profile_id: string | null; watch_mode: WatchMode | null; size_preset: SizePreset | null } | undefined) ?? { profile_id: null, watch_mode: null, size_preset: null };
 }
 
-/** Per-show override: a profile, and/or just a different watch mode. null = follow the default. */
-export function setSeriesPrefs(tvdbId: number, profileId: string | null, watchMode: WatchMode | null) {
+/** Per-show override: a profile, and/or just a different watch mode or size preset. null = follow the default. */
+export function setSeriesPrefs(tvdbId: number, profileId: string | null, watchMode: WatchMode | null, sizePreset?: SizePreset | null) {
   guard();
   if (profileId && !getSettings().profiles.some((p) => p.id === profileId)) throw Object.assign(new Error("Unknown profile"), { statusCode: 400 });
   if (watchMode && !WATCH_MODES.includes(watchMode)) throw Object.assign(new Error("Unknown watch mode"), { statusCode: 400 });
-  db.prepare("INSERT INTO series_prefs (tvdb_id, profile_id, watch_mode, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET profile_id = excluded.profile_id, watch_mode = excluded.watch_mode, updated_at = excluded.updated_at").run(tvdbId, profileId, watchMode, Date.now());
+  if (sizePreset && !SIZE_PRESETS.includes(sizePreset)) throw Object.assign(new Error("Unknown size preset"), { statusCode: 400 });
+  const size = sizePreset === undefined ? seriesPrefs(tvdbId).size_preset : sizePreset;
+  db.prepare("INSERT INTO series_prefs (tvdb_id, profile_id, watch_mode, size_preset, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET profile_id = excluded.profile_id, watch_mode = excluded.watch_mode, size_preset = excluded.size_preset, updated_at = excluded.updated_at").run(tvdbId, profileId, watchMode, size, Date.now());
   const title = (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? String(tvdbId);
   const eff = profileFor(tvdbId);
   logDecision("info", { tvdbId, title, why: `${title} now uses "${eff.name}" with watch mode ${eff.watchMode}${eff.source === "show" ? " (set for this show)" : ""}` });
@@ -108,11 +111,11 @@ export function originalLangs(tvdbId: number | null): string[] {
 /** The profile that applies to a show (or the default when no show is given). */
 export function profileFor(tvdbId: number | null = null): EffectiveProfile {
   const base = defaultProfile();
-  if (tvdbId === null) return { ...base, originalLangs: ["ja"], source: "default" };
+  if (tvdbId === null) return { ...base, sizePreset: base.sizePreset ?? "lean", originalLangs: ["ja"], source: "default" };
   const prefs = seriesPrefs(tvdbId);
   const chosen = prefs.profile_id ? getSettings().profiles.find((p) => p.id === prefs.profile_id) : undefined;
   const prof = chosen ?? base;
-  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, originalLangs: originalLangs(tvdbId), source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
+  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prefs.size_preset ?? prof.sizePreset ?? "lean", originalLangs: originalLangs(tvdbId), source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
 }
 
 // ---------------------------------------------------------------- movies
@@ -137,5 +140,5 @@ export function profileForMovie(movieId: number): EffectiveProfile {
   const prefs = moviePrefs(movieId);
   const chosen = prefs.profile_id ? getSettings().profiles.find((p) => p.id === prefs.profile_id) : undefined;
   const prof = chosen ?? base;
-  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, originalLangs: ["ja"], source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
+  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prof.sizePreset ?? "lean", originalLangs: ["ja"], source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
 }

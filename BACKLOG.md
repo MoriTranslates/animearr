@@ -12,20 +12,29 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 
 - Own metadata: AniList-first catalog refreshed every 6 h (airing shows daily, others weekly), one relation hop out for franchises; TMDB/AniDB/TVDB providers stay off until the user enters a key/client in Settings → Metadata
 - Episode titles: Sonarr's title wins; the catalog's (AniList streaming list, TMDB when keyed) only fills missing/TBA titles until cutover
+- Importer: stays "through Sonarr/Radarr" with real imports and renames OFF until the first plans are approved; then the switch is Settings → Media management → Importer (each change confirmed)
+- Media management starts from Sonarr's/Radarr's own naming + media-management values (copied once at startup, "Copy settings from Sonarr/Radarr" redoes it), so the takeover renames nothing just because defaults differ. AnimeArr's recycling bin stays its own: /media/Recycle/animearr/, 14 days
+- Recycling-bin retention purge (deleting files older than 14 days from /media/Recycle/animearr/) is NOT active yet: its first run is a cleanup deletion, so it waits for a dry-run report
+- Hardlinks: on the server the download folder and the library are separate container mounts, so a hardlink falls back to a copy (the torrent keeps seeding either way). Real hardlinks need one shared /mnt/user mount (later, with the user)
+- Usenet imports MOVE out of /data/completed/animearr (that one folder is mounted read-write); everything else under /data stays read-only
+- UMASK 002 (folders 775, files 664, owner 99:100) like the *arr images; chmod/chown on import stay off unless "Set permissions" is on
+- Upgrades: a file that also holds other episodes (multi-episode file) is never replaced automatically; it becomes "import by hand"
+- Size presets: Lean is the default for every profile and is a strong penalty, not a rejection (a bigger release still gets grabbed when nothing smaller exists). Lean ceilings per minute: 2160p 170 MB, 1080p 85 MB, 720p 45 MB, 480p 25 MB
+- Episode Title Required "always" (Sonarr's value) also uses the catalog's titles before refusing an import
 
 ## 1.0 = takeover (binding)
 
 AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, library, metadata). Afterwards Sonarr and Radarr have no anime libraries. Build order (PROPOSAL "1.0 takeover checklist"):
 
 - [ ] 1. Own file records (scan + ffprobe every file; incremental; nightly; after Tdarr rewrites)
-- [ ] 2. Own importer (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts. Renamer can refresh {Quality}/{MediaInfo} tokens after a re-encode (optional "Rename after Tdarr re-encode", default off)
+- [~] 2. Own importer (built; real imports/renames wait for the first reviewed plan; movie import/rename still through Radarr) (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts. Renamer can refresh {Quality}/{MediaInfo} tokens after a re-encode (optional "Rename after Tdarr re-encode", default off)
 - [ ] 3. Plex (partial scans, path mapping, .plexmatch)
 - [ ] 4. Own metadata (AniDB/AniList-first franchise model; TVDB/TMDB as mappings; donghua/ONAs)
 - [ ] 5. Add series/movies UI (AniList/AniDB search)
 - [ ] 6. RSS/new-release monitoring via Prowlarr feeds
 - [ ] 7. Migration/cutover tool (import, parallel mode, final removal checklist; never deletes without confirmation)
 - [ ] 8. Notifications, minimal for 1.0: Discord/ntfy for grabbed, imported, failed and paused-by-limit, plus the in-app bell. (Later: browser/desktop **Web Push** from the PWA as a first-class channel.) Web Push needs a secure context (plain http://192.168.1.13:8484 isn't one): detect it and explain in Settings (reverse proxy with HTTPS, Tailscale HTTPS, externalUrl); fall back to in-app toasts + a notification bell/inbox while the app is open. Per-event toggles: grabbed / imported / failed / needs attention / paused by a limit rule / new episode available
-- [ ] **Size limits (Quality Definitions parity, in 1.0; folded into the importer/media-management round):** min/preferred/max MB per minute per quality in the profiles; anime default prefers ≤ ~2 GB per 24-min 1080p episode unless nothing else exists; REMUX/BD packs still allowed when nothing smaller qualifies or the profile says "prefer highest quality"; movies use the same per-minute logic. **Size presets** per profile, overridable per show, each explaining itself in the grab "why": *Lean* (default: prefer ≤ ~2 GB per 24-min 1080p episode); *Balanced* (WEB-DL preferred, no cap below the max); *Best source (I re-encode)* (BD REMUX > high-bitrate BD encode > WEB-DL, no upper cap, penalise mini re-encodes — small x265/AV1 group encodes, "mini", "tiny", very low MB/min — prefer original/lossless audio)
+- [x] **Size limits (Quality Definitions parity, in 1.0; folded into the importer/media-management round):** min/preferred/max MB per minute per quality in the profiles; anime default prefers ≤ ~2 GB per 24-min 1080p episode unless nothing else exists; REMUX/BD packs still allowed when nothing smaller qualifies or the profile says "prefer highest quality"; movies use the same per-minute logic. **Size presets** per profile, overridable per show, each explaining itself in the grab "why": *Lean* (default: prefer ≤ ~2 GB per 24-min 1080p episode); *Balanced* (WEB-DL preferred, no cap below the max); *Best source (I re-encode)* (BD REMUX > high-bitrate BD encode > WEB-DL, no upper cap, penalise mini re-encodes — small x265/AV1 group encodes, "mini", "tiny", very low MB/min — prefer original/lossless audio)
 - [ ] **Release gate:** a separate parity-audit run against Sonarr/Radarr, the proposal's anime features and the absorbed tools (Cleanuparr, Unpackerr, Huntarr, indexer health), using the living [PARITY.md](PARITY.md) matrix
 
 ## 0.x steps to 1.0
