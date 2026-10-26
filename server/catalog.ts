@@ -91,13 +91,14 @@ export function upsertMedia(m: AniMedia, anidbId: number | null, now = Date.now(
        ON CONFLICT(anilist_id, number) DO UPDATE SET title = CASE WHEN entry_episodes.source = 'anilist' THEN COALESCE(excluded.title, entry_episodes.title) ELSE entry_episodes.title END,
          air_utc = COALESCE(excluded.air_utc, entry_episodes.air_utc)`,
     ).run(m.id, n, titles.get(n) ?? null, air.get(n) ?? null);
+  applyOverrides(m.id); // a user's/auto match wins over the mapping just written
   db.prepare("DELETE FROM entry_relations WHERE from_id = ?").run(m.id);
   for (const e of m.relations?.edges ?? []) if (e.node.type === "ANIME") db.prepare("INSERT OR IGNORE INTO entry_relations (from_id, to_id, type) VALUES (?, ?, ?)").run(m.id, e.node.id, e.relationType);
 }
 
 /** User/auto matches (catalog_overrides) win over Anime-Lists/Fribb: re-applied after every mapping pass. */
-export function applyOverrides() {
-  for (const o of db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides").all() as { anilist_id: number; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_movie: number | null }[]) {
+export function applyOverrides(only?: number) {
+  for (const o of (only === undefined ? db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides").all() : db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides WHERE anilist_id = ?").all(only)) as { anilist_id: number; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_movie: number | null }[]) {
     if (o.tvdb_id) db.prepare("UPDATE entries SET tvdb_id = ?, tvdb_season = ?, tvdb_offset = ? WHERE anilist_id = ?").run(o.tvdb_id, o.tvdb_season ?? "1", o.tvdb_offset, o.anilist_id);
     if (o.tmdb_movie) db.prepare("UPDATE entries SET tmdb_movie = ? WHERE anilist_id = ?").run(o.tmdb_movie, o.anilist_id);
   }
@@ -220,7 +221,13 @@ function remap(f: Awaited<ReturnType<typeof fribb>>) {
       const e = aid ? al.get(aid) : undefined;
       up.run(aid, e?.tvdbId ?? null, e?.defaultSeason === null || e?.defaultSeason === undefined ? null : String(e.defaultSeason), e?.offset ?? 0, e?.tmdbTv ?? null, e?.tmdbSeason ?? null, e?.tmdbOffset ?? 0, e?.tmdbMovie ?? null, r.anilist_id);
     }
+    applyOverrides(); // in the same transaction: never a moment with the override lost
   });
+}
+
+/** Re-applies the mappings now (after an override was removed). */
+export async function remapNow() {
+  remap(await fribb());
 }
 
 // ---------------------------------------------------------------- reading

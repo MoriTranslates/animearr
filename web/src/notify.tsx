@@ -31,8 +31,13 @@ export function BellButton() {
         aria-label={t("bell.label", { n: b?.unread ?? 0 })}
         aria-expanded={open}
         onClick={async () => {
-          setOpen((o) => !o);
-          if (!open && b?.unread) setB(await api<Bell>("/notifications/read", { body: {} }).catch(() => b));
+          const opening = !open;
+          setOpen(opening);
+          if (!opening) return;
+          // Fresh list first; then mark what's shown as read (anything newer stays unread).
+          const fresh = await api<Bell>("/notifications").catch(() => b);
+          setB(fresh);
+          if (fresh?.unread && fresh.items[0]) setB(await api<Bell>("/notifications/read", { body: { upToId: fresh.items[0].id } }).catch(() => fresh));
         }}
       >
         🔔{b?.unread ? <span className="bell-count">{b.unread}</span> : null}

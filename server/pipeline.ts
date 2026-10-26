@@ -541,7 +541,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     for (const p of plan) {
       try {
         const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client, automatic: true });
-        const res = await executeImport(ip);
+        const res = await executeImport(ip, { grabId: row.id });
         const bad = res.find((r) => !r.done);
         if (bad || !res.length) return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
       } catch (e) {

@@ -18,26 +18,37 @@ export function eventOf(kind: string, why: string, detail: unknown): NotifyEvent
   if (kind === "grab") return "grabbed";
   if (kind === "import") return d.final || (!d.grabId && /^Imported /.test(why)) ? "imported" : null;
   if (kind === "fail" || kind === "verify-fail") return "failed";
-  if (kind === "info" && /^Grabs paused by|^Download-folder rule .* pauses/.test(why)) return "paused";
+  if (kind === "info" && /^Grabs paused by/.test(why)) return "paused"; // not the "no longer pauses" message
   return null;
 }
 
 let sentAt: number[] = [];
+let chain: Promise<unknown> = Promise.resolve();
 
-/** Sends one notification to the configured channels (at most 30 a minute; failures are noted, never thrown). */
-export async function send(ev: NotifyEvent, title: string, body: string, deps = { fetch }) {
+/**
+ * Sends one notification to the configured channels, one at a time (Discord allows only a few per second). Grabbed
+ * and imported are capped at 30 a minute; failed and paused always go out. Failures are noted, never thrown.
+ */
+export function send(ev: NotifyEvent, title: string, body: string, deps = { fetch }): Promise<{ channel: string; ok: boolean; why: string }[]> {
+  const p = chain.then(() => sendNow(ev, title, body, deps));
+  chain = p.catch(() => undefined);
+  return p;
+}
+
+async function sendNow(ev: NotifyEvent, title: string, body: string, deps: { fetch: typeof fetch }) {
   const s = getSettings().notify;
-  if (!s.events[ev]) return [];
+  if (!s.events[ev] || (!s.discordWebhook && !s.ntfyUrl)) return [];
   const now = Date.now();
   sentAt = sentAt.filter((t) => now - t < 60_000);
-  if (sentAt.length >= 30) return [];
+  if (sentAt.length >= 30 && (ev === "grabbed" || ev === "imported")) return [];
   sentAt.push(now);
   const head = `${ICON[ev]} ${TITLE[ev]}${title ? `: ${title}` : ""}`;
   const out: { channel: string; ok: boolean; why: string }[] = [];
   if (s.discordWebhook) {
     try {
-      const r = await deps.fetch(s.discordWebhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "AnimeArr", content: `**${head}**\n${body}`.slice(0, 1900) }), signal: AbortSignal.timeout(15_000) });
+      const r = await deps.fetch(s.discordWebhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "AnimeArr", content: `**${head}**\n${body}`.slice(0, 1900), allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(15_000) }); // release names can't ping anyone
       out.push({ channel: "discord", ok: r.ok, why: r.ok ? "sent" : `HTTP ${r.status}` });
+      if (r.status === 429) await new Promise((res) => setTimeout(res, 2000)); // back off a little
     } catch (e) {
       out.push({ channel: "discord", ok: false, why: (e as Error).message });
     }
@@ -66,7 +77,8 @@ export function onDecision(kind: string, d: { title?: string; why: string; detai
   } catch {
     /* the bell is best effort */
   }
-  void send(ev, d.title ?? "", d.why).catch(() => undefined);
+  // After the caller's work (and any transaction) is done.
+  setImmediate(() => void send(ev, d.title ?? "", d.why).then((r) => r.filter((x) => !x.ok).forEach((x) => console.warn(`notification to ${x.channel} failed: ${x.why}`)), () => undefined));
 }
 
 export function bell(limit = 30) {
@@ -75,6 +87,7 @@ export function bell(limit = 30) {
   return { unread, items: rows.map((r) => ({ ...r, read: !!r.read })) };
 }
 
-export function markRead() {
-  db.prepare("UPDATE notifications SET read = 1 WHERE read = 0").run();
+/** Marks what the user has seen (up to the newest shown) as read; anything newer stays unread. */
+export function markRead(upToId: number) {
+  db.prepare("UPDATE notifications SET read = 1 WHERE read = 0 AND id <= ?").run(upToId);
 }

@@ -767,6 +767,7 @@ const en = {
   "cut.pickSearch": "Search AniList",
   "cut.pick": "This one",
   "cut.season": "as season",
+  "cut.offset": "starting after episode",
   "cut.matched": "Matched; the plan is updated",
   "cut.ackSpecials": "OK, leave the specials untracked",
   "cut.acked": "Confirmed",

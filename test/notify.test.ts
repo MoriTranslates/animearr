@@ -24,9 +24,10 @@ test("which activity entries notify", () => {
 test("the bell records them; Discord and ntfy get them when set; events can be switched off", async () => {
   logDecision("grab", { title: "Frieren", why: "Sent Frieren S01E05 to SABnzbd" });
   assert.equal(bell().unread, 1);
-  updateSettings({ notify: { discordWebhook: "https://example.com/not-discord", ntfyUrl: "http://169.254.169.254/x" } });
-  assert.equal(getSettings().notify.discordWebhook, "", "only Discord webhook URLs");
-  assert.equal(getSettings().notify.ntfyUrl, "", "no link-local addresses");
+  assert.throws(() => updateSettings({ notify: { discordWebhook: "https://example.com/not-discord" } }), /Discord webhook/);
+  assert.throws(() => updateSettings({ notify: { ntfyUrl: "http://169.254.169.254/x" } }), /ntfy/);
+  updateSettings({ notify: { discordWebhook: "https://ptb.discord.com/api/v10/webhooks/1/abc?thread_id=2" } });
+  assert.equal(getSettings().notify.discordWebhook, "https://ptb.discord.com/api/v10/webhooks/1/abc?thread_id=2");
   patchSettings((s) => ({ ...s, notify: { ...s.notify, discordWebhook: "https://discord.com/api/webhooks/1/abc", ntfyUrl: "https://ntfy.sh/animearr", ntfyToken: "tk" } }));
   const calls: { url: string; init: RequestInit }[] = [];
   const fetch = (async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response("", { status: 200 }))) as unknown as typeof globalThis.fetch;
@@ -35,4 +36,6 @@ test("the bell records them; Discord and ntfy get them when set; events can be s
   assert.equal((calls[1].init.headers as Record<string, string>).Authorization, "Bearer tk");
   patchSettings((s) => ({ ...s, notify: { ...s.notify, events: { ...s.notify.events, imported: false } } }));
   assert.deepEqual(await send("imported", "x", "y", { fetch }), []);
+  assert.equal(eventOf("info", 'Download-folder rule "Hard" no longer pauses grabs', {}), null, "a resume isn't a pause");
+  patchSettings((s) => ({ ...s, notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: s.notify.events } })); // nothing real configured after this test
 });

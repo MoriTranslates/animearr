@@ -133,9 +133,9 @@ export function Cutover() {
                       initial={s.title}
                       movie={false}
                       onClose={() => setPicking(null)}
-                      onPick={async (anilistId, season) => {
+                      onPick={async (anilistId, season, offset) => {
                         setPicking(null);
-                        await run("/cutover/match-show", { tvdbId: s.tvdbId, anilistId, season }, () => t("cut.matched"));
+                        await run("/cutover/match-show", { tvdbId: s.tvdbId, anilistId, season, offset }, () => t("cut.matched"));
                       }}
                     />
                   )}
@@ -235,15 +235,21 @@ export function Cutover() {
 interface Hit { anilistId: number; title: string; romaji: string | null; kind: string | null; year: number | null; episodes: number | null }
 
 /** A small AniList picker (search, pick one), for matching a blocked show or movie by hand. */
-function AniPicker({ initial, movie, onPick, onClose }: { initial: string; movie: boolean; onPick: (anilistId: number, season: number) => Promise<void>; onClose: () => void }) {
+function AniPicker({ initial, movie, onPick, onClose }: { initial: string; movie: boolean; onPick: (anilistId: number, season: number, offset: number) => Promise<void>; onClose: () => void }) {
+  const toast = useToast();
   const [q, setQ] = useState(initial);
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [season, setSeason] = useState(1);
+  const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
   const search = async () => {
     setBusy(true);
     try {
-      setHits((await api<{ results: Hit[] }>(`/add/search?q=${encodeURIComponent(q)}`)).results.filter((h) => (movie ? h.kind === "MOVIE" : h.kind !== "MOVIE")));
+      const r = await api<{ results: Hit[]; anilist: string }>(`/add/search?q=${encodeURIComponent(q)}`);
+      if (r.anilist === "busy" || r.anilist === "error") toast(t("add.busy"), true);
+      setHits(r.results.filter((h) => (movie ? h.kind === "MOVIE" : h.kind !== "MOVIE")));
+    } catch (e) {
+      toast((e as Error).message, true);
     } finally {
       setBusy(false);
     }
@@ -257,10 +263,12 @@ function AniPicker({ initial, movie, onPick, onClose }: { initial: string; movie
           {t("cut.pickSearch")}
         </button>
         {!movie && (
-          <label className="row small">
+          <span className="row small">
             {t("cut.season")}
-            <input type="number" min={1} max={99} value={season} onChange={(e) => setSeason(Number(e.target.value) || 1)} style={{ width: 60 }} />
-          </label>
+            <input type="number" min={1} max={99} value={season} onChange={(e) => setSeason(Number(e.target.value) || 1)} style={{ width: 60 }} aria-label={t("cut.season")} />
+            {t("cut.offset")}
+            <input type="number" min={0} max={5000} value={offset} onChange={(e) => setOffset(Math.max(0, Number(e.target.value) || 0))} style={{ width: 70 }} aria-label={t("cut.offset")} />
+          </span>
         )}
         <button className="small ghost" onClick={onClose}>
           {t("common.cancel")}
@@ -270,7 +278,7 @@ function AniPicker({ initial, movie, onPick, onClose }: { initial: string; movie
       <ul className="small">
         {hits?.slice(0, 10).map((h) => (
           <li key={h.anilistId} className="row">
-            <button className="small" disabled={busy} onClick={async () => (setBusy(true), await onPick(h.anilistId, season).finally(() => setBusy(false)))}>
+            <button className="small" disabled={busy} onClick={async () => (setBusy(true), await onPick(h.anilistId, season, offset).finally(() => setBusy(false)))}>
               {t("cut.pick")}
             </button>
             <span>

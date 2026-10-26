@@ -432,7 +432,7 @@ function setPerms(dir: string) {
  * `dryRun` (then it only reports). Order per item: new file in place under a temporary name → old file (and its
  * sidecars) to the bin → temporary name → final name; if the last step fails the old file comes back.
  */
-export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; only?: string[] } = {}) {
+export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; only?: string[]; grabId?: number } = {}) {
   const series = seriesRow(plan.tvdbId);
   if (!series) throw err("Unknown series", 404);
   return placeItems(plan.items, {
@@ -460,7 +460,7 @@ export const fileLink = (arrPath: string) => {
  * temporary name → old file (and its sidecars) to the bin → temporary name → final name; if the last step fails the old
  * file comes back.
  */
-async function placeItems(items: PlanItem[], target: { arrRoot: string; title: string; tvdbId?: number; movieId?: number; after: () => Promise<void> }, opts: { dryRun?: boolean; only?: string[] }) {
+async function placeItems(items: PlanItem[], target: { arrRoot: string; title: string; tvdbId?: number; movieId?: number; after: () => Promise<void> }, opts: { dryRun?: boolean; only?: string[]; grabId?: number }) {
   const real = !opts.dryRun;
   if (real && !getSettings().importer.allowReal) throw err("Real imports by AnimeArr's own importer aren't switched on yet (the first plan is being reviewed)", 409);
   if (real && (getSettings().importer.realBudget ?? 0) === 0) throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
@@ -518,7 +518,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
       } catch {
         /* bookkeeping only */
       }
-      logDecision("import", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`, detail: target.movieId ? { movieId: target.movieId } : undefined });
+      logDecision("import", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`, detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) } }); // a grab's import notifies once, at the end
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).
       if (did && fs.existsSync(tmp)) {
@@ -605,7 +605,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   };
 }
 
-export async function executeMovieImport(plan: MoviePlan, opts: { dryRun?: boolean } = {}) {
+export async function executeMovieImport(plan: MoviePlan, opts: { dryRun?: boolean; grabId?: number } = {}) {
   if (!opts.dryRun && !getSettings().importer.movies) throw err("Movie imports by AnimeArr's own importer aren't switched on yet (the first movie plan is being reviewed)", 409);
   const mv = cache.prepare("SELECT id, path, title FROM movies WHERE id = ?").get(plan.movieId) as { id: number; path: string; title: string } | undefined;
   if (!mv) throw err("Unknown movie", 404);

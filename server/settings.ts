@@ -294,7 +294,7 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const;
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
 const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
@@ -386,11 +386,20 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
   if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
   if (path === "notify.discordWebhook") {
     const v = String(patch ?? "").trim();
-    return v === "" || /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(v) || v === MASK ? v : undefined;
+    if (v === "" || v === MASK || /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+(?:\?[\w=&-]*)?$/.test(v)) return v;
+    throw Object.assign(new Error("That isn't a Discord webhook URL (https://discord.com/api/webhooks/…)"), { statusCode: 400 });
   }
   if (path === "notify.ntfyUrl") {
     const v = String(patch ?? "").trim().replace(/\/+$/, "");
-    return v === "" || (/^https?:\/\/[^\s/]+\/[\w-]+$/.test(v) && !/^https?:\/\/(169\.254\.|0\.|\[?fe80:)/i.test(v)) ? v : undefined;
+    if (v === "") return v;
+    let u: URL | null = null;
+    try {
+      u = new URL(v);
+    } catch {
+      u = null;
+    }
+    if (u && /^https?:$/.test(u.protocol) && !u.username && !u.password && !u.search && !u.hash && u.pathname.length > 1 && !/^(169\.254\.|0\.|\[?fe80:|\[::ffff:169\.254)/i.test(u.hostname)) return v;
+    throw Object.assign(new Error("That isn't an ntfy topic URL (e.g. https://ntfy.sh/my-topic)"), { statusCode: 400 });
   }
   if (path === "downloads.rules") {
     if (!Array.isArray(patch)) return undefined;

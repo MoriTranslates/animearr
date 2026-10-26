@@ -595,9 +595,9 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
 // ---------------------------------------------------------------- notifications (bell + test)
 
 app.get("/api/notifications", async () => bell());
-app.post("/api/notifications/read", async () => {
+app.post<{ Body: { upToId?: number } }>("/api/notifications/read", async (req) => {
   writable();
-  markRead();
+  markRead(Number(req.body?.upToId) || 0);
   return bell();
 });
 app.post("/api/notifications/test", async () => {
@@ -626,19 +626,19 @@ app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; acceptSpecials?: boo
   invalidateIndex();
   return { results: out };
 });
-app.post<{ Body: { tvdbId: number; anilistId: number; season?: number; offset?: number } }>("/api/cutover/match-show", async (req) => {
+app.post<{ Body: { tvdbId: number; anilistId: number; season?: number; offset?: number; force?: boolean } }>("/api/cutover/match-show", async (req) => {
   writable();
   const b = req.body ?? ({} as never);
-  return matchShow(id(b.tvdbId), id(b.anilistId), Number(b.season ?? 1), Number(b.offset ?? 0));
+  return matchShow(id(b.tvdbId), id(b.anilistId), Number(b.season ?? 1), Number(b.offset ?? 0), undefined, { force: b.force === true });
 });
 app.post<{ Body: { movieId: number; anilistId: number } }>("/api/cutover/match-movie", async (req) => {
   writable();
-  matchMovieManual(id(req.body?.movieId), id(req.body?.anilistId));
+  await matchMovieManual(id(req.body?.movieId), id(req.body?.anilistId));
   return { ok: true };
 });
 app.post<{ Body: { anilistId: number } }>("/api/cutover/unmatch", async (req) => {
   writable();
-  unmatch(id(req.body?.anilistId));
+  await unmatch(id(req.body?.anilistId));
   return { ok: true };
 });
 app.post<{ Body: { tvdbId: number; on?: boolean } }>("/api/cutover/ack-specials", async (req) => {
