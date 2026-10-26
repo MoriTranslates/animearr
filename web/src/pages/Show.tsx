@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
-import { CaptionsOff, Check, Download, LayoutGrid, List, ListChecks } from "lucide-react";
+import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks } from "lucide-react";
 import { Ring } from "../posters";
 import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
@@ -137,7 +137,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   ];
 
   return (
-    <section>
+    <section className="show-page" style={showVars(h.color)}>
       {/* ---------------- header: what the show is, how complete it is, and its one main action */}
       <header className="kv-hero" style={showVars(h.color)}>
         {h.banner && <span className="hero-bgart" style={{ backgroundImage: `url(${thumbUrl(h.banner, "xl")})` }} aria-hidden="true" />}
@@ -198,7 +198,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 <SplitButton label={`⚡ ${t("show.searchReleases")}`} onClick={() => navigate(`/search?tvdbId=${tvdbId}`)} items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]} />
               )}
               <button className="glass-btn" onClick={() => setPanel("watch")} aria-haspopup="dialog">
-                {t("profiles.watchAs")}: {t(`mode.${h.profile.watchMode}` as I18nKey)} · {h.profile.name}
+                <Captions className="lucide" aria-hidden="true" />
+                <span className="hide-phone">{t("profiles.watchAs")}:</span> {t(`mode.${h.profile.watchMode}` as I18nKey)}
+                <span className="hide-phone"> · {h.profile.name}</span>
+                <ChevronDown className="lucide" aria-hidden="true" />
               </button>
             </div>
           </div>

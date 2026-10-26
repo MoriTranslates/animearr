@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Bell as BellIcon } from "lucide-react";
 import { FixButtons } from "./fixes";
 import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
@@ -28,7 +29,7 @@ export function BellButton() {
   return (
     <div className="bell" ref={ref}>
       <button
-        className="ghost small"
+        className="icon-btn bell-btn"
         aria-label={t("bell.label", { n: b?.unread ?? 0 })}
         aria-expanded={open}
         onClick={async () => {
@@ -41,7 +42,8 @@ export function BellButton() {
           if (fresh?.unread && fresh.items[0]) setB(await api<Bell>("/notifications/read", { body: { upToId: fresh.items[0].id } }).catch(() => fresh));
         }}
       >
-        🔔{b?.unread ? <span className="bell-count">{b.unread}</span> : null}
+        <BellIcon className="lucide" aria-hidden="true" />
+        {b?.unread ? <span className="bell-count">{b.unread > 99 ? "99+" : b.unread}</span> : null}
       </button>
       {open && (
         <div className="bell-pop card pad stack" role="dialog" aria-label={t("bell.title")}>

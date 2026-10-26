@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ListFilter } from "lucide-react";
+import { seasonOf } from "../season";
+import { SeasonHeader } from "../seasonal";
 import { api, store, sxe } from "../api";
 import { navigate, Link } from "../App";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
@@ -99,6 +102,7 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
   };
   const step = (dir: -1 | 1) => setAnchor((a) => (view === "month" ? new Date(new Date(a).getFullYear(), new Date(a).getMonth() + dir, 1).getTime() : addDays(a, dir * 7)));
   const openEntry = (e: Entry) => (e.type === "episode" ? setOpen(e.episodeId) : navigate(`/movie/${e.movieId}`));
+  const season = seasonOf(anchor);
   const title =
     view === "month"
       ? new Date(anchor).toLocaleDateString(undefined, { month: "long", year: "numeric" })
@@ -107,45 +111,49 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
   return (
     <section>
       {!compact && (
-        <>
-          <h1>{t("cal.title")}</h1>
-          <p className="muted">{t("cal.intro")}</p>
-          <div className="cal-toolbar">
-            <div className="seg" role="group" aria-label={t("cal.view")}>
-              {(["month", "week", "agenda"] as View[]).map((v) => (
-                <button key={v} className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => pick(v)}>
-                  {t(`cal.view.${v}` as I18nKey)}
-                </button>
-              ))}
-            </div>
-            {view !== "agenda" && (
-              <div className="row cal-nav">
-                <button className="small" aria-label={t("cal.prev")} onClick={() => step(-1)}>
-                  ‹
-                </button>
-                <button className="small" onClick={() => setAnchor(Date.now())}>
-                  {t("cal.today")}
-                </button>
-                <button className="small" aria-label={t("cal.next")} onClick={() => step(1)}>
-                  ›
-                </button>
-                <strong className="cal-title">{title}</strong>
+        <SeasonHeader
+          compact
+          eyebrow={t("cal.title")}
+          title={view === "agenda" ? t("cal.view.agenda") : title}
+          sub={t("cal.headerSub", { season: t(`season.${season.key}` as I18nKey), year: season.year, week: season.week, weeks: season.weeks, n: entries.length })}
+          right={
+            <div className="cal-controls">
+              <div className="seg seg-accent" role="group" aria-label={t("cal.view")}>
+                {(["month", "week", "agenda"] as View[]).map((v) => (
+                  <button key={v} className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => pick(v)}>
+                    {t(`cal.view.${v}` as I18nKey)}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        </>
-      )}
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={managedOnly}
-          onChange={(e) => {
-            setManagedOnly(e.target.checked);
-            store.set("calManagedOnly", e.target.checked);
-          }}
+              {view !== "agenda" && (
+                <span className="row cal-nav">
+                  <button className="icon-btn" aria-label={t("cal.prev")} onClick={() => step(-1)}>
+                    <ChevronLeft className="lucide" aria-hidden="true" />
+                  </button>
+                  <button className="small cal-today" onClick={() => setAnchor(Date.now())}>
+                    {t("cal.today")}
+                  </button>
+                  <button className="icon-btn" aria-label={t("cal.next")} onClick={() => step(1)}>
+                    <ChevronRight className="lucide" aria-hidden="true" />
+                  </button>
+                </span>
+              )}
+              <button
+                className={`icon-btn${managedOnly ? " on" : ""}`}
+                aria-pressed={managedOnly}
+                aria-label={t("cal.managed")}
+                title={t("cal.managed")}
+                onClick={() => {
+                  setManagedOnly(!managedOnly);
+                  store.set("calManagedOnly", !managedOnly);
+                }}
+              >
+                <ListFilter className="lucide" aria-hidden="true" />
+              </button>
+            </div>
+          }
         />
-        {t("cal.managed")}
-      </label>
+      )}
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
       {!current && !d.error && <Spinner label={t("app.loading")} />}
       {current && view === "agenda" && <Agenda byDay={byDay} compact={compact} onOpen={openEntry} />}
@@ -162,7 +170,7 @@ const MOVIE_STATUS: Record<string, "good" | "bad" | "accent" | "info" | "warn"> 
 /** One entry: poster thumb, show (or movie), SxxEyy (or release kind), time, worded status. */
 function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) => void; dense?: boolean }) {
   return (
-    <button className={`agenda-entry card${dense ? " dense" : ""}${e.type === "movie" ? " movie" : ""}`} onClick={() => onOpen(e)}>
+    <button className={`agenda-entry card${dense ? " dense" : ""}${e.type === "movie" ? " movie" : ""} st-${e.status}`} onClick={() => onOpen(e)}>
       <Cover src={e.cover} alt={e.type === "episode" ? e.series : e.title} size="sm" />
       <span className="agenda-text">
         <span className="strong clamp2">
@@ -240,15 +248,21 @@ function Week({ from, byDay, onOpen }: { from: number; byDay: Map<number, Entry[
     const el = strip.current?.querySelector<HTMLElement>(".week-day.today");
     if (strip.current) strip.current.scrollLeft = el ? el.offsetLeft - strip.current.offsetLeft : 0;
   }, [from]);
+  const busiest = Math.max(0, ...Array.from({ length: 7 }, (_, i) => (byDay.get(addDays(from, i)) ?? []).length));
   return (
     <div className="week" ref={strip}>
       {Array.from({ length: 7 }, (_, i) => addDays(from, i)).map((day) => {
         const list = byDay.get(day) ?? [];
         return (
-          <div key={day} className={`week-day${day === today ? " today" : ""}`}>
-            <h2 className="agenda-date">
-              {new Date(day).toLocaleDateString(undefined, { weekday: "short" })} <span className="week-num">{new Date(day).getDate()}</span>
+          <div key={day} className={`week-day${day === today ? " today" : ""}`} style={{ "--heat": Math.min(1, list.length / Math.max(4, busiest)) } as React.CSSProperties}>
+            <h2 className="week-hd">
+              <span className="eyebrow">{new Date(day).toLocaleDateString(undefined, { weekday: "short" })}</span>
+              <span className="week-num">{new Date(day).getDate()}</span>
+              <span className="muted small week-count">{list.length ? t("cal.eps", { n: list.length }) : ""}</span>
             </h2>
+            <span className="week-bar" aria-hidden="true">
+              <i style={{ width: `${Math.round((list.length / Math.max(1, busiest)) * 100)}%` }} />
+            </span>
             {!list.length && <p className="muted small">—</p>}
             <ul className="plain">
               {list.map((e) => (

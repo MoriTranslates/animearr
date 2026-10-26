@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { LibraryHead } from "./Shows";
 import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
-import { Link } from "../App";
+import { Link , navigate } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Skeleton, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { PosterCard } from "../posters";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
 
@@ -22,6 +23,7 @@ export function Movies() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [selecting, setSelecting] = useState(false);
   const toast = useToast();
   const setWanted = async (ids: number[], wanted: boolean) => {
     try {
@@ -52,43 +54,49 @@ export function Movies() {
         <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("movies.searchPlaceholder")} aria-label={t("movies.searchPlaceholder")} />
       </div>
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
-      {d.loading && !d.data && <Spinner label={t("app.loading")} />}
+      {d.loading && !d.data && <Skeleton kind="posters" />}
       {d.data && !d.data.length && <Empty>{t("movies.none")}</Empty>}
       {d.data && !!d.data.length && !shown.length && <Empty>{t("shows.empty")}</Empty>}
-      <div className="poster-grid">
-        {shown.map((m) => (
-          <article key={m.id} className={`poster-card${sel.has(m.id) ? " selected" : ""}`}>
-            <input
-              className="poster-check"
-              type="checkbox"
-              checked={sel.has(m.id)}
-              onChange={() =>
-                setSel((x) => {
-                  const n = new Set(x);
-                  if (n.has(m.id)) n.delete(m.id);
-                  else n.add(m.id);
-                  return n;
-                })
-              }
-              aria-label={m.title}
-            />
-            <Link to={`/movie/${m.id}`} className="poster-link card-link">
-              <Cover src={m.cover} alt={m.title} size="lg" />
-              <span className="poster-title clamp2">
-                {m.title}
-                {m.year ? ` (${m.year})` : ""}
-              </span>
-            </Link>
-            <div className="poster-body">
-              <div className="chips">
-                <Chip tone={STATUS_TONE[m.status]}>{t(`movies.status.${m.status}`)}</Chip>
-                {m.verdict?.ok === false && <Chip tone="bad">✕ {t("movies.notProfile")}</Chip>}
-                {!m.monitored && <Chip tone="info">{t("movies.notWanted")}</Chip>}
-                {!m.allowed && <Chip tone="warn">{t("chip.outsideRoot")}</Chip>}
-              </div>
-            </div>
-          </article>
-        ))}
+      {d.data && !!shown.length && (
+        <div className="row between">
+          <span className="muted small">{t("shows.count", { shown: shown.length, total: d.data.length })}</span>
+          <button className={`small${selecting ? " on" : ""}`} aria-pressed={selecting} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
+            {selecting ? t("ep.selectDone") : t("ep.select")}
+          </button>
+        </div>
+      )}
+      <div className="poster-grid lib-grid">
+        {shown.map((m) => {
+          const toggleSel = () =>
+            setSel((x) => {
+              const n = new Set(x);
+              if (n.has(m.id)) n.delete(m.id);
+              else n.add(m.id);
+              return n;
+            });
+          return (
+            <article key={m.id} className={`lib-card${sel.has(m.id) ? " selected" : ""}`}>
+              {selecting && <input className="poster-check" type="checkbox" checked={sel.has(m.id)} onChange={toggleSel} aria-label={m.title} />}
+              <PosterCard
+                title={`${m.title}${m.year ? ` (${m.year})` : ""}`}
+                cover={m.cover}
+                status={m.status === "have" ? (m.verdict?.ok === false ? "attention" : null) : m.status === "unreleased" ? "unaired" : m.status}
+                href={`/movie/${m.id}`}
+                onClick={() => (selecting ? toggleSel() : navigate(`/movie/${m.id}`))}
+                width={0}
+                meta={
+                  (m.verdict?.ok === false || !m.monitored || !m.allowed) && (
+                    <span className="lib-flags">
+                      {m.verdict?.ok === false && <span className="tag warn">{t("movies.notProfile")}</span>}
+                      {!m.monitored && <span className="tag neutral">{t("movies.notWanted")}</span>}
+                      {!m.allowed && <span className="tag warn">{t("chip.outsideRoot")}</span>}
+                    </span>
+                  )
+                }
+              />
+            </article>
+          );
+        })}
       </div>
       {sel.size > 0 && (
         <div className="bulkbar card">

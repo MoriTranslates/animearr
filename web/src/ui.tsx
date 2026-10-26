@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Zap } from "lucide-react";
 import { fixesForMessage, runFix, type Flag } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { exclaimMode } from "./appearance";
@@ -258,7 +259,14 @@ export function SplitButton({ label, onClick, items, disabled, primary = true, s
   return (
     <span className={`split${primary ? " primary" : ""}${small ? " small" : ""}`}>
       <button type="button" className={`${primary ? "primary" : ""}${small ? " small" : ""}`} disabled={disabled} onClick={onClick}>
-        {label}
+        {typeof label === "string" && label.startsWith("⚡ ") ? (
+          <>
+            <Zap className="lucide" aria-hidden="true" />
+            {label.slice(2)}
+          </>
+        ) : (
+          label
+        )}
       </button>
       <Menu items={items} trigger="▾" label={menuLabel ?? t("common.moreOptions")} up={up} />
     </span>

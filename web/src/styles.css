@@ -974,3 +974,80 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
   [data-font="comic"] .eyebrow { display: inline-block; transform: rotate(-1.5deg); }
   [data-font="comic"] .toast { transform: rotate(-1.2deg); }
 }
+
+/* fixes after the first look */
+.season[open] > .season-head::before, .season > .season-head::-webkit-details-marker { content: none; display: none; }
+.bell-btn { position: relative; color: var(--text); }
+.bell-btn .bell-count { position: absolute; top: -6px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
+.split > button .lucide { width: 16px; height: 16px; }
+.glass-btn { display: inline-flex; align-items: center; gap: 8px; }
+.glass-btn .lucide { width: 16px; height: 16px; }
+@media (max-width: 760px) {
+  .hero-actions { flex-wrap: nowrap; }
+  .hero-actions .glass-btn { flex: none; }
+}
+
+/* ================================================================ calendar (A+C): seasonal header, heat-tinted week */
+.cal-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.seg-accent { background: color-mix(in srgb, var(--bg) 55%, transparent); border-radius: 12px; padding: 3px; gap: 2px; border: 1px solid var(--line-2); }
+.seg-accent button { border-radius: 9px !important; border: 0 !important; padding: 5px 14px; min-height: 0 !important; color: var(--muted); }
+.seg-accent button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.cal-today { border-radius: 10px; }
+.week { gap: 10px; }
+.week-day { border-radius: 18px; padding: 12px 10px; min-height: 60vh; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) calc(var(--heat, 0) * 14%), var(--panel)), var(--panel)); border: 1px solid var(--line); }
+.week-day.today { border-color: color-mix(in srgb, var(--accent) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent) inset; }
+.week-hd { display: flex; align-items: baseline; gap: 6px; font-family: var(--font); margin: 0; }
+.week-hd .eyebrow { color: var(--muted); }
+.week-day.today .week-hd .eyebrow { color: var(--accent-2); }
+.week-num { font-family: var(--display); font-size: 22px; font-weight: 700; }
+.week-count { margin-left: auto; }
+.week-bar { display: block; height: 3px; border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow: hidden; margin: 6px 0 8px; }
+.week-bar i { display: block; height: 100%; background: var(--accent); }
+.agenda-entry.dense { background: color-mix(in srgb, var(--panel-2) 85%, transparent); border-radius: 12px; border: 1px solid transparent; }
+.agenda-entry.dense:hover { border-color: var(--line-2); }
+.agenda-entry.dense .agenda-status { display: none; }
+.agenda-entry.dense.st-missing { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.agenda-entry.dense.st-missing .agenda-text .muted { color: var(--bad); }
+.agenda-entry.dense.st-downloading { border-color: color-mix(in srgb, var(--info) 45%, transparent); }
+.agenda-entry.dense.st-have .agenda-text .muted { color: var(--good); }
+@media (max-width: 760px) { .week-day { min-height: 50vh; } .cal-controls { justify-content: flex-start; } }
+
+/* ================================================================ queue cards (A+C) */
+.queue-seg { margin-top: 10px; width: 100%; max-width: 420px; display: grid; grid-template-columns: 1fr 1fr; }
+.queue-seg button { padding: 8px 14px; font-size: 14px; }
+.qcard { padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: var(--radius-lg); }
+.qcard.attention { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.qhead { display: flex; align-items: center; gap: 14px; }
+.qposter { width: 44px; height: 64px; border-radius: 9px; object-fit: cover; flex: none; background: var(--panel-2); box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.7); }
+.qtitle { flex: 1; min-width: 0; }
+.qtitle .strong { font-family: var(--display); font-size: 15px; }
+.qpct { font-family: var(--display); font-weight: 700; font-size: 22px; }
+.qbar { height: 6px; border-radius: 9px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.qbar i { display: block; height: 100%; border-radius: 9px; background: var(--show); }
+@media (prefers-reduced-motion: no-preference) { .qbar i { transition: width 0.5s var(--ease); } }
+.qmeta { flex-wrap: nowrap; }
+.qclient { flex-wrap: nowrap; gap: 4px; }
+.qerr { display: flex; gap: 6px; align-items: flex-start; }
+.qerr .lucide { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.qcard .fix-buttons button:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+/* ================================================================ library grids: posters with overlay titles */
+.lib-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 16px; }
+.lib-card { position: relative; min-width: 0; }
+.lib-card .pcard { width: 100%; }
+.lib-card.selected .pimg { box-shadow: 0 0 0 3px var(--accent); }
+.lib-card .poster-check { position: absolute; top: 8px; left: 8px; z-index: 3; width: 22px; height: 22px; }
+.lib-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 760px) { .lib-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; } .lib-grid .pimg .ov { font-size: 11px; } }
+
+/* ================================================================ episode sheet with the show's art */
+.sheet { padding: 0; overflow-x: hidden; }
+.sheet > .stack, .sheet > .error, .sheet > .loading { padding: 0 var(--space-4) var(--space-4); }
+.sh-hero { position: relative; min-height: 170px; display: flex; align-items: flex-end; padding: 16px; overflow: hidden; isolation: isolate; }
+.sh-art { position: absolute; inset: 0; background-size: cover; background-position: center 25%; z-index: -2; }
+.sh-hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, color-mix(in srgb, var(--scrim) 15%, transparent), color-mix(in srgb, var(--panel) 82%, transparent) 50%, var(--panel) 94%), radial-gradient(300px 160px at 20% 100%, color-mix(in srgb, var(--show) 30%, transparent), transparent); }
+.sh-hero .sheet-grip { position: absolute; top: 8px; left: 50%; margin-left: -22px; background: rgb(255 255 255 / 0.55); }
+.sh-close { position: absolute; top: 10px; right: 10px; background: rgb(0 0 0 / 0.35) !important; border-radius: 50%; color: #fff; }
+.sh-title { display: flex; flex-direction: column; gap: 4px; text-shadow: 0 1px 10px rgb(0 0 0 / 0.6); }
+.sh-title h2 { font-size: 22px; font-weight: 700; }
+.sheet .sheet-actions .split.primary > button, .sheet .sheet-actions .split.primary .menu-trigger { background: var(--show); border-color: var(--show); color: var(--show-ink); }

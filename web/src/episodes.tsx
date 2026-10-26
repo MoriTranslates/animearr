@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CaptionsOff } from "lucide-react";
 import { api, fmtSize, sxe } from "./api";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Chip, Confirm, dateTime, Spinner, SplitButton, useLoad, useToast, Why } from "./ui";
+import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why } from "./ui";
+import { showVars } from "./season";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -42,7 +44,13 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
       </span>
     );
   }
-  if (e.status === "have" && e.file) label = `${label} · ${t("ep.noSubs", { lang: lang.toUpperCase() })}`;
+  if (e.status === "have" && e.file)
+    return (
+      <span className="tag warn" title={t("ep.status.have")}>
+        <CaptionsOff className="lucide" aria-hidden="true" />
+        {t("ep.noSubsShort", { lang: lang.toUpperCase() })}
+      </span>
+    );
   return (
     <Chip tone={e.status === "have" && e.file && !e.file.subs.includes(lang) && !e.file.audio.includes(lang) ? "warn" : TONE[e.status]}>
       <span aria-hidden="true">{ICON[e.status]} </span>
@@ -217,6 +225,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
 // ---------------------------------------------------------------- the episode sheet (bottom sheet on phones, side panel on desktop)
 
 interface Detail extends EpisodeRow {
+  art?: { cover: string | null; banner: string | null; color: string | null };
   own?: { audio: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; channels: number | null }[]; subs: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; partial: boolean }[]; sidecars: { file: string; lang: string | null }[] } | null;
   tvdbId: number;
   seriesTitle: string;
@@ -274,17 +283,18 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
   return (
     <div className="sheet-back" onClick={onClose}>
       <aside className="sheet card" role="dialog" aria-modal="true" aria-label={t("ep.details")} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-grip" aria-hidden="true" />
-        <div className="card-head">
-          <div>
-            <p className="muted small">{d?.seriesTitle}</p>
-            <h2>
-              {label} {d?.title && <span className="muted">· {d.title}</span>}
-            </h2>
-          </div>
-          <button className="icon" aria-label={t("common.close")} onClick={onClose}>
+        <div className="sh-hero" style={showVars(d?.art?.color)}>
+          {(d?.art?.banner || d?.art?.cover) && <span className="sh-art" style={{ backgroundImage: `url(${thumbUrl((d.art.banner ?? d.art.cover)!, d.art.banner ? "xl" : "md")})` }} aria-hidden="true" />}
+          <div className="sheet-grip" aria-hidden="true" />
+          <button className="icon sh-close" aria-label={t("common.close")} onClick={onClose}>
             ✕
           </button>
+          <div className="sh-title">
+            <span className="eyebrow show-eyebrow">
+              {d ? [d.seriesTitle, d.season === 0 ? t("series.specials") : t("common.season", { n: d.season }), t("ep.episodeN", { n: d.episode }), d.airUtc ? new Date(d.airUtc).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ") : ""}
+            </span>
+            <h2>{d ? (d.title ?? label) : ""}</h2>
+          </div>
         </div>
         {err && <p className="error">{err}</p>}
         {!d && !err && <Spinner label={t("app.loading")} />}

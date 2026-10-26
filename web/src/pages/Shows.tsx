@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
 import { Link, navigate } from "../App";
-import { ShowLink } from "../episodes";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { Confirm, Empty, ErrorBox, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
+import { PosterCard } from "../posters";
 import { ScopeEditor } from "../scope";
 
 type Filter = "airing" | "continuing" | "managed" | "all";
@@ -17,6 +17,7 @@ export function Shows({ status }: { status: Status }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [selecting, setSelecting] = useState(false);
 
   const tags = useMemo(() => [...new Set((data.data?.series ?? []).flatMap((s) => s.tags.map(String)))].sort(), [data.data]);
   const shown = useMemo(() => {
@@ -104,15 +105,20 @@ export function Shows({ status }: { status: Status }) {
         </div>
       </div>
       {data.error && <ErrorBox error={data.error} retry={data.reload} />}
-      {data.loading && !data.data && <Spinner label={t("app.loading")} />}
+      {data.loading && !data.data && <Skeleton kind="posters" />}
       {data.data && (
         <>
           <div className="row between">
             <span className="muted small">{t("shows.count", { shown: shown.length, total: data.data.series.length })}</span>
             <div className="row">
-              <button className="small" onClick={() => setSel(new Set(shown.map((s) => s.tvdbId)))}>
-                {t("shows.selectAll")}
+              <button className={`small${selecting ? " on" : ""}`} aria-pressed={selecting} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
+                {selecting ? t("ep.selectDone") : t("ep.select")}
               </button>
+              {selecting && (
+                <button className="small" onClick={() => setSel(new Set(shown.map((s) => s.tvdbId)))}>
+                  {t("shows.selectAll")}
+                </button>
+              )}
               {!!sel.size && (
                 <button className="small ghost" onClick={() => setSel(new Set())}>
                   {t("shows.clear")}
@@ -121,23 +127,29 @@ export function Shows({ status }: { status: Status }) {
             </div>
           </div>
           {!shown.length && <Empty icon="▦" action={filter !== "all" ? { label: t("shows.filter.all"), run: () => setFilter("all") } : { label: t("nav.find"), run: () => navigate("/find") }}>{t("shows.empty")}</Empty>}
-          <div className="poster-grid">
+          <div className="poster-grid lib-grid">
             {shown.map((s) => (
-              <article key={s.tvdbId} className={`poster-card${sel.has(s.tvdbId) ? " selected" : ""}`}>
-                <input className="poster-check" type="checkbox" checked={sel.has(s.tvdbId)} onChange={() => toggle(s.tvdbId)} aria-label={s.title} />
-                <ShowLink tvdbId={s.tvdbId} title={s.title} className="poster-link">
-                  <Cover src={s.cover} alt={s.title} size="lg" />
-                  <span className="poster-title clamp2">{s.title}</span>
-                </ShowLink>
-                <div className="poster-body">
-                  <div className="chips">
-                    {s.managed && filter !== "managed" && <Chip tone="accent">{t("chip.managed")}{s.dryRun ? ` · ${t("chip.dryRun")}` : ""}</Chip>}
-                    {s.managed && filter === "managed" && s.dryRun && <Chip tone="accent">{t("chip.dryRun")}</Chip>}
-                    {s.airingThisSeason && filter !== "airing" && <Chip tone="good">{t("chip.airing")}</Chip>}
-                    {!s.allowed && <Chip tone="warn" title={s.path}>{t("chip.outsideRoot")}</Chip>}
-                    {s.anidb !== "matched" && <Chip tone="warn">{t("chip.unmatched")}</Chip>}
-                  </div>
-                </div>
+              <article key={s.tvdbId} className={`lib-card${sel.has(s.tvdbId) ? " selected" : ""}`}>
+                {selecting && <input className="poster-check" type="checkbox" checked={sel.has(s.tvdbId)} onChange={() => toggle(s.tvdbId)} aria-label={s.title} />}
+                <PosterCard
+                  title={s.title}
+                  cover={s.cover}
+                  managed={s.managed}
+                  status={!s.allowed || s.anidb !== "matched" ? "attention" : null}
+                  href={`/show/${s.tvdbId}`}
+                  onClick={() => (selecting ? toggle(s.tvdbId) : navigate(`/show/${s.tvdbId}`))}
+                  width={0}
+                  meta={
+                    (!s.allowed || s.anidb !== "matched" || (s.managed && s.dryRun) || (s.airingThisSeason && filter !== "airing")) && (
+                      <span className="lib-flags">
+                        {s.airingThisSeason && filter !== "airing" && <span className="tag good">{t("chip.airing")}</span>}
+                        {s.managed && s.dryRun && <span className="tag neutral">{t("chip.dryRun")}</span>}
+                        {!s.allowed && <span className="tag warn" title={s.path}>{t("chip.outsideRoot")}</span>}
+                        {s.anidb !== "matched" && <span className="tag warn">{t("chip.unmatched")}</span>}
+                      </span>
+                    )
+                  }
+                />
               </article>
             ))}
           </div>

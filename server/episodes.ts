@@ -3,6 +3,7 @@
  * delete file, re-grab, the series header and the agenda calendar.
  * Destructive actions are user-confirmed in the UI, guarded by the allowed root folders, and logged.
  */
+import { artFor } from "./home.js";
 import { anidbSpecialKind } from "./anidb.js";
 import { NATIVE_BASE } from "./native.js";
 import path from "node:path";
@@ -239,7 +240,7 @@ export function episodeDetail(episodeId: number) {
   const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 }).filter((d) => d.episodeIds.includes(episodeId)).slice(0, 30);
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
   const own = row.file?.scanned ? recordFor(row.file.path) : null;
-  return { ...row, own, tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
+  return { ...row, own, art: artFor(e.tvdb_id), tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
 }
 
 /**

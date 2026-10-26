@@ -4,7 +4,10 @@ import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { SeasonHeader } from "../seasonal";
+import { seasonOf, showVars } from "../season";
+import { FileX } from "lucide-react";
 
 interface Item {
   id: number;
@@ -20,6 +23,8 @@ interface Item {
   dryRun: boolean;
   why: string;
   error: string | null; fixes?: import("../api").Fix[];
+  cover?: string | null;
+  color?: string | null;
   progress: number | null;
   attempt: number;
   stage?: string | null;
@@ -47,15 +52,15 @@ export function Queue() {
   const [tab, setTab] = useState<"queue" | "history">(query().get("tab") === "history" ? "history" : "queue");
   return (
     <section>
-      <h1>{t("queue.title")}</h1>
-      <p className="muted">{t("queue.intro")}</p>
-      <div className="tabs" role="tablist">
-        {(["queue", "history"] as const).map((x) => (
-          <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => (setTab(x), history.replaceState(null, "", `/queue?tab=${x}`))}>
-            {t(`queue.tab.${x}`)}
-          </button>
-        ))}
-      </div>
+      <SeasonHeader compact eyebrow={`${seasonOf().kanji} ${t(`season.${seasonOf().key}` as I18nKey)} ${seasonOf().year}`} title={t("queue.title")}>
+        <div className="seg seg-accent queue-seg" role="tablist">
+          {(["queue", "history"] as const).map((x) => (
+            <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => (setTab(x), history.replaceState(null, "", `/queue?tab=${x}`))}>
+              {t(`queue.tab.${x}`)}
+            </button>
+          ))}
+        </div>
+      </SeasonHeader>
       {tab === "queue" ? (
         <>
           <Downloading onHistory={() => (setTab("history"), history.replaceState(null, "", "/queue?tab=history"))} />
@@ -86,33 +91,42 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
       {d.data.items.map((g) => {
         const pct = Math.round((g.live?.progress ?? g.progress ?? 0) * 100);
         return (
-          <article key={g.id} className="card pad stack">
-            <div className="row between no-wrap">
-              <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined}>
+          <article key={g.id} className={`card qcard${g.state === "needs-attention" ? " attention" : ""}`} style={showVars(g.color)}>
+            <div className="qhead">
+              {g.cover ? <img className="qposter" src={thumbUrl(g.cover, "sm")} alt="" width={44} height={64} /> : <span className="qposter" />}
+              <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined} className="qtitle">
                 <span className="stack">
                   <span className="strong clamp2">{g.series}</span>
-                  <span className="mono small">{g.episodes.join(", ")}</span>
+                  <span className="muted small clamp1">{g.episodes.join(", ")}</span>
                 </span>
               </ShowLink>
-              <Menu label={`${g.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => setRemove(g), hidden: !(g.state === "downloading" || g.state === "needs-attention") }]} />
+              {g.state === "downloading" && g.stage !== "waiting" && <span className="qpct tnum">{pct}%</span>}
+              {g.state !== "downloading" && <StateChip state={g.state} />}
+            </div>
+            {g.state === "downloading" && g.stage !== "waiting" && (
+              <div className="qbar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={g.series}>
+                <i style={{ width: `${pct}%` }} />
+              </div>
+            )}
+            <div className="row between qmeta">
+              <span className="muted small">
+                {g.state === "downloading" && g.stage === "waiting" ? `⇢ ${g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}` : g.live?.etaSec ? t("queue.speedEta", { speed: fmtSize(g.live.speed ?? 0), eta: eta(g.live.etaSec) }) : g.state === "downloading" ? t("queue.progressNoEta", { pct }) : ""}
+              </span>
+              <span className="row qclient">
+                <span className="muted small">
+                  {g.client === "qbittorrent" ? "qBittorrent" : g.client === "sabnzbd" ? "SABnzbd" : g.protocol}
+                  {g.live?.sizeBytes ? ` · ${fmtSize(g.live.sizeBytes)}` : ""}
+                  {g.attempt > 1 ? ` · #${g.attempt}` : ""}
+                </span>
+                <Menu label={`${g.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => setRemove(g), hidden: !(g.state === "downloading" || g.state === "needs-attention") }]} />
+              </span>
             </div>
             <ReleaseLine release={g.release} />
-            <div className="row">
-              <StateChip state={g.state} />
-              <Chip>{g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}</Chip>
-              {g.live?.sizeBytes ? <span className="muted small">{fmtSize(g.live.sizeBytes)}</span> : null}
-              {g.attempt > 1 && <span className="muted small">#{g.attempt}</span>}
-            </div>
-            {g.state === "downloading" && g.stage === "waiting" && <p className="small">⇢ {g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}</p>}
-            {g.state === "downloading" && g.stage !== "waiting" && (
-              <>
-                <div className="progressbar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                  <div style={{ width: `${pct}%` }} />
-                </div>
-                <p className="small">{g.live?.etaSec ? t("queue.progress", { pct, eta: eta(g.live.etaSec), speed: fmtSize(g.live.speed ?? 0) }) : t("queue.progressNoEta", { pct })}</p>
-              </>
+            {g.state === "needs-attention" && g.error && (
+              <p className="warn-text small qerr">
+                <FileX className="lucide" aria-hidden="true" /> {g.error}
+              </p>
             )}
-            {g.state === "needs-attention" && g.error && <p className="warn-text small">{g.error}</p>}
             <Why lines={[g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
               <FixButtons fixes={g.fixes} />

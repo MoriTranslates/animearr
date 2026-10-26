@@ -28,6 +28,15 @@ export function colorFor(tvdbId: number): string | null {
   return r?.color ?? null;
 }
 
+/** Cover, banner and colour of a show (episode sheet hero). */
+export function artFor(tvdbId: number): { cover: string | null; banner: string | null; color: string | null } {
+  const s = seriesInfo(tvdbId);
+  if (!s) return { cover: null, banner: null, color: null };
+  const aids = (JSON.parse(s.anidb_ids || "[]") as { aid: number }[]).map((a) => a.aid);
+  const rows = aids.length ? (cache.prepare(`SELECT banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")})`).all(...aids) as { banner: string | null; color: string | null }[]) : [];
+  return { cover: coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }), banner: rows.find((r) => r.banner)?.banner ?? null, color: rows.find((r) => r.color)?.color ?? null };
+}
+
 const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`;
 
 let langMemo: { at: number; v: { files: number; series: number } } | null = null;
@@ -97,7 +106,11 @@ export function homeSummary(now = Date.now()) {
     const s = seriesInfo(tvdbId);
     return { title: s?.title ?? String(tvdbId), cover: s ? coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }) : null, color: colorFor(tvdbId) };
   };
-  const downloading = active.map((g) => ({ id: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id, ...showOf(g.tvdb_id), label: epLabel(JSON.parse(g.episode_ids) as number[]), release: g.release, protocol: g.protocol, client: g.client, state: g.state, progress: g.progress ?? 0 }));
+  const movieOf = (id: number) => {
+    const m = cache.prepare("SELECT title, year, poster FROM movies WHERE id = ?").get(id) as { title: string; year: number | null; poster: string | null } | undefined;
+    return { title: m ? `${m.title}${m.year ? ` (${m.year})` : ""}` : String(id), cover: m?.poster ?? null, color: null };
+  };
+  const downloading = active.map((g) => ({ id: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id, ...(g.movie_id ? movieOf(g.movie_id) : showOf(g.tvdb_id)), label: g.movie_id ? "" : epLabel(JSON.parse(g.episode_ids) as number[]), release: g.release, protocol: g.protocol, client: g.client, state: g.state, progress: g.progress ?? 0 }));
 
   // Just arrived: what was imported in the last 7 days, newest first, one card per show+episode.
   const done = db.prepare("SELECT id, tvdb_id, movie_id, episode_ids, updated_at FROM grabs WHERE dry_run = 0 AND state = 'done' AND movie_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 60").all(now - 7 * DAY) as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; updated_at: number }[];
