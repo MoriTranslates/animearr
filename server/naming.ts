@@ -135,6 +135,7 @@ export function cleanName(s: string, opts: NamingOptions) {
   x = x
     .replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, "")
     .replace(/\.{2,}/g, ".") // Sonarr: "Mask... Again" → "Mask. Again"
+    .replace(/-{2,}/g, "-").replace(/_{2,}/g, "_") // Sonarr collapses runs of - and _
     .replace(/\s+-\s+(-\s+)+/g, " - ")
     .replace(/[ ]{2,}/g, " ")
     .replace(/\s+([\])])/g, "$1")
@@ -174,7 +175,7 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   const abs = c.episodes.map((e) => e.absolute).filter((x): x is number => !!x);
   // Like Sonarr: trailing " ", "." and "?" are trimmed from episode titles; "X (1)" + "X (2)" / "X Part 1" + "X Part 2"
   // become "X"; other multi-episode titles are joined with " + ".
-  const titles = [...new Set(c.episodes.map((e) => e.title?.replace(/[ .?]+$/, "").replace(/^[ .]+/, "")).filter((t): t is string => !!t && !/^TBA$/i.test(t)))];
+  const titles = [...new Set(c.episodes.map((e) => e.title?.replace(/[ .?]+$/, "").replace(/^[ .]+/, "")).filter((t): t is string => !!t))];
   const multiPart = /:?\s?(?:\(\d+\)|(?:Part|Pt\.?)\s?\d+)$/i;
   const cleaned = [...new Set(titles.map((t) => t.replace(multiPart, "").replace(/[ .?]+$/, "")))];
   const title = titles.length > 1 && cleaned.length === 1 && titles.every((t) => multiPart.test(t)) ? cleaned[0] : titles.join(" + ");

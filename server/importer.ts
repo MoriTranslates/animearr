@@ -108,7 +108,7 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
   const season = eps[0].season;
   const fmt = s.series_type === "anime" ? m.animeEpisodeFormat : s.series_type === "daily" ? m.dailyEpisodeFormat : m.standardEpisodeFormat;
   const parsed = parseRelease(ctx.release);
-  const titles = eps.map((e) => (e.title && !/^TBA$/i.test(e.title) ? e.title : (lookup(e.season, e.episode, e.absolute)?.title ?? null)));
+  const titles = eps.map((e) => (e.title && !/^TBA$/i.test(e.title) ? e.title : (lookup(e.season, e.episode, e.absolute)?.title ?? e.title)));
   const nameWith = (cut: number | null) =>
     renderEpisode(
       fmt,
