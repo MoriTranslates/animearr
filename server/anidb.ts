@@ -6,11 +6,17 @@
  * and for seasons AniList's list doesn't cover.
  *
  * AniDB bans IPs that misbehave, so this is deliberately slow and careful:
- * - one global queue, at most one request every 2.5 s, gzip;
+ * - one global queue, at most one request every 4–6 s (jittered), gzip;
+ * - budgets over rolling windows, counted from a persisted request log (so a restart changes nothing): at most 30 an
+ *   hour and 200 a day; after a ban, 10 an hour and 60 a day for three days ("probation");
  * - a long cache: airing anime once a day at most, finished anime once a week at most;
- * - any error response stops all requests for an hour; "banned" stops them for a day (persisted across restarts);
- * - never a crawl: only AniDB ids of the library, a few per run, a daily cap, most-needed first
- *   (shows blocked in the cutover, then shows with season-0 files, then the rest).
+ * - any error response stops all requests for an hour; "banned" stops them for 30 h (the 24 h ban plus a margin),
+ *   persisted across restarts;
+ * - never a crawl: only AniDB ids of the library, a few per run, most-needed first (shows blocked in the cutover,
+ *   then shows with season-0 files, then the rest); a show's "fetch now" takes at most 6 entries.
+ *
+ * Ban of 2026-10-26: 266 requests in ~3 h (143 of them in 6 minutes from a manual per-show "fetch now" over many
+ * blocked shows, then 12 every 15 minutes) at 2.5 s spacing; the per-request spacing alone didn't prevent a flood.
  */
 import zlib from "node:zlib";
 import { logDecision } from "./activity.js";
@@ -20,9 +26,14 @@ import { animeListEntries } from "./metadata.js";
 import { getSettings } from "./settings.js";
 
 const DAY = 86_400_000;
-const SPACING_MS = 2_500;
-const PER_RUN = 12;
-const DAILY_CAP = 400;
+const SPACING_MS = 4_000;
+const JITTER_MS = 2_000;
+const PER_RUN = 6;
+const PER_SHOW = 6;
+const DAILY_CAP = 200;
+const HOURLY_CAP = 30;
+const PROBATION = { hourly: 10, daily: 60, ms: 3 * DAY };
+const BAN_MS = 30 * 3_600_000;
 export const ANIDB_URL = "http://api.anidb.net:9001/httpapi";
 
 export type AnidbEpType = "regular" | "special" | "credit" | "trailer" | "parody" | "other";
@@ -64,15 +75,32 @@ export function parseAnime(xml: string, aid: number): AnidbAnime {
 const state = (k: string) => (db.prepare("SELECT value FROM anidb_state WHERE key = ?").get(k) as { value: string } | undefined)?.value ?? null;
 const setState = (k: string, v: string) => db.prepare("INSERT INTO anidb_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
 
+/** Requests in the last `ms` (from the persisted log). */
+const sent = (ms: number, now = Date.now()) => (db.prepare("SELECT COUNT(*) AS n FROM anidb_requests WHERE at > ?").get(now - ms) as { n: number }).n;
+
+/** The current budgets: normal, or probation for three days after a ban ends. */
+function caps(now = Date.now()) {
+  const banEnd = Number(state("lastBanUntil") ?? 0);
+  const probation = banEnd > 0 && now < banEnd + PROBATION.ms;
+  return probation ? { hourly: PROBATION.hourly, daily: PROBATION.daily, probation } : { hourly: HOURLY_CAP, daily: DAILY_CAP, probation };
+}
+
 export function anidbStatus(now = Date.now()) {
   const blockedUntil = Number(state("blockedUntil") ?? 0);
-  const day = new Date(now).toISOString().slice(0, 10);
+  const c = caps(now);
+  const today = sent(DAY, now);
+  const hour = sent(3_600_000, now);
   return {
     configured: !!getSettings().metadata.anidbClient,
     blockedUntil: blockedUntil > now ? blockedUntil : null,
     lastError: state("lastError"),
-    today: state("day") === day ? Number(state("count") ?? 0) : 0,
-    dailyCap: DAILY_CAP,
+    today,
+    lastHour: hour,
+    dailyCap: c.daily,
+    hourlyCap: c.hourly,
+    probation: c.probation,
+    /** No budget left right now (hourly or daily). */
+    capped: today >= c.daily || hour >= c.hourly,
     known: (db.prepare("SELECT COUNT(*) AS n FROM anidb_anime WHERE missing = 0").get() as { n: number }).n,
   };
 }
@@ -81,24 +109,25 @@ let last = 0;
 let chain: Promise<unknown> = Promise.resolve();
 
 /** One request, through the global queue. Errors block further requests (1 h; banned: 24 h). */
-export function fetchAnime(aid: number, deps = { fetch }): Promise<AnidbAnime> {
+export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Promise<AnidbAnime> {
   const run = async () => {
     const s = getSettings().metadata;
     if (!s.anidbClient) throw new Error("AniDB client not set");
     const now = Date.now();
     const st = anidbStatus(now);
     if (st.blockedUntil) throw new Error(`AniDB paused until ${new Date(st.blockedUntil).toISOString()} (${st.lastError ?? "earlier error"})`);
-    if (st.today >= DAILY_CAP) throw new Error("AniDB daily cap reached");
+    if (st.capped) throw new Error(`AniDB budget used up (${st.lastHour}/${st.hourlyCap} this hour, ${st.today}/${st.dailyCap} today)`);
     last = Math.max(last, Number(state("lastAt") ?? 0)); // spacing survives a restart
-    const wait = Math.max(0, last + SPACING_MS - now);
+    const wait = Math.max(0, last + SPACING_MS + Math.round(Math.random() * JITTER_MS) - now);
     if (wait) await new Promise((r) => setTimeout(r, wait));
+    // Checked again after waiting (another caller may have used the budget meanwhile).
+    const again = anidbStatus();
+    if (again.blockedUntil || again.capped) throw new Error("AniDB budget used up");
     last = Date.now();
-    const day = new Date(last).toISOString().slice(0, 10);
-    const prev = state("day") === day ? Number(state("count") ?? 0) : 0; // read before writing: a new day starts at 0
     tx(db, () => {
-      setState("day", day);
-      setState("count", String(prev + 1));
       setState("lastAt", String(last));
+      db.prepare("INSERT INTO anidb_requests (at, aid, origin) VALUES (?, ?, ?)").run(last, aid, origin);
+      db.prepare("DELETE FROM anidb_requests WHERE at < ?").run(last - 30 * DAY);
     });
     const url = `${ANIDB_URL}?request=anime&client=${encodeURIComponent(s.anidbClient)}&clientver=${s.anidbClientVer}&protover=1&aid=${aid}`;
     const block = (why: string, ms: number) => {
@@ -125,7 +154,10 @@ export function fetchAnime(aid: number, deps = { fetch }): Promise<AnidbAnime> {
     }
     const err = /<error[^>]*>([^<]*)<\/error>/i.exec(xml)?.[1];
     if (err) {
-      if (/banned/i.test(err)) throw block(`banned (${err})`, DAY);
+      if (/banned/i.test(err)) {
+        setState("lastBanUntil", String(Date.now() + BAN_MS));
+        throw block(`banned (${err})`, BAN_MS);
+      }
       if (/client/i.test(err)) throw block(`client problem (${err}); check Settings → Metadata`, DAY);
       if (/no such anime|anime not found/i.test(err)) {
         db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, 1, NULL, NULL, 1)").run(aid, Date.now());
@@ -175,17 +207,17 @@ let running = false;
 export async function anidbTick(priority: number[] = [], deps = { fetch }, now = Date.now()) {
   if (running || dbState.corrupt || !getSettings().metadata.anidbClient) return { fetched: 0 };
   const st = anidbStatus(now);
-  if (st.blockedUntil || st.today >= DAILY_CAP) return { fetched: 0 };
+  if (st.blockedUntil || st.capped) return { fetched: 0 };
   running = true;
   let fetched = 0;
   try {
-    const todo = wantedAids(priority).filter((a) => due(a, now)).slice(0, Math.min(PER_RUN, DAILY_CAP - st.today));
+    const todo = wantedAids(priority).filter((a) => due(a, now)).slice(0, Math.max(0, Math.min(PER_RUN, st.dailyCap - st.today, st.hourlyCap - st.lastHour)));
     for (const aid of todo) {
       try {
-        storeAnime(await fetchAnime(aid, deps));
+        storeAnime(await fetchAnime(aid, deps, "tick"));
         fetched++;
       } catch (e) {
-        if (anidbStatus().blockedUntil) break; // blocked: stop at once
+        if (anidbStatus().blockedUntil || /budget/.test((e as Error).message)) break; // blocked or out of budget: stop at once
         void e;
       }
     }
@@ -237,17 +269,19 @@ export function setAnidbOverride(aid: number, tvdbId: number, season: number | n
 
 /** Queues this show's AniDB entries now (still through the one slow queue, the cache and the daily cap). */
 export async function fetchForTvdb(tvdbId: number, deps = { fetch }) {
-  const aids = [...animeListEntries().values()].filter((e) => e.tvdbId === tvdbId).map((e) => e.aid).filter((a) => due(a));
+  const all = [...animeListEntries().values()].filter((e) => e.tvdbId === tvdbId).map((e) => e.aid).filter((a) => due(a));
+  // At most PER_SHOW per click: the rest follows on the regular slow schedule (this is what flooded AniDB once).
+  const aids = all.slice(0, PER_SHOW);
   let fetched = 0;
   for (const aid of aids) {
     try {
-      storeAnime(await fetchAnime(aid, deps));
+      storeAnime(await fetchAnime(aid, deps, "show"));
       fetched++;
     } catch (e) {
-      if (anidbStatus().blockedUntil || /cap/.test((e as Error).message)) break;
+      if (anidbStatus().blockedUntil || /budget/.test((e as Error).message)) break;
     }
   }
-  return { fetched, queued: aids.length };
+  return { fetched, queued: all.length };
 }
 
 const range = (xs: number[]) => (xs.length ? (xs[0] === xs[xs.length - 1] ? `${xs[0]}` : `${xs[0]}–${xs[xs.length - 1]}`) : "");

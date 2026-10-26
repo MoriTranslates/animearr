@@ -1094,7 +1094,7 @@ every(5 * 60_000, () => downloadsTick(), "download rules");
 // AniDB: a few library entries every 15 minutes (never a crawl); shows blocked in the cutover first.
 every(15 * 60_000, async () => {
   const st = anidbStatus();
-  if (!st.configured || st.blockedUntil || st.today >= st.dailyCap) return; // nothing to do: no planning either
+  if (!st.configured || st.blockedUntil || st.capped) return; // nothing to do: no planning either
   const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE}`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
   const blocked = series.filter((s) => showCut(s).blockers.length).map((s) => s.tvdb_id);
   const aids = blocked.flatMap((t) => (JSON.parse((cache.prepare("SELECT anidb_ids FROM series WHERE tvdb_id = ?").get(t) as { anidb_ids: string } | undefined)?.anidb_ids ?? "[]") as { aid: number }[]).map((x) => x.aid));

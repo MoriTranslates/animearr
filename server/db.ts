@@ -337,6 +337,12 @@ const USER_MIGRATIONS: string[] = [
   // 22: fixes: the notification's subject (for its buttons/links); a grab the user chose to keep despite the language check
   `ALTER TABLE notifications ADD COLUMN ctx TEXT;
    ALTER TABLE grabs ADD COLUMN keep INTEGER NOT NULL DEFAULT 0;`,
+  // 23: AniDB request log (rolling budgets that survive restarts; which code path asked). The ban of 2026-10-26 gets
+  // its 6 h margin and the probation after it.
+  `CREATE TABLE anidb_requests (at INTEGER NOT NULL, aid INTEGER, origin TEXT);
+   CREATE INDEX anidb_requests_at ON anidb_requests (at);
+   UPDATE anidb_state SET value = CAST(value AS INTEGER) + 21600000 WHERE key = 'blockedUntil' AND CAST(value AS INTEGER) > 0 AND EXISTS (SELECT 1 FROM anidb_state WHERE key = 'lastError' AND value LIKE 'banned%');
+   INSERT OR REPLACE INTO anidb_state (key, value) SELECT 'lastBanUntil', value FROM anidb_state WHERE key = 'blockedUntil' AND EXISTS (SELECT 1 FROM anidb_state WHERE key = 'lastError' AND value LIKE 'banned%');`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

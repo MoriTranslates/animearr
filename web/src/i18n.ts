@@ -420,7 +420,7 @@ const en = {
   "meta.tmdbTest": "Test",
   "meta.tmdbOk": "TMDB answered OK ({kind})",
   "meta.anidb": "AniDB client name",
-  "meta.anidbHelp": "Register a client at anidb.net (Account → Settings → Client registration). Saved for the AniDB provider, which comes in a later update (it will ask at most once every 2 seconds and cache for days).",
+  "meta.anidbHelp": "Register a client at anidb.net (Account → Settings → Client registration). Saved for the AniDB provider, which comes in a later update (it asks at most once every 4–6 seconds, at most 30 times an hour and 200 a day, and caches for days).",
   "meta.savedNotUsed": "○ {name}: saved, not used yet",
   "meta.alreadyRunning": "A refresh is already running",
   "meta.anidbVer": "AniDB client version",

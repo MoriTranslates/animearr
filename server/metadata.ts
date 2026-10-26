@@ -40,6 +40,9 @@ async function refreshAnidb(force = false) {
   const last = Math.max(meta?.fetchedAt ?? 0, have ? Date.now() - Math.min(fileAge(ANIDB_FILE), fileAge(ANIDB_PLAIN)) : 0);
   if (have && Date.now() - last < DAY && !force) return false;
   if (Date.now() - (meta?.fetchedAt ?? 0) < DAY) return false;
+  // Not while AniDB has us paused or banned (same IP as the HTTP API).
+  const blocked = Number((db.prepare("SELECT value FROM anidb_state WHERE key = 'blockedUntil'").get() as { value: string } | undefined)?.value ?? 0);
+  if (blocked > Date.now()) return false;
   setMeta("anidb-titles", { fetchedAt: Date.now(), etag: meta?.etag, lastModified: meta?.lastModified, info: JSON.parse(meta?.info ?? "{}") });
   const res = await fetch(ANIDB_URL, { headers: { "User-Agent": USER_AGENT, ...(have && meta?.lastModified ? { "If-Modified-Since": meta.lastModified } : {}) }, signal: AbortSignal.timeout(120_000) });
   if (res.status === 304) return false;

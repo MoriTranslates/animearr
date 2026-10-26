@@ -10,6 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/settings.js");
 const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = await import("../server/anidb.js");
+const DAY_MS = 86_400_000;
 
 const XML = `<?xml version="1.0"?><anime id="1" restricted="false"><type>TV Series</type><episodecount>2</episodecount><enddate>2001-01-01</enddate>
 <episodes>
@@ -45,17 +46,32 @@ test("one request at a time, gzip handled, and a ban stops everything for a day 
   assert.equal(a.episodes.length, 4);
   const banned = (async () => (calls++, new Response("<error>Banned</error>", { status: 200 }))) as unknown as typeof fetch;
   await assert.rejects(fetchAnime(3, { fetch: banned }), /banned/i);
-  assert.ok(anidbStatus().blockedUntil! > Date.now() + 23 * 3_600_000);
+  assert.ok(anidbStatus().blockedUntil! > Date.now() + 29 * 3_600_000, "the ban plus a margin");
   const before = calls;
   await assert.rejects(fetchAnime(4, { fetch: ok }), /paused/);
   assert.equal(calls, before, "no request while blocked");
 });
 
-test("the daily counter starts again on a new day", async () => {
+test("rolling budgets from the persisted log: 30 an hour, 200 a day; probation after a ban; a restart changes nothing", async () => {
   const { db } = await import("../server/db.js");
   db.prepare("DELETE FROM anidb_state").run();
-  db.prepare("INSERT INTO anidb_state (key, value) VALUES ('day', '2000-01-01'), ('count', '400')").run();
-  const zlib = await import("node:zlib");
-  await fetchAnime(9, { fetch: (async () => new Response(zlib.gzipSync(Buffer.from(XML)), { status: 200 })) as unknown as typeof fetch });
-  assert.equal(anidbStatus().today, 1);
+  db.prepare("DELETE FROM anidb_requests").run();
+  const now = Date.now();
+  const log = db.prepare("INSERT INTO anidb_requests (at, aid, origin) VALUES (?, 1, 'test')");
+  for (let i = 0; i < 30; i++) log.run(now - i * 60_000);
+  let st = anidbStatus(now);
+  assert.deepEqual([st.lastHour, st.capped], [30, true]);
+  let calls = 0;
+  const f = (async () => (calls++, new Response("<anime id=\"5\"></anime>"))) as unknown as typeof fetch;
+  await assert.rejects(fetchAnime(5, { fetch: f }), /budget/);
+  assert.equal(calls, 0, "no request over the hourly budget");
+  // An hour later the hourly budget is back, the day still counts.
+  st = anidbStatus(now + 3_600_000);
+  assert.deepEqual([st.lastHour, st.today, st.capped], [0, 30, false]);
+  // Probation for three days after a ban ends: 10 an hour.
+  db.prepare("INSERT INTO anidb_state (key, value) VALUES ('lastBanUntil', ?)").run(String(now - DAY_MS));
+  st = anidbStatus(now + 3_600_000);
+  assert.deepEqual([st.hourlyCap, st.dailyCap, st.probation], [10, 60, true]);
+  st = anidbStatus(now + 3 * DAY_MS);
+  assert.deepEqual([st.hourlyCap, st.probation], [30, false]);
 });
