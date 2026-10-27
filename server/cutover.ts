@@ -145,7 +145,7 @@ export function allShowCuts(fresh = false): Promise<Map<number, ShowCut>> {
     let i = 0;
     for (const s of series) {
       out.set(s.tvdb_id, showCut(s, { scanned }));
-      if (++i % 8 === 0) await yieldNow();
+      if (++i % 2 === 0) await yieldNow();
     }
     cuts = { at: Date.now(), byTvdb: out };
     return out;

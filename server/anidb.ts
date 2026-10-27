@@ -232,10 +232,32 @@ export async function anidbTick(priority: number[] = [], deps = { fetch }, now =
  * AniDB's episodes placed on TVDB numbering through Anime-Lists: regular episodes on their TVDB season, specials on
  * season 0 where the mapping list says so. Only entries already fetched (nothing is requested here).
  */
+/**
+ * Anime-Lists entries by TVDB id (with the user's overrides applied), rebuilt when the list or the overrides change.
+ * Scanning the whole list (tens of thousands of entries) for every show made the migration plan take minutes.
+ */
+type ListEntry = ReturnType<typeof animeListEntries> extends Map<number, infer V> ? V : never;
+let tvdbIndex: { src: ReturnType<typeof animeListEntries>; overrides: string; idx: Map<number, ListEntry[]> } | null = null;
+export function listEntriesForTvdb(tvdbId: number): ListEntry[] {
+  const src = animeListEntries();
+  const ov = db.prepare("SELECT aid, tvdb_id FROM anidb_overrides ORDER BY aid").all() as { aid: number; tvdb_id: number }[];
+  const sig = ov.map((o) => `${o.aid}:${o.tvdb_id}`).join(",");
+  if (!tvdbIndex || tvdbIndex.src !== src || tvdbIndex.overrides !== sig) {
+    const over = new Map(ov.map((o) => [o.aid, o.tvdb_id]));
+    const idx = new Map<number, ListEntry[]>();
+    for (const e of src.values()) {
+      const t = over.get(e.aid) ?? e.tvdbId;
+      if (t === null || t === undefined) continue;
+      idx.set(t, [...(idx.get(t) ?? []), e]);
+    }
+    tvdbIndex = { src, overrides: sig, idx };
+  }
+  return tvdbIndex.idx.get(tvdbId) ?? [];
+}
+
 export function anidbForTvdb(tvdbId: number) {
   const out: { season: number; episode: number; title: string | null; air: number | null; length: number | null; type: AnidbEpType; aid: number; epno: string }[] = [];
-  for (const e of animeListEntries().values()) {
-    if ((anidbOverride(e.aid)?.tvdb_id ?? e.tvdbId) !== tvdbId) continue;
+  for (const e of listEntriesForTvdb(tvdbId)) {
     for (const ep of anidbEpisodes(e.aid)) {
       if (ep.type !== "regular" && ep.type !== "special") continue;
       // Anime-Lists' placement (specials only through explicit mapping lists, e.g. bonus episodes on S01E25), or the
@@ -302,7 +324,7 @@ export function anidbView(tvdbId: number) {
   const eps = cache.prepare("SELECT e.season, e.episode, e.has_file FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as { season: number; episode: number; has_file: number }[];
   const have = new Map(eps.map((e) => [`${e.season}x${e.episode}`, !!e.has_file]));
   const out = [];
-  for (const e of [...animeListEntries().values()].filter((x) => (anidbOverride(x.aid)?.tvdb_id ?? x.tvdbId) === tvdbId)) {
+  for (const e of listEntriesForTvdb(tvdbId)) {
     const a = db.prepare("SELECT fetched_at, type, episode_count, missing FROM anidb_anime WHERE aid = ?").get(e.aid) as { fetched_at: number; type: string | null; episode_count: number | null; missing: number } | undefined;
     const list = anidbEpisodes(e.aid);
     const firstAir = list.filter((x) => x.airdate).map((x) => x.airdate!).sort()[0] ?? null;
