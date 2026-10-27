@@ -1406,3 +1406,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .month-more { color: var(--accent-2); font-weight: 600; }
 .month-picked { scroll-margin-top: 72px; }
 .month-picked h2:focus { outline: none; }
+/* Home: airing-today time above the episode (no collision in big text); "This week" says it scrolls. */
+.airing-meta b { white-space: normal; }
+.pmeta { min-width: 0; }
+.scroll-hint { position: relative; }
+.scroll-hint.has-more .this-week-scroll { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
+.scroll-more { display: block; margin: 6px auto 0; }
