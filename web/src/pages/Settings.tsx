@@ -1,6 +1,7 @@
 import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUnsaved } from "../unsaved";
+import { rememberDetail } from "../errors";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
@@ -14,7 +15,7 @@ import { LibraryFolders } from "../folders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
-import { Chip, Confirm, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
@@ -651,13 +652,61 @@ function Paths({ s, upd }: { s: S; upd: Upd }) {
 
 interface SystemInfo {
   version: string;
-  jobs: { name: string; state: string; detail: string; finishedAt: number | null }[];
+  jobs: { name: string; state: string; detail: string; detailRaw?: string | null; finishedAt: number | null }[];
   metadata: { anidb: { count: number }; animeLists: { count: number } };
   aliasKeys: number;
   db: { corrupt: boolean; detail: string };
   backups: { name: string; kind: string; size: number; at: number }[];
   backupDir: string;
   memoryMb: number;
+}
+
+/** Background jobs by their plain names (the raw name stays as the key). */
+const JOB_NAMES: Record<string, I18nKey> = {
+  anidb: "job.anidb",
+  catalog: "job.catalog",
+  covers: "job.covers",
+  rss: "job.rss",
+  sync: "job.sync",
+  managed: "job.managed",
+  "movie-match": "job.movieMatch",
+  "movie search": "job.movieSearch",
+  metadata: "job.metadata",
+  "file scan": "job.fileScan",
+  "fill-in": "job.fillIn",
+  "dual upgrades": "job.dual",
+  "after-import check": "job.afterImport",
+};
+const jobName = (n: string) => (JOB_NAMES[n] ? t(JOB_NAMES[n]) : n);
+/** "the nightly backup from Oct 27, 9:29 AM" (local time), not the file name. */
+const backupLabel = (b: { kind: string; at: number }) => t("backup.label", { kind: t(`backup.kind.${b.kind}` as I18nKey), when: dateTime(b.at) });
+const fmtKb = (b: number) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
+
+/** "Check for updates": asks GitHub which release is newest (read-only; being offline is said, not an error). */
+function UpdatesCheck() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className="self-start"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const r = await api<{ current: string; latest: string | null; newer: boolean; url: string | null; offline: boolean }>("/system/updates");
+          if (r.offline) toast(t("update.offline"));
+          else if (r.newer) toast(t("update.newer", { version: r.latest ?? "" }), false, r.url ? { label: t("update.see"), run: () => void window.open(r.url!, "_blank", "noopener") } : undefined);
+          else toast(t("update.current", { version: r.current }));
+        } catch (e) {
+          toast((e as Error).message, true);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? t("common.working") : t("update.check")}
+    </button>
+  );
 }
 
 /** Own metadata: what the catalog knows, optional provider keys. */
@@ -811,6 +860,7 @@ function System({ status }: { status: Status }) {
   const toast = useToast();
   const d = useLoad(() => api<SystemInfo>("/system"), []);
   const [restore, setRestore] = useState<string | null>(null);
+  const [rebuild, setRebuild] = useState(false);
   const [pw, setPw] = useState("");
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
@@ -824,6 +874,8 @@ function System({ status }: { status: Status }) {
       toast((e as Error).message, true);
     }
   };
+  for (const j of x.jobs) if (j.state === "error") rememberDetail(j.detail, j.detailRaw);
+  const restoring = x.backups.find((b) => b.name === restore);
   return (
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
@@ -845,68 +897,83 @@ function System({ status }: { status: Status }) {
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.jobs")}</h2>
-        <ul className="plain">
+        <ul className="plain stack">
           {x.jobs.map((j) => (
             <li key={j.name}>
-              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{j.name}</Chip> <span className="small">{j.detail}</span> {j.finishedAt && <span className="muted small">· {relTime(j.finishedAt)}</span>}
+              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{jobName(j.name)}</Chip> <span className="small">{j.state === "error" ? <ErrorText msg={j.detail} /> : j.detail}</span>{" "}
+              {j.finishedAt && <span className="muted small">· {relTime(j.finishedAt)}</span>}
             </li>
           ))}
         </ul>
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.metadata")}</h2>
-        <p className="small">
+        <p className="small">{t("settings.system.metaPlain")}</p>
+        <details className="small muted">
+          <summary>{t("common.details")}</summary>
           AniDB {x.metadata.anidb.count} · Anime-Lists {x.metadata.animeLists.count} · {x.aliasKeys} alias keys · {x.memoryMb} MB
-        </p>
-        <button className="small self-start" onClick={() => act(() => api("/system/metadata", { body: {} }), t("common.saved"))}>
+        </details>
+        <button className="small self-start" onClick={() => act(() => api("/system/metadata", { body: {} }), t("settings.system.refreshing"))}>
           {t("settings.system.refreshMeta")}
         </button>
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.backups")}</h2>
         <p className="muted small">{t("settings.system.backupHelp", { dir: x.backupDir })}</p>
-        <button className="small self-start" onClick={() => act(() => api("/system/backup", { body: {} }), t("common.saved"))}>
+        <button className="small self-start" onClick={() => act(() => api("/system/backup", { body: {} }), t("settings.system.backedUp"))}>
           {t("settings.system.backupNow")}
         </button>
-        <ul className="plain">
+        <ul className="plain stack">
           {x.backups.map((b) => (
             <li key={b.name} className="row between">
-              <span className="small">
-                <Chip>{b.kind}</Chip> {new Date(b.at).toLocaleString()} · {Math.round(b.size / 1024)} KB
+              <span className="small" title={b.name}>
+                {backupLabel(b)} · {fmtKb(b.size)}
               </span>
-              <button className="small ghost" onClick={() => setRestore(b.name)}>
+              <button className="small ghost" onClick={() => (setPw(""), setRestore(b.name))}>
                 {t("settings.system.restore")}
               </button>
             </li>
           ))}
         </ul>
         <p className="muted small">{t("settings.system.rebuildHelp")}</p>
-        <button className="small self-start" onClick={() => act(() => api("/system/cache/reset", { body: {} }), t("common.saved"))}>
+        <button className="small self-start" onClick={() => setRebuild(true)}>
           {t("settings.system.rebuildCache")}
         </button>
       </div>
       <div className="card pad stack">
-        <p className="muted small">
-          AnimeArr v{x.version} · {status.via}
-        </p>
+        <p className="muted small">AnimeArr v{x.version}</p>
+        <UpdatesCheck />
         <button
           className="self-start"
           onClick={async () => {
-            await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
-            location.href = withBase("/welcome");
+            try {
+              await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
+              location.href = withBase("/welcome");
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
           }}
         >
           {t("wiz.runAgain")}
         </button>
-        <button
-          className="self-start"
-          onClick={async () => {
-            await api("/auth/logout", { body: {} });
-            location.href = withBase("/");
-          }}
-        >
-          {t("settings.system.logout")}
-        </button>
+        {status.via === "local" ? (
+          // Signed in by "no password at home": Log out would sign straight back in, so it explains that instead.
+          <p className="muted small">{t("settings.system.logoutHome")}</p>
+        ) : (
+          <button
+            className="self-start"
+            onClick={async () => {
+              try {
+                await api("/auth/logout", { body: {} });
+                location.href = withBase("/");
+              } catch (e) {
+                toast((e as Error).message, true);
+              }
+            }}
+          >
+            {t("settings.system.logout")}
+          </button>
+        )}
       </div>
       {restore && (
         <Confirm
@@ -924,8 +991,25 @@ function System({ status }: { status: Status }) {
             }
           }}
         >
-          <p>{t("settings.system.restoreConfirm", { name: restore })}</p>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("login.password")} autoComplete="current-password" />
+          <p>{t("settings.system.restoreConfirm", { name: restoring ? backupLabel(restoring) : restore })}</p>
+          <label className="field">
+            {t("settings.system.restorePw")}
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
+            <span className="muted small">{t("settings.system.restorePwHelp")}</span>
+          </label>
+        </Confirm>
+      )}
+      {rebuild && (
+        <Confirm
+          title={t("settings.system.rebuildCache")}
+          confirmLabel={t("settings.system.rebuildCache")}
+          onClose={() => setRebuild(false)}
+          onConfirm={async () => {
+            await act(() => api("/system/cache/reset", { body: {} }), t("settings.system.rebuilding"));
+            setRebuild(false);
+          }}
+        >
+          <p>{t("settings.system.rebuildConfirm")}</p>
         </Confirm>
       )}
     </div>

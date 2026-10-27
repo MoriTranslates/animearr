@@ -15,6 +15,7 @@ import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
 import { humanizeError } from "./errors.js";
+import { checkForUpdates } from "./releases.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -1263,7 +1264,11 @@ app.get("/api/system", async () => ({
   uptime: Date.now() - STARTED,
   node: process.version,
   configDir: CONFIG_DIR,
-  jobs: listJobs(),
+  // Job errors in plain words ("AniDB titles download failed (HTTP 403)" → "AniDB refused…"), raw text as detailRaw.
+  jobs: listJobs().map((j) => {
+    const h = j.state === "error" ? humanizeError(String(j.detail ?? "")) : { message: j.detail, detail: null };
+    return { ...j, detail: h.message, detailRaw: h.detail };
+  }),
   metadata: metadataStatus(),
   aliasKeys: aliasIndex().size,
   db: { corrupt: dbState.corrupt, detail: dbState.detail },
@@ -1272,6 +1277,8 @@ app.get("/api/system", async () => ({
   memoryMb: Math.round(process.memoryUsage().rss / 1e6),
 }));
 app.post("/api/system/metadata", async () => refreshMetadata(false));
+// Read-only: which release is newest on GitHub (offline → { offline: true }).
+app.get("/api/system/updates", async () => checkForUpdates());
 app.post("/api/system/backup", async () => {
   writable();
   return { name: backupNow("manual") };
