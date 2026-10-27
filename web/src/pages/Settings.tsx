@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PhonePanel } from "../phone";
 import { applyFont } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
@@ -777,6 +778,11 @@ function System({ status }: { status: Status }) {
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
       <LibraryFiles />
+      <div className="card pad stack">
+        <h2>{t("phone.settingsTitle")}</h2>
+        <p className="small muted">{t("phone.settingsIntro")}</p>
+        <PhonePanel />
+      </div>
       <div className="card pad stack">
         <h2>{t("support.title")}</h2>
         <p className="small">{t("support.body")}</p>

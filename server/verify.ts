@@ -83,7 +83,7 @@ export interface VerifyVerdict {
   subs: string[];
   audio: string[];
   /** Machine-readable reason (the after-import check only acts alone on explicit evidence: forced-only or dub-only). */
-  code?: "ok" | "short" | "forced-only" | "dub-only" | "untagged" | "wrong-subs" | "no-subs" | "no-dub";
+  code?: "ok" | "short" | "forced-only" | "dub-only" | "dub-no-subs" | "untagged" | "wrong-subs" | "no-subs" | "no-dub";
 }
 
 export interface VerifyProfile {
@@ -138,9 +138,12 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
     if (burnedIn) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
     return out(false, noSubWhy, noSubCode);
   }
-  // sub: original audio + full subtitles. A dub alone is not enough.
+  // sub: original audio + full subtitles. A dub alone is not enough (English AUDIO never counts as "has English" here).
   if (haveSub && haveOriginal) return out(true, subWhy);
   if (haveSub && !haveOriginal) return out(false, `${knownAudio.join("/")} audio only (a dub, without the original audio)`, "dub-only");
-  if (burnedIn) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
+  // Burned-in subtitles only help with the original audio (an English dub with burned-in English is still a dub).
+  if (burnedIn && haveOriginal) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
+  // A dub without subtitles: say so (the most common "looks fine but isn't" case).
+  if ((noSubCode === "no-subs" || noSubCode === "wrong-subs") && !haveOriginal) return out(false, `${knownAudio.join("/")} dub only, no ${subWanted.join("/")} subtitles`, "dub-no-subs");
   return out(false, noSubWhy, noSubCode);
 }

@@ -1,3 +1,4 @@
+import os from "node:os";
 import crypto from "node:crypto";
 import { setIndexerUse } from "./indexerPick.js";
 import { droppedList, dropShow, refuseDropped, undropShow } from "./dropped.js";
@@ -299,6 +300,19 @@ const breakerDeps = {
   },
 };
 app.get("/api/indexers/breaker", async () => breakerList());
+// ---------------------------------------------------------------- "Open on your phone": the addresses a phone can use
+app.get("/api/phone", async () => {
+  // Home-network addresses first; container bridges, VPNs and virtual adapters aren't what a phone can reach.
+  const rank = (ip: string) => (ip.startsWith("192.168.") ? 0 : ip.startsWith("10.") ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3);
+  const lan = Object.entries(os.networkInterfaces())
+    .filter(([name]) => !/^(docker|br-|veth|vethernet|virbr|tailscale|zt|utun|wg)/i.test(name))
+    .flatMap(([, list]) => list ?? [])
+    .filter((n) => n.family === "IPv4" && !n.internal)
+    .map((n) => n.address)
+    .sort((a, b) => rank(a) - rank(b))
+    .map((ip) => `http://${ip}:${PORT}`);
+  return { externalUrl: getSettings().externalUrl ?? "", lan, bypassLocal: getSettings().auth.bypassLocal };
+});
 app.post<{ Params: { id: string }; Body: { use?: boolean } }>("/api/indexers/prowlarr/:id/use", async (req) => {
   writable();
   const ixId = id(req.params.id);

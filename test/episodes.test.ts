@@ -71,7 +71,9 @@ test("series header: counts, next airing, language health", () => {
   assert.equal(h.counts.downloading, 1);
   assert.equal(h.nextEpisode?.episode, 3);
   assert.equal(h.language.lang, "en");
-  assert.equal(h.language.withLang, 1);
+  // Only Sonarr's data (AnimeArr hasn't scanned the file): "not checked yet", the same in the header and season tags.
+  assert.equal(h.language.withLang, 0);
+  assert.equal(h.language.unknown, 1);
   assert.equal(h.language.have, 1);
   assert.equal(h.profile.watchMode, "sub");
   assert.equal(h.overview, "A show.");

@@ -1,4 +1,5 @@
 import { ArrowLeft, ArrowRight, Check, Folder, FolderOpen } from "lucide-react";
+import { PhonePanel } from "../phone";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Settings as S, type Status } from "../api";
 import { Link, navigate } from "../App";
@@ -436,6 +437,10 @@ function DoneStep({ path }: { path: Path }) {
             {t("wiz.done.haveFiles")}
           </button>
         )}
+      </div>
+      <div className="card pad stack">
+        <h3>{t("phone.settingsTitle")}</h3>
+        <PhonePanel />
       </div>
       <p className="muted small">{t("wiz.done.later")}</p>
     </div>

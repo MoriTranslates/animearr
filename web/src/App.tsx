@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PhoneButton } from "./phone";
 import { LostAtSea } from "./merry";
 import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
@@ -206,6 +207,7 @@ export function App() {
                   {t("chip.dryRun")}
                 </Link>
               )}
+              <PhoneButton />
               <BellButton />
             </span>
             <FixHost />

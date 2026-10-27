@@ -53,7 +53,13 @@ export interface FileInfo {
   scanned?: boolean;
   /** The file changed after Sonarr imported it (e.g. Tdarr re-encoded it). */
   changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null;
+  /**
+   * The profile's language, one verdict everywhere (header, season tags, dots): ok = has it; no = AnimeArr's scan
+   * says it doesn't; unknown = not checked by AnimeArr yet, or tracks without a language tag.
+   */
+  lang?: LangState;
 }
+export interface LangState { state: "ok" | "no" | "unknown"; why: string; code?: string }
 
 /** Groups whose releases are web rips even when the name doesn't say so (SubsPlease = CR/ADN web rips). */
 const WEB_GROUPS = new Set(["subsplease", "erai-raws", "toonshub", "varyg", "skyanime", "senpai", "kitsune", "asw", "judas"]);
@@ -68,12 +74,22 @@ function sourceLabel(sceneName: string | null, group: string | null, sonarrSourc
 
 type FileRow = { id: number; path: string; size: number | null; quality: string | null; source: string | null; release_group: string | null; scene_name: string | null; audio_langs: string; sub_langs: string; run_time: string | null; resolution: string | null; date_added?: string | null };
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
-function fileInfo(f: FileRow, episodes: string[] = []): FileInfo {
+type Judge = (p: Parameters<typeof judge>[0]) => ReturnType<typeof judge>;
+function langState(own: boolean, p: Parameters<typeof judge>[0] | null, j: Judge | undefined, sonarrSays: string): LangState | undefined {
+  if (!j) return undefined;
+  if (!own || !p) return { state: "unknown", why: `not checked by AnimeArr yet${sonarrSays ? ` (Sonarr reports: ${sonarrSays})` : ""}`, code: "unscanned" };
+  const v = j(p);
+  if (v.ok) return { state: "ok", why: v.why, code: "ok" };
+  if (v.code === "untagged") return { state: "unknown", why: v.why, code: "untagged" };
+  return { state: "no", why: v.why, code: v.code };
+}
+function fileInfo(f: FileRow, episodes: string[] = [], j?: Judge): FileInfo {
   const s = sourceLabel(f.scene_name, f.release_group, f.source);
   // AnimeArr's own scan first (it follows Tdarr re-encodes); Sonarr's data as the fallback.
   const own = ownFile(f.path, { size: f.size, dateAdded: f.date_added ?? null });
   if (own) {
     const p = probeOf(own);
+    const lang = langState(true, { subs: p.subs, audio: p.audio, durationSec: null, sidecars: p.sidecars, untagged: p.untagged, forced: p.forced }, j, "");
     const changed = f.size && own.size !== f.size && Math.abs(own.size - f.size) > f.size * 0.05 ? { fromSize: f.size, toSize: own.size, codec: own.video?.codec ?? null, importedAt: f.date_added ?? null, changedAt: own.mtime, fromQuality: f.quality } : null;
     return {
       id: f.id,
@@ -93,8 +109,10 @@ function fileInfo(f: FileRow, episodes: string[] = []): FileInfo {
       codec: own.video?.codec ?? null,
       scanned: true,
       changed,
+      lang,
     };
   }
+  const sonarrSays = [f.sub_langs && `subs ${f.sub_langs}`, f.audio_langs && `audio ${f.audio_langs}`].filter(Boolean).join(", ");
   return {
     id: f.id,
     path: f.path,
@@ -110,6 +128,7 @@ function fileInfo(f: FileRow, episodes: string[] = []): FileInfo {
     runTime: f.run_time,
     resolution: f.resolution,
     episodes,
+    lang: langState(false, null, j, sonarrSays),
   };
 }
 
@@ -172,13 +191,19 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     for (const id of JSON.parse(r.episode_ids) as number[]) extraLinks.set(id, r.path);
   const byFile = new Map<number, string[]>();
   for (const e of [...eps].reverse()) if (e.file_id) byFile.set(e.file_id, [...(byFile.get(e.file_id) ?? []), sxe(e.season, e.episode)]);
+  // One language verdict per file, the same everywhere (the profile, and burned-in facts per season).
+  const tvdb = tvdbOf(seriesId);
+  const prof = profileFor(tvdb);
+  const burned = new Map<number, string | null>();
+  const burnedFor = (season: number) => (burned.has(season) ? burned.get(season)! : (burned.set(season, prof.subLangs.find((l) => !!burnedInFact(tvdb, season, l)) ?? null), burned.get(season)!));
+  const judgeFor = (season: number): Judge => (p) => judge(p, prof, null, burnedFor(season));
   return eps.map((e) => {
     const g = active.get(e.id);
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file || extraLinks.has(e.id) ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
     const fallback = !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null };
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id), judgeFor(e.season)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null };
   });
 }
 
@@ -192,8 +217,12 @@ export function seriesHeader(tvdbId: number) {
   const aired = rows.filter((e) => e.status !== "unaired");
   const have = rows.filter((e) => e.status === "have");
   const prof = profileFor(tvdbId);
-  const burned = (season: number) => prof.subLangs.find((l) => !!burnedInFact(tvdbId, season, l)) ?? null;
-  const withLang = have.filter((e) => e.file && judge({ subs: e.file.subs, audio: e.file.audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, burned(e.season)).ok);
+  // The same per-file verdict as the season tags and the episode dots.
+  const langOf = (e: EpisodeRow) => e.file?.lang?.state ?? "unknown";
+  const withLang = have.filter((e) => langOf(e) === "ok");
+  const noLang = have.filter((e) => langOf(e) === "no");
+  const unknownLang = have.filter((e) => langOf(e) === "unknown");
+  const untagged = unknownLang.filter((e) => e.file?.lang?.code === "untagged");
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
   const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
   const next = rows.filter((e) => e.status === "unaired" && e.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0] ?? null;
@@ -225,7 +254,7 @@ export function seriesHeader(tvdbId: number) {
     color: cov[0]?.color ?? null,
     nextEpisode: next ? { id: next.id, season: next.season, episode: next.episode, title: next.title, airUtc: next.airUtc } : null,
     counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing").length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
-    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, have: have.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
+    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, noLang: noLang.length, unknown: unknownLang.length - untagged.length, untagged: untagged.length, have: have.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
     profile: { id: prof.id, name: prof.name, watchMode: prof.watchMode, profileMode: prof.profileMode ?? prof.watchMode, source: prof.source, original: prof.originalLangs },
     links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : s.tvdb_id >= NATIVE_BASE ? `https://anilist.co/anime/${s.tvdb_id - NATIVE_BASE}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: s.tvdb_id >= NATIVE_BASE ? null : `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
     native: s.id >= NATIVE_BASE,

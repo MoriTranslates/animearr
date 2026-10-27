@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FixDetection, Peek, Verdicts, WatchIn } from "./filetools";
 import { CaptionsOff } from "lucide-react";
 import { api, fmtSize, sxe } from "./api";
 import { Link, navigate } from "./App";
@@ -8,7 +9,7 @@ import { showVars } from "./season";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
-export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
+export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string }; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
 export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
@@ -20,13 +21,21 @@ export const resLabel = (r: string | null) => {
 };
 
 /** Status pill: colour AND a word (never colour-only). "Have · 1080p WEB · EN subs", "Downloading 45%", ... */
+/** The file's language verdict from the server (the same in the header, season tags and dots). */
+export function langOf(f: Pick<FileInfo, "subs" | "audio" | "lang"> | null | undefined, lang: string): "ok" | "no" | "unknown" {
+  if (!f) return "unknown";
+  void lang;
+  return f.lang?.state ?? "unknown";
+}
+
 export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { stage?: string | null; ahead?: number | null }; lang?: string }) {
   let label: string = t(`ep.status.${e.status}`);
   if (e.status === "downloading" && e.stage === "importing") label = `⇢ ${t("ep.importing")}`;
   else if (e.status === "downloading" && e.stage === "waiting") label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
   else if (e.status === "downloading" && e.progress !== null) label += ` ${Math.round(e.progress * 100)}%`;
   // Healthy rows are quiet (a dot and muted words); a colour chip is kept for what needs you.
-  if (e.status === "have" && (!e.file || e.file.subs.includes(lang) || e.file.audio.includes(lang))) {
+  const ls = e.file ? langOf(e.file, lang) : "ok";
+  if (e.status === "have" && ls === "ok") {
     const q = e.file ? [resLabel(e.file.resolution), e.file.source].filter(Boolean).join(" ") : "";
     return (
       <span className="quiet-status">
@@ -44,15 +53,25 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
       </span>
     );
   }
-  if (e.status === "have" && e.file)
+  if (e.status === "have" && e.file && ls === "unknown")
     return (
-      <span className="tag warn" title={t("ep.status.have")}>
-        <CaptionsOff className="lucide" aria-hidden="true" />
-        {t("ep.noSubsShort", { lang: lang.toUpperCase() })}
+      <span className="tag neutral" title={e.file.lang?.why ?? t("ep.status.have")}>
+        <span aria-hidden="true">?</span> {e.file.lang?.code === "untagged" ? t("ep.subsUnknownLang") : t("ep.langUnknownShort", { lang: lang.toUpperCase() })}
       </span>
     );
+  if (e.status === "have" && e.file) {
+    const code = e.file.lang?.code;
+    const L = lang.toUpperCase();
+    const audio = e.file.audio.filter((a) => a !== "und").map((a) => a.toUpperCase()).join("/");
+    return (
+      <span className="tag warn" title={e.file.lang?.why ?? t("ep.status.have")}>
+        <CaptionsOff className="lucide" aria-hidden="true" />
+        {code === "dub-no-subs" ? t("ep.dubNoSubs", { audio: audio || "?" }) : code === "no-dub" ? t("ep.noDubShort", { lang: L }) : code === "forced-only" ? t("ep.forcedOnly", { lang: L }) : code === "dub-only" ? t("ep.dubOnlyShort") : t("ep.noSubsShort", { lang: L })}
+      </span>
+    );
+  }
   return (
-    <Chip tone={e.status === "have" && e.file && !e.file.subs.includes(lang) && !e.file.audio.includes(lang) ? "warn" : TONE[e.status]}>
+    <Chip tone={TONE[e.status]}>
       <span aria-hidden="true">{ICON[e.status]} </span>
       {label}
     </Chip>
@@ -224,6 +243,32 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
 
 // ---------------------------------------------------------------- the episode sheet (bottom sheet on phones, side panel on desktop)
 
+const langName = (l: string | null) => {
+  if (!l) return null;
+  try {
+    return new Intl.DisplayNames(undefined, { type: "language" }).of(l) ?? l;
+  } catch {
+    return l; // a malformed tag from the file
+  }
+};
+/** "English", "Japanese + English", "1 track, language unknown". */
+function trackAudio(d: Detail) {
+  const a = d.own?.audio ?? [];
+  if (!a.length) return d.file?.audio.map((x) => langName(x)).join(" + ") || t("ep.tracksNone");
+  const known = a.filter((x) => x.lang && x.lang !== "und").map((x) => langName(x.lang));
+  const unknown = a.length - known.length;
+  return [...known, ...(unknown ? [t("ep.tracksUnknown", { n: unknown })] : [])].join(" + ");
+}
+/** "none", "English (signs only)", "1 track, language unknown (ASS)". */
+function trackSubs(d: Detail) {
+  const s = d.own?.subs ?? [];
+  const side = d.own?.sidecars ?? [];
+  if (!s.length && !side.length) return d.file?.subs.length ? d.file.subs.map((x) => langName(x)).join(", ") : t("ep.tracksNone");
+  const parts = s.map((x) => (x.lang ? `${langName(x.lang)}${x.partial ? ` (${t("ep.signsOnly")})` : ""}` : `${t("ep.tracksUnknown", { n: 1 })} (${(x.codec ?? "?").toUpperCase()})`));
+  for (const x of side) parts.push(`${x.lang ? langName(x.lang) : t("ep.tracksUnknown", { n: 1 })} (${t("ep.sidecar")})`);
+  return parts.join(", ");
+}
+
 interface Detail extends EpisodeRow {
   art?: { cover: string | null; banner: string | null; color: string | null };
   own?: { audio: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; channels: number | null }[]; subs: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; partial: boolean }[]; sidecars: { file: string; lang: string | null }[] } | null;
@@ -390,6 +435,32 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               </dl>
             ) : (
               <p className="muted">{t("ep.noFile")}</p>
+            )}
+            {d.file && (
+              <div className="file-tools stack">
+                <div className="row">
+                  <WatchIn path={d.file.path} title={d.seriesTitle} kind="episode" />
+                  <Peek path={d.file.path} />
+                </div>
+                {d.file.lang && ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) || d.file.lang.code === "untagged") && <Verdicts tvdbId={d.tvdbId} season={d.season} lang={lang} onFind={actions.search} onDone={() => (load(), onChanged?.())} />}
+                {d.file.lang && d.file.lang.state !== "ok" && (
+                  <div className="track-summary">
+                    <p className="small">
+                      <b>{t("ep.audio")}:</b> {trackAudio(d)} · <b>{t("ep.subtitles")}:</b> {trackSubs(d)}
+                    </p>
+                    <p className="muted small">{d.file.lang.why}</p>
+                  </div>
+                )}
+                <FixDetection
+                  path={d.file.path}
+                  tvdbId={d.tvdbId}
+                  season={d.season}
+                  group={d.file.group}
+                  title={d.seriesTitle}
+                  defaultOpen={d.file.lang?.code === "untagged" || d.file.lang?.code === "forced-only"}
+                  onChanged={() => (load(), onChanged?.())}
+                />
+              </div>
             )}
             {d.own && (
               <details>

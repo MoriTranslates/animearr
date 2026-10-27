@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FixDetection, Peek, WatchIn } from "../filetools";
 import { LibraryHead } from "./Shows";
 import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
@@ -284,6 +285,15 @@ export function MoviePage({ id }: { id: number }) {
               {m.verdict && <Chip tone={m.verdict.ok === false ? "bad" : m.verdict.ok ? "good" : "info"}>{m.verdict.ok === false ? "✕ " : m.verdict.ok ? "✓ " : ""}{m.verdict.why}</Chip>}
             </div>
             <p className="small muted">{t("movies.tracks", { audio: m.file.audio.join(", ") || "?", subs: m.file.subs.join(", ") || "—" })}</p>
+            {m.file.path && (
+              <div className="file-tools stack">
+                <div className="row">
+                  <WatchIn path={m.file.path} title={m.title} kind="movie" />
+                  <Peek path={m.file.path} />
+                </div>
+                <FixDetection path={m.file.path} group={m.file.releaseGroup} title={m.title} onChanged={() => void d.reload()} />
+              </div>
+            )}
           </>
         ) : (
           <p className="warn-text">{t("movies.noFile")}</p>

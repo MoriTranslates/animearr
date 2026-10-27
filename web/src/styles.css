@@ -1142,3 +1142,35 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .conn-card .chip.tiny { font-size: 11px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; }
 .use-toggle { font-size: var(--text-sm); margin-top: 4px; }
 .pick-note { margin: 0; }
+.ringlbl .lang-count { display: block; font-size: var(--text-xs); }
+/* Per-file tools: watch in, verdicts, peek, fix detection */
+.ep-row .ep-menu { flex: none; margin-right: 6px; }
+.ep-row .ep-menu > button { background: none; border-color: transparent; }
+.file-tools { gap: var(--space-2); }
+.file-tools .lucide, .watch-in .lucide { width: 1em; height: 1em; }
+.verdicts { padding: var(--space-3); border: 1px dashed color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: var(--radius-sm); display: grid; gap: 6px; }
+.verdicts p { margin: 0; }
+.peek { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.peek img { width: 100%; border-radius: 6px; display: block; }
+.fix-detection > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.fix-body { padding-top: var(--space-2); gap: var(--space-2); }
+.fix-body h4 { margin: 4px 0 0; font-size: var(--text-sm); }
+.tracks li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.tracks li:last-child { border-bottom: 0; }
+.track-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: center; }
+.fix-scope select { max-width: 100%; }
+@media (max-width: 700px) { .peek { grid-template-columns: 1fr; } }
+/* Open on your phone */
+.phone-panel { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.phone-panel .qr { background: #fff; padding: 8px; border-radius: 10px; width: 180px; max-width: 100%; }
+.phone-panel .qr svg { display: block; width: 100%; height: auto; }
+.phone-url { flex-wrap: wrap; }
+.phone-url code { word-break: break-all; }
+.phone-steps { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.phone-btn .lucide { width: 20px; height: 20px; }
+@media (max-width: 560px) { .phone-panel { grid-template-columns: 1fr; justify-items: center; } }
+@media (max-width: 760px) { .phone-btn { display: none; } }
+.track-summary { padding: 8px 10px; border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); border-radius: 4px; }
+.track-summary p { margin: 0; }
+.ep-cell.have.lang-no { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.ep-cell.have.lang-unknown { background: var(--panel-2); color: var(--muted); }

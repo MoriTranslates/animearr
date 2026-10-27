@@ -83,9 +83,9 @@ function readyToBingeNow(now = Date.now()) {
     .all(now, now - 120 * DAY) as { series_id: number; tvdb_id: number; title: string; poster: string | null; season: number; n: number; last: number }[];
   const out: { tvdbId: number; title: string; season: number; episodes: number; cover: string | null; color: string | null; finishedAt: number }[] = [];
   for (const c of cands) {
-    const prof = profileFor(c.tvdb_id);
     const rows = episodeRows(c.series_id).filter((r) => r.season === c.season);
-    const ok = rows.every((r) => r.file && judge({ subs: r.file.subs, audio: r.file.audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null).ok);
+    // The same per-file verdict as the Show page (burned-in facts, sidecars, untagged tracks, not-yet-scanned).
+    const ok = rows.every((r) => r.file?.lang?.state === "ok");
     if (!ok) continue;
     out.push({ tvdbId: c.tvdb_id, title: c.title, season: c.season, episodes: c.n, cover: coverFor({ tvdb_id: c.tvdb_id, poster: c.poster }), color: colorFor(c.tvdb_id), finishedAt: c.last });
     if (out.length >= 6) break;
