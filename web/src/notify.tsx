@@ -1,19 +1,58 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell as BellIcon } from "lucide-react";
 import { FixButtons } from "./fixes";
 import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface Bell { unread: number; needs?: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; read: boolean; action?: boolean; fixes?: import("./api").Fix[] }[] }
+interface BellItem { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; summary?: string | null; read: boolean; resolved?: boolean; action?: boolean; fixes?: import("./api").Fix[] }
+interface Bell { unread: number; needs?: number; items: BellItem[] }
 const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" } as const;
 
-/** The in-app bell: grabbed / imported / failed / paused, newest first; opening it marks them read. */
+/** One notification: the plain summary first; the raw message (release names, hosts, paths) under Details. */
+function BellRow({ n, onRead }: { n: BellItem; onRead: (id: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const plain = n.summary || n.body;
+  return (
+    <li className={`stack bell-item${n.read ? "" : " unread"}`}>
+      <span className="row bell-item-head">
+        {!n.read && <span className="bell-dot" aria-label={t("bell.unread")} />}
+        <span className="grow">
+          <span aria-hidden="true">{ICON[n.event]}</span> <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>
+        </span>
+        {!n.read && (
+          <button className="icon bell-dismiss" aria-label={t("bell.markRead")} title={t("bell.markRead")} onClick={() => onRead(n.id)}>
+            ✓
+          </button>
+        )}
+      </span>
+      <span className="clamp2">{plain}</span>
+      {n.resolved && <span className="muted small">{t("bell.resolved")}</span>}
+      <FixButtons fixes={n.fixes} />
+      {n.summary && n.summary !== n.body && (
+        <>
+          <button className="linklike small self-start" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? "▾" : "▸"} {t("activity.detailsShort")}
+          </button>
+          {open && <span className="muted small why-text">{n.body}</span>}
+        </>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The in-app bell: "Needs action" and "Recent", newest first. Opening it doesn't mark anything read: items are read
+ * when dismissed (✓), when their problem is settled, or with "Mark all read". A bottom sheet on phones.
+ */
 export function BellButton() {
   const [b, setB] = useState<Bell | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"needs" | "recent">("needs");
   const ref = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const [at, setAt] = useState<{ top: number; right: number }>({ top: 64, right: 16 });
   useEffect(() => {
     let alive = true;
     const load = () => api<Bell>("/notifications").then((x) => alive && setB(x), () => undefined);
@@ -23,55 +62,82 @@ export function BellButton() {
   }, []);
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && (setOpen(false), btn.current?.focus());
+    // A fix opens its own dialog (the import, a confirmation): the bell steps out of the way.
+    const fix = () => setOpen(false);
+    document.addEventListener("keydown", key);
+    window.addEventListener("animearr:fix", fix);
+    document.body.classList.add("bell-open");
+    return () => {
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("animearr:fix", fix);
+      document.body.classList.remove("bell-open");
+    };
   }, [open]);
+  const read = async (body: { upToId?: number; ids?: number[] }) => {
+    const x = await api<Bell>("/notifications/read", { body }).catch(() => null);
+    if (x) setB(x);
+  };
+  const shown = b?.items.filter((n) => tab === "recent" || n.action) ?? [];
+  const unreadShown = b?.items.some((n) => !n.read);
   return (
     <div className="bell" ref={ref}>
       <button
+        ref={btn}
         className="icon-btn bell-btn"
         aria-label={t("bell.labelNeeds", { n: b?.needs ?? 0 })}
         aria-expanded={open}
         onClick={async () => {
           const opening = !open;
+          // Placed under the button (portalled to <body>: the top bar's backdrop-filter would trap "fixed").
+          const r = btn.current?.getBoundingClientRect();
+          if (r) setAt({ top: Math.round(r.bottom + 8), right: Math.max(8, Math.round(window.innerWidth - r.right)) });
           setOpen(opening);
           if (!opening) return;
-          // Fresh list first; then mark what's shown as read (anything newer stays unread).
           const fresh = await api<Bell>("/notifications").catch(() => b);
           setB(fresh);
           setTab(fresh?.needs ? "needs" : "recent");
-          if (fresh?.unread && fresh.items[0]) setB(await api<Bell>("/notifications/read", { body: { upToId: fresh.items[0].id } }).catch(() => fresh));
         }}
       >
         <BellIcon className="lucide" aria-hidden="true" />
         {/* Only what needs you counts on the badge. */}
         {b?.needs ? <span className="bell-count">{b.needs > 99 ? "99+" : b.needs}</span> : null}
       </button>
-      {open && (
-        <div className="bell-pop card pad stack" role="dialog" aria-label={t("bell.title")}>
-          <div className="tabs bell-tabs" role="tablist">
-            <button role="tab" aria-selected={tab === "needs"} className={tab === "needs" ? "on" : ""} onClick={() => setTab("needs")}>
-              {t("bell.needs", { n: b?.needs ?? 0 })}
-            </button>
-            <button role="tab" aria-selected={tab === "recent"} className={tab === "recent" ? "on" : ""} onClick={() => setTab("recent")}>
-              {t("bell.recent")}
-            </button>
+      {open &&
+        createPortal(
+        <>
+          <div className="bell-back" aria-hidden="true" onClick={() => setOpen(false)} />
+          <div className="bell-pop card pad stack" role="dialog" aria-modal="true" aria-label={t("bell.title")} style={{ top: at.top, right: at.right }}>
+            <div className="row bell-head">
+              <h2 className="grow">{t("bell.title")}</h2>
+              {unreadShown && (
+                <button className="small" onClick={() => b?.items[0] && void read({ upToId: b.items[0].id })}>
+                  {t("bell.markAll")}
+                </button>
+              )}
+              <button className="icon" aria-label={t("common.close")} onClick={() => (setOpen(false), btn.current?.focus())}>
+                ✕
+              </button>
+            </div>
+            <div className="tabs bell-tabs" role="tablist">
+              <button role="tab" aria-selected={tab === "needs"} className={tab === "needs" ? "on" : ""} onClick={() => setTab("needs")}>
+                {t("bell.needs", { n: b?.needs ?? 0 })}
+              </button>
+              <button role="tab" aria-selected={tab === "recent"} className={tab === "recent" ? "on" : ""} onClick={() => setTab("recent")}>
+                {t("bell.recent")}
+              </button>
+            </div>
+            {tab === "needs" && !b?.needs && <p className="muted small">{t("bell.allClear")}</p>}
+            {tab === "recent" && !b?.items.length && <p className="muted small">{t("bell.none")}</p>}
+            <ul className="rename-list small bell-list">
+              {shown.map((n) => (
+                <BellRow key={n.id} n={n} onRead={(id) => void read({ ids: [id] })} />
+              ))}
+            </ul>
+            {shown.length > 3 && <p className="muted small bell-more">{t("bell.count", { n: shown.length })}</p>}
           </div>
-          {tab === "needs" && !b?.needs && <p className="muted small">{t("bell.allClear")}</p>}
-          {tab === "recent" && !b?.items.length && <p className="muted small">{t("bell.none")}</p>}
-          <ul className="rename-list small">
-            {b?.items.filter((n) => tab === "recent" || n.action).map((n) => (
-              <li key={n.id} className="stack">
-                <span>
-                  {ICON[n.event]} <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>
-                </span>
-                <span className="muted clamp2">{n.body}</span>
-                <FixButtons fixes={n.fixes} />
-              </li>
-            ))}
-          </ul>
-        </div>
+        </>,
+        document.body,
       )}
     </div>
   );
