@@ -517,9 +517,19 @@ async function importParts(
     const plans = [];
     for (const [i, p] of parts.entries()) plans.push(await planMovieImport({ movieId: m.id, path: p.path, release: row.release, client: row.client, automatic: true, trusted, part: i + 1, live: native ? undefined : { path: live.path, currentFile: liveFile } }));
     const items = plans.flatMap((x) => x.items);
-    const res = await executeMovieImport({ ...plans[0], items }, { grabId: row.id });
-    const bad = res.find((r) => !r.done);
-    if (bad || res.length !== parts.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
+    // A retry after the parts were already placed (e.g. Radarr didn't pick them up): same name and size = done.
+    const placed = (it: (typeof items)[number]) => {
+      try {
+        return fs.existsSync(it.dest) && fs.statSync(it.dest).size === fs.statSync(it.source).size;
+      } catch {
+        return false;
+      }
+    };
+    if (!items.every(placed)) {
+      const res = await executeMovieImport({ ...plans[0], items }, { grabId: row.id });
+      const bad = res.find((r) => !r.done);
+      if (bad || res.length !== parts.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
+    }
     if (!native) {
       const wants = new Set(items.map((x) => x.destArr));
       let after: Awaited<ReturnType<NonNullable<PipelineDeps["radarr"]>["movie"]>> | null = null;
@@ -528,8 +538,15 @@ async function importParts(
         if (after.movieFile?.path && wants.has(after.movieFile.path)) break;
         await deps.sleep(5000);
       }
-      if (!after?.movieFile?.path || !wants.has(after.movieFile.path)) return attention(`AnimeArr imported the ${parts.length} parts, but Radarr hasn't picked them up yet (a Rescan in Radarr fixes it)`);
-      cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(after.movieFile)), m.id);
+      // Radarr (v3+) doesn't track stacked parts: AnimeArr remembers the file itself, so neither its own movie search
+      // nor the next sync treats the movie as missing.
+      if (!after?.movieFile?.path || !wants.has(after.movieFile.path)) {
+        const first = await deps.probe(deps.localPath(items[0].destArr) ?? items[0].dest).catch(() => null);
+        const file = JSON.stringify({ path: items[0].destArr, parts: items.map((x) => x.destArr), sceneName: row.release, releaseGroup: parseRelease(row.release).group, quality: null, audio: first?.audio ?? [], subs: first?.subs ?? [], runTime: null, resolution: null });
+        db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(m.id, file, Date.now());
+        cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(file, m.id);
+        logDecision("info", { title: label, why: `Radarr doesn't track multi-part movies, so it still lists ${label} as missing; AnimeArr counts it as there. Unmonitor it in Radarr so Radarr doesn't search for it again.`, detail: { grabId: row.id, movieId: m.id } });
+      } else cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(after.movieFile)), m.id);
     }
   } catch (e) {
     return attention(`AnimeArr's importer: ${(e as Error).message}`);

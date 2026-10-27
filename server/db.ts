@@ -353,6 +353,8 @@ const USER_MIGRATIONS: string[] = [
      state TEXT NOT NULL DEFAULT 'on', trip_kind TEXT, off_since INTEGER, next_check INTEGER, step INTEGER NOT NULL DEFAULT 0, last_error TEXT, last_kind TEXT, last_at INTEGER, updated_at INTEGER NOT NULL);`,
   // 27: shows the user dropped on purpose: never managed, grabbed, filled in or re-added
   `CREATE TABLE dropped (tvdb_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');`,
+  // 28: multi-part movies AnimeArr imported (pt1, pt2, …): Radarr doesn't track stacked parts, AnimeArr does
+  `CREATE TABLE movie_parts (movie_id INTEGER PRIMARY KEY, file TEXT NOT NULL, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
