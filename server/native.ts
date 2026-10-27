@@ -278,8 +278,15 @@ const cacheQ = new Map<string, { at: number; v: AniMedia[] }>();
  * Searches AniList and the local catalog. AniList requests share one slow queue with the catalog refresh: a search
  * waits at most 6 s (then the local results come back with `anilist: "busy"`); a late answer still fills the cache.
  */
+/** "Nuku Nuku (1998)" → { title: "Nuku Nuku", year: 1998 } (Sonarr/Radarr titles carry the year; AniList's don't). */
+export function splitYear(q: string): { title: string; year: number | null } {
+  const m = /^(.*\S)\s*[([]\s*((?:19|20)\d{2})\s*[)\]]\s*$/.exec(q.trim());
+  return m ? { title: m[1], year: Number(m[2]) } : { title: q.trim(), year: null };
+}
+
 export async function searchAdd(q: string, deps = { search: searchMedia, fribb, timeoutMs: 6000 }): Promise<{ results: AddResult[]; anilist: "ok" | "busy" | "error" | "cached" }> {
-  const query = q.trim();
+  // A "(1998)"-style year is searched without (AniList finds nothing with it) and only ranks same-year results first.
+  const { title: query, year } = splitYear(q);
   if (query.length < 2) return { results: [], anilist: "ok" };
   let anilist: "ok" | "busy" | "error" | "cached" = "ok";
   const key = searchKey(query);
@@ -345,7 +352,9 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
       episodes: m.episodes, status: m.status, cover: m.coverImage?.large ?? null, country: m.countryOfOrigin, tvdbId: map?.tvdbId ?? null, tmdbMovie, inLibrary: inLib(map?.tvdbId ?? null, tmdbMovie, m.id), matchedBy: "AniList",
     });
   }
-  return { results: [...out.values()], anilist };
+  const results = [...out.values()];
+  if (year) results.sort((a, b) => Number(b.year === year) - Number(a.year === year));
+  return { results, anilist };
 }
 
 // ---------------------------------------------------------------- add
