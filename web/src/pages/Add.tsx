@@ -24,7 +24,11 @@ interface AddResult {
   matchedBy: string;
 }
 
-const KIND: Record<string, string> = { TV: "TV", TV_SHORT: "TV short", ONA: "ONA", OVA: "OVA", SPECIAL: "Special", MOVIE: "Movie", MUSIC: "Music" };
+/** AniList formats in plain words. */
+const KIND: Record<string, I18nKey> = { TV: "add.kind.tv", TV_SHORT: "add.kind.short", ONA: "add.kind.ona", OVA: "add.kind.ova", SPECIAL: "add.kind.special", MOVIE: "add.kind.movie", MUSIC: "add.kind.music" };
+const kindLabel = (k: string | null) => (k && KIND[k] ? t(KIND[k]) : (k ?? "?"));
+/** AniList writes censored words as "●●" (e.g. "Sousou no Frieren: ●● no Mahou"): shown as "…". */
+const clean = (s: string) => s.replace(/\s*[●○◯]+\s*/g, (m) => `${m.startsWith(" ") ? " " : ""}…${m.endsWith(" ") ? " " : ""}`).trim();
 
 interface LibHit { kind: "show" | "movie"; id: number; title: string; cover: string | null; year?: number | null }
 
@@ -75,7 +79,7 @@ export function Add() {
         const kind = r.inLibrary!.tvdbId ? ("show" as const) : ("movie" as const);
         const id = r.inLibrary!.tvdbId ?? r.inLibrary!.movieId!;
         const own = (lib.data ?? []).find((x) => x.kind === kind && x.id === id);
-        return own ?? { kind, id, title: r.title, cover: r.cover, year: r.year };
+        return own ?? { kind, id, title: clean(r.title), cover: r.cover, year: r.year };
       });
     const seen = new Set<string>();
     return [...viaAnilist, ...byTitle].filter((x) => (seen.has(`${x.kind}${x.id}`) ? false : (seen.add(`${x.kind}${x.id}`), true)));
@@ -84,8 +88,7 @@ export function Add() {
   return (
     <section className="stack">
       <h1>{t("find.title")}</h1>
-      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.placeholder")} aria-label={t("find.title")} aria-describedby="find-help" autoFocus className="add-search" />
-      <p id="find-help" className="muted small field-hint">{t("add.help")}</p>
+      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.placeholder")} aria-label={t("find.title")} autoFocus className="add-search" />
       {debounced.length < 2 && (
         <div className="stack">
           {!!recent().length && (
@@ -130,11 +133,16 @@ export function Add() {
                     </span>
                   </span>
                 </Link>
-                {h.kind === "show" && (
-                  <Link to={`/search?tvdbId=${h.id}`} className="button small">
-                    {t("find.releases")}
+                <span className="row find-hit-actions">
+                  <Link to={h.kind === "show" ? `/show/${h.id}` : `/movie/${h.id}`} className="button small primary">
+                    {t("find.openInLibrary")}
                   </Link>
-                )}
+                  {h.kind === "show" && (
+                    <Link to={`/search?tvdbId=${h.id}`} className="button small ghost">
+                      {t("find.releases")}
+                    </Link>
+                  )}
+                </span>
               </li>
             ))}
           </ul>
@@ -149,18 +157,18 @@ export function Add() {
       {debounced.length >= 2 && !d.data && !d.error && <Spinner label={t("app.loading")} />}
       {d.data && (d.data.anilist === "busy" || d.data.anilist === "error") && <p className="banner warn">{t(d.data.anilist === "busy" ? "add.busy" : "add.aniError")}</p>}
       {d.data && debounced.length >= 2 && !adds.length && !hits.length && d.data.anilist !== "busy" && <Empty icon="⌕">{t("add.none")}</Empty>}
-      {!!adds.length && <h2 className="eyebrow">{t("find.addFromAnilist", { n: adds.length })}</h2>}
+      {!!adds.length && <h2 className="eyebrow">{t("find.addNew", { n: adds.length })}</h2>}
       <div className="poster-grid">
         {adds.map((r) => (
           <article key={r.anilistId} className="poster-card">
-            <button className="poster-select ghost" onClick={() => setPick(r)} aria-label={t("add.addThis", { title: r.title })}>
-              <Cover src={r.cover} alt={r.title} size="lg" />
+            <button className="poster-select ghost" onClick={() => setPick(r)} aria-label={t("add.addThis", { title: clean(r.title) })}>
+              <Cover src={r.cover} alt={clean(r.title)} size="lg" />
             </button>
             <div className="poster-body">
-              <span className="poster-title clamp2">{r.title}</span>
-              {r.romaji && r.romaji !== r.title && <span className="muted small clamp2">{r.romaji}</span>}
+              <span className="poster-title clamp2">{clean(r.title)}</span>
+              {r.romaji && r.romaji !== r.title && <span className="muted small clamp2">{clean(r.romaji)}</span>}
               <span className="muted small">
-                {[KIND[r.kind ?? ""] ?? r.kind ?? "?", r.year, r.episodes && r.kind !== "MOVIE" ? t("add.eps", { n: r.episodes }) : null, r.country && r.country !== "JP" ? r.country : null].filter(Boolean).join(" · ")}
+                {[kindLabel(r.kind), r.year, r.episodes && r.kind !== "MOVIE" ? t("add.eps", { n: r.episodes }) : null, r.country && r.country !== "JP" ? r.country : null].filter(Boolean).join(" · ")}
               </span>
               <button className="small" onClick={() => setPick(r)}>
                 + {t("add.add")}
@@ -172,6 +180,17 @@ export function Add() {
       {pick && <AddSheet r={pick} onClose={() => setPick(null)} />}
     </section>
   );
+}
+
+/** "English subs (default)" → "English subs" (the select says "default" once). */
+const plainName = (n: string) => n.replace(/\s*\(default\)\s*$/i, "");
+
+/** "Anime shows" / "Anime movies" for a root folder (its purpose); the folder's own name when two share a purpose. */
+function rootName(path: string, all: string[]) {
+  const movies = (p: string) => /movie/i.test(p);
+  const base = t(movies(path) ? "add.rootMovies" : "add.rootShows");
+  const same = all.filter((a) => movies(a) === movies(path));
+  return same.length > 1 ? `${base} (${path.split("/").filter(Boolean).pop() ?? path})` : base;
 }
 
 /** The add sheet: root folder, profile, size, monitoring, and what happens next. Defaults from the settings. */
@@ -206,28 +225,29 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
     }
   };
   return (
-    <Modal title={t("add.sheetTitle", { title: r.title })} onClose={onClose}>
+    <Modal title={t("add.sheetTitle", { title: clean(r.title) })} onClose={onClose}>
       {(!s.data || !profiles.data) && <Spinner label={t("app.loading")} />}
       {s.data && profiles.data && (
         <div className="stack">
           <div className="row">
             <Cover src={r.cover} alt={r.title} size="md" />
             <div className="stack small">
-              <strong>{r.title}</strong>
+              <strong>{clean(r.title)}</strong>
               {r.native && <span className="muted">{r.native}</span>}
               <span className="muted">
-                {KIND[r.kind ?? ""] ?? r.kind} · {r.year ?? "?"}
+                {kindLabel(r.kind)} · {r.year ?? "?"}
                 {r.episodes && !movie ? ` · ${t("add.eps", { n: r.episodes })}` : ""}
               </span>
-              <span className="muted">{r.tvdbId ? t("add.tvdbMapped", { id: r.tvdbId }) : t("add.noTvdb")}</span>
+              {!movie && <span className="muted">{r.tvdbId ? t("add.numberedPlex") : t("add.noTvdb")}</span>}
             </div>
           </div>
           <div className="form">
             <label>
               {t("profiles.profile")}
               <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-                <option value="">{t("profiles.followDefault")}</option>
-                {profiles.data.profiles.map((p) => (
+                {/* One "default" entry: the default profile by name (it follows later changes of the default). */}
+                <option value="">{t("add.profileDefault", { name: plainName(profiles.data.profiles.find((p) => p.id === profiles.data!.defaultProfileId)?.name ?? "") })}</option>
+                {profiles.data.profiles.filter((p) => p.id !== profiles.data!.defaultProfileId).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -243,11 +263,17 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                   <select value={root} onChange={(e) => setRoot(e.target.value)}>
                     {s.data.allowedRoots.map((a) => (
                       <option key={a} value={a}>
-                        {a}
+                        {rootName(a, s.data!.allowedRoots)}
                       </option>
                     ))}
                   </select>
                 </label>
+                {root && (
+                  <details className="small">
+                    <summary>{t("add.rootPath")}</summary>
+                    <p className="mono muted">{root}</p>
+                  </details>
+                )}
                 {!movie && (
                   <label>
                     {t("size.preset")}
@@ -328,7 +354,7 @@ function SeasonPicks({ onPick }: { onPick: (title: string) => void }) {
       <h2 className="eyebrow">{t("find.thisSeason", { season: seasonOf().name })}</h2>
       <div className="posters hscroll">
         {d.data.items.map((m) => (
-          <PosterCard key={m.anilistId} title={m.title} cover={m.cover} color={m.color} onClick={() => onPick(m.title)} meta={<span className="clamp1">{m.title}</span>} />
+          <PosterCard key={m.anilistId} title={clean(m.title)} cover={m.cover} color={m.color} onClick={() => onPick(m.title)} meta={<span className="clamp1">{clean(m.title)}</span>} />
         ))}
       </div>
     </>

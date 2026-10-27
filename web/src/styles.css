@@ -1412,3 +1412,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .scroll-hint { position: relative; }
 .scroll-hint.has-more .this-week-scroll { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
 .scroll-more { display: block; margin: 6px auto 0; }
+/* Find & add: "In your library" actions wrap under the title on narrow screens; the global search says Enter searches. */
+.find-hit { flex-wrap: wrap; }
+.find-hit-actions { flex: none; gap: var(--space-2); margin-left: auto; }
+.global-search kbd.kbd-enter { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 50%, var(--line-2)); }
