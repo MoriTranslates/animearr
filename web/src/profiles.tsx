@@ -5,7 +5,7 @@ import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast 
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 export const MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
-export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset }
+export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset; groupConsistency?: "off" | "prefer" | "strong" }
 export type SizePreset = "lean" | "balanced" | "best";
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
@@ -134,6 +134,15 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
         </label>
       </div>
       <p className="muted small">{t(`size.${p.sizePreset ?? "lean"}.help` as I18nKey)}</p>
+      <label>
+        {t("group.label")}
+        <select value={p.groupConsistency ?? "prefer"} onChange={(e) => set({ groupConsistency: e.target.value as "off" | "prefer" | "strong" })}>
+          <option value="off">{t("group.off")}</option>
+          <option value="prefer">{t("group.prefer")}</option>
+          <option value="strong">{t("group.strong")}</option>
+        </select>
+      </label>
+      <p className="muted small">{t("group.help")}</p>
       <p className="muted small">{t("settings.profile.help")}</p>
       <Toggle checked={p.softOnly} onChange={(v) => set({ softOnly: v })} label={t("settings.profile.softOnly")} />
       <Toggle checked={p.preferUncensored} onChange={(v) => set({ preferUncensored: v })} label={t("settings.profile.uncensored")} />

@@ -20,7 +20,7 @@ import { setSeriesMonitored } from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { startGrab, type Candidate } from "./pipeline.js";
-import { decisionSummary, deepSearch, identifyContext, type SearchResult } from "./search.js";
+import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { profileFor } from "./profiles.js";
@@ -262,6 +262,19 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     const w = waiting.find((r) => delayLeftMin(r) === left)!;
     db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(now + left * 60_000 + 60_000, `Waiting ${left} min for the ${w.protocol === "usenet" ? "Usenet" : "torrent"} delay (${w.title})`, st.episode_id);
     return;
+  }
+  // Group consistency on airing shows: the season's group usually posts within hours; wait for it a while (a day, or
+  // three with "strongly prefer") before taking another group's release.
+  const weight = profileFor(st.tvdb_id).groupConsistency ?? "prefer";
+  const sid = (cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(st.tvdb_id) as { id: number } | undefined)?.id;
+  const sg = sid !== undefined ? seasonGroupOf(sid, season, weight, [st.episode_id]) : null;
+  if (sg && ok.length && !ok.some((r) => r.group?.toLowerCase() === sg.group.toLowerCase())) {
+    const air = (cache.prepare("SELECT air_utc FROM episodes WHERE id = ?").get(st.episode_id) as { air_utc: number | null } | undefined)?.air_utc ?? null;
+    const until = air !== null ? air + (sg.weight === "strong" ? 72 : 24) * 3_600_000 : 0;
+    if (until > now) {
+      db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(Math.min(now + 60 * 60_000, until), `Waiting for ${sg.group} (the season's group) until ${new Date(until).toISOString().slice(0, 16).replace("T", " ")} UTC; then the best other release`, st.episode_id);
+      return;
+    }
   }
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
   const attempts = st.attempts + 1;

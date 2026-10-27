@@ -63,6 +63,8 @@ export interface Known {
   blocklisted?: string | null;
   /** Recent download-link failures of the release's indexer (learned; see health.ts). */
   indexerHealth?: { failures: number; ok: number; lastWhy: string; off?: boolean };
+  /** The group (and source) the season's other episodes come from, and how much consistency matters to the profile. */
+  seasonGroup?: { group: string; source: string | null; weight: "prefer" | "strong" } | null;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -309,6 +311,19 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     score -= bad ? 40 : 10;
     flags.push({ key: "indexerHealth", label: `${info.indexer ?? "Indexer"} failing lately (${ih.failures})`, tone: bad ? "bad" : "warn" });
     why.push(`${info.indexer ?? "its indexer"}'s downloads failed ${ih.failures}× lately`);
+  }
+  // Group consistency: the season's group keeps subtitle wording, honorifics and typesetting the same episode to episode.
+  const sg = known.seasonGroup;
+  if (sg && !reject) {
+    const strong = sg.weight === "strong";
+    if (p.group && p.group.toLowerCase() === sg.group.toLowerCase()) {
+      score += strong ? 30 : 15;
+      flags.push({ key: "sameGroup", label: `Same group as the season (${sg.group})`, tone: "good" });
+      why.push(`same group as the rest of the season (${sg.group})`);
+    } else if (sg.source && p.source && p.source === sg.source) {
+      score += strong ? 8 : 4;
+      why.push(`same source as the rest of the season (${sg.source})`);
+    }
   }
   if (known.inLibrary) flags.push({ key: "inLibrary", label: "Same as your library copy", tone: "info" });
   if (p.batch) flags.push({ key: "batch", label: "Batch", tone: "info" });

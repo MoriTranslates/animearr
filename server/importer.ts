@@ -16,6 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
+import { noteBinned } from "./binpurge.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { isTorrentClient } from "./arr/clients.js";
 import fs from "node:fs";
@@ -432,9 +433,9 @@ export function recycle(localFile: string, seriesLocal: string) {
     if (fs.existsSync(target)) target = target.replace(/(\.[^.]+)$/, `.${stamp}$1`);
     moveNoClobber(f, target);
     try {
-      fs.utimesSync(target, new Date(), new Date()); // the bin's retention counts from now
+      noteBinned(target, fs.statSync(target).size); // the bin's retention counts from now
     } catch {
-      /* not ours to change */
+      /* bookkeeping only */
     }
     moved.push({ from: f, to: target });
   }

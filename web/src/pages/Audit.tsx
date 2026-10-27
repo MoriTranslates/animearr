@@ -3,7 +3,7 @@ import { api, fmtSize, sxe } from "../api";
 import { Link, navigate, query } from "../App";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
 import { ReleaseLine } from "./Queue";
 
 type Tab = "gaps" | "language" | "specials" | "maintenance";
@@ -44,7 +44,12 @@ export function Audit() {
       {tab === "language" && <Language />}
       {tab === "specials" && <Specials />}
       {tab === "maintenance" && maint === "checks" && <Checks />}
-      {tab === "maintenance" && maint === "recycle" && <Recycle />}
+      {tab === "maintenance" && maint === "recycle" && (
+        <div className="stack">
+          <OwnBin />
+          <Recycle />
+        </div>
+      )}
       {tab === "maintenance" && maint === "upgrades" && <Upgrades />}
     </section>
   );
@@ -325,6 +330,55 @@ function Checks() {
 }
 
 interface RecycleItem { path: string; series: string | null; tvdbId: number | null; size: number; deletedAt: number; purgeAt: number | null }
+
+/** AnimeArr's own recycling bin: replaced files, kept N days, purged daily; "Empty bin now". */
+function OwnBin() {
+  const toast = useToast();
+  const [ask, setAsk] = useState(false);
+  const d = useLoad(() => api<{ path: string; days: number; error: string | null; files: number; bytes: number; nextPurge: number | null; oldest: number | null }>("/recycle/animearr"), []);
+  if (!d.data) return null;
+  const b = d.data;
+  return (
+    <div className="card pad stack">
+      <h3>{t("bin.title")}</h3>
+      {b.error ? (
+        <p className="warn-text small">{b.error}</p>
+      ) : (
+        <>
+          <p className="small">
+            {t("bin.summary", { path: b.path, n: b.files, size: fmtSize(b.bytes) })} · {b.days ? t("bin.keeps", { days: b.days }) : t("bin.forever")}
+          </p>
+          {b.nextPurge && <p className="muted small">{t("bin.next", { when: dateTime(b.nextPurge) })}</p>}
+          <div className="row">
+            <button type="button" className="small danger" disabled={!b.files} onClick={() => setAsk(true)}>
+              {t("bin.empty")}
+            </button>
+          </div>
+        </>
+      )}
+      {ask && (
+        <Confirm
+          danger
+          title={t("bin.emptyTitle")}
+          confirmLabel={t("bin.empty")}
+          onClose={() => setAsk(false)}
+          onConfirm={async () => {
+            try {
+              const r = await api<{ deleted: number; bytes: number }>("/recycle/animearr/empty", { body: { confirm: true } });
+              toast(t("bin.emptied", { n: r.deleted, size: fmtSize(r.bytes) }));
+              setAsk(false);
+              await d.reload();
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          <p>{t("bin.emptyBody", { n: b.files, size: fmtSize(b.bytes) })}</p>
+        </Confirm>
+      )}
+    </div>
+  );
+}
 
 /** Sonarr's recycle bin, anime shows only (read-only: restore by moving the file back). */
 function Recycle() {

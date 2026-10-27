@@ -145,3 +145,26 @@ test("multi-part movies: numbered parts of similar size are imported as pt1/pt2 
   assert.equal(multiPart([{ path: "/d/Movie A.mkv", size: 4 * GB }, { path: "/d/Movie B.mkv", size: 3.8 * GB }]), null, "two unnumbered movies: ask");
   assert.equal(multiPart([{ path: "/d/x - 01.mkv", size: 4 * GB }, { path: "/d/x - 01v2.mkv", size: 3.9 * GB }]), null, "same number twice: ask");
 });
+
+test("group consistency: the season's majority group gets a bonus and a why; a mixed season has no group", async () => {
+  const { seasonGroupOf } = await import("../server/search.js");
+  const { rankRelease } = await import("../server/core/rank.js");
+  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (4000, 4000, 'Airing Show', '/media/Anime/Airing Show', 1, 0)").run();
+  const groups = ["SubsPlease", "SubsPlease", "SubsPlease", "Erai-raws"];
+  groups.forEach((g, i) => {
+    cache.prepare("INSERT INTO files (id, series_id, season, path, release_group, scene_name) VALUES (?, 4000, 1, ?, ?, ?)").run(9000 + i, `/x/${i}.mkv`, g, `[${g}] Airing Show - 0${i + 1} (1080p) [WEB]`);
+    cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id) VALUES (?, 4000, 1, ?, 1, 1, ?)").run(9100 + i, i + 1, 9000 + i);
+  });
+  const sg = seasonGroupOf(4000, 1, "prefer");
+  assert.equal(sg?.group, "SubsPlease");
+  assert.equal(seasonGroupOf(4000, 1, "off"), null);
+  const prof = { id: "p", name: "p", watchMode: "sub", subLangs: ["en"], dubLangs: [], softOnly: true, preferUncensored: false, protocolOrder: ["torrent", "usenet"], resolution: 1080 } as never;
+  const info = { protocol: "torrent" as const, size: 1.4e9, seeders: 50, indexer: "Nyaa", episodeCount: 1, runtimeMin: 24 };
+  const same = rankRelease(parseRelease("[SubsPlease] Airing Show - 05 (1080p) [ABCD1234].mkv"), info, prof, null, { seasonGroup: sg });
+  const other = rankRelease(parseRelease("[Erai-raws] Airing Show - 05 [1080p][Multiple Subtitle].mkv"), info, prof, null, { seasonGroup: sg });
+  assert.ok(same.score > other.score, `${same.score} > ${other.score}`);
+  assert.match(same.why, /same group as the rest of the season \(SubsPlease\)/);
+  // Two groups 2:2 = no majority: nothing to stay consistent with.
+  cache.prepare("UPDATE files SET release_group = 'Erai-raws' WHERE id = 9001").run();
+  assert.equal(seasonGroupOf(4000, 1, "prefer"), null);
+});

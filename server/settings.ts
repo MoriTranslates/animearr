@@ -43,6 +43,12 @@ export interface LanguageProfile {
    * max) or "best" (best source for re-encoding yourself: REMUX > high-bitrate BD > WEB-DL, lossless audio preferred).
    */
   sizePreset?: SizePreset;
+  /**
+   * Keep the same release group within a season (subtitle wording, honorifics, typesetting, encode stay consistent):
+   * "prefer" (default) gives the season's group a bonus, "strong" a bigger one and waits longer for it on airing shows.
+   * Never overrides a hard requirement (language, burn-ins).
+   */
+  groupConsistency?: "off" | "prefer" | "strong";
 }
 export type SizePreset = "lean" | "balanced" | "best";
 

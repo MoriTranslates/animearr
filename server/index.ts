@@ -1,4 +1,5 @@
 import os from "node:os";
+import { binStatus, binTick, purgeBin } from "./binpurge.js";
 import { replaceSeasonPreview } from "./episodes.js";
 import crypto from "node:crypto";
 import { setIndexerUse } from "./indexerPick.js";
@@ -1004,6 +1005,12 @@ app.post<{ Params: { id: string }; Body: { guid?: string; confirm?: boolean; rep
   return startMovieGrab({ movieId, candidate: toCand(pick), fallbacks, origin: "manual", replace: req.body?.replace === true });
 });
 app.get<{ Querystring: { fresh?: string } }>("/api/recycle", async (req) => recycleStatus(undefined, Date.now(), req.query.fresh === "1"));
+app.get("/api/recycle/animearr", async () => binStatus());
+app.post<{ Body: { confirm?: boolean } }>("/api/recycle/animearr/empty", async (req) => {
+  writable();
+  if (req.body?.confirm !== true) throw fail("Confirm emptying the bin first", 400);
+  return purgeBin({ all: true });
+});
 app.get("/api/recycle/setting", async () => {
   try {
     return await recycleSetting(undefined, Date.now(), true);
@@ -1207,6 +1214,7 @@ every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
 every(15 * 60_000, () => breakerTick(breakerDeps), "indexer re-tests");
+every(60 * 60_000, async () => binTick(), "recycling bin purge");
 every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "file scan");
 every(30 * 60_000, () => fillInTick(), "fill-in");
 every(6 * 3_600_000, () => catalogTick(), "catalog");

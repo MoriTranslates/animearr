@@ -15,6 +15,7 @@ import { cache, db } from "./db.js";
 import { learnedFor, sourceKey } from "./library.js";
 import { aliasIndex } from "./metadata.js";
 import { profileFor } from "./profiles.js";
+import { parseRelease } from "./core/parser.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
   const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
@@ -117,6 +118,35 @@ export function comboQueries(titles: string[], libraryTitle: string, max = 3): s
 }
 
 /** Facts and library knowledge about one candidate. */
+/**
+ * The season's group: the release group most of the season's existing files come from (ties: the latest episode's),
+ * with its source, when the profile wants consistency. Files being replaced still count (they show the season's style
+ * only if most agree; a mixed season has no clear group).
+ */
+/** Per search: the season group of each season seen (set by deepSearch, read by knownFor). */
+const seasonGroupMemo = new Map<string, Known["seasonGroup"]>();
+
+export function seasonGroupOf(seriesId: number, season: number | null, weight: "off" | "prefer" | "strong" = "prefer", exclude: number[] = []): Known["seasonGroup"] {
+  if (weight === "off" || season === null) return null;
+  const rows = cache.prepare("SELECT e.id, e.episode, f.release_group AS grp, f.scene_name AS scene FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? ORDER BY e.episode").all(seriesId, season) as { id: number; episode: number; grp: string | null; scene: string | null }[];
+  const counts = new Map<string, { n: number; last: number; source: string | null }>();
+  for (const r of rows) {
+    if (exclude.includes(r.id)) continue;
+    const g = r.grp ?? (r.scene ? parseRelease(r.scene).group : null);
+    if (!g) continue;
+    const key = g.toLowerCase();
+    const c = counts.get(key) ?? { n: 0, last: 0, source: null };
+    counts.set(key, { n: c.n + 1, last: r.episode, source: c.source ?? (r.scene ? parseRelease(r.scene).source : null) });
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1].n - a[1].n || b[1].last - a[1].last)[0];
+  if (!best) return null;
+  const total = [...counts.values()].reduce((a, c) => a + c.n, 0);
+  // A real majority only (a season of 3 groups has no group to stay consistent with).
+  if (best[1].n * 2 <= total && total > 1) return null;
+  const name = rows.map((r) => r.grp ?? (r.scene ? parseRelease(r.scene).group : null)).find((g) => g?.toLowerCase() === best[0]) ?? best[0];
+  return { group: name, source: best[1].source, weight };
+}
+
 function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean): Known {
   const k: Known = {};
   const prof = profileFor(series.tvdbId);
@@ -129,6 +159,7 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   const scene = cache.prepare("SELECT 1 FROM files WHERE series_id = ? AND scene_name = ? LIMIT 1").get(series.id, r.title.replace(/-xpost$/i, ""));
   if (scene) k.inLibrary = true;
   k.indexerHealth = indexerHealth(r.indexerId);
+  k.seasonGroup = seasonGroupMemo.get(`${series.id}:${season}`) ?? null;
   return k;
 }
 
@@ -188,6 +219,9 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const season = targets[0].season;
   const entry = ctx.index.anidbIdsFor(tvdbId).sort((x, y) => Number(y.season === season) - Number(x.season === season))[0];
   const romaji = entry ? ctx.index.anidbTitle(entry.aid) : null;
+  // Group consistency: the season's group, per season of the targets (not counting the episodes being replaced).
+  const weight = profileFor(tvdbId).groupConsistency ?? "prefer";
+  for (const s of new Set(all.map((e) => e.season))) seasonGroupMemo.set(`${series.id}:${s}`, seasonGroupOf(series.id, s, weight, targets.map((t) => t.id)));
   const seasonSize = new Map<number, number>();
   for (const e of all) seasonSize.set(e.season, (seasonSize.get(e.season) ?? 0) + 1);
   const tier1 = [...tier1Queries(series.title, romaji, targets, seasonSize), ...(opts.extraQueries ?? [])];

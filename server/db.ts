@@ -355,6 +355,8 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE dropped (tvdb_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');`,
   // 28: multi-part movies AnimeArr imported (pt1, pt2, …): Radarr doesn't track stacked parts, AnimeArr does
   `CREATE TABLE movie_parts (movie_id INTEGER PRIMARY KEY, file TEXT NOT NULL, at INTEGER NOT NULL);`,
+  // 29: when each file went into AnimeArr's recycling bin (its retention counts from then, not from the file's date)
+  `CREATE TABLE recycle_log (path TEXT PRIMARY KEY, at INTEGER NOT NULL, size INTEGER NOT NULL DEFAULT 0);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
