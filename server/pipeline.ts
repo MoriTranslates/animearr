@@ -772,3 +772,28 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
   scheduleAfter(eps, "retry", "download removed by you");
   return null;
 }
+
+/** Where a grab's download is (the client's storage path, mapped to the path AnimeArr/Sonarr use); null when unknown. */
+export async function grabDownloadPath(grabId: number, clients: DownloadClients = realClients): Promise<string | null> {
+  const row = db.prepare("SELECT client, client_ref FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as { client: string | null; client_ref: string | null } | undefined;
+  if (!row?.client || !row.client_ref) return null;
+  try {
+    const st = await clients.status({ client: row.client as ClientJob["client"], ref: row.client_ref });
+    return st.path ? clientToSonarr(st.path).replace(/\/+$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A manual import that took a grab's download (opened from its fix): the grab is done, like an automatic import (its
+ * download is cleaned up by the usual rule). Only a grab that is still waiting for this (needs attention / failed).
+ */
+export async function finishGrabByHand(grabId: number, what: string, deps: Pick<PipelineDeps, "cleanup"> = realDeps) {
+  const row = db.prepare("SELECT id, state, release, tvdb_id, movie_id FROM grabs WHERE id = ?").get(grabId) as { id: number; state: string; release: string; tvdb_id: number | null; movie_id: number | null } | undefined;
+  if (!row || !["needs-attention", "failed"].includes(row.state)) return false;
+  setState(row.id, "done");
+  logDecision("import", { tvdbId: row.tvdb_id, release: row.release, why: `Imported ✓ ${what} by hand from ${row.release}`, detail: { grabId: row.id, ...(row.movie_id ? { movieId: row.movie_id } : {}), final: true } });
+  await deps.cleanup?.(row.id, "imported");
+  return true;
+}

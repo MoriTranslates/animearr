@@ -46,7 +46,7 @@
   --info: #1f5fbf;
   --scrim: rgb(245 246 250);
   --shadow: 0 18px 40px -20px rgb(20 24 40 / 0.35);
-  color-scheme: light;
+  color-scheme: light only; /* "only": browsers with forced dark mode (Chrome Auto Dark) leave the light theme alone */
 }
 :root {
   --wash: linear-gradient(160deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent-deep) 9%, transparent) 60%, transparent);
@@ -247,7 +247,7 @@ dl.facts dd { margin: 0; }
 
 /* ---------------------------------------------------------------- dialogs & toasts */
 .modal-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: grid; place-items: center; z-index: 60; padding: 16px; }
-.modal { width: min(560px, 100%); max-height: 90vh; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.modal { width: min(560px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 .toasts { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 70; width: min(520px, calc(100vw - 32px)); }
 .toast { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel-2); border: 1px solid var(--accent-2); padding: 8px 8px 8px 16px; border-radius: 10px; box-shadow: var(--shadow); }
 .toast.err { border-color: var(--bad); }
@@ -1169,8 +1169,11 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 @media (max-width: 700px) { .peek { grid-template-columns: 1fr; } }
 /* Open on your phone */
 .phone-panel { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.phone-panel .qr { background: #fff; padding: 8px; border-radius: 10px; width: 180px; max-width: 100%; }
-.phone-panel .qr svg { display: block; width: 100%; height: auto; }
+/* A QR code is always dark on white (both themes, forced-dark browsers too), wherever it renders. */
+.qr { background: #fff; color: #000; padding: 8px; border-radius: 10px; width: 180px; max-width: 100%; color-scheme: light; forced-color-adjust: none; }
+.qr svg { display: block; width: 100%; height: auto; }
+.qr svg rect[fill="#ffffff"], .qr svg rect[fill="white"] { fill: #fff; }
+.qr svg path { fill: #000; }
 .phone-url { flex-wrap: wrap; }
 .phone-url code { overflow-wrap: anywhere; }
 .phone-steps { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
@@ -1371,3 +1374,19 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
   .fill-row .menu, .qcard .qclient .menu { opacity: 0; transition: opacity 0.15s; }
   .fill-row:hover .menu, .fill-row:focus-within .menu, .qcard:hover .qclient .menu, .qcard:focus-within .qclient .menu { opacity: 1; }
 }
+
+/* ---------------------------------------------------------------- manual import picker */
+.import-browser { gap: var(--space-2, 8px); }
+.browse-bar { align-items: center; gap: var(--space-2, 8px); flex-wrap: nowrap; min-width: 0; }
+.browse-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.browse-list { list-style: none; margin: 0; padding: 0; max-height: 45vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.browse-list li + li { border-top: 1px solid var(--line); }
+.browse-item { display: flex; align-items: center; gap: var(--space-2, 8px); width: 100%; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 8px 10px; min-height: var(--tap, 40px); color: var(--text); cursor: pointer; }
+.browse-item:hover { background: var(--panel-2); }
+.browse-item:focus-visible { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.browse-item.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.browse-item.dim { color: var(--muted); }
+.browse-icon { flex: none; display: inline-flex; color: var(--muted); }
+.browse-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.browse-meta { flex: none; display: inline-flex; gap: var(--space-2, 8px); align-items: center; white-space: nowrap; }
+@media (max-width: 560px) { .browse-item { flex-wrap: wrap; } .browse-meta { width: 100%; padding-left: 24px; } }

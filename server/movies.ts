@@ -29,6 +29,7 @@ import { seriesForMovie } from "./franchise.js";
 import type { SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
+import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
 import { indexerHealth } from "./health.js";
 import { ownFile, probeOf } from "./mediafiles.js";
 
@@ -88,6 +89,16 @@ export function setWanted(movieIds: number[], wanted: boolean, now = Date.now())
   }
   if (n) logDecision("info", { why: `${n} movie(s) set to ${wanted ? "wanted" : "not wanted"} in AnimeArr` });
   return { changed: n };
+}
+
+/** A movie row's alt_titles JSON (never throws). */
+export function parseTitles(json: string | null | undefined): string[] {
+  try {
+    const v = JSON.parse(json ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export function movieById(id: number): MovieRow | null {
@@ -191,27 +202,11 @@ export function movieDetail(id: number) {
 
 // ---------------------------------------------------------------- search
 
-const ROMAN: Record<string, string> = { i: "1", ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" };
-const MARKER = /\b(the movie|movie|gekijouban|gekijoban|eiga|film)\b|劇場版|映画/gi;
 /** Symbols that tell sequels/specials apart ("五等分の花嫁∽" vs "五等分の花嫁＊" vs the movie); punctuation otherwise. */
 const SYMBOLS = /[∽∾∞*]/gu;
 const symbolsOf = (t: string) => [...new Set(t.normalize("NFKC").replace(/\[[^\]]*\]|\([^)]*\)/g, " ").match(SYMBOLS) ?? [])].sort().join("");
+export { normTitle };
 
-/** Lower-case, accents and punctuation removed, "the movie"/"gekijouban" dropped, roman numerals as digits. */
-export function normTitle(t: string) {
-  return t
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(MARKER, " ")
-    .replace(/[^\p{L}\p{N}.]+/gu, " ")
-    .replace(/(?<!\d)\.|\.(?!\d)/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => (w === "part" ? "" : (ROMAN[w] ?? w)))
-    .filter(Boolean)
-    .join(" ");
-}
 const tokens = (t: string) => normTitle(t).split(" ").filter(Boolean);
 const numbers = (t: string) => tokens(t).filter((w) => /^\d+(\.\d+)?$/.test(w));
 function titleScore(a: string, b: string) {
@@ -323,6 +318,10 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
     })(), year: o.year },
   }));
   const seriesTitles = [...new Set([...(cache.prepare("SELECT title FROM series").all() as { title: string }[]).map((x) => x.title), ...(cache.prepare("SELECT DISTINCT title FROM alt_titles").all() as { title: string }[]).map((x) => x.title)])];
+  // A franchise movie/special ("Date A Live: Date to Date"): a release that doesn't name its subtitle is most likely the
+  // TV season (which may bundle the special): still a candidate, but ranked below releases that name it.
+  const subtitles = movieSubtitles([info.title, info.original_title ?? "", ...info.alt_titles], seriesForMovie(id).map((x) => x.title));
+  const unnamed = new Set<string>();
   for (const r of raw.values()) {
     const p = parseRelease(r.title);
     const match = matchMovie(p, info, seriesTitles);
@@ -351,6 +350,7 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
     const blocked = isBlocked({ guid: r.guid, title: r.title });
     // Size sanity: a movie is worth several episodes.
     const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime || 100) / 24)), runtimeMin: (m.runtime || 100) / Math.max(1, Math.round((m.runtime || 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId) });
+    if (subtitles.length && !namesSubtitle(r.title, subtitles)) unnamed.add(r.guid);
     const pub = r.publishDate ? Date.parse(r.publishDate) : null;
     results.push({
       guid: r.guid,
@@ -366,13 +366,13 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
       label: m.year ? `${m.title} (${m.year})` : m.title,
       confidence: match.confidence,
       rank,
-      mappingWhy: [match.why],
+      mappingWhy: unnamed.has(r.guid) ? [match.why, `doesn't name "${subtitles[0]}" (likely the series' batch); ranked below releases that do`] : [match.why],
       group: p.group,
       downloadUrl: r.downloadUrl,
       magnetUrl: r.magnetUrl,
     });
   }
-  results.sort((a, b) => compareRanked(a, b) || b.confidence - a.confidence);
+  results.sort((a, b) => Number(b.rank.accept) - Number(a.rank.accept) || Number(unnamed.has(a.guid)) - Number(unnamed.has(b.guid)) || compareRanked(a, b) || b.confidence - a.confidence);
   return { movie: { id: m.id, title: m.title, year: m.year, cover: m.poster }, queries, found: raw.size, matched: results.length, skipped, errors, tookMs: Date.now() - started, results };
 }
 
@@ -603,13 +603,24 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   if (!inThis.length) return attention(`no video files found in ${single ? p0 : folder} (Radarr must see the download folder at the same path as Sonarr; archives aren't unpacked for movies yet)`);
   // The movie is the biggest file; extras stay out. Two big files = maybe two movies: let the user decide.
   const bySize = [...inThis].sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
-  const main = bySize[0];
+  let main = bySize[0];
   const prof = profileForMovie(m.id);
+  // A season batch that bundles the special (e.g. Specials/"… - OVA - Date to Date.mkv"): the file whose name carries
+  // the movie's subtitle is the movie, whatever its size.
+  const subtitles = movieSubtitles([m.title, m.original_title ?? "", ...parseTitles(m.alt_titles)], seriesForMovie(m.id).map((x) => x.title));
+  const named = inThis.length > 1 ? fileForMovie(inThis, subtitles) : null;
+  if (named && named !== main) {
+    main = named;
+    logDecision("info", { title: label, release: row.release, why: `${row.release} has several videos; picked ${path.posix.basename(named.path)}, the one whose name says "${subtitles.find((x) => namesSubtitle(path.posix.basename(named.path), [x])) ?? subtitles[0]}"`, detail: { grabId: row.id, movieId: m.id } });
+  }
   // Several big files: a multi-part movie (a 2-part special filed as one movie) when they're numbered parts of similar
-  // size whose runtimes add up to the movie's; anything else is for the user to decide.
+  // size whose runtimes add up to the movie's; numbered episodes of a series are the wrong release; anything else is for
+  // the user to decide.
   let parts: typeof inThis | null = null;
-  if (bySize[1] && (bySize[1].size ?? 0) > (main.size ?? 0) * 0.4) {
+  if (!named && bySize[1] && (bySize[1].size ?? 0) > (main.size ?? 0) * 0.4) {
     parts = multiPart(inThis);
+    const big = bySize.filter((x) => (x.size ?? 0) > (main.size ?? 0) * 0.4);
+    if (!parts && looksLikeEpisodes(big)) return fail(`wrong release: this is a series batch (${big.length} numbered episodes${subtitles.length ? `, none of them named "${subtitles[0]}"` : ""}), not the movie`, false);
     if (!parts) return attention(`the download has several large video files (${bySize.slice(0, 3).map((x) => path.posix.basename(x.path)).join(", ")}); import the right one by hand`);
   }
   if (parts) return importParts(row, m, live, parts, prof, deps, attention, fail, label, p0);

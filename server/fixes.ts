@@ -41,7 +41,10 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
     add({ action: "importManual", label: "Import manually…", params: { ...target, path, grabId: ctx.grabId ?? null } });
   }
   // A movie download with several big files (two movies? a multi-part special?): the user picks, in the import dialog.
+  // The dialog starts in the grab's own download folder (the server asks the client where it is).
   if (/several large video files|import the right (?:one|file) by hand/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId ?? null } });
+  // The import itself broke off (a restart, a leftover file, a disk error): import it by hand from the same download.
+  if (ctx.grabId && /restarted during the import|AnimeArr's importer: /i.test(why) && !/switched off|paused for a review/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId } });
   if (/couldn't tell which (?:file is which )?episode|couldn't map the episode|two files look like the same episode|import (?:it|them|this one) by hand/i.test(why)) add({ action: "pickEpisode", label: "Pick episode…", params: { ...target, grabId: ctx.grabId ?? null } });
   if ((ctx.kind === "verify-fail" || /failed verification/i.test(why)) && /sub|English|dialogue|audio|dub/i.test(why)) {
     add({ action: "regrab", label: "Re-grab", params: target });

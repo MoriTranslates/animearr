@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ImportDialog } from "../fixes";
 import { FixDetection, Peek, WatchIn } from "../filetools";
 import { LibraryHead } from "./Shows";
 import { RemoveNative } from "./Add";
@@ -160,6 +161,7 @@ export function MoviePage({ id }: { id: number }) {
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const auto = async () => {
     setAutoBusy(true);
     try {
@@ -209,6 +211,7 @@ export function MoviePage({ id }: { id: number }) {
   };
   return (
     <section className="stack">
+      {importing && <ImportDialog movieId={id} grabId={m.active?.state === "needs-attention" ? m.active.id : null} onClose={() => setImporting(false)} onDone={() => void d.reload()} />}
       <header className="kv-hero">
         {m.cover && <span className="hero-blur" style={{ backgroundImage: `url(${thumbUrl(m.cover, "sm")})` }} aria-hidden="true" />}
         <div className="hero-in">
@@ -227,6 +230,7 @@ export function MoviePage({ id }: { id: number }) {
             <Menu
               className="hero-menu"
               items={[
+                { label: t("import.manual"), onSelect: () => setImporting(true), hidden: !m.allowed },
                 { label: t("files.refreshScan"), onSelect: () => void rescan() },
                 { label: m.monitored ? t("movies.unwantThis") : t("movies.wantThis"), onSelect: () => void toggleWanted() },
                 { label: t("add.remove"), onSelect: () => setRemoving(true), hidden: id < 900_000_000, danger: true },

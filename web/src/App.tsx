@@ -3,6 +3,7 @@ import { PhoneButton } from "./phone";
 import { LostAtSea } from "./merry";
 import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
+import { UpdateCheck } from "./updateCheck";
 import { BellButton } from "./notify";
 import { api, store, type Status, appPath, withBase } from "./api";
 import { setLanguage, t, type I18nKey } from "./i18n";
@@ -75,6 +76,8 @@ export const query = () => new URLSearchParams(location.search);
 
 export function applyTheme(theme: string) {
   document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+  // The browser chrome (address bar, PWA title bar) follows the theme; the root color-scheme comes from the CSS.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f5f6fa" : "#0b0d14");
   applySeason(theme === "light" ? "light" : "dark");
   // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
   document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
@@ -218,6 +221,7 @@ export function App() {
               <BellButton />
             </span>
             <FixHost />
+            <UpdateCheck />
           </header>
           <main id="main" tabIndex={-1}>
             {status.defaultPassword && !dismissed && (

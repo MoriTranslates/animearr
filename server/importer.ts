@@ -35,6 +35,8 @@ import { localPath, mappedPath } from "./paths.js";
 import { notifyPlex } from "./plex.js";
 import { identifyContext, seriesByTvdb } from "./search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
+import { fileForMovie, movieSubtitles } from "./core/movieTitle.js";
+import { seriesForMovie } from "./franchise.js";
 
 const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;
 const MAX_NAME_BYTES = 250;
@@ -479,6 +481,23 @@ export const fileLink = (arrPath: string) => {
   return r ? (JSON.parse(r.episode_ids) as number[]) : null;
 };
 
+/** Temporary files this process is writing right now. */
+const inFlight = new Set<string>();
+
+/**
+ * A "*.animearr-part" left behind by an import that was cut off (AnimeArr restarted mid-copy): it's AnimeArr's own
+ * temporary file and nobody is writing it (the caller holds the in-flight mark for it), so it goes before the retry. Only while the
+ * source still exists: if the source is gone, the part may be the only copy, and it stays for a look.
+ */
+export function clearStalePart(tmp: string, source: string) {
+  if (!tmp.endsWith(PART) || !fs.existsSync(tmp) || !fs.existsSync(source)) return false;
+  const st = fs.lstatSync(tmp);
+  if (!st.isFile()) return false;
+  fs.rmSync(tmp, { force: true });
+  logDecision("info", { why: `Removed ${path.basename(tmp)}, left behind by an import that was cut off; importing it again` });
+  return true;
+}
+
 /**
  * The shared placement for episodes and movies. Refused unless real imports were switched on (importer.allowReal and
  * the real-import budget), except when `dryRun` (then it only reports). Order per item: new file in place under a
@@ -509,8 +528,14 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
     const tmp = it.dest + PART;
     let binned: { from: string; to: string }[] = [];
     let did: PlanItem["action"] | null = null;
+    if (inFlight.has(tmp)) {
+      out.push({ label: it.label, done: false, why: "this file is being imported right now" });
+      continue;
+    }
+    inFlight.add(tmp);
     try {
       if (fs.existsSync(it.dest) && path.resolve(it.dest) !== path.resolve(it.replaces ?? "")) throw new Error("a file with that name appeared meanwhile: not overwritten");
+      clearStalePart(tmp, it.source);
       did = placeFile(it.action, it.source, tmp);
       if (it.replaces && fs.existsSync(it.replaces)) binned = recycle(it.replaces, rootLocal);
       try {
@@ -555,6 +580,8 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
         }
       }
       out.push({ label: it.label, done: false, why: (e as Error).message });
+    } finally {
+      inFlight.delete(tmp);
     }
   }
   if (real && out.some((x) => x.done)) await target.after();
@@ -567,7 +594,7 @@ export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; 
 
 /** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
 export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null }; part?: number }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
-  const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; year: number | null; path: string; file: string | null } | undefined;
+  const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, original_title, alt_titles, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; original_title: string | null; alt_titles: string | null; year: number | null; path: string; file: string | null } | undefined;
   if (!mv) throw err("Unknown movie", 404);
   const m = getSettings().media;
   const notes: string[] = [];
@@ -587,10 +614,19 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   const files = st.isDirectory() ? videosIn(real, minBytes) : VIDEO.test(real) && st.size >= minBytes ? [real] : [];
   const label = mv.year ? `${mv.title} (${mv.year})` : mv.title;
   if (!files.length) return { movieId: mv.id, title: label, items: [], notes: ["no video files found"] };
-  const bySize = files.map((f) => ({ f, size: fs.statSync(f).size })).sort((a, b) => b.size - a.size);
-  const main = bySize[0];
+  const bySize = files.map((f) => ({ f, path: f, size: fs.statSync(f).size })).sort((a, b) => b.size - a.size);
+  // A batch that bundles the movie/special: the file whose name carries the movie's subtitle ("… - OVA - Date to Date").
+  let alt: string[] = [];
+  try {
+    alt = JSON.parse(mv.alt_titles ?? "[]") as string[];
+  } catch {
+    alt = [];
+  }
+  const named = bySize.length > 1 ? fileForMovie(bySize, movieSubtitles([mv.title, mv.original_title ?? "", ...alt], seriesForMovie(mv.id).map((x) => x.title))) : null;
+  if (named) notes.push(`picked ${path.basename(named.f)} (its name matches the movie); the other ${bySize.length - 1} video file(s) are left alone`);
+  const main = named ?? bySize[0];
   const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
-  if (bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand, or as parts` }], notes };
+  if (!named && bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand, or as parts` }], notes };
   let probe: Probe | null = null;
   try {
     probe = await deps.probe(main.f);
@@ -820,4 +856,119 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
   await scanFolder(s.path).catch(() => undefined);
   if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
   notifyPlex([s.path]);
+}
+
+// ---------------------------------------------------------------- manual import: browse the download folders
+
+export interface BrowseEntry { name: string; path: string; dir: boolean; size: number; mtime: number; video: boolean; videos: number }
+export interface BrowseResult { roots: { path: string; label: string }[]; path: string | null; parent: string | null; entries: BrowseEntry[]; truncated: boolean }
+
+/** Where a manual import may browse: the importer's source roots, plus a grab's own download folder (resolved by the server). */
+export function browseRoots(extra: (string | null | undefined)[] = []) {
+  const out: { path: string; local: string; label: string }[] = [];
+  for (const [i, raw] of [...(getSettings().importer.sourceRoots ?? []), ...extra].entries()) {
+    if (!raw) continue;
+    const p = raw.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (!p.startsWith("/") || out.some((r) => r.path === p)) continue;
+    const local = localPath(p);
+    if (!local) continue;
+    let real: string;
+    try {
+      real = fs.realpathSync(local);
+      if (!fs.statSync(real).isDirectory() || forbiddenSource(real)) continue;
+    } catch {
+      continue;
+    }
+    out.push({ path: p, local: real, label: i >= (getSettings().importer.sourceRoots ?? []).length ? "download" : "source" });
+  }
+  return out;
+}
+
+/** A folder's size and video count: no symlinks, at most 4 levels and 2000 entries. */
+function folderStats(dir: string) {
+  let size = 0;
+  let videos = 0;
+  let seen = 0;
+  const walk = (d: string, depth: number) => {
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(d);
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      if (++seen > 2000) return;
+      const f = path.join(d, n);
+      try {
+        const st = fs.lstatSync(f);
+        if (st.isSymbolicLink()) continue;
+        if (st.isDirectory()) {
+          if (depth < 4) walk(f, depth + 1);
+        } else if (st.isFile()) {
+          size += st.size;
+          if (VIDEO.test(n) && !/\bsample\b/i.test(n)) videos++;
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  };
+  walk(dir, 0);
+  return { size, videos };
+}
+
+/**
+ * Lists a folder for the manual-import picker. Read-only; only inside the allowed roots (no "..", no symlinks out,
+ * never the library/bin/config); newest first; video files flagged. No path = the roots themselves.
+ */
+export function browseImport(input: { path?: string | null; extra?: (string | null | undefined)[] }): BrowseResult {
+  const roots = browseRoots(input.extra);
+  const rootsOut = roots.map((r) => ({ path: r.path, label: r.label }));
+  const entryOf = (name: string, arr: string, local: string): BrowseEntry | null => {
+    try {
+      const st = fs.lstatSync(local);
+      if (st.isSymbolicLink()) return null;
+      if (st.isDirectory()) {
+        const s = folderStats(local);
+        return { name, path: arr, dir: true, size: s.size, mtime: st.mtimeMs, video: false, videos: s.videos };
+      }
+      if (!st.isFile()) return null;
+      const video = VIDEO.test(name);
+      return { name, path: arr, dir: false, size: st.size, mtime: st.mtimeMs, video, videos: video ? 1 : 0 };
+    } catch {
+      return null;
+    }
+  };
+  const want = (input.path ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!want) return { roots: rootsOut, path: null, parent: null, entries: roots.map((r) => entryOf(r.path, r.path, r.local)).filter((x): x is BrowseEntry => !!x).sort((a, b) => b.mtime - a.mtime), truncated: false };
+  if (want.includes("\0") || want.split("/").some((s) => s === ".." || s === ".")) throw err("That path isn't allowed", 400);
+  // The most specific root that holds the path.
+  const root = [...roots].sort((a, b) => b.path.length - a.path.length).find((r) => want === r.path || want.startsWith(`${r.path}/`));
+  if (!root) throw err("Manual import only browses AnimeArr's download folders", 403);
+  const rel = want.slice(root.path.length).replace(/^\/+/, "");
+  let real: string;
+  try {
+    real = fs.realpathSync(path.join(root.local, ...rel.split("/").filter(Boolean)));
+  } catch {
+    throw err(`AnimeArr can't read ${want}`, 404);
+  }
+  if (!under(real, root.local) || forbiddenSource(real)) throw err("Manual import only browses AnimeArr's download folders", 403);
+  const parentOf = (p: string) => (p === root.path ? null : p.slice(0, p.lastIndexOf("/")) || null);
+  if (!fs.statSync(real).isDirectory()) {
+    const e = entryOf(path.basename(real), want, real);
+    return { roots: rootsOut, path: want, parent: parentOf(want), entries: e ? [e] : [], truncated: false };
+  }
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(real);
+  } catch {
+    throw err(`AnimeArr can't read ${want}`, 404);
+  }
+  const truncated = names.length > 500;
+  const entries = names
+    .slice(0, 500)
+    .map((n) => entryOf(n, `${want}/${n}`, path.join(real, n)))
+    .filter((x): x is BrowseEntry => !!x)
+    .sort((a, b) => b.mtime - a.mtime);
+  return { roots: rootsOut, path: want, parent: parentOf(want), entries, truncated };
 }

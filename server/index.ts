@@ -14,6 +14,7 @@ import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
+import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
@@ -43,7 +44,7 @@ import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { backlogSummary, candidates, managePreview, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
-import { keepGrab, listGrabs, nextForGrab, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
+import { finishGrabByHand, grabDownloadPath, keepGrab, listGrabs, nextForGrab, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
@@ -72,7 +73,7 @@ async function catalogTick(force = false) {
   }
 }
 import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMovieGrab } from "./movies.js";
-import { applyRenameRouted, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
+import { applyRenameRouted, browseImport, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
@@ -108,6 +109,9 @@ const app = Fastify({
   bodyLimit: 1_000_000,
 });
 await app.register(fastifyCookie);
+// JSON goes out as plain ASCII (non-ASCII as \uXXXX escapes): a client that decodes the body as Latin-1/cp1252 instead
+// of UTF-8 (Windows PowerShell 5.1, some proxies and shell pipes) still gets "…" and titles right, never "â€¦".
+app.setReplySerializer((payload) => asciiJson(payload));
 app.addHook("onRequest", guard);
 // Any change to the migration invalidates the cached plan.
 app.addHook("onResponse", async (req) => {
@@ -177,7 +181,7 @@ app.get("/ping", async () => ({ status: "OK" }));
 app.get("/api/status", { config: { setup: true } }, async (req) => {
   const s = getSettings();
   const a = authState(req);
-  const base = { version: VERSION, setupRequired: a.setupRequired, loggedIn: a.ok };
+  const base = { version: VERSION, build: webBuild(), setupRequired: a.setupRequired, loggedIn: a.ok };
   if (!a.ok) return base;
   return {
     ...base,
@@ -912,12 +916,25 @@ app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
   return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
 });
-app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; dryRun?: boolean } }>("/api/import/run", async (req) => {
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; dryRun?: boolean; grabId?: number | null } }>("/api/import/run", async (req) => {
   writable();
   const b = req.body ?? ({} as never);
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
   const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
-  return { plan, results: await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only }) };
+  const results = await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only, grabId: b.grabId ? Number(b.grabId) : undefined });
+  // Opened from a grab's fix: everything it was for is imported → the grab is done.
+  if (b.grabId && b.dryRun === false && results.length && results.every((r) => r.done)) await finishGrabByHand(Number(b.grabId), plan.seriesTitle);
+  return { plan, results };
+});
+/**
+ * Manual import picker: lists a folder under the importer's source roots (and the grab's own download folder, when
+ * opened from a grab). Read-only, confined to those roots. Also returns the grab's download path, to start there.
+ */
+app.get<{ Querystring: { path?: string; grabId?: string } }>("/api/import/browse", async (req) => {
+  const grabPath = req.query.grabId ? await grabDownloadPath(id(req.query.grabId)) : null;
+  // No path asked: start in the grab's download (when known); an empty path lists the roots.
+  const want = req.query.path ?? grabPath ?? "";
+  return { ...browseImport({ path: want, extra: [grabPath] }), grabPath };
 });
 /** Movie import plan (a dry run; nothing is changed). */
 app.post<{ Body: { movieId: number; path: string; release?: string; client?: string | null } }>("/api/import/movie-plan", async (req) => {
@@ -1102,10 +1119,13 @@ app.post<{ Params: { id: string } }>("/api/grabs/:id/next", async (req) => {
   const r = await nextForGrab(id(req.params.id));
   return { ok: true, next: r };
 });
-app.post<{ Body: { movieId: number; path: string } }>("/api/import/movie-run", async (req) => {
+app.post<{ Body: { movieId: number; path: string; grabId?: number | null } }>("/api/import/movie-run", async (req) => {
   writable();
+  const grabId = req.body?.grabId ? Number(req.body.grabId) : undefined;
   const plan = await planMovieImport({ movieId: id(req.body?.movieId), path: String(req.body?.path ?? "") });
-  return { plan, results: await executeMovieImport(plan) };
+  const results = await executeMovieImport(plan, { grabId });
+  if (grabId && results.length && results.every((r) => r.done)) await finishGrabByHand(grabId, plan.title);
+  return { plan, results };
 });
 app.post<{ Body: { name: string } }>("/api/downloads/rules/disable", async (req) => {
   writable();
@@ -1242,6 +1262,18 @@ if (!fs.existsSync(path.join(WEB_DIR, "index.html"))) app.log.warn(`No web build
 fs.mkdirSync(WEB_DIR, { recursive: true });
 // wildcard: true serves files built after startup too (vite build while the dev server runs).
 await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: false });
+/** The web build being served: the hashed name of its entry script (open tabs compare it to theirs to offer a reload). */
+let buildCache: { mtime: number; id: string | null } | null = null;
+function webBuild(): string | null {
+  try {
+    const file = path.join(WEB_DIR, "index.html");
+    const mtime = fs.statSync(file).mtimeMs;
+    if (buildCache?.mtime !== mtime) buildCache = { mtime, id: /assets\/index-([\w-]+)\.js/.exec(fs.readFileSync(file, "utf8"))?.[1] ?? null };
+    return buildCache.id;
+  } catch {
+    return null;
+  }
+}
 /** The page itself, with <base href> set to the URL base (so relative asset URLs work on any path). */
 const sendIndex = (reply: import("fastify").FastifyReply) => {
   const file = path.join(WEB_DIR, "index.html");

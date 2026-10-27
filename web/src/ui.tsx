@@ -1,4 +1,5 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { SheepShip } from "./merry";
 import { Zap } from "lucide-react";
 import { fixesForMessage, runFix, type Flag, BASE } from "./api";
@@ -151,7 +152,9 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
       prev?.focus();
     };
   }, []);
-  return (
+  // Portalled to <body>: a dialog opened from the top bar (backdrop-filter makes it the containing block for "fixed")
+  // would otherwise be centred on the bar and pushed off the top of the screen.
+  return createPortal(
     <div className="modal-back" onClick={onClose}>
       <div className="modal card" role="dialog" aria-modal="true" aria-label={title} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="card-head">
@@ -162,7 +165,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

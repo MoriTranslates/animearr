@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type MediaSettings, type Settings as S } from "./api";
 import { Link } from "./App";
 import { t, type I18nKey } from "./i18n";
+import { ImportBrowser } from "./importBrowser";
 import { Chip, Confirm, ErrorBox, NumberInput, Spinner, Toggle, useLoad, useToast } from "./ui";
 
 type Upd = (fn: (x: S) => S) => void;
@@ -347,8 +348,13 @@ export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number
     <details className="card pad stack" open={initiallyOpen}>
       <summary>{t("import.title")}</summary>
       <p className="muted small">{t("import.help")}</p>
+      <ImportBrowser selected={p} onSelect={(x) => (setP(x), setPlan(null))} />
+      <details className="small">
+        <summary>{t("import.typePath")}</summary>
+        <input value={p} onChange={(e) => (setP(e.target.value), setPlan(null))} placeholder="/data/completed/animearr/…" aria-label={t("import.path")} className="grow" spellCheck={false} />
+      </details>
       <div className="row">
-        <input value={p} onChange={(e) => (setP(e.target.value), setPlan(null))} placeholder="/data/completed/animearr/…" aria-label={t("import.path")} className="grow" />
+        {p && <span className="mono small grow">{p}</span>}
         <button className="small" disabled={busy || !p.trim()} onClick={() => run(true)}>
           {t("import.preview")}
         </button>
