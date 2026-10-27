@@ -53,7 +53,7 @@ import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
-import { scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
+import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
 
@@ -575,7 +575,7 @@ app.post<{ Body: { tvdbIds?: number[]; on?: boolean; live?: boolean } }>("/api/m
   return setManaged(ids, req.body?.on !== false, { live: req.body?.live === true });
 });
 app.post<{ Body: { tvdbIds?: number[] } }>("/api/managed/preview", async (req) => managePreview((req.body?.tvdbIds ?? []).map(id).slice(0, 500)));
-app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30, { episodesOnly: true }) }));
+app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, backlogOn: getSettings().backlog.enabled, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6), missing: missingScoped(m.tvdbId, m.seriesId).length })), grabs: listGrabs(30, { episodesOnly: true }) }));
 app.put<{ Params: { tvdbId: string }; Body: { dryRun?: boolean } }>("/api/managed/:tvdbId", async (req) => {
   writable();
   if (typeof req.body?.dryRun !== "boolean") throw fail("dryRun must be true or false");

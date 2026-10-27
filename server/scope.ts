@@ -124,6 +124,19 @@ export function scopedEpisodeIds(tvdbId: number, seriesId: number, now = Date.no
   return new Set(inScope(scopeFor(tvdbId), eps, now).map((e) => e.id));
 }
 
+/**
+ * THE definition of a missing episode, shared by every screen that counts them: it has aired (an air time in the
+ * past), has no file, and is in the show's monitoring scope (regular seasons; specials only when the scope takes them).
+ * Screens differ only in which part they show: the normal schedule covers the last 30 days, the missing-episode
+ * search everything older; Audit → Gaps counts all monitored episodes, whatever a managed show's scope.
+ */
+export const isMissing = (e: { air_utc: number | null; has_file: number }, now = Date.now()) => !e.has_file && e.air_utc !== null && e.air_utc <= now;
+
+/** A show's missing episodes (in scope), with their air times. */
+export function missingScoped(tvdbId: number, seriesId: number, now = Date.now()) {
+  return inScope(scopeFor(tvdbId), scopeEps(tvdbId, seriesId), now).filter((e) => isMissing(e, now));
+}
+
 /** Live preview for the UI: "Will monitor 3 seasons · 52 episodes · 6 missing". */
 export function scopePreview(tvdbId: number, scope: Scope & { since?: number; honourSonarr?: boolean }, now = Date.now()) {
   const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;

@@ -34,7 +34,7 @@ const episodeId = (row: number, season: number, episode: number) => NATIVE_BASE 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 
 interface NativeRow { id: number; tvdb_id: number; anilist_id: number; synthetic: number; title: string; year: number | null; path: string; root_folder: string; added_at: number }
-interface EntryRow { anilist_id: number; anidb_id: number | null; tvdb_season: string | null; tvdb_offset: number; kind: string | null; title_english: string | null; title_romaji: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null }
+interface EntryRow { anilist_id: number; anidb_id: number | null; tvdb_season: string | null; tvdb_offset: number; kind: string | null; title_english: string | null; title_romaji: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date?: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null }
 
 export const nativeShows = () => db.prepare("SELECT * FROM native_series ORDER BY id").all() as unknown as NativeRow[];
 export const isNativeTvdb = (tvdbId: number) => !!db.prepare("SELECT 1 FROM native_series WHERE tvdb_id = ?").get(tvdbId);
@@ -63,13 +63,23 @@ const clearRows = (sid: number) =>
 /** Sonarr has this TVDB series too (added there after AnimeArr): Sonarr's copy is the one used; the native one is parked. */
 export const ownedBySonarr = (tvdbId: number) => !!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ? AND id < ?").get(tvdbId, NATIVE_BASE);
 
+/** "2023-09-29" → ms (null when unknown or partial). */
+const dateMs = (d: string | null | undefined) => {
+  const v = d && /^\d{4}-\d{2}-\d{2}/.test(d) ? Date.parse(d.slice(0, 10)) : NaN;
+  return Number.isFinite(v) ? v : null;
+};
+
 type Ep = { id: number; season: number; episode: number; absolute: number; title: string | null; air: number | null; runtime: number | null };
 
 /** A native show's episodes from the catalog (pure: nothing is written). */
 export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id" | "synthetic">) {
   const entries = showEntries(n as NativeRow);
   const byKey = new Map<string, Ep>();
+  /** Each entry's own episodes (for filling air dates AniList leaves out, below). */
+  const own: { keys: string[]; start: number | null; end: number | null; finished: boolean }[] = [];
   for (const e of entries) {
+    const mine: string[] = [];
+    own.push({ keys: mine, start: dateMs(e.start_date), end: dateMs(e.end_date), finished: e.status === "FINISHED" });
     const list = new Map((db.prepare("SELECT number, title, air_utc FROM entry_episodes WHERE anilist_id = ?").all(e.anilist_id) as { number: number; title: string | null; air_utc: number | null }[]).map((x) => [x.number, x]));
     const count = e.episodes ?? Math.max(0, ...list.keys(), e.next_ep ?? 0); // airing: the next episode too (it has an air time)
     for (let k = 1; k <= count; k++) {
@@ -78,6 +88,7 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
       const key = `${e.season}x${ep}`;
       if (byKey.has(key)) continue; // two entries on the same S/E (overlapping mappings): the earlier entry wins
       const x = list.get(k);
+      mine.push(key);
       byKey.set(key, { id: episodeId(n.id, e.season, ep), season: e.season, episode: ep, absolute: e.tvdb_season === "a" ? ep : 0, title: x?.title ?? null, air: x?.air_utc ?? (e.next_ep === k ? e.next_at : null), runtime: e.duration });
     }
   }
@@ -101,6 +112,20 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
       if (a.type === "regular" && a.season > 0 && (covered.has(a.aid) || absoluteEntry)) continue;
       byKey.set(key, { id: episodeId(n.id, a.season, a.episode), season: a.season, episode: a.episode, absolute: 0, title: a.title, air: a.air, runtime: a.length });
     }
+  // AniList's airing schedule can skip episodes that aired together (Frieren's 4-episode premiere starts its schedule
+  // at episode 5). Without a date they'd count as "not aired yet" and drop out of every missing count. An episode
+  // before one that has aired has aired too: it gets the entry's start date (or the later episode's date); a
+  // finished entry's undated episodes get its start (or end) date.
+  for (const o of own) {
+    let later: number | null = null;
+    for (let i = o.keys.length - 1; i >= 0; i--) {
+      const ep = byKey.get(o.keys[i]);
+      if (!ep) continue;
+      if (ep.air !== null) later = later === null ? ep.air : Math.min(later, ep.air);
+      else if (later !== null) ep.air = o.start !== null && o.start <= later ? o.start : later;
+      else if (o.finished) ep.air = o.start ?? o.end;
+    }
+  }
   // Absolute numbers: in (season, episode) order, regular seasons only; "a" entries already are absolute.
   const eps = [...byKey.values()].sort((a, b) => a.season - b.season || a.episode - b.episode);
   let abs = 0;

@@ -17,6 +17,7 @@ import { animeListEntries } from "./metadata.js";
 import { profileFor } from "./profiles.js";
 import { judge } from "./verify.js";
 import { localPath } from "./paths.js";
+import { isMissing } from "./scope.js";
 
 interface SeriesRow {
   id: number;
@@ -160,7 +161,8 @@ export function gaps() {
   for (const s of seriesRows()) {
     const eps = cache.prepare("SELECT id, season, episode, absolute, title, air_utc, monitored, has_file FROM episodes WHERE series_id = ? AND season > 0 ORDER BY season, episode").all(s.id) as { id: number; season: number; episode: number; absolute: number | null; title: string | null; air_utc: number | null; monitored: number; has_file: number }[];
     const aired = eps.filter((e) => e.air_utc !== null && e.air_utc <= now);
-    const missing = aired.filter((e) => e.monitored && !e.has_file);
+    // The shared definition (scope.ts isMissing), over every monitored episode (Gaps ignores a managed show's scope).
+    const missing = aired.filter((e) => e.monitored && isMissing(e, now));
     const seasons = new Map<number, { aired: number; files: number; monitored: boolean }>();
     for (const e of aired) {
       const x = seasons.get(e.season) ?? { aired: 0, files: 0, monitored: false };
@@ -170,10 +172,11 @@ export function gaps() {
       seasons.set(e.season, x);
     }
     const anyFiles = eps.some((e) => e.has_file);
-    // A whole season with nothing (only interesting when the show has files elsewhere, i.e. it's being collected).
-    const missingSeasons = [...seasons].filter(([, x]) => x.files === 0 && anyFiles).map(([season, x]) => ({ season, aired: x.aired, monitored: x.monitored }));
-    const fullyMissing = new Set(missingSeasons.map((m) => m.season));
-    const partial = missing.filter((e) => !fullyMissing.has(e.season));
+    // A whole season with nothing: a monitored one always (a show added with nothing yet has every season missing),
+    // an unmonitored one only when the show has files elsewhere (it's being collected).
+    const missingSeasons = [...seasons].filter(([, x]) => x.files === 0 && (anyFiles || x.monitored)).map(([season, x]) => ({ season, aired: x.aired, monitored: x.monitored }));
+    // Every missing episode is listed (whole seasons too), so the counts match the show page and the search covers them.
+    const partial = missing;
     if (partial.length || missingSeasons.length)
       out.push({ seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: coverFor(s), status: s.status, missing: partial.map((e) => ({ id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc })), missingSeasons });
   }

@@ -532,7 +532,7 @@ function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
 
 /** Missing-episode search: off by default, rate-limited, with what it would do. */
 function Backlog({ s, upd }: { s: S; upd: Upd }) {
-  const sum = useLoad(() => api<{ missing: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
+  const sum = useLoad(() => api<{ missing: number; missingAll?: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
   const [confirm, setConfirm] = useState(false);
   const b = s.backlog;
   const setB = (fn: (x: S["backlog"]) => S["backlog"]) => upd((x) => ({ ...x, backlog: fn(x.backlog) }));
@@ -550,7 +550,7 @@ function Backlog({ s, upd }: { s: S; upd: Upd }) {
       )}
       {sum.data && (
         <p className="small">
-          {t("backlog.summary", { missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
+          {t("backlog.summary", { all: sum.data.missingAll ?? sum.data.missing, missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
         </p>
       )}
       <div className="form">

@@ -117,7 +117,7 @@ export interface Episode { id: number; season: number; episode: number; absolute
 
 export interface ScheduleRow { episodeId: number; season: number | null; episode: number | null; title: string | null; airUtc: number | null; nextAt: number; attempts: number; state: string; why: string }
 
-export interface ManagedShow { tvdbId: number; seriesId: number; title: string; dryRun: boolean; since: number; unmonitoredInSonarr: boolean; cover: string | null; schedule: ScheduleRow[] }
+export interface ManagedShow { tvdbId: number; seriesId: number; title: string; dryRun: boolean; since: number; unmonitoredInSonarr: boolean; cover: string | null; schedule: ScheduleRow[]; /** Missing episodes in scope (any age; the schedule lists only the last 30 days). */ missing?: number }
 
 export interface Grab { id: number; at: number; tvdb_id: number; release: string; protocol: string; state: string; dry_run: number; why: string; error: string | null; episode_ids: number[] }
 

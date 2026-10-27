@@ -2,7 +2,10 @@
  * Tiny i18n helper: every UI string goes through t(key, vars). English only for now; a new language is another
  * dictionary with the same keys. Missing keys fall back to English, then to the key itself (so they are visible).
  */
+import { setupStrings } from "./i18n.setup";
+
 const en = {
+  ...setupStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",
@@ -958,7 +961,7 @@ const en = {
   "managed.sonarrMonitorConfirm": "Set {title} to unmonitored in Sonarr? Sonarr then stops searching for it, and only AnimeArr grabs. You can undo this from the Activity log.",
   "managed.sonarrUnmonitored": "Unmonitored in Sonarr",
   "managed.schedule": "Upcoming and recent episodes",
-  "managed.noSchedule": "Nothing scheduled: no aired episode is missing.",
+  "managed.noSchedule": "Nothing scheduled: no episode is missing.",
   "managed.state.waiting": "Waiting for it to air (then a short delay)",
   "managed.state.retry": "Retrying",
   "managed.state.would-grab": "Would grab (dry-run)",
@@ -996,7 +999,7 @@ const en = {
   "backlog.help": "Like Sonarr's Wanted > Missing, but automatic: older aired, monitored episodes of managed shows that have no file are searched a few per hour. Episodes that aren't found are tried again every few days. New episodes (the last 30 days) use the normal schedule above.",
   "backlog.enabled": "Search for missing episodes",
   "backlog.enabledHelp": "Shows in dry-run only log what they would grab. For shows with dry-run off this can grab many episodes over time.",
-  "backlog.summary": "{missing} missing episodes in managed shows. Queued: {queued}; would grab (dry-run): {wouldGrab}; grabbed: {grabbed}; searched in the last hour: {hour}.",
+  "backlog.summary": "{all} missing {all|episode|episodes} in managed shows; {missing} aired more than 30 days ago (this search's part; newer ones are on the normal schedule). Queued: {queued}; would download (practice mode): {wouldGrab}; downloaded: {grabbed}; searched in the last hour: {hour}.",
   "backlog.perHour": "Searches per hour at most",
   "backlog.confirmTitle": "Search for missing episodes?",
   "backlog.confirmOk": "Turn it on",
