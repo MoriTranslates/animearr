@@ -51,7 +51,10 @@ function firstEntry(tvdbId: number) {
 }
 
 /** One Sonarr series: what AnimeArr would make of it. */
-export function showCut(s: { id: number; tvdb_id: number; title: string; path: string }, opts: { acceptSpecials?: boolean } = {}): ShowCut {
+/** Statements prepared once (preparing per file made the plan take over a minute on a big library). */
+let stScanned: ReturnType<typeof db.prepare> | null = null;
+
+export function showCut(s: { id: number; tvdb_id: number; title: string; path: string }, opts: { acceptSpecials?: boolean; scanned?: Set<string> } = {}): ShowCut {
   if (!opts.acceptSpecials && db.prepare("SELECT 1 FROM cutover_acks WHERE tvdb_id = ? AND specials = 1").get(s.tvdb_id)) opts = { ...opts, acceptSpecials: true };
   const blockers: string[] = [];
   const warnings: string[] = [];
@@ -60,7 +63,8 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   const sonarrEps = cache.prepare("SELECT id, season, episode, file_id, monitored FROM episodes WHERE series_id = ?").all(s.id) as { id: number; season: number; episode: number; file_id: number | null; monitored: number }[];
   const withFile = sonarrEps.filter((e) => e.file_id);
   const fileRows = cache.prepare("SELECT id, path FROM files WHERE series_id = ?").all(s.id) as { id: number; path: string }[];
-  const scanned = fileRows.filter((f) => db.prepare("SELECT 1 FROM media_files WHERE path = ?").get(f.path)).length;
+  stScanned ??= db.prepare("SELECT 1 FROM media_files WHERE path = ?");
+  const scanned = fileRows.filter((f) => (opts.scanned ? opts.scanned.has(f.path) : !!stScanned!.get(f.path))).length;
   const specials = withFile.filter((e) => e.season === 0); // refined below: specials AniDB places on S0 are tracked
   const base = { tvdbId: s.tvdb_id, sonarrId: s.id, title: s.title, path: s.path, sonarrEpisodes: sonarrEps.length, files: fileRows.length, filesScanned: scanned, specialsWithFiles: specials.length, adopted };
   if (!first) {
@@ -121,13 +125,47 @@ async function tmdbMap(deps: { fribb: typeof fribb }) {
   return map;
 }
 
+const yieldNow = () => new Promise<void>((r) => setImmediate(r));
+
+/**
+ * Every show's cut, built in slices (the event loop breathes between them, so the rest of the app stays responsive)
+ * and cached for 15 minutes; changes (adopt, match, switch) invalidate it. One build at a time.
+ */
+let cuts: { at: number; byTvdb: Map<number, ShowCut> } | null = null;
+let building: Promise<Map<number, ShowCut>> | null = null;
+export const invalidateCutover = () => void (cuts = null);
+export const cutoverCachedAt = () => cuts?.at ?? null;
+export function allShowCuts(fresh = false): Promise<Map<number, ShowCut>> {
+  if (!fresh && cuts && Date.now() - cuts.at < 15 * 60_000) return Promise.resolve(cuts.byTvdb);
+  if (building) return building;
+  building = (async () => {
+    const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE} ORDER BY sort_title`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
+    const scanned = new Set((db.prepare("SELECT path FROM media_files").all() as { path: string }[]).map((r) => r.path));
+    const out = new Map<number, ShowCut>();
+    let i = 0;
+    for (const s of series) {
+      out.set(s.tvdb_id, showCut(s, { scanned }));
+      if (++i % 8 === 0) await yieldNow();
+    }
+    cuts = { at: Date.now(), byTvdb: out };
+    return out;
+  })().finally(() => {
+    building = null;
+  });
+  return building;
+}
+
 /** The whole plan (read-only), plus the checklist of what to look at in Sonarr/Radarr. */
-export async function cutoverPlan(deps = { sonarrLists: sonarr.getImportLists, sonarrNotifications: sonarr.getNotifications, radarrLists: radarr.getRadarrImportLists, fribb }) {
-  const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE} ORDER BY sort_title`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
-  const shows = series.map((s) => showCut(s));
+export async function cutoverPlan(deps = { sonarrLists: sonarr.getImportLists, sonarrNotifications: sonarr.getNotifications, radarrLists: radarr.getRadarrImportLists, fribb }, opts: { cached?: boolean } = {}) {
+  // Callers (tests, the switch) get a fresh plan; the API asks for the cached one.
+  const shows = [...(await allShowCuts(!opts.cached)).values()];
   const map = await tmdbMap(deps);
   const movieRows = cache.prepare(`SELECT id, tmdb_id, title, year, path, has_file FROM movies WHERE id < ${NATIVE_BASE} AND is_anime = 1 ORDER BY title`).all() as { id: number; tmdb_id: number | null; title: string; year: number | null; path: string; has_file: number }[];
-  const movies = movieRows.map((m) => movieCut(m, map));
+  const movies: MovieCut[] = [];
+  for (const [i, m] of movieRows.entries()) {
+    movies.push(movieCut(m, map));
+    if (i % 25 === 24) await yieldNow();
+  }
   const s = getSettings();
   const checklist: { item: string; ok: boolean; detail: string }[] = [];
   checklist.push({ item: "AnimeArr imports by itself", ok: s.importer.engine === "animearr" && s.importer.allowReal && s.importer.movies, detail: "required for the switch: Settings → Media management → Importer (own importer, real imports, movie imports)" });
@@ -158,6 +196,7 @@ export async function cutoverPlan(deps = { sonarrLists: sonarr.getImportLists, s
     checklist,
     summary: { shows: shows.length, ready: shows.filter((x) => !x.blockers.length).length, adopted: shows.filter((x) => x.adopted).length, movies: movies.length, moviesReady: movies.filter((x) => !x.blockers.length).length, moviesAdopted: movies.filter((x) => x.adopted).length },
     allowArrWrites: s.cutover.allowArrWrites,
+    builtAt: cuts?.at ?? Date.now(),
   };
 }
 

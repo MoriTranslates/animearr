@@ -79,7 +79,7 @@ export function FillIn() {
                           {i.doneAt ? ` · ${dateTime(i.doneAt)}` : ""}
                         </p>
                         {i.state === "active" && pct !== null && (
-                          <div className="progressbar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                          <div className="progressbar" role="progressbar" aria-label={t("fill.progressLabel", { title: i.title })} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
                             <div style={{ width: `${pct}%` }} />
                           </div>
                         )}

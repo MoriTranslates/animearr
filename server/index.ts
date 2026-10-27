@@ -17,7 +17,7 @@ import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
-import { ackSpecials, adoptMovies, adoptShows, autoMatchMovies, cutoverPlan, showCut, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
+import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -93,6 +93,15 @@ const app = Fastify({
 });
 await app.register(fastifyCookie);
 app.addHook("onRequest", guard);
+// Any change to the migration invalidates the cached plan.
+app.addHook("onResponse", async (req) => {
+  if (req.method !== "GET" && req.url.startsWith("/api/cutover/")) invalidateCutover();
+});
+// Slow requests are logged (a sync loop blocking the event loop shows up here first).
+app.addHook("onResponse", async (req, reply) => {
+  const ms = reply.elapsedTime;
+  if (ms > 500) console.warn(`[slow] ${req.method} ${req.url.split("?")[0]} ${Math.round(ms)} ms`);
+});
 app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   app.log.warn(redactUrl(err.message));
   reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(err.message), fixes: fixesFor(err.message) });
@@ -762,7 +771,12 @@ app.post("/api/notifications/test", async () => {
 
 // ---------------------------------------------------------------- cutover (Sonarr/Radarr → AnimeArr)
 
-app.get("/api/cutover", async () => cutoverPlan());
+// The plan is built on request ("Build plan"), in slices, and cached; ?cached=1 only returns a built one.
+app.get<{ Querystring: { cached?: string; fresh?: string } }>("/api/cutover", async (req) => {
+  if (req.query.cached === "1" && cutoverCachedAt() === null) return { built: false };
+  return { built: true, ...(await cutoverPlan(undefined, { cached: req.query.fresh !== "1" })) };
+});
+
 app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; acceptSpecials?: boolean } }>("/api/cutover/adopt", async (req) => {
   writable();
   const b = req.body ?? {};
@@ -1255,8 +1269,7 @@ every(5 * 60_000, () => downloadsTick(), "download rules");
 every(15 * 60_000, async () => {
   const st = anidbStatus();
   if (!st.configured || st.blockedUntil || st.capped) return; // nothing to do: no planning either
-  const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE}`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
-  const blocked = series.filter((s) => showCut(s).blockers.length).map((s) => s.tvdb_id);
+  const blocked = [...(await allShowCuts()).values()].filter((c) => c.blockers.length).map((c) => c.tvdbId);
   const aids = blocked.flatMap((t) => (JSON.parse((cache.prepare("SELECT anidb_ids FROM series WHERE tvdb_id = ?").get(t) as { anidb_ids: string } | undefined)?.anidb_ids ?? "[]") as { aid: number }[]).map((x) => x.aid));
   const r = await anidbTick(aids);
   if (r.fetched) materializeAll(); // native shows pick up AniDB's episodes

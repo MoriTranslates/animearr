@@ -3,7 +3,7 @@ import { api, fmtSize, sxe } from "../api";
 import { Link, navigate, query } from "../App";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
 import { ReleaseLine } from "./Queue";
 
 type Tab = "gaps" | "language" | "specials" | "maintenance";
@@ -450,7 +450,7 @@ function Upgrades() {
               <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
               <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
             </div>
-            {u.release && <p className="mono small">{u.release}</p>}
+            {u.release && <p className="small"><ReleaseName name={u.release} /></p>}
             <p className="small">{u.why}</p>
           </article>
         ))}
@@ -468,7 +468,7 @@ function Upgrades() {
               <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
               <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
             </div>
-            {u.release && <p className="mono small">{u.release}</p>}
+            {u.release && <p className="small"><ReleaseName name={u.release} /></p>}
             <p className="small">
               {u.why}
               {u.lastAt ? ` · ${dateTime(u.lastAt)}` : ""}
@@ -486,7 +486,7 @@ function GapSearch({ tvdbId, missing, onDone }: { tvdbId: number; missing: { id:
   const a = useEpisodeActions({ tvdbId, episodes: list.map((e) => ({ id: e.id, label: sxe(e.season, e.episode) })), managedLive: false, dryRun: false, onDone });
   return (
     <div className="row">
-      <SplitButton small label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }, { label: t("audit.openShow"), onSelect: () => navigate(`/show/${tvdbId}`) }]} />
+      <SplitButton small primary={false} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }, { label: t("audit.openShow"), onSelect: () => navigate(`/show/${tvdbId}`) }]} />
       {a.ui}
     </div>
   );

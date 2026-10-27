@@ -56,7 +56,7 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
   if (/importer is paused|real (?:movie )?imports by AnimeArr's importer are switched off|aren't switched on yet/i.test(why)) add({ action: "resumeImports", label: "Resume imports", params: { movies: !!ctx.movieId || /\bmovie/i.test(why) } });
   // "No more candidates" means the automatic next already ran out: only the interactive search helps then.
   if (ctx.grabId && /fail|couldn't send|SABnzbd:|download (?:failed|error)|stalled|missing from/i.test(why) && !/verification|no more candidates/i.test(why)) add({ action: "tryNext", label: "Try next release", params: { grabId: ctx.grabId } });
-  if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Interactive search", params: target });
+  if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Choose release…", params: target });
   if (/unreachable|ECONNREFUSED|ETIMEDOUT|timed out|not configured|refused the (?:token|key)|HTTP 401/i.test(why))
     for (const [re, service, name] of SERVICES) if (re.test(why)) {
       add({ action: "testConnection", label: `Test ${name}`, params: { service } });

@@ -298,6 +298,7 @@ type Upd = (fn: (x: S) => S) => void;
 /** Per-show dry-run overrides (managed shows). */
 function ShowDryRuns() {
   const toast = useToast();
+  const [q, setQ] = useState("");
   const d = useLoad(() => api<{ shows: { tvdbId: number; title: string; dryRun: boolean }[] }>("/managed"), []);
   if (!d.data?.shows.length) return null;
   const set = async (tvdbId: number, dryRun: boolean) => {
@@ -309,16 +310,39 @@ function ShowDryRuns() {
     }
   };
   const on = d.data.shows.filter((x) => x.dryRun);
+  const ql = q.trim().toLowerCase();
+  const picks = ql.length >= 2 ? d.data.shows.filter((x) => !x.dryRun && x.title.toLowerCase().includes(ql)).slice(0, 8) : [];
   return (
     <div className="stack">
-      <p className="small">{on.length ? t("dry.showsOn", { n: on.length }) : t("dry.showsNone")}</p>
-      <ul className="plain stack">
-        {d.data.shows.map((x) => (
-          <li key={x.tvdbId}>
-            <Toggle checked={x.dryRun} onChange={(v) => void set(x.tvdbId, v)} label={x.title} />
-          </li>
-        ))}
-      </ul>
+      {/* Only the shows IN dry run are listed (not hundreds of switches); add one by searching. */}
+      <h3 className="small-h">{t("dry.inDryRun", { n: on.length })}</h3>
+      {on.length ? (
+        <ul className="plain stack">
+          {on.map((x) => (
+            <li key={x.tvdbId}>
+              <Toggle checked onChange={(v) => void set(x.tvdbId, v)} label={x.title} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted small">{t("dry.showsNone")}</p>
+      )}
+      <label className="field">
+        {t("dry.addShow")}
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("dry.addPlaceholder")} />
+      </label>
+      {!!picks.length && (
+        <ul className="plain stack">
+          {picks.map((x) => (
+            <li key={x.tvdbId} className="row between">
+              <span>{x.title}</span>
+              <button className="small" onClick={() => (void set(x.tvdbId, true), setQ(""))}>
+                {t("dry.put")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -329,13 +353,15 @@ function Safety({ s, upd }: { s: S; upd: Upd }) {
   const setM = (fn: (x: S["managed"]) => S["managed"]) => upd((x) => ({ ...x, managed: fn(x.managed) }));
   return (
     <div className="stack">
-      <details className="card pad stack" open={m.dryRun}>
-        <summary>
-          <strong>{t("dry.section")}</strong> <span className="muted small">{t("dry.sectionHelp")}</span>
-        </summary>
+      <div className="card pad stack">
+        <div className="row between">
+          <h2>{t("dry.section")}</h2>
+          <span className={`state-pill ${m.dryRun ? "warn" : "good"}`}>{m.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
+        </div>
+        <p className="muted small">{t("dry.sectionHelp")}</p>
         <Toggle checked={m.dryRun} onChange={(v) => setM((x) => ({ ...x, dryRun: v }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
         <ShowDryRuns />
-      </details>
+      </div>
       <div className="card pad stack">
         <h2>{t("settings.safety.roots")}</h2>
         <p className="muted small">{t("settings.safety.rootsHelp")}</p>

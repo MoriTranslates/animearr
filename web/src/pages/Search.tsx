@@ -3,7 +3,7 @@ import { api, fmtSize, type SearchResponse, type SearchResult } from "../api";
 import { EpisodePicker, ShowPicker, type PickedShow } from "../picker";
 import { Link, query } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
 
 export function Search() {
   usePageTitle(t("search.title"));
@@ -161,7 +161,7 @@ function DeepSearch() {
             }
           }}
         >
-          <p className="mono">{grab.title}</p>
+          <p><ReleaseName name={grab.title} /></p>
           <FlagChips flags={grab.rank.flags} />
           <p>{res.dryRun ? t("search.grabDry") : t("search.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent", label: grab.label })}</p>
           {grab.episodeIds.length > 1 && res.targets.some((x) => x.hasFile) && (
@@ -238,7 +238,7 @@ function Identify() {
 export function ResultCard({ r, onGrab }: { r: SearchResult; onGrab?: () => void }) {
   return (
     <article className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
-      <p className="mono release">{r.title}</p>
+      <p className="release"><ReleaseName name={r.title} /></p>
       <div className="row">
         <Chip tone={r.confidence >= 80 ? "good" : "warn"}>{t("search.mapping", { label: r.label, confidence: r.confidence })}</Chip>
         <span className="muted small">

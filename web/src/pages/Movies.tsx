@@ -5,7 +5,7 @@ import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
 import { Link , navigate } from "../App";
 import { t } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Skeleton, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal, Skeleton, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
 import { PosterCard } from "../posters";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
@@ -330,7 +330,7 @@ export function MoviePage({ id }: { id: number }) {
           <h2>{t("movies.history")}</h2>
           {m.grabs.map((g) => (
             <p key={g.id} className="small">
-              <span className="mono">{g.release}</span> · {t(`grab.${g.state}` as never)} · {dateTime(g.at)}
+              <ReleaseName name={g.release} /> · {t(`grab.${g.state}` as never)} · {dateTime(g.at)}
               {g.error ? ` · ${g.error}` : ""}
             </p>
           ))}
@@ -363,7 +363,7 @@ export function MoviePage({ id }: { id: number }) {
             }
           }}
         >
-          <p className="mono">{grab.title}</p>
+          <p><ReleaseName name={grab.title} /></p>
           <FlagChips flags={grab.rank.flags} />
           <p className="small">{fmtSize(grab.size)} · {grab.indexer}</p>
           <p>{res.dryRun ? t("search.grabDry") : t("movies.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent" })}</p>

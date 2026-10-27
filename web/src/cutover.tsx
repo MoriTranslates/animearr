@@ -11,12 +11,15 @@ interface Plan {
   checklist: { item: string; ok: boolean; detail: string }[];
   summary: { shows: number; ready: number; adopted: number; movies: number; moviesReady: number; moviesAdopted: number };
   allowArrWrites: boolean;
+  builtAt?: number;
 }
 
 /** Settings → Cutover: move anime from Sonarr/Radarr to AnimeArr (adopt first; the switch is separate). */
 export function Cutover() {
   const toast = useToast();
-  const d = useLoad(() => api<Plan>("/cutover"), []);
+  // The plan takes a while on a big library: built when asked, then cached on the server.
+  const [build, setBuild] = useState<"cached" | "build" | "fresh">("cached");
+  const d = useLoad(() => api<Plan | { built: false }>(`/cutover${build === "cached" ? "?cached=1" : build === "fresh" ? "?fresh=1" : ""}`), [build]);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [msel, setMsel] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<"all" | "ready" | "blocked" | "adopted">("all");
@@ -25,8 +28,17 @@ export function Cutover() {
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | { kind: "show" | "movie"; id: number; title: string }>(null);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
-  if (!d.data) return <Spinner label={t("app.loading")} />;
-  const p = d.data;
+  if (!d.data) return <Spinner label={build === "cached" ? t("app.loading") : t("cut.building")} />;
+  if ("built" in d.data && d.data.built === false)
+    return (
+      <div className="card pad stack">
+        <p>{t("cut.buildIntro")}</p>
+        <button className="primary self-start" onClick={() => setBuild("build")}>
+          {t("cut.build")}
+        </button>
+      </div>
+    );
+  const p = d.data as Plan;
   const shown = p.shows.filter((s) => (filter === "ready" ? !s.blockers.length && !s.adopted : filter === "blocked" ? s.blockers.length > 0 : filter === "adopted" ? s.adopted : true));
   const selShows = p.shows.filter((s) => sel.has(s.tvdbId));
   const selMovies = p.movies.filter((m) => msel.has(m.movieId));

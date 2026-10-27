@@ -5,13 +5,14 @@ import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface Bell { unread: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; read: boolean; fixes?: import("./api").Fix[] }[] }
+interface Bell { unread: number; needs?: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; read: boolean; action?: boolean; fixes?: import("./api").Fix[] }[] }
 const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" } as const;
 
 /** The in-app bell: grabbed / imported / failed / paused, newest first; opening it marks them read. */
 export function BellButton() {
   const [b, setB] = useState<Bell | null>(null);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"needs" | "recent">("needs");
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
@@ -30,7 +31,7 @@ export function BellButton() {
     <div className="bell" ref={ref}>
       <button
         className="icon-btn bell-btn"
-        aria-label={t("bell.label", { n: b?.unread ?? 0 })}
+        aria-label={t("bell.labelNeeds", { n: b?.needs ?? 0 })}
         aria-expanded={open}
         onClick={async () => {
           const opening = !open;
@@ -39,18 +40,28 @@ export function BellButton() {
           // Fresh list first; then mark what's shown as read (anything newer stays unread).
           const fresh = await api<Bell>("/notifications").catch(() => b);
           setB(fresh);
+          setTab(fresh?.needs ? "needs" : "recent");
           if (fresh?.unread && fresh.items[0]) setB(await api<Bell>("/notifications/read", { body: { upToId: fresh.items[0].id } }).catch(() => fresh));
         }}
       >
         <BellIcon className="lucide" aria-hidden="true" />
-        {b?.unread ? <span className="bell-count">{b.unread > 99 ? "99+" : b.unread}</span> : null}
+        {/* Only what needs you counts on the badge. */}
+        {b?.needs ? <span className="bell-count">{b.needs > 99 ? "99+" : b.needs}</span> : null}
       </button>
       {open && (
         <div className="bell-pop card pad stack" role="dialog" aria-label={t("bell.title")}>
-          <strong>{t("bell.title")}</strong>
-          {!b?.items.length && <p className="muted small">{t("bell.none")}</p>}
+          <div className="tabs bell-tabs" role="tablist">
+            <button role="tab" aria-selected={tab === "needs"} className={tab === "needs" ? "on" : ""} onClick={() => setTab("needs")}>
+              {t("bell.needs", { n: b?.needs ?? 0 })}
+            </button>
+            <button role="tab" aria-selected={tab === "recent"} className={tab === "recent" ? "on" : ""} onClick={() => setTab("recent")}>
+              {t("bell.recent")}
+            </button>
+          </div>
+          {tab === "needs" && !b?.needs && <p className="muted small">{t("bell.allClear")}</p>}
+          {tab === "recent" && !b?.items.length && <p className="muted small">{t("bell.none")}</p>}
           <ul className="rename-list small">
-            {b?.items.map((n) => (
+            {b?.items.filter((n) => tab === "recent" || n.action).map((n) => (
               <li key={n.id} className="stack">
                 <span>
                   {ICON[n.event]} <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>

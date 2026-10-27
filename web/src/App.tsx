@@ -63,9 +63,9 @@ export function navigate(to: string) {
   window.scrollTo(0, 0);
 }
 
-export function Link({ to, children, className, current }: { to: string; children: React.ReactNode; className?: string; current?: boolean }) {
+export function Link({ to, children, className, current, style, title }: { to: string; children: React.ReactNode; className?: string; current?: boolean; style?: React.CSSProperties; title?: string }) {
   return (
-    <a href={to} className={className} aria-current={current ? "page" : undefined} onClick={(e) => (e.preventDefault(), navigate(to))}>
+    <a href={to} className={className} style={style} title={title} aria-current={current ? "page" : undefined} onClick={(e) => (e.preventDefault(), navigate(to))}>
       {children}
     </a>
   );
@@ -389,7 +389,16 @@ function MoreSheet({ active, badge, version, onClose }: { active: (p: string) =>
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>("a")?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close.current();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return close.current();
+      // Focus stays inside the sheet (like the other dialogs).
+      if (e.key !== "Tab" || !ref.current) return;
+      const items = [...ref.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
+      if (!items.length) return;
+      const [first, last] = [items[0], items[items.length - 1]];
+      if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus());
+      else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus());
+    };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);

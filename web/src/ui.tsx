@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { SheepShip } from "./merry";
 import { Zap } from "lucide-react";
 import { fixesForMessage, runFix, type Flag } from "./api";
@@ -38,6 +38,32 @@ const EMOTE: Record<ToastKind, string> = { success: "✨", grab: "✨", import: 
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Each toast's timer pauses while it's hovered or focused (time to read it, or reach its button).
+  const timers = useRef(new Map<number, { left: number; started: number; handle: ReturnType<typeof setTimeout> | null }>());
+  const drop = useCallback((id: number) => {
+    timers.current.delete(id);
+    setToasts((x) => x.filter((y) => y.id !== id));
+  }, []);
+  const startTimer = useCallback(
+    (id: number, ms: number) => {
+      const t0 = { left: ms, started: Date.now(), handle: setTimeout(() => drop(id), ms) };
+      timers.current.set(id, t0);
+    },
+    [drop],
+  );
+  const pause = (id: number) => {
+    const tm = timers.current.get(id);
+    if (!tm?.handle) return;
+    clearTimeout(tm.handle);
+    tm.left -= Date.now() - tm.started;
+    tm.handle = null;
+  };
+  const resume = (id: number) => {
+    const tm = timers.current.get(id);
+    if (!tm || tm.handle) return;
+    tm.started = Date.now();
+    tm.handle = setTimeout(() => drop(id), Math.max(1500, tm.left));
+  };
   const push = useCallback<Push>((msg, error = false, action, opts) => {
     // An error the server attached a fix to gets that fix as its button.
     if (error && !action) {
@@ -48,9 +74,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const id = Date.now() + Math.random();
     const burst = pickBurst(kind, opts);
     setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action, kind, burst, cover: opts?.cover ?? null }]);
-    setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), error ? 12_000 : action ? 8000 : 4500);
-  }, []);
-  const close = (id: number) => setToasts((x) => x.filter((y) => y.id !== id));
+    startTimer(id, error ? 12_000 : action ? 15_000 : 5000);
+  }, [startTimer]);
+  const close = (id: number) => {
+    const tm = timers.current.get(id);
+    if (tm?.handle) clearTimeout(tm.handle);
+    drop(id);
+  };
   return (
     <ToastCtx.Provider value={push}>
       {children}
@@ -59,9 +89,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((x) => (
-          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined}>
+          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined} onMouseEnter={() => pause(x.id)} onMouseLeave={() => resume(x.id)} onFocus={() => pause(x.id)} onBlur={() => resume(x.id)}>
             {x.burst && (
-              <span className={`burst ${x.kind}`}>
+              <span className={`burst ${x.kind}`} aria-hidden="true" lang="ja">
                 <b>{x.burst.text}</b>
                 <small>{x.burst.jp}</small>
               </span>
@@ -481,4 +511,22 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
     void run();
   }, [run]);
   return { data, error, loading, reload: run, setData };
+}
+
+/**
+ * A release name that wraps at its own separators (". _ - ] )") instead of mid-word, in the mono face.
+ * Never word-break: break-all (that splits "MAGICAL" into "MAGICA / L").
+ */
+export function ReleaseName({ name, className = "", title }: { name: string; className?: string; title?: string }) {
+  const parts = name.split(/(?<=[._\-\])])/);
+  return (
+    <span className={`mono release-name ${className}`} title={title}>
+      {parts.map((p, i) => (
+        <Fragment key={i}>
+          {p}
+          {i < parts.length - 1 && <wbr />}
+        </Fragment>
+      ))}
+    </span>
+  );
 }

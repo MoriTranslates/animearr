@@ -4,7 +4,7 @@ import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
 import { SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
 import { FileX } from "lucide-react";
@@ -315,8 +315,8 @@ function SonarrProblems() {
 export function ReleaseLine({ release }: { release: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <button className={`release-line mono small muted${open ? "" : " clamp1"}`} title={release} aria-expanded={open} onClick={() => setOpen(!open)}>
-      {release}
+    <button className={`release-line small muted${open ? "" : " clamp1"}`} title={release} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <ReleaseName name={release} />
     </button>
   );
 }

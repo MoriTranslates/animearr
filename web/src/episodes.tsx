@@ -4,7 +4,7 @@ import { CaptionsOff } from "lucide-react";
 import { api, fmtSize, sxe } from "./api";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why } from "./ui";
+import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why, ReleaseName } from "./ui";
 import { showVars } from "./season";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
@@ -492,7 +492,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                     <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : "info"}>{t(`grab.${g.state}` as I18nKey) || g.state}</Chip>
                     <span className="muted small">{dateTime(g.at)}</span>
                   </div>
-                  <p className="mono small">{g.release}</p>
+                  <p className="small"><ReleaseName name={g.release} /></p>
                   <Why lines={[g.why, ...(g.error ? [g.error] : [])]} />
                 </li>
               ))}

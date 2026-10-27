@@ -4,7 +4,7 @@
  * Secrets (webhook URL, ntfy token) are stored encrypted and never logged.
  */
 import { liveFixesFor, linkFor, type FixContext } from "./fixes.js";
-import { db, dbState } from "./db.js";
+import { cache, db, dbState } from "./db.js";
 import { getSettings } from "./settings.js";
 
 export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
@@ -94,16 +94,49 @@ export function onDecision(kind: string, d: { title?: string; why: string; detai
   setImmediate(() => void send(ev, d.title ?? "", d.why, undefined, link).then((r) => r.filter((x) => !x.ok).forEach((x) => console.warn(`notification to ${x.channel} failed: ${x.why}`)), () => undefined));
 }
 
-export function bell(limit = 30) {
+/**
+ * A problem is settled when what it was about got sorted: its grab finished or was replaced by a newer one, its
+ * episodes have files now, its movie has its file, or a later pause notice superseded it.
+ */
+function settled(ctx: FixContext, event: NotifyEvent, at: number) {
+  if (event === "paused") return !!db.prepare("SELECT 1 FROM notifications WHERE event = 'paused' AND at > ? LIMIT 1").get(at);
+  if (ctx.grabId) {
+    const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(ctx.grabId) as { state: string } | undefined;
+    if (g && ["done", "downloading", "importing", "sending"].includes(g.state)) return true;
+    if (db.prepare("SELECT 1 FROM grabs WHERE id > ? AND state = 'done' AND ((movie_id IS NOT NULL AND movie_id = (SELECT movie_id FROM grabs WHERE id = ?)) OR (tvdb_id IS NOT NULL AND tvdb_id = (SELECT tvdb_id FROM grabs WHERE id = ?) AND episode_ids = (SELECT episode_ids FROM grabs WHERE id = ?))) LIMIT 1").get(ctx.grabId, ctx.grabId, ctx.grabId, ctx.grabId)) return true;
+  }
+  if (ctx.movieId && (cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(ctx.movieId) as { has_file: number } | undefined)?.has_file) return true;
+  if (ctx.episodeIds?.length) {
+    const left = cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE has_file = 0 AND id IN (${ctx.episodeIds.map(() => "?").join(",")})`).get(...ctx.episodeIds) as { n: number };
+    if (!left.n) return true;
+  }
+  return false;
+}
+
+/**
+ * The bell: "Needs action" (problems that still have a fix and aren't settled; they alone count on the badge) and
+ * "Recent" (everything). Settled problems drop out of "Needs action" on their own.
+ */
+export function bell(limit = 40) {
   const rows = db.prepare("SELECT id, at, event, title, body, read, ctx FROM notifications ORDER BY id DESC LIMIT ?").all(limit) as { id: number; at: number; event: NotifyEvent; title: string; body: string; read: number; ctx: string | null }[];
   const unread = (db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE read = 0").get() as { n: number }).n;
-  return {
-    unread,
-    items: rows.map((r) => {
-      const ctx = r.ctx ? (JSON.parse(r.ctx) as FixContext) : {};
-      return { id: r.id, at: r.at, event: r.event, title: r.title, body: r.body, read: !!r.read, fixes: r.event === "failed" || r.event === "paused" ? liveFixesFor(r.body, ctx) : [], tvdbId: ctx.tvdbId ?? null, movieId: ctx.movieId ?? null };
-    }),
-  };
+  const items = rows.map((r) => {
+    const ctx = r.ctx ? (JSON.parse(r.ctx) as FixContext) : {};
+    const problem = r.event === "failed" || r.event === "paused" || (r.event === "indexer" && /is off/.test(r.body));
+    const fixes = problem ? liveFixesFor(r.body, ctx) : [];
+    const action = problem && Date.now() - r.at < 14 * 86_400_000 && !settled(ctx, r.event, r.at) && (fixes.length > 0 || r.event !== "failed");
+    return { id: r.id, at: r.at, event: r.event, title: r.title, body: r.body, read: !!r.read, fixes, action, tvdbId: ctx.tvdbId ?? null, movieId: ctx.movieId ?? null };
+  });
+  // One entry per thing to do (the same show/movie problem repeated counts once).
+  const seen = new Set<string>();
+  const needs = items.filter((i) => {
+    if (!i.action) return false;
+    const key = `${i.event}:${i.tvdbId ?? ""}:${i.movieId ?? ""}:${i.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { unread, needs: needs.length, items: items.map((i) => ({ ...i, action: needs.includes(i) })) };
 }
 
 /** Marks what the user has seen (up to the newest shown) as read; anything newer stays unread. */

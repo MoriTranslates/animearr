@@ -4,7 +4,7 @@ import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast, ReleaseName } from "../ui";
 
 type Tone = "good" | "bad" | "warn" | "info" | "accent";
 const KIND_TONE: Record<string, Tone> = {
@@ -107,6 +107,7 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
     <article className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}`}>
       {link ? (
         <Link to={link} className="event-thumb">
+          <span className="sr-only">{lead.title || t("activity.show")}</span>
           {cover ? <img src={thumbUrl(cover, "sm")} alt="" loading="lazy" /> : <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>}
         </Link>
       ) : (
@@ -161,7 +162,7 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
         </div>
         {open && (
           <div className="event-details">
-            {release && <p className="mono small event-release">{release}</p>}
+            {release && <p className="small event-release"><ReleaseName name={release} /></p>}
             <ol className="event-steps small">
               {steps.map((x) => (
                 <li key={x.id}>

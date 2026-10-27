@@ -167,6 +167,15 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 className="hero-menu"
                 items={[
                   { label: t("scope.menu"), onSelect: () => setPanel("scope"), hidden: !h.managed },
+                  {
+                    label: h.managed?.dryRun ? t("dry.showOff") : t("dry.showOn"),
+                    hidden: !h.managed,
+                    onSelect: () =>
+                      void api(`/managed/${tvdbId}`, { method: "PUT", body: { dryRun: !h.managed?.dryRun } }).then(
+                        () => (toast(h.managed?.dryRun ? t("dry.showOffDone") : t("dry.showOnDone")), void d.reload()),
+                        (e: Error) => toast(e.message, true),
+                      ),
+                  },
                   { label: t("rename.menu"), onSelect: () => setPanel("rename"), hidden: !h.allowed },
                   { label: t("import.menu"), onSelect: () => setPanel("import"), hidden: !h.allowed },
                   { label: t("files.refreshScan"), onSelect: () => void refreshScan() },
@@ -220,7 +229,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               {missingAll.length ? (
                 <SeasonSearch tvdbId={tvdbId} missing={missingAll} dryRun={dryRun} primary big onDone={() => (void d.reload(), void act.reload())} />
               ) : (
-                <SplitButton label={`⚡ ${t("show.searchReleases")}`} onClick={() => navigate(`/search?tvdbId=${tvdbId}`)} items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]} />
+                <SplitButton label={t("show.searchReleases")} onClick={() => navigate(`/search?tvdbId=${tvdbId}`)} items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]} />
               )}
               <button className="glass-btn" onClick={() => setPanel("watch")} aria-haspopup="dialog">
                 <Captions className="lucide" aria-hidden="true" />
@@ -299,13 +308,25 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         const quiet = !missing.length && !noLang.length && !unknownLang.length && !untaggedLang.length && !dl.length && !attention.length && have.length === aired.length;
         const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
         const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
-        const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "have" || (r.file && langOf(r.file, lang) !== "ok")));
+        // The latest season that has aired opens by default (older seasons show their issues as header tags).
+        const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "unaired"));
         const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk" && r.special?.cls !== "creditless") : rows, nextId);
         return (
-          <details key={season} className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
+          <div key={season} className={`season-wrap${missing.length ? " has-search" : ""}`}>
+            {/* Buttons sit outside the <summary> (no interactive content inside it), over its right end. */}
+            <div className="season-right season-actions">
+              {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
+              {selecting && (
+                <button className="small ghost" onClick={() => setSel((x) => new Set([...x, ...rows.map((r) => r.id)]))}>
+                  {t("shows.selectAll")}
+                </button>
+              )}
+              {season > 0 && have.length > 0 && !selecting && <Menu label={t("replace.menuFor", { n: season })} items={[{ label: t("replace.menu"), onSelect: () => setReplacing(season) }]} />}
+            </div>
+          <details className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
             <summary className="season-head">
               <span className="season-chev" aria-hidden="true" />
-              <h3 className="season-name-h">{season === 0 ? t("series.specials") : t("common.season", { n: season })}</h3>
+              <h2 className="season-name-h">{season === 0 ? t("series.specials") : t("common.season", { n: season })}</h2>
               {!!years.length && <span className="muted small tnum hide-phone">{years.length > 1 ? `${years[0]} – ${years[years.length - 1]}` : years[0]}</span>}
               <span className="season-prog hide-phone" aria-hidden="true">
                 <i style={{ width: `${aired.length ? Math.round((have.length / aired.length) * 100) : 0}%` }} />
@@ -332,19 +353,6 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 </span>
               )}
               {!!attention.length && <span className="tag bad">{t("show.attentionCount", { n: attention.length })}</span>}
-              <span className="season-right">
-                {season > 0 && have.length > 0 && !selecting && (
-                  <span onClick={(e) => e.preventDefault()}>
-                    <Menu label={t("replace.menuFor", { n: season })} items={[{ label: t("replace.menu"), onSelect: () => setReplacing(season) }]} />
-                  </span>
-                )}
-                {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
-                {selecting && (
-                  <button className="small ghost" onClick={(e) => (e.preventDefault(), setSel((x) => new Set([...x, ...rows.map((r) => r.id)])))}>
-                    {t("shows.selectAll")}
-                  </button>
-                )}
-              </span>
             </summary>
             {grid ? (
               <div className="ep-grid">
@@ -406,6 +414,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               </details>
             )}
           </details>
+          </div>
         );
       })}
         </>

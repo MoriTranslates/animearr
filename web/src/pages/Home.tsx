@@ -92,6 +92,25 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
       {h && (
         <div className="home-grid">
           <div className="home-main stack">
+            {/* ---------- needs you */}
+            <section className="card side-card needs-phone" aria-label={t("home.needsYou")}>
+              <div className="sec-hd">
+                <h2>{t("home.needsYou")}</h2>
+                <Link to="/audit" className="sec-link muted-link">
+                  {t("nav.audit")} <ChevronRight className="lucide" aria-hidden="true" />
+                </Link>
+              </div>
+              {needN === 0 && !h.needs.noLang.n ? (
+                <p className="muted small">{t("home.allGood")}</p>
+              ) : (
+                <div className="needs">
+                  <NeedRow icon={<CircleAlert className="lucide" />} tone="bad" n={h.needs.missing.n} label={t("home.need.missing")} sample={h.needs.missing.sample} to="/audit?tab=gaps" />
+                  <NeedRow icon={<FileX className="lucide" />} tone="warn" n={h.needs.failed.n} label={t("home.need.failed")} sample={h.needs.failed.sample} to="/queue" />
+                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLang", { lang: h.needs.noLang.lang.toUpperCase() })} sample={t("home.need.noLangSample")} to="/audit?tab=language" />
+                </div>
+              )}
+            </section>
+
             {/* ---------- airing today: a poster shelf over the first show's blurred art */}
             <section className="shelf" style={showVars(first?.color)} aria-labelledby="airing-today">
               {first?.cover && <span className="shelf-art" style={{ backgroundImage: `url(${thumbUrl(first.cover, "sm")})` }} aria-hidden="true" />}
@@ -149,11 +168,12 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                       color={x.color}
                       href={`/show/${x.tvdbId}`}
                       onClick={() => navigate(`/show/${x.tvdbId}`)}
+                      className={Date.now() - x.at < 86_400_000 ? "fresh" : ""}
                       meta={
-                        <>
-                          <b>{weekday(x.at)}</b>
-                          <span className="tnum">{x.label}</span>
-                        </>
+                        <span className="meta-stack">
+                          <b className="tnum">{x.label}</b>
+                          <span>{weekday(x.at)}</span>
+                        </span>
                       }
                     />
                   ))}
@@ -170,11 +190,12 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 </div>
                 <div className="binge-grid">
                   {h.readyToBinge.map((b) => (
-                    <Link key={`${b.tvdbId}-${b.season}`} to={`/show/${b.tvdbId}`} className="binge">
+                    <Link key={`${b.tvdbId}-${b.season}`} to={`/show/${b.tvdbId}`} className="binge" style={showVars(b.color)}>
                       <span className="binge-art" style={b.cover ? { backgroundImage: `url(${thumbUrl(b.cover, "md")})` } : undefined} aria-hidden="true" />
                       <span className="binge-text" style={showVars(b.color)}>
                         <b className="clamp2">{b.title}</b>
                         <span className="muted small">{t("home.bingeSeason", { season: b.season, n: b.episodes })}</span>
+                        <span className="binge-pill">{t("home.bingePill", { n: b.episodes })}</span>
                       </span>
                     </Link>
                   ))}
@@ -185,7 +206,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
 
           <aside className="home-side stack">
             {/* ---------- needs you */}
-            <section className="card side-card" aria-labelledby="needs-you">
+            <section className="card side-card needs-desk" aria-labelledby="needs-you">
               <div className="sec-hd">
                 <h2 id="needs-you">{t("home.needsYou")}</h2>
                 <Link to="/audit" className="sec-link muted-link">
@@ -241,7 +262,9 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 </Link>
               </div>
               {!h.thisWeek.length && <Empty>{t("cal.empty")}</Empty>}
-              <ThisWeek list={h.thisWeek} onOpen={setOpen} />
+              <div className="this-week-scroll">
+                <ThisWeek list={h.thisWeek} onOpen={setOpen} />
+              </div>
             </section>
           </aside>
         </div>
@@ -258,7 +281,7 @@ function NeedRow({ icon, tone, n, label, sample, to }: { icon: React.ReactNode; 
       <span className="need-ic" aria-hidden="true">
         {icon}
       </span>
-      <span className="need-n tnum">{n}</span>
+      <span className="need-n tnum">{n.toLocaleString()}</span>
       <span className="need-l">
         {label}
         {sample && <small className="clamp1">{sample}</small>}
