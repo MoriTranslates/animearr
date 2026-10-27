@@ -10,10 +10,11 @@ import { DownloadClients, Indexers, Migration, type SaveNow } from "../connectio
 import { t, type I18nKey } from "../i18n";
 import { SeasonHeader } from "../seasonal";
 import { Settings, type SettingsTab } from "./Settings";
-import { ErrorBox, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
+import { ErrorBox, ErrorText, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
+import { rememberDetail } from "../errors";
 import { saveAllUnsaved } from "../unsaved";
 
-interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null }
+interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null; errorDetail?: string | null }
 interface Overview { clients: ConnState[]; indexers: { name: string }[]; mediaServers: ConnState[]; migration: ConnState[] }
 
 /**
@@ -123,6 +124,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
   /** Leaves the step: unsaved edits on it are saved first (a failed save shows its error and stays). Next marks it done. */
   const go = async (i: number, next = false) => {
     if (!(await saveAllUnsaved())) return;
+    if (step.id === "clients") await preferWhatIsSetUp(toast);
     void save({ step: steps[Math.max(0, Math.min(steps.length - 1, i))].id, completed: next ? [...new Set([...w.completed, step.id])] : w.completed });
   };
   const c = conn.data;
@@ -193,6 +195,26 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
       </div>
     </section>
   );
+}
+
+/**
+ * Leaving the download-client step: when the clients are all torrent (or all Usenet), the default profile tries that
+ * first (it said "Usenet (preferred)" for a torrent-only user). Only when it still has the usenet-first default.
+ */
+async function preferWhatIsSetUp(toast: ReturnType<typeof useToast>) {
+  try {
+    const c = await api<{ clients: { type?: string; configured: boolean }[] }>("/connections");
+    const kinds = new Set(c.clients.filter((x) => x.configured).map((x) => (/sab|nzb|usenet/i.test(x.type ?? "") ? "usenet" : "torrent")));
+    if (kinds.size !== 1) return;
+    const only = [...kinds][0] as "usenet" | "torrent";
+    const p = await api<{ profiles: { id: string; protocolOrder: string[]; noProtocolPreference?: boolean }[]; defaultProfileId: string }>("/profiles");
+    const def = p.profiles.find((x) => x.id === p.defaultProfileId) ?? p.profiles[0];
+    if (!def || def.noProtocolPreference || def.protocolOrder[0] === only) return;
+    await api(`/profiles/${def.id}`, { method: "PUT", body: { ...def, protocolOrder: [only, only === "usenet" ? "torrent" : "usenet"] } });
+    toast(t(only === "torrent" ? "wiz.preferTorrent" : "wiz.preferUsenet"));
+  } catch {
+    /* a preference, not a step: never blocks Next */
+  }
 }
 
 function AccountStep({ status }: { status: Status }) {
@@ -400,25 +422,38 @@ function ReviewStep({ status }: { status: Status }) {
 }
 
 function DoneStep({ path }: { path: Path }) {
-  const o = useLoad(() => api<{ clients: { name: string; configured: boolean; ok: boolean | null }[]; indexers: { name: string }[]; mediaServers: { configured: boolean }[] }>("/connections"), []);
+  // Fresh statuses (a client that fails its check is said so here, not listed as set up).
+  const o = useLoad(() => api<Overview>("/connections?fresh=1"), []);
   const toast = useToast();
+  const failing = (o.data?.clients ?? []).filter((c) => c.configured && c.ok === false);
+  const working = (o.data?.clients ?? []).filter((c) => c.configured && c.ok !== false);
+  const media = (o.data?.mediaServers ?? []).filter((m) => m.configured);
+  for (const c of failing) rememberDetail(t("wiz.done.clientFails", { name: c.name, why: c.error ?? "" }), c.errorDetail);
   return (
     <div className="stack">
-      {o.data && !o.data.clients.some((c) => c.configured) && <p className="banner warn">{t("wiz.done.noClient")}</p>}
+      {o.data && !working.length && !failing.length && <p className="banner warn">{t("wiz.done.noClient")}</p>}
+      {failing.map((c) => (
+        <p key={c.name} className="banner warn">
+          <ErrorText msg={t("wiz.done.clientFails", { name: c.name, why: c.error ?? "" })} />
+        </p>
+      ))}
       {o.data && !o.data.indexers.length && <p className="banner warn">{t("wiz.done.noIndexer")}</p>}
       <GoLive />
       {o.data && (
-        <ul className="plain card pad stack done-list">
-          <li>
-            {t("wiz.done.clients")}: {o.data.clients.filter((c) => c.configured).map((c) => c.name).join(", ") || "—"}
-          </li>
-          <li>
-            {t("wiz.done.indexers")}: {o.data.indexers.length}
-          </li>
-          <li>
-            {t("wiz.done.media")}: {o.data.mediaServers.some((m) => m.configured) ? "Plex" : "—"}
-          </li>
-        </ul>
+        <div className="card pad">
+          <ul className="plain stack done-list">
+            <li>
+              {t("wiz.done.clients")}: {working.map((c) => c.name).join(", ") || "—"}
+              {failing.length > 0 && <span className="warn-text"> · {t("wiz.done.notWorking", { names: failing.map((c) => c.name).join(", ") })}</span>}
+            </li>
+            <li>
+              {t("wiz.done.indexers")}: {o.data.indexers.length}
+            </li>
+            <li>
+              {t("wiz.done.media")}: {media.length ? media.map((m) => (m.ok === false ? `Plex (${t("wiz.done.notWorkingShort")})` : "Plex")).join(", ") : "—"}
+            </li>
+          </ul>
+        </div>
       )}
       <div className="row">
         <Link to="/find" className="button primary">
