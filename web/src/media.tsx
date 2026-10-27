@@ -184,6 +184,7 @@ function ImporterCard({ s }: { s: S }) {
   return (
     <div className="card pad stack">
       <h2>{t("media.importer")}</h2>
+      {imp.engine !== "animearr" && <p className="warn-text small">{t("media.engine.sonarr")}</p>}
       {/* One control for one decision: what AnimeArr's importer may do. */}
       <div className="seg mode-seg" role="radiogroup" aria-label={t("media.importer")}>
         {(

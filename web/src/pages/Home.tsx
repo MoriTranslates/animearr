@@ -331,8 +331,8 @@ function countdown(airUtc: number, now = Date.now()) {
   if (d <= 0 && d > -30 * 60_000) return t("home.onAir");
   if (d > 0 && d < 12 * 3_600_000) {
     const h = Math.floor(d / 3_600_000);
-    const m = Math.round((d % 3_600_000) / 60_000);
-    return h ? t("home.inHM", { h, m }) : t("home.inM", { m });
+    const m = Math.floor((d % 3_600_000) / 60_000);
+    return h ? t("home.inHM", { h, m }) : t("home.inM", { m: Math.max(1, m) });
   }
   return null;
 }

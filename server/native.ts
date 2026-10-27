@@ -540,15 +540,21 @@ export function removeMovie(movieId: number) {
 }
 
 /** "This season, not in your library": AniList's most popular TV/ONA of the current season (cached 6 h). */
+let seasonFail = 0;
 let seasonMemo: { at: number; key: string; v: { anilistId: number; title: string; cover: string | null; format: string | null; episodes: number | null; color: string | null }[] } | null = null;
 export async function seasonPicks(now = new Date()) {
   const season = ["WINTER", "SPRING", "SUMMER", "FALL"][Math.floor(now.getMonth() / 3)];
   const key = `${season}${now.getFullYear()}`;
+  if (seasonFail && Date.now() - seasonFail < 10 * 60_000) return [];
   if (!seasonMemo || seasonMemo.key !== key || Date.now() - seasonMemo.at > 6 * 3_600_000) {
     const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(
       `query ($s: MediaSeason, $y: Int) { Page(perPage: 40) { media(season: $s, seasonYear: $y, type: ANIME, sort: POPULARITY_DESC, isAdult: false, format_in: [TV, ONA, TV_SHORT]) { id title { romaji english } format episodes coverImage { large color } } } }`,
       { s: season, y: now.getFullYear() },
-    );
+    ).catch((e: Error) => {
+      seasonFail = Date.now();
+      console.warn(`[find] this season's shows from AniList: ${e.message}`);
+      throw e;
+    });
     seasonMemo = { at: Date.now(), key, v: (d.Page?.media ?? []).map((m) => ({ anilistId: m.id, title: m.title.english ?? m.title.romaji ?? "", cover: m.coverImage?.large ?? null, format: m.format ?? null, episodes: m.episodes ?? null, color: m.coverImage?.color ?? null })) };
   }
   // Not in the library: neither a Sonarr/AnimeArr show (via AniDB → TVDB) nor a show added in AnimeArr.
@@ -560,7 +566,7 @@ export async function seasonPicks(now = new Date()) {
     .filter((m) => {
       if (native.has(m.anilistId)) return false;
       const aid = f.anilistToAnidb.get(m.anilistId);
-      const tvdb = aid ? al.get(aid)?.tvdbId : null;
+      const tvdb = aid ? ((db.prepare("SELECT tvdb_id FROM anidb_overrides WHERE aid = ?").get(aid) as { tvdb_id: number } | undefined)?.tvdb_id ?? al.get(aid)?.tvdbId) : null;
       return !(tvdb && libTvdb.has(tvdb));
     })
     .slice(0, 16);

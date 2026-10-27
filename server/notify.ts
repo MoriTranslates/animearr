@@ -98,8 +98,17 @@ export function onDecision(kind: string, d: { title?: string; why: string; detai
  * A problem is settled when what it was about got sorted: its grab finished or was replaced by a newer one, its
  * episodes have files now, its movie has its file, or a later pause notice superseded it.
  */
-function settled(ctx: FixContext, event: NotifyEvent, at: number) {
-  if (event === "paused") return !!db.prepare("SELECT 1 FROM notifications WHERE event = 'paused' AND at > ? LIMIT 1").get(at);
+function settled(ctx: FixContext, event: NotifyEvent, at: number, title: string, body: string) {
+  if (event === "paused") {
+    // An importer review pause is settled once imports run again; a download-rule pause once grabs aren't paused.
+    if (/importer/i.test(body)) {
+      const imp = getSettings().importer;
+      return imp.allowReal && (imp.realBudget < 0 || imp.realBudget > 0);
+    }
+    return !!db.prepare("SELECT 1 FROM notifications WHERE event = 'paused' AND at > ? LIMIT 1").get(at) || !getSettings().downloads.rules.some((r) => (r as { paused?: boolean }).paused);
+  }
+  // "X is off" is settled by a later notice about the same indexer ("working again", or turned back on).
+  if (event === "indexer") return !!db.prepare("SELECT 1 FROM notifications WHERE event = 'indexer' AND title = ? AND at > ? LIMIT 1").get(title, at);
   if (ctx.grabId) {
     const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(ctx.grabId) as { state: string } | undefined;
     if (g && ["done", "downloading", "importing", "sending"].includes(g.state)) return true;
@@ -118,15 +127,21 @@ function settled(ctx: FixContext, event: NotifyEvent, at: number) {
  * "Recent" (everything). Settled problems drop out of "Needs action" on their own.
  */
 export function bell(limit = 40) {
-  const rows = db.prepare("SELECT id, at, event, title, body, read, ctx FROM notifications ORDER BY id DESC LIMIT ?").all(limit) as { id: number; at: number; event: NotifyEvent; title: string; body: string; read: number; ctx: string | null }[];
+  type Row = { id: number; at: number; event: NotifyEvent; title: string; body: string; read: number; ctx: string | null };
+  const recent = db.prepare("SELECT id, at, event, title, body, read, ctx FROM notifications ORDER BY id DESC LIMIT ?").all(limit) as Row[];
+  // Problems are looked at over two weeks, not just the latest few (a busy day of imports would push them out).
+  const problems = db.prepare("SELECT id, at, event, title, body, read, ctx FROM notifications WHERE event IN ('failed', 'paused', 'indexer') AND at > ? ORDER BY id DESC LIMIT 500").all(Date.now() - 14 * 86_400_000) as Row[];
+  const seenIds = new Set(recent.map((r) => r.id));
+  const rows = [...recent, ...problems.filter((p) => !seenIds.has(p.id))];
   const unread = (db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE read = 0").get() as { n: number }).n;
-  const items = rows.map((r) => {
+  const all = rows.map((r) => {
     const ctx = r.ctx ? (JSON.parse(r.ctx) as FixContext) : {};
     const problem = r.event === "failed" || r.event === "paused" || (r.event === "indexer" && /is off/.test(r.body));
     const fixes = problem ? liveFixesFor(r.body, ctx) : [];
-    const action = problem && Date.now() - r.at < 14 * 86_400_000 && !settled(ctx, r.event, r.at) && (fixes.length > 0 || r.event !== "failed");
+    const action = problem && Date.now() - r.at < 14 * 86_400_000 && !settled(ctx, r.event, r.at, r.title, r.body) && (fixes.length > 0 || r.event !== "failed");
     return { id: r.id, at: r.at, event: r.event, title: r.title, body: r.body, read: !!r.read, fixes, action, tvdbId: ctx.tvdbId ?? null, movieId: ctx.movieId ?? null };
   });
+  const items = all;
   // One entry per thing to do (the same show/movie problem repeated counts once).
   const seen = new Set<string>();
   const needs = items.filter((i) => {
@@ -136,7 +151,9 @@ export function bell(limit = 40) {
     seen.add(key);
     return true;
   });
-  return { unread, needs: needs.length, items: items.map((i) => ({ ...i, action: needs.includes(i) })) };
+  // "Recent" is the latest few; "Needs action" also brings older open problems.
+  const shown = items.filter((i) => seenIds.has(i.id) || needs.includes(i)).sort((a, b) => b.id - a.id);
+  return { unread, needs: needs.length, items: shown.map((i) => ({ ...i, action: needs.includes(i) })) };
 }
 
 /** Marks what the user has seen (up to the newest shown) as read; anything newer stays unread. */

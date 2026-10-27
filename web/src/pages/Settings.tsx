@@ -55,7 +55,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
         if (d && loaded.data) setS(loaded.data);
         return false;
       });
-      setTabState(TABS.includes(t2) ? t2 : null);
+      setTabState(TABS.includes(t2) ? t2 : window.matchMedia?.("(min-width: 761px)").matches ? TABS[0] : null);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);

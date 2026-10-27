@@ -1680,6 +1680,7 @@ export function setLanguage(l: string) {
  * Fills {name} placeholders; {n|one|many} picks the singular or plural by n ("{n} {n|grab|grabs}" → "1 grab").
  * Numbers in {n} are formatted for the locale (3,532).
  */
+const COUNT_KEYS = new Set(["n", "count", "total", "missing", "shown", "files", "have", "aired", "size"]);
 export function t(key: I18nKey, vars?: Record<string, string | number | null | undefined>): string {
   const s = dictionaries[lang]?.[key] ?? en[key] ?? key;
   if (!vars) return s;
@@ -1687,6 +1688,7 @@ export function t(key: I18nKey, vars?: Record<string, string | number | null | u
     .replace(/\{(\w+)\|([^|}]*)\|([^}]*)\}/g, (_, k: string, one: string, many: string) => (Number(vars[k]) === 1 ? one : many))
     .replace(/\{(\w+)\}/g, (_, k: string) => {
       const v = vars[k];
-      return typeof v === "number" && Math.abs(v) >= 1000 ? v.toLocaleString() : String(v ?? "");
+      // Only counts get separators ("3,532 files"); years, ids and episode numbers stay as they are.
+      return typeof v === "number" && COUNT_KEYS.has(k) && Math.abs(v) >= 1000 ? v.toLocaleString() : String(v ?? "");
     });
 }

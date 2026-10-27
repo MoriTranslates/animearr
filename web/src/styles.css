@@ -1251,11 +1251,11 @@ h2.eyebrow, h3.eyebrow, .stack > .eyebrow { display: block; margin: var(--space-
 .ep-num { white-space: nowrap; gap: 6px; padding-left: 10px; }
 @media (max-width: 760px) {
   .ep-main { grid-template-columns: 52px minmax(0, 1fr) auto; }
-  .season-head { flex-wrap: nowrap; }
+  .season-head { flex-wrap: wrap; }
   .season-head .season-right { margin-left: auto; }
 }
 .strong, h1, h2, h3, .event-title, .hero-title, .pcard .ptitle, .clamp1, .clamp2 { overflow-wrap: break-word; word-break: normal; hyphens: auto; }
-.release-name { overflow-wrap: normal; word-break: normal; }
+.release-name { overflow-wrap: anywhere; word-break: normal; }
 
 /* Accessibility round: AA on chips/badges in light, visible field borders, touch targets ≥24px, wrapping chips */
 [data-theme="light"] .chip.warn { color: color-mix(in srgb, var(--warn) 80%, black); }
@@ -1271,7 +1271,9 @@ input, select, textarea { border-color: color-mix(in srgb, var(--muted) 70%, tra
 .lib-flags { min-width: 0; }
 .lib-flags .tag, .lib-flags .chip { white-space: normal; }
 @media (max-width: 1000px) { .proto-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .proto-bar > .field:first-child { grid-column: 1 / -1; } }
-.menu-trigger, .icon-btn { min-width: 44px; min-height: 44px; }
+@media (pointer: coarse) { .menu-trigger, .icon-btn { min-width: 44px; min-height: 44px; } }
+.menu-trigger, .icon-btn { min-width: 32px; min-height: 32px; }
+.kv-hero .split .menu-trigger { min-height: 0; }
 .linklike { min-height: 24px; padding-block: 2px; }
 input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; }
 .seg button, .segmented button { min-height: 36px; }
@@ -1280,12 +1282,11 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; }
 /* Season header: buttons over the summary's right end (not inside it) */
 .season-wrap { position: relative; }
 .season-actions.season-right { position: absolute; top: 9px; right: 12px; margin: 0; width: auto; display: flex; gap: 6px; align-items: center; z-index: 1; flex-wrap: nowrap; }
-.season-wrap .season-head { padding-right: 64px; }
-.season-wrap.has-search .season-head { padding-right: 250px; }
+.season-wrap .season-head { padding-right: calc(var(--act-w, 56px) + 16px); }
 h2.season-name-h { font-size: var(--text-lg); margin: 0; }
 @media (max-width: 760px) {
-  .season-wrap.has-search .season-head { padding-right: 14px; padding-bottom: 58px; }
-  .season-wrap.has-search .season-actions.season-right { top: 54px; right: 12px; }
+  .season-wrap.has-search .season-head { padding-right: 14px; padding-bottom: calc(var(--act-h, 40px) + 18px); }
+  .season-wrap.has-search .season-actions.season-right { top: var(--sum-h, 52px); }
 }
 
 /* Home (UI review): what needs you comes first on phones; This week doesn't outgrow the page; Just arrived meta */
@@ -1357,6 +1358,10 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 
 /* Per-row ⋯ menus show on hover/focus where there is a mouse (hundreds of them made lists noisy) */
 @media (hover: hover) {
-  .ep-row .ep-menu, .fill-row .menu-wrap, .q-row .menu-wrap { opacity: 0; transition: opacity 0.15s; }
-  .ep-row:hover .ep-menu, .ep-row:focus-within .ep-menu, .fill-row:hover .menu-wrap, .fill-row:focus-within .menu-wrap { opacity: 1; }
+  .ep-row .ep-menu { opacity: 0; transition: opacity 0.15s; }
+  .ep-row:hover .ep-menu, .ep-row:focus-within .ep-menu { opacity: 1; }
 }
+
+/* Small fixed-size widgets keep their own small text (the type scale is for reading text) */
+.st.dl span { font-size: 0.5625rem; }
+.burst small { font-size: 0.625rem; }

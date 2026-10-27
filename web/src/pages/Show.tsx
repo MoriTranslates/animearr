@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { openInMediaServer } from "../filetools";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
@@ -314,7 +314,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "unaired"));
         const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk" && r.special?.cls !== "creditless") : rows, nextId);
         return (
-          <div key={season} className={`season-wrap${missing.length ? " has-search" : ""}`}>
+          <SeasonWrap key={season} className={`season-wrap${missing.length ? " has-search" : ""}`}>
             {/* Buttons sit outside the <summary> (no interactive content inside it), over its right end. */}
             <div className="season-right season-actions">
               {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
@@ -416,7 +416,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               </details>
             )}
           </details>
-          </div>
+          </SeasonWrap>
         );
       })}
         </>
@@ -895,4 +895,31 @@ function shortWhy(why: string) {
   // Raw network errors aren't a reason anyone can act on.
   if (/timeout|ECONN|fetch failed|socket/i.test(w)) return t("ep.searchTrouble");
   return w.length > 80 ? `${w.slice(0, 79)}…` : w;
+}
+
+/** A season block that measures its header buttons so the header text makes room for them (any label length). */
+function SeasonWrap({ className, children }: { className: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrap = ref.current;
+    const act = wrap?.querySelector<HTMLElement>(".season-actions");
+    if (!wrap || !act) return;
+    const sum = wrap.querySelector<HTMLElement>("summary");
+    const set = () => {
+      wrap.style.setProperty("--act-w", `${act.offsetWidth}px`);
+      wrap.style.setProperty("--act-h", `${act.offsetHeight}px`);
+      // Phones: the buttons sit in the space reserved at the bottom of the header.
+      if (sum) wrap.style.setProperty("--sum-h", `${Math.max(8, sum.offsetHeight - act.offsetHeight - 10)}px`);
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(act);
+    if (sum) ro.observe(sum);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
 }

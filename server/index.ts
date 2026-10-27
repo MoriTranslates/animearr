@@ -17,7 +17,7 @@ import { fixesFor } from "./fixes.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
-import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
+import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
@@ -95,7 +95,17 @@ await app.register(fastifyCookie);
 app.addHook("onRequest", guard);
 // Any change to the migration invalidates the cached plan.
 app.addHook("onResponse", async (req) => {
-  if (req.method !== "GET" && req.url.startsWith("/api/cutover/")) invalidateCutover();
+  if (req.method === "GET") return;
+  const body = (req.body ?? {}) as { tvdbIds?: number[]; tvdbId?: number };
+  // Migration actions: only the shows acted on are recomputed (the plan stays on screen).
+  if (req.url.startsWith("/api/cutover/")) {
+    const ids = [...(body.tvdbIds ?? []), ...(body.tvdbId ? [body.tvdbId] : [])].map(Number).filter(Boolean);
+    if (ids.length) refreshCuts(ids);
+    else invalidateCutover();
+    return;
+  }
+  // Anything else that changes a show's cut: AniDB overrides/fetches, syncs, scans, adds and removals.
+  if (/^\/api\/(series\/\d+\/(anidb|scan)|library\/sync|add\b|media\/scan|files\/rescan)/.test(req.url)) invalidateCutover();
 });
 // Slow requests are logged (a sync loop blocking the event loop shows up here first).
 app.addHook("onResponse", async (req, reply) => {

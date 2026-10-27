@@ -55,7 +55,9 @@ export function Cutover() {
       toast(done(r));
       setSel(new Set());
       setMsel(new Set());
-      await d.reload();
+      // The plan was updated for the shows acted on; reload it (built, not the "build it" screen).
+      if (build === "cached") setBuild("build");
+      else await d.reload();
     } catch (e) {
       toast((e as Error).message, true);
     } finally {

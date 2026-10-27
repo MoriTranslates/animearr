@@ -46,10 +46,15 @@ export async function queueView(deps: PipelineDeps = realDeps) {
       if (g.state === "downloading" && g.client && g.client_ref) {
         try {
           // A slow client doesn't hold the whole page (the first call once took 18 s): 4 s, then "no answer yet".
-          live = await Promise.race([
-            deps.clients.status({ client: g.client as ClientJob["client"], ref: g.client_ref }),
-            new Promise<never>((_, rej) => setTimeout(() => rej(new Error("the download client is slow to answer")), 4000)),
-          ]);
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            live = await Promise.race([
+              deps.clients.status({ client: g.client as ClientJob["client"], ref: g.client_ref }),
+              new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error("the download client is slow to answer")), 4000))),
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
         } catch (e) {
           live = { state: "unknown", progress: g.progress ?? 0, message: (e as Error).message };
         }

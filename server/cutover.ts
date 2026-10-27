@@ -132,13 +132,25 @@ const yieldNow = () => new Promise<void>((r) => setImmediate(r));
  * and cached for 15 minutes; changes (adopt, match, switch) invalidate it. One build at a time.
  */
 let cuts: { at: number; byTvdb: Map<number, ShowCut> } | null = null;
-let building: Promise<Map<number, ShowCut>> | null = null;
-export const invalidateCutover = () => void (cuts = null);
+let building: { gen: number; p: Promise<Map<number, ShowCut>> } | null = null;
+let gen = 0;
+/** Anything that can change a show's cut invalidates the plan (a build in flight then doesn't store its result). */
+export const invalidateCutover = () => void ((cuts = null), gen++);
+/** After an action on some shows: recompute just those cuts (the rest of the plan stays). */
+export function refreshCuts(tvdbIds: number[]) {
+  if (!cuts) return;
+  for (const t of tvdbIds) {
+    const s = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE tvdb_id = ? AND id < ${NATIVE_BASE}`).get(t) as { id: number; tvdb_id: number; title: string; path: string } | undefined;
+    if (s) cuts.byTvdb.set(t, showCut(s));
+    else cuts.byTvdb.delete(t);
+  }
+}
 export const cutoverCachedAt = () => cuts?.at ?? null;
 export function allShowCuts(fresh = false): Promise<Map<number, ShowCut>> {
   if (!fresh && cuts && Date.now() - cuts.at < 15 * 60_000) return Promise.resolve(cuts.byTvdb);
-  if (building) return building;
-  building = (async () => {
+  if (building && building.gen === gen && !fresh) return building.p;
+  const myGen = gen;
+  const p = (async () => {
     const series = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE id < ${NATIVE_BASE} ORDER BY sort_title`).all() as { id: number; tvdb_id: number; title: string; path: string }[];
     const scanned = new Set((db.prepare("SELECT path FROM media_files").all() as { path: string }[]).map((r) => r.path));
     const out = new Map<number, ShowCut>();
@@ -147,12 +159,14 @@ export function allShowCuts(fresh = false): Promise<Map<number, ShowCut>> {
       out.set(s.tvdb_id, showCut(s, { scanned }));
       if (++i % 2 === 0) await yieldNow();
     }
-    cuts = { at: Date.now(), byTvdb: out };
+    // Only the latest generation is kept (an invalidation during the build makes this one stale).
+    if (myGen === gen) cuts = { at: Date.now(), byTvdb: out };
     return out;
   })().finally(() => {
-    building = null;
+    if (building?.p === p) building = null;
   });
-  return building;
+  building = { gen: myGen, p };
+  return p;
 }
 
 /** The whole plan (read-only), plus the checklist of what to look at in Sonarr/Radarr. */

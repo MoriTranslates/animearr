@@ -107,7 +107,7 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
     <article
       className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}${open ? " open" : ""}`}
       // The whole card opens its details (links and buttons inside keep doing their own thing).
-      onClick={(e) => !(e.target as HTMLElement).closest("a, button, input, select, summary") && setOpen(!open)}
+      onClick={(e) => !(e.target as HTMLElement).closest("a, button, input, select, summary, .event-details") && !window.getSelection()?.toString() && setOpen(!open)}
     >
       {link ? (
         <Link to={link} className="event-thumb">
