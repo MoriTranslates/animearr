@@ -33,6 +33,8 @@ export const setupStrings = {
   "meta.tmdbLink": "TMDB's API settings page",
   "meta.anidbLink": "AniDB's client registration page",
   "plex.tokenLink": "How to find your Plex token",
+  "fill.removeTitle": "Remove {title} from the fill-in queue?",
+  "fill.removeBody": "It leaves the queue entirely (Skip would keep it listed so you can queue it again). The show stays in your library and stays managed; files aren't touched.",
   "dl.thresholdGb": "is over (GB)",
   "dl.thresholdItems": "is over",
   "job.anidb": "AniDB titles download",

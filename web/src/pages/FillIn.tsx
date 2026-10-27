@@ -2,7 +2,8 @@ import { api } from "../api";
 import { Link, navigate } from "../App";
 import { AutomateTabs } from "./Managed";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { useState } from "react";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 interface Item { tvdbId: number; title: string; cover: string | null; state: "queued" | "active" | "done" | "skipped"; wave: number | null; position: number; startMissing: number | null; missing: number | null; note: string; activatedAt: number | null; doneAt: number | null; scope: { seasons: string; recentN: number; episodes: string; specials: boolean } }
 interface View { settings: { paused: boolean; waveSize: number; advancePct: number; stallDays: number }; backlogEnabled: boolean; perHour: number; remaining: number; etaHours: number; items: Item[] }
@@ -14,6 +15,7 @@ export function FillIn() {
   usePageTitle(t("fill.title"));
   const toast = useToast();
   const d = useLoad(() => api<View>("/fillin"), []);
+  const [removing, setRemoving] = useState<Item | null>(null);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const v = d.data;
@@ -91,7 +93,7 @@ export function FillIn() {
                           { label: t("fill.down"), onSelect: () => void act(i.tvdbId, "down"), hidden: i.state !== "queued" },
                           { label: t("fill.skip"), onSelect: () => void act(i.tvdbId, "skip"), hidden: !(i.state === "queued" || i.state === "active") },
                           { label: t("fill.requeue"), onSelect: () => void act(i.tvdbId, "requeue"), hidden: !(i.state === "skipped" || i.state === "done") },
-                          { label: t("fill.remove"), onSelect: () => void act(i.tvdbId, "remove"), danger: true },
+                          { label: t("fill.remove"), onSelect: () => setRemoving(i), danger: true },
                         ]}
                       />
                     </li>
@@ -100,6 +102,20 @@ export function FillIn() {
               </ul>
             </div>
           ),
+      )}
+      {removing && (
+        <Confirm
+          danger
+          title={t("fill.removeTitle", { title: removing.title })}
+          confirmLabel={t("fill.remove")}
+          onClose={() => setRemoving(null)}
+          onConfirm={async () => {
+            await act(removing.tvdbId, "remove");
+            setRemoving(null);
+          }}
+        >
+          <p>{t("fill.removeBody")}</p>
+        </Confirm>
       )}
     </section>
   );
