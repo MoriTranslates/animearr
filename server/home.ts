@@ -168,7 +168,8 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
     airingToday,
     needs: {
       missing: { n: recentMissing.length, sample: recentMissing.slice(0, 1).map((e) => `${e.series} ${sxe(e.season, e.episode)}`)[0] ?? null },
-      failed: { n: attention.length, sample: attention[0] ? `${showOf(attention[0].tvdb_id).title}${attention[0].error ? ` · ${attention[0].error}` : ""}` : null },
+      // A movie grab has no show: name the movie (never "null").
+      failed: { n: attention.length, sample: attention[0] ? `${attention[0].movie_id ? movieOf(attention[0].movie_id).title : showOf(attention[0].tvdb_id).title}${attention[0].error ? ` · ${attention[0].error}` : ""}` : null },
       noLang: { n: lang.files, series: lang.series, lang: profileFor(null).subLangs[0] ?? "en" },
     },
     downloading,

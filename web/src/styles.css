@@ -1365,3 +1365,4 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 /* Small fixed-size widgets keep their own small text (the type scale is for reading text) */
 .st.dl span { font-size: 0.5625rem; }
 .burst small { font-size: 0.625rem; }
+.pmeta b { white-space: nowrap; }
