@@ -8,6 +8,7 @@ export const setupStrings = {
   "managed.olderOff": "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search finds them once it's switched on, or tap ⚡ on the show's page.",
   "managed.olderOpen": "Switch it on",
   "managed.olderN": "{n} missing",
+  "wiz.stepDone": "done",
   "folders.remove": "Remove",
   "folders.add": "Add a library folder",
   "folders.chosen": "Already chosen",

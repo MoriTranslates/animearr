@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUnsaved } from "./unsaved";
 import { api } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast } from "./ui";
@@ -70,10 +71,14 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
       setDirty(false);
       toast(t("common.saved"));
       onSaved();
+      return true;
     } catch (e) {
       toast((e as Error).message, true);
+      return false;
     }
   };
+  // Leaving with unsaved changes asks first; the setup wizard's Next saves them.
+  useUnsaved(dirty, () => save());
   return (
     <div className="card pad stack">
       <div className="row between">

@@ -1446,7 +1446,7 @@ const en = {
   "notify.ev.imported": "Imported",
   "notify.ev.failed": "Failed / needs attention",
   "notify.ev.paused": "Grabs paused by a download-folder rule",
-  "notify.saveFirst": "Save, then Test.",
+  "notify.saveFirst": "Test sends with the saved settings: save your changes first.",
   "settings.tab.cutover": "Cutover",
   "cut.title": "Move anime from Sonarr/Radarr to AnimeArr",
   "cut.help": "1. Adopt: AnimeArr takes the show/movie as its own, with every file linked to its episode — nothing changes in Sonarr/Radarr, and their copy is used meanwhile. 2. Remove from Sonarr/Radarr (switched on separately): files stay, an import-list exclusion is added, and AnimeArr's copy takes over with the same folder.",

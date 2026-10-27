@@ -11,6 +11,10 @@ import { t, type I18nKey } from "../i18n";
 import { SeasonHeader } from "../seasonal";
 import { Settings, type SettingsTab } from "./Settings";
 import { ErrorBox, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
+import { saveAllUnsaved } from "../unsaved";
+
+interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null }
+interface Overview { clients: ConnState[]; indexers: { name: string }[]; mediaServers: ConnState[]; migration: ConnState[] }
 
 /**
  * First-run setup: two paths chosen on the welcome screen. Every step can be skipped and comes back later from
@@ -48,6 +52,8 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
     if (st.data) setW(st.data);
   }, [st.data]);
   const saver = useSettingsSaver(onChanged);
+  // What's really set up (a step is ticked when it is, not for being visited).
+  const conn = useLoad(() => api<Overview>("/connections"), [saver.s]);
   const save = async (patch: Partial<WizardState>) => {
     const next = { ...w!, ...patch };
     setW(next);
@@ -114,7 +120,36 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
         ];
   const idx = Math.max(0, steps.findIndex((x) => x.id === w.step));
   const step = steps[idx];
-  const go = (i: number) => void save({ step: steps[Math.max(0, Math.min(steps.length - 1, i))].id, completed: [...new Set([...w.completed, step.id])] });
+  /** Leaves the step: unsaved edits on it are saved first (a failed save shows its error and stays). Next marks it done. */
+  const go = async (i: number, next = false) => {
+    if (!(await saveAllUnsaved())) return;
+    void save({ step: steps[Math.max(0, Math.min(steps.length - 1, i))].id, completed: next ? [...new Set([...w.completed, step.id])] : w.completed });
+  };
+  const c = conn.data;
+  const works = (x: { configured: boolean; ok: boolean | null }) => x.configured && x.ok !== false;
+  /** Steps with something to check are ticked by what's set up; the others when left with Next. */
+  const isDone = (id: string): boolean => {
+    switch (id) {
+      case "account":
+        return !status.defaultPassword;
+      case "folders":
+        return s.allowedRoots.length > 0;
+      case "clients":
+        return !!c?.clients.some(works);
+      case "indexers":
+        return !!c?.indexers.length;
+      case "media":
+        return !!c?.mediaServers.some(works);
+      case "notify":
+        return !!(s.notify.discordWebhook || s.notify.ntfyUrl);
+      case "connect":
+        return !!c?.migration.some(works);
+      case "done":
+        return w.done;
+      default:
+        return w.completed.includes(id);
+    }
+  };
 
   return (
     <section className="wizard">
@@ -125,9 +160,9 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
       </SeasonHeader>
       <ol className="wiz-steps" aria-label={t("wiz.progress")}>
         {steps.map((x, i) => (
-          <li key={x.id} className={`${i === idx ? "on" : ""}${w.completed.includes(x.id) ? " done" : ""}`}>
-            <button className="linklike" onClick={() => go(i)} aria-current={i === idx ? "step" : undefined}>
-              {w.completed.includes(x.id) && <Check className="lucide" aria-hidden="true" />}
+          <li key={x.id} className={`${i === idx ? "on" : ""}${isDone(x.id) ? " done" : ""}`}>
+            <button className="linklike" onClick={() => void go(i)} aria-current={i === idx ? "step" : undefined}>
+              {isDone(x.id) && <Check className="lucide" aria-label={t("wiz.stepDone")} />}
               {t(x.title)}
             </button>
           </li>
@@ -136,21 +171,21 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
       <p className="wiz-intro">{t(step.intro)}</p>
       <div className="wiz-body">{step.body}</div>
       <div className="wiz-nav sticky-actions row between">
-        <button onClick={() => (idx === 0 ? void save({ step: "welcome" }) : go(idx - 1))}>
+        <button onClick={() => (idx === 0 ? void saveAllUnsaved().then((ok) => void (ok && save({ step: "welcome" }))) : void go(idx - 1))}>
           <ArrowLeft className="lucide" aria-hidden="true" /> {t("wiz.back")}
         </button>
         <span className="row">
           {step.id !== "done" && (
-            <button className="ghost" onClick={() => go(idx + 1)}>
+            <button className="ghost" onClick={() => void go(idx + 1)}>
               {t("wiz.skip")}
             </button>
           )}
           {step.id === "done" ? (
-            <button className="primary" onClick={() => void save({ done: true, completed: steps.map((x) => x.id) }).then(async () => (await onChanged(), navigate("/")))}>
+            <button className="primary" onClick={() => void saveAllUnsaved().then((ok) => void (ok && save({ done: true }).then(async () => (await onChanged(), navigate("/")))))}>
               {t("wiz.finish")}
             </button>
           ) : (
-            <button className="primary" onClick={() => go(idx + 1)}>
+            <button className="primary" onClick={() => void go(idx + 1, true)}>
               {t("wiz.next")} <ArrowRight className="lucide" aria-hidden="true" />
             </button>
           )}

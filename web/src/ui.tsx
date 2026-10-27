@@ -339,26 +339,40 @@ export function SecretInput({ value, onChange, placeholder, label }: { value: st
   );
 }
 
-/** Comma-separated list input that keeps what you type and only splits when you leave the field. */
+/**
+ * Comma-separated list input: every keystroke reaches the form (so its Save bar shows at once), while the text you
+ * type is kept as is until you leave the field.
+ */
 export function ListInput({ value, onChange, placeholder, label }: { value: (string | number)[]; onChange: (v: string[]) => void; placeholder?: string; label: string }) {
   const [text, setText] = useState(value.join(", "));
-  const last = useRef(value.join(", "));
+  const focused = useRef(false);
   useEffect(() => {
-    const v = value.join(", ");
-    if (v !== last.current) setText(v);
-    last.current = v;
+    if (!focused.current) setText(value.join(", "));
   }, [value]);
-  const commit = () => {
-    const list = text.split(",").map((x) => x.trim()).filter(Boolean);
-    last.current = list.join(", ");
-    onChange(list);
-  };
-  return <input value={text} placeholder={placeholder} aria-label={label} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+  const split = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+  return (
+    <input
+      value={text}
+      placeholder={placeholder}
+      aria-label={label}
+      onFocus={() => (focused.current = true)}
+      onChange={(e) => (setText(e.target.value), onChange(split(e.target.value)))}
+      onBlur={() => {
+        focused.current = false;
+        setText(value.join(", "));
+      }}
+    />
+  );
 }
 
+/** A number field: each keystroke reaches the form (clamped to min–max); the field shows the clamped value on leaving. */
 export function NumberInput({ value, onChange, min, max, label }: { value: number; onChange: (v: number) => void; min: number; max: number; label: string }) {
   const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setText(String(value));
+  }, [value]);
+  const clamp = (v: string) => Math.min(max, Math.max(min, Math.round(Number(v)) || min));
   return (
     <input
       type="number"
@@ -367,11 +381,16 @@ export function NumberInput({ value, onChange, min, max, label }: { value: numbe
       min={min}
       max={max}
       value={text}
-      onChange={(e) => setText(e.target.value)}
+      onFocus={() => (focused.current = true)}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (e.target.value.trim() !== "" && clamp(e.target.value) !== value) onChange(clamp(e.target.value));
+      }}
       onBlur={() => {
-        const n = Math.min(max, Math.max(min, Math.round(Number(text)) || min));
+        focused.current = false;
+        const n = clamp(text);
         setText(String(n));
-        onChange(n);
+        if (n !== value) onChange(n);
       }}
     />
   );

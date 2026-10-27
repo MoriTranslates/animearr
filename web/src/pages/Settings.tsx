@@ -1,5 +1,6 @@
 import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useUnsaved } from "../unsaved";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
@@ -77,26 +78,22 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
     setS((x) => (x ? fn(structuredClone(x)) : x));
     setDirty(true);
   };
-  // In the wizard (only mode), leaving the step saves what was changed (Next/Back never drop edits).
-  const latest = useRef<{ s: S | null; dirty: boolean }>({ s: null, dirty: false });
-  latest.current = { s, dirty };
-  useEffect(
-    () => () => {
-      if (only && latest.current.dirty && latest.current.s) void api("/settings", { method: "PUT", body: latest.current.s }).catch(() => undefined);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  // Unsaved edits: leaving the page asks first; in the wizard (only mode) Next/Back save them, and a failed save
+  // (its error shown) keeps the wizard on this step.
+  useUnsaved(dirty, save);
   async function save() {
-    if (!s) return;
+    if (!s) return false;
     try {
       const next = await api<S>("/settings", { method: "PUT", body: s });
       setS(next);
+      loaded.setData(next);
       setDirty(false);
       toast(t("common.saved"));
       onSaved();
+      return true;
     } catch (e) {
       toast((e as Error).message, true);
+      return false;
     }
   }
   /** Connection dialogs save straight away (only their own change, on top of what's saved). */
@@ -149,7 +146,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {/* The save bar appears only with unsaved changes (a disabled Save was just a muddy block). */}
           {FORM_TABS.includes(x) && dirty && (
             <div className="sticky-actions row">
-              <button className="primary" disabled={!dirty} onClick={save}>
+              <button className="primary" disabled={!dirty} onClick={() => void save()}>
                 {t("common.save")}
               </button>
               {dirty && (
