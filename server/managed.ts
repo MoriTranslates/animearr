@@ -204,7 +204,7 @@ export function scheduleFor(tvdbId?: number, limit = 500) {
  * the profile's language, exactly the episodes asked for, no burn-ins (unless the user confirmed that's all there is),
  * no dead torrents. Best first (the results are ranked already).
  */
-export function automaticPicks(results: SearchResult[], tvdbId: number, season: number | null, opts: { allowPacks?: boolean; delays?: boolean } = {}) {
+export function automaticPicks(results: SearchResult[], tvdbId: number, season: number | null, opts: { allowPacks?: boolean; allowExtras?: boolean; delays?: boolean } = {}) {
   const s = getSettings().managed;
   const burnedOk = profileFor(tvdbId).subLangs.some((l) => !!burnedInFact(tvdbId, season, l));
   const ok = results.filter(
@@ -213,7 +213,7 @@ export function automaticPicks(results: SearchResult[], tvdbId: number, season: 
       r.confidence >= s.minConfidence &&
       r.rank.langProb >= 0.5 &&
       (opts.allowPacks ? r.episodeIds.length > 0 : r.coversTarget) &&
-      r.extra <= 0 &&
+      (r.extra <= 0 || !!opts.allowExtras) &&
       (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
       !(r.protocol === "torrent" && r.seeders === 0),
   );

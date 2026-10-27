@@ -5,7 +5,7 @@
  */
 import type { ClientCfg } from "../settings.js";
 import { redactUrl } from "./http.js";
-import type { ClientStatus } from "./clients.js";
+import type { ClientFile, ClientStatus } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
 const mapPath = (p: string, c: ClientCfg) => {
@@ -122,18 +122,38 @@ export const transmissionDriver = {
     const s = await transmission<{ version: string; "download-dir": string }>(c, "session-get", { fields: ["version", "download-dir"] });
     return { version: s.version, categoryExists: true, categories: [] as string[], downloadDir: s["download-dir"] };
   },
-  async add(c: ClientCfg, src: { data?: Buffer; magnet?: string }, opts: { seedRatio?: number | null; seedTimeMin?: number | null } = {}) {
+  async add(c: ClientCfg, src: { data?: Buffer; magnet?: string }, opts: { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean } = {}): Promise<{ ref: string; paused?: boolean; select?: boolean }> {
     const s = await transmission<{ "download-dir": string }>(c, "session-get", { fields: ["download-dir"] });
     const args: Record<string, unknown> = { "download-dir": `${s["download-dir"].replace(/\/+$/, "")}/${c.category}`, labels: [c.category] };
     if (src.magnet) args.filename = src.magnet;
     else if (src.data) args.metainfo = src.data.toString("base64");
     else throw new Error(`Nothing to send to ${c.name}`);
+    // File selection: a .torrent is added paused (its file list is there at once); a paused magnet would never fetch
+    // its metadata, so a magnet runs and its unwanted files are skipped as soon as they are listed.
+    const paused = !!opts.paused && !src.magnet;
+    if (paused) args.paused = true;
     const r = await transmission<{ "torrent-added"?: { hashString: string }; "torrent-duplicate"?: { hashString: string } }>(c, "torrent-add", args);
     const hash = r["torrent-added"]?.hashString ?? r["torrent-duplicate"]?.hashString;
     if (!hash) throw new Error(`${c.name} accepted the torrent but returned no hash`);
     // Transmission has a ratio limit but no "seed for N minutes" (only an idle limit): the ratio applies here.
     if (opts.seedRatio != null) await transmission(c, "torrent-set", { ids: [hash], seedRatioLimit: opts.seedRatio, seedRatioMode: 1 }).catch(() => undefined);
-    return hash.toLowerCase();
+    // A duplicate was already in Transmission: its files are left as they are.
+    const fresh = !!r["torrent-added"];
+    return { ref: hash.toLowerCase(), ...(opts.paused && fresh ? { select: true, paused } : {}) };
+  },
+  /** The torrent's files (index = position); null until a magnet has its metadata. */
+  async listFiles(c: ClientCfg, ref: string): Promise<ClientFile[] | null> {
+    const r = await transmission<{ torrents: { files?: { name: string; length: number }[]; metadataPercentComplete?: number }[] }>(c, "torrent-get", { ids: [ref], fields: ["files", "metadataPercentComplete"] });
+    const t = r.torrents[0];
+    if (!t) throw new Error(`the torrent is no longer in ${c.name}`);
+    if ((t.metadataPercentComplete ?? 1) < 1 || !t.files?.length) return null;
+    return t.files.map((f, i) => ({ index: i, name: f.name, size: f.length }));
+  },
+  async selectFiles(c: ClientCfg, ref: string, wanted: number[], skipped: number[]) {
+    await transmission(c, "torrent-set", { ids: [ref], ...(skipped.length ? { "files-unwanted": skipped } : {}), ...(wanted.length ? { "files-wanted": wanted } : {}) });
+  },
+  async start(c: ClientCfg, ref: string) {
+    await transmission(c, "torrent-start", { ids: [ref] });
   },
   async status(c: ClientCfg, ref: string): Promise<ClientStatus> {
     const r = await transmission<{ torrents: TrTorrent[] }>(c, "torrent-get", { ids: [ref], fields: TR_FIELDS });

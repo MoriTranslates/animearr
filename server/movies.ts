@@ -21,7 +21,9 @@ import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
 import { cache, db, dbState } from "./db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
-import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, runTimeSec, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, runTimeSec, selectAfterAdd, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import type { BatchInfo, FileMapOpts } from "./batch.js";
+import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
@@ -412,10 +414,16 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
     if (busy) throw Object.assign(new Error(`There's already a download for this movie (${busy.release}, grab ${busy.id}); remove it from the queue first`), { statusCode: 409 });
   }
   const now = Date.now();
+  // A movie/special inside a season batch: torrents download only its file (when the client can skip files); the rest
+  // of a Usenet batch is cleaned up after the import.
+  const pr = parseRelease(c.title);
+  const inBatch = pr.batch || pr.fullSeason || pr.episodes.length > 1;
+  const select = inBatch && c.protocol === "torrent" && !!deps.clients.selectFiles;
+  const batch: BatchInfo | null = inBatch ? { mode: select ? "pending" : "whole", total: 0, wanted: 1, skippedEpisodes: [], skippedFiles: 0, leftovers: true, note: null, movie: true, since: now } : null;
   const id = Number(
     db
-      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file, purpose) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0, req.purpose ?? null).lastInsertRowid,
+      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file, purpose, batch) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0, req.purpose ?? null, batch ? JSON.stringify(batch) : null).lastInsertRowid,
   );
   const label = m.year ? `${m.title} (${m.year})` : m.title;
   if (dryRun) {
@@ -426,12 +434,13 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   try {
     const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
-    const job = c.protocol === "usenet" ? await deps.clients.addNzb(file.data!, c.title) : await deps.clients.addTorrent(file, c.title, seedLimitsFor(c.indexerId));
+    const job = c.protocol === "usenet" ? await deps.clients.addNzb(file.data!, c.title) : await deps.clients.addTorrent(file, c.title, { ...seedLimitsFor(c.indexerId), ...(select ? { paused: true } : {}) });
     if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
       await deps.clients.remove(job).catch(() => undefined);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
-    logDecision("grab", { title: label, release: c.title, why: `Sent ${c.title} to ${job.client === "sabnzbd" ? "SABnzbd" : "qBittorrent"} for ${label}: ${c.why}`, detail: { grabId: id, movieId: m.id } });
+    logDecision("grab", { title: label, release: c.title, why: `Sent ${c.title} to ${clientName(job.client)} for ${label}: ${c.why}`, detail: { grabId: id, movieId: m.id } });
+    if (batch && select) await selectAfterAdd(id, job, batch, deps, { tvdbId: null, title: label, release: c.title, episodeIds: [], movieId: m.id }, !!file.magnet, movieFileOpts(m.id));
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
     setState(id, "failed", (e as Error).message);
@@ -439,6 +448,13 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
     const next = await movieNext({ ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
   }
+}
+
+/** File mapping for a movie grabbed from a season batch: the file whose name carries the movie's subtitle. */
+export function movieFileOpts(movieId: number): FileMapOpts {
+  const m = movieById(movieId);
+  const subtitles = m ? movieSubtitles([m.title, m.original_title ?? "", ...parseTitles(m.alt_titles)], seriesForMovie(m.id).map((x) => x.title)) : [];
+  return { wantedIds: [], resolve: () => null, keepCreditless: false, movie: { subtitles } };
 }
 
 function movieRequest(row: GrabRow): MovieGrabRequest {

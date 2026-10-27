@@ -16,9 +16,15 @@ import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./sear
 import { getSettings, underAllowedRoot } from "./settings.js";
 import { searchMovie, startMovieGrab } from "./movies.js";
 import type { Candidate } from "./pipeline.js";
+import { batchPrefersSingles } from "./batch.js";
 
-export interface AutoDeps { search: typeof deepSearch; grab: typeof startGrab }
-const realDeps: AutoDeps = { search: deepSearch, grab: startGrab };
+export interface AutoDeps {
+  search: typeof deepSearch;
+  grab: typeof startGrab;
+  /** The season's group when this batch is a worse release from another group (its singles fill the gaps first). */
+  preferSingles?: (tvdbId: number, r: SearchResult) => Promise<string | null>;
+}
+const realDeps: AutoDeps = { search: deepSearch, grab: startGrab, preferSingles: batchPrefersSingles };
 
 export type AutoOutcome = { episodeIds: number[]; label: string; outcome: "grabbed" | "would-grab" | "needs-look" | "skipped" | "failed"; release?: string; why: string };
 
@@ -91,18 +97,32 @@ async function searchTargets(tvdbId: number, seriesTitle: string, targets: numbe
   if (remaining.length > 1 && new Set(remaining.map((x) => all.get(x)!.season)).size === 1) {
     const res = await deps.search(tvdbId, remaining, { budget: 12 });
     const season = all.get(remaining[0])?.season ?? null;
-    const packs = automaticPicks(res.results, tvdbId, season, { allowPacks: true })
+    // Batches with episodes you already have count too (smart batch grabs: only the wanted files are downloaded or
+    // imported, or the season decision replaces the whole season).
+    const packs = automaticPicks(res.results, tvdbId, season, { allowPacks: true, allowExtras: true })
       .map((r) => ({ r, covers: r.episodeIds.filter((x) => remaining.includes(x)) }))
-      .filter((x) => x.covers.length >= 2 && x.covers.length === x.r.episodeIds.length)
-      .sort((a, b) => b.covers.length - a.covers.length);
-    const pack = packs[0];
+      .filter((x) => x.covers.length >= 2)
+      .sort((a, b) => b.covers.length - a.covers.length || a.r.episodeIds.length - b.r.episodeIds.length);
+    let pack: (typeof packs)[number] | undefined = packs[0];
+    // A worse batch from another group: single releases of the season's group fill the gaps first, when there are any.
+    if (pack && deps.preferSingles) {
+      const sg = await deps.preferSingles(tvdbId, pack.r);
+      if (sg) {
+        const singles = automaticPicks(res.results, tvdbId, season, { allowPacks: true }).filter((r) => r.episodeIds.length === 1 && remaining.includes(r.episodeIds[0]) && r.group?.toLowerCase() === sg.toLowerCase());
+        if (singles.length) {
+          logDecision("info", { tvdbId, title: seriesTitle, episodeIds: pack.covers, release: pack.r.title, why: `Skipped the batch ${pack.r.title} for now: it's another group and lower quality than your files, and ${sg} (the season's group) has single releases for the gaps` });
+          pack = undefined;
+        }
+      }
+    }
     if (pack && pack.covers.length >= Math.ceil(remaining.length / 2)) {
       const labels = pack.covers.map((x) => sxe(all.get(x)!.season, all.get(x)!.episode));
-      const same = (p: (typeof packs)[number]) => p.covers.length === pack.covers.length && p.covers.every((x) => pack.covers.includes(x));
+      const chosen = pack;
+      const same = (p: (typeof packs)[number]) => p.covers.length === chosen.covers.length && p.covers.every((x) => chosen.covers.includes(x));
       const ok = packs.filter(same).map((p) => p.r);
       const o = await grabOne(deps, tvdbId, pack.covers, ok, `${labels[0]}–${labels.at(-1)}`);
       out.push(o);
-      if (o.outcome !== "failed") remaining = remaining.filter((x) => !pack.covers.includes(x));
+      if (o.outcome !== "failed") remaining = remaining.filter((x) => !chosen.covers.includes(x));
     }
   }
   for (const id of remaining) {

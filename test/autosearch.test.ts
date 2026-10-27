@@ -72,3 +72,18 @@ test("an episode that has a file is never replaced by ⚡ (use Re-grab); a show 
   await autoSearchEpisodes(700500, [5003], d2);
   assert.equal(seen[0].automatic, true, "⚡ asks startGrab to honour the show's own dry-run");
 });
+
+test("smart batch: a worse batch from another group waits while the season's group has singles for the gaps", async () => {
+  db.prepare("UPDATE grabs SET state = 'done'").run();
+  const { d, grabbed } = deps((ids) => (ids.length > 1 ? [r("[Erai] Auto Show 01-03", [5001, 5002, 5003], { coversTarget: false, group: "Erai" }), r("[Judas] Auto Show - 01", [5001], { coversTarget: false, group: "Judas" })] : [r(`[Judas] ${ids[0]}`, ids, { group: "Judas" })]));
+  const asked: string[] = [];
+  const out = await autoSearchEpisodes(700500, [5001, 5002, 5003], { ...d, preferSingles: async (_t: number, x: SR) => (asked.push(x.title), "Judas") });
+  assert.deepEqual(asked, ["[Erai] Auto Show 01-03"]);
+  assert.deepEqual(grabbed.map((g) => g.title), ["[Judas] 5001", "[Judas] 5002", "[Judas] 5003"]);
+  assert.equal(out.results.length, 3);
+  // No singles of the season's group: the batch is accepted (only the missing episodes; the season stays mixed).
+  db.prepare("UPDATE grabs SET state = 'done'").run();
+  const two = deps((ids) => (ids.length > 1 ? [r("[Erai] Auto Show 01-03", [5001, 5002, 5003], { coversTarget: false, group: "Erai" })] : []));
+  await autoSearchEpisodes(700500, [5001, 5002, 5003], { ...two.d, preferSingles: async () => "Judas" });
+  assert.deepEqual(two.grabbed.map((g) => g.title), ["[Erai] Auto Show 01-03"]);
+});

@@ -20,7 +20,9 @@ import { isNativeSeriesId } from "./native.js";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
-import { isTorrentClient, realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
+import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
+import { applySelection, batchLine, existingFiles, planBatch, readBatch, writeBatch, type BatchInfo, type ExistingFile, type FileMapOpts } from "./batch.js";
+import { scopeFor } from "./scope.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
@@ -130,6 +132,8 @@ export interface GrabRow {
   progress?: number | null;
   progress_at?: number | null;
   keep?: number;
+  /** Smart batch info (JSON, batch.ts). */
+  batch?: string | null;
 }
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
@@ -217,7 +221,21 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const asMovie = radarrMovieSpecials(series.id);
   const all = episodesFor(req.tvdbId);
   // A pack that also contains a movie special: the special is left to Radarr (not imported as an episode).
-  const importIds = c.episodeIds.filter((id) => !asMovie.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
+  let importIds = c.episodeIds.filter((id) => !asMovie.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
+  // Smart batch: per season, only the missing episodes, or the whole season as a Replace season (batch.ts).
+  let purpose = req.purpose ?? null;
+  let seasonWhy: string | null = null;
+  const inBatch = c.episodeIds.filter((id) => !asMovie.has(id));
+  if (inBatch.length > 1 && !req.purpose) {
+    const prof = profileFor(req.tvdbId);
+    const seasons = [...new Set(all.filter((e) => inBatch.includes(e.id)).map((e) => e.season))];
+    const existing = new Map<number, ExistingFile[]>();
+    for (const s of seasons) existing.set(s, await existingFiles(series.id, s));
+    const plan = planBatch({ seriesId: series.id, candidateEpisodeIds: c.episodeIds, baseIds: importIds, release: c.title, group: c.group ?? null, consistency: prof.groupConsistency ?? "prefer", profileResolution: prof.resolution, recycleBin: !!getSettings().media.recycleBin.trim(), exclude: new Set(asMovie.keys()), existingOf: (_sid, s) => existing.get(s) ?? [] });
+    importIds = plan.importIds;
+    purpose = plan.purpose;
+    seasonWhy = plan.why;
+  }
   if (!importIds.length) throw Object.assign(new Error("This release doesn't cover the episodes asked for"), { statusCode: 400 });
   // Download-folder rules (the strictest wins). Free space applies to every attempt; the folder rules to new grabs
   // (a fallback after a failure isn't one), and a grab the user starts by hand may pass them.
@@ -234,12 +252,20 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const eps = all.filter((e) => importIds.includes(e.id));
   const target = eps.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")} (episode id ${e.id})`).join(", ");
   const now = Date.now();
+  // A batch that holds more than this grab wants: torrents whose client can skip files download only the wanted ones;
+  // everything else downloads the whole batch, imports only the wanted files and cleans the rest after the import.
+  const skippedEps = inBatch.filter((e) => !importIds.includes(e));
+  const select = c.protocol === "torrent" && skippedEps.length > 0 && !!deps.clients.selectFiles;
+  const batch: BatchInfo | null =
+    inBatch.length > 1 ? { mode: select ? "pending" : "whole", total: inBatch.length, wanted: importIds.length, skippedEpisodes: skippedEps, skippedFiles: 0, leftovers: skippedEps.length > 0, note: null, autoReplace: purpose === "replace" && !req.purpose, since: now } : null;
+  const why = seasonWhy ? `${c.why}. ${seasonWhy}` : c.why;
   const ins = db
-    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.purpose ?? null);
+    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null);
   const id = Number(ins.lastInsertRowid);
+  const line = batchLine(batch);
   if (dryRun) {
-    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${c.why}. Would import into Sonarr as ${target}.`;
+    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import into Sonarr as ${target}.`;
     logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: req.fallbacks.length } });
     return { id, dryRun: true, message: msg };
   }
@@ -249,13 +275,14 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     if (c.protocol === "usenet") {
       if (!file.data) throw new Error("No NZB data");
       job = await deps.clients.addNzb(file.data, c.title);
-    } else job = await deps.clients.addTorrent(file, c.title, seedLimitsFor(c.indexerId));
+    } else job = await deps.clients.addTorrent(file, c.title, { ...seedLimitsFor(c.indexerId), ...(select ? { paused: true } : {}) });
     if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
       // Closed while it was being sent: take it back out of the client.
       await deps.clients.remove(job).catch(() => undefined);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
-    logDecision("grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Sent ${c.title} to ${job.client === "sabnzbd" ? "SABnzbd" : "qBittorrent"} (category ${job.client === "sabnzbd" ? getSettings().sabnzbd.category : getSettings().qbittorrent.category}) for ${series.title} ${c.label}: ${c.why}`, detail: { grabId: id } });
+    logDecision("grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Sent ${c.title} to ${clientName(job.client)} for ${series.title} ${c.label}: ${why}${line ? `. ${line}` : ""}`, detail: { grabId: id } });
+    if (batch && select) await selectAfterAdd(id, job, batch, deps, { tvdbId: req.tvdbId, title: series.title, release: c.title, episodeIds: importIds }, !!file.magnet);
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
     setState(id, "failed", (e as Error).message);
@@ -322,6 +349,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
     const ready: { row: GrabRow; path: string }[] = [];
     for (const row of rows) {
       try {
+        if (row.batch) await pendingSelection(row, deps).catch(() => undefined);
         const job = { client: row.client as ClientJob["client"], ref: row.client_ref! };
         const st = await deps.clients.status(job);
         const qh = getSettings().queueHealth;
@@ -476,7 +504,61 @@ export async function nextForGrab(id: number, deps: PipelineDeps = realDeps) {
 
 function rowRequest(row: GrabRow): GrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
-  return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: row.purpose ?? null };
+  // A Replace season the season decision chose (not the user): the next candidate is decided afresh.
+  const auto = readBatch(row.batch)?.autoReplace;
+  return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: auto ? null : (row.purpose ?? null) };
+}
+
+/** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */
+export function episodeFileOpts(tvdbId: number, wantedIds: number[]): FileMapOpts {
+  const ctx = identifyContext();
+  const minConf = getSettings().managed.minConfidence;
+  const has = new Set(episodesFor(tvdbId).filter((e) => e.hasFile).map((e) => e.id));
+  return {
+    wantedIds,
+    resolve: (name) => {
+      const id = identify(name, ctx, { tvdbId });
+      return id.resolution?.ok && id.resolution.confidence >= minConf ? id.resolution.episodes.map((e) => e.id) : null;
+    },
+    keepCreditless: scopeFor(tvdbId).creditless,
+    hasFile: (e) => has.has(e),
+  };
+}
+
+/**
+ * Right after a batch torrent was added stopped: read its files and skip the unwanted ones (a .torrent lists them at
+ * once; a magnet needs its metadata first, so it is polled briefly here and then by the pipeline tick).
+ */
+export async function selectAfterAdd(grabId: number, job: ClientJob, batch: BatchInfo, deps: Pick<PipelineDeps, "clients" | "sleep">, log: { tvdbId: number | null; title?: string; release: string; episodeIds: number[]; movieId?: number | null }, magnet: boolean, opts?: FileMapOpts) {
+  if (!job.select) {
+    // The client can't skip files (or already had this torrent): the whole batch; the import takes what it needs.
+    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files" });
+    return;
+  }
+  writeBatch(grabId, { ...batch, paused: !!job.paused });
+  const ctx = { grabId, job, clients: deps.clients, opts: opts ?? episodeFileOpts(log.tvdbId!, log.episodeIds), log };
+  for (let i = 0; i < (magnet ? 5 : 3); i++) {
+    try {
+      if ((await applySelection(ctx)) !== "pending") return;
+    } catch {
+      /* the tick tries again */
+    }
+    await deps.sleep(2000);
+  }
+}
+
+/** Pipeline tick: batch torrents still waiting for their file list (magnets fetching metadata). */
+export async function pendingSelection(row: GrabRow, deps: PipelineDeps) {
+  const b = readBatch(row.batch);
+  if (b?.mode !== "pending" || !row.client || !row.client_ref) return;
+  const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
+  if (row.movie_id) {
+    const { movieFileOpts } = await import("./movies.js");
+    await applySelection({ grabId: row.id, job, clients: deps.clients, opts: movieFileOpts(row.movie_id), log: { tvdbId: null, release: row.release, episodeIds: [], movieId: row.movie_id } });
+    return;
+  }
+  const ids = JSON.parse(row.episode_ids) as number[];
+  await applySelection({ grabId: row.id, job, clients: deps.clients, opts: episodeFileOpts(row.tvdb_id, ids), log: { tvdbId: row.tvdb_id, title: rowTitle(row), release: row.release, episodeIds: ids } });
 }
 
 /** Imports a finished download through Sonarr's ManualImport with explicit episode IDs, verifying before and after. */

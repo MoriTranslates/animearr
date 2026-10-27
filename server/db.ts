@@ -357,6 +357,8 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE movie_parts (movie_id INTEGER PRIMARY KEY, file TEXT NOT NULL, at INTEGER NOT NULL);`,
   // 29: when each file went into AnimeArr's recycling bin (its retention counts from then, not from the file's date)
   `CREATE TABLE recycle_log (path TEXT PRIMARY KEY, at INTEGER NOT NULL, size INTEGER NOT NULL DEFAULT 0);`,
+  // 30: smart batch grabs: what a batch grab downloads/imports and what it skips (JSON, see batch.ts)
+  `ALTER TABLE grabs ADD COLUMN batch TEXT;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

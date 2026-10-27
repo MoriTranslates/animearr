@@ -30,6 +30,8 @@ interface Item {
   attempt: number;
   stage?: string | null;
   ahead?: number | null;
+  /** Smart batch: "Downloading 4 of 26 episodes (you have the rest)". */
+  batch?: string | null;
   live?: { state: string; progress: number; etaSec?: number | null; speed?: number | null; sizeBytes?: number | null; clientStatus?: string; seeders?: number | null; message?: string } | null;
 }
 
@@ -128,7 +130,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
                 <FileX className="lucide" aria-hidden="true" /> {g.error}
               </p>
             )}
-            <Why lines={[g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
+            <Why lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
               <FixButtons fixes={g.fixes} />
               {g.state === "needs-attention" && (
@@ -222,7 +224,7 @@ function History() {
             </div>
             <ReleaseLine release={g.release} />
             {g.state === "failed" && g.error && <p className="small warn-text clamp2">{g.error}</p>}
-            <Why lines={[g.why, ...(g.error && g.state !== "failed" ? [g.error] : [])]} />
+            <Why lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error && g.state !== "failed" ? [g.error] : [])]} />
             <FixButtons fixes={g.fixes} />
           </article>
         ))}

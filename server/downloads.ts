@@ -24,6 +24,7 @@ import { clientToSonarr, mappedPath } from "./paths.js";
 import { ACTIVE, retryImport } from "./pipeline.js";
 import { libraryRoots } from "./mediafiles.js";
 import { getSettings } from "./settings.js";
+import { readBatch } from "./batch.js";
 
 export interface FolderRule {
   id: string;
@@ -338,9 +339,10 @@ export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now()
           actions.push({ step: "leftover", target: i.arr, why: `imported, and seeding is done (ratio ${i.torrent.ratio.toFixed(2)}, ${Math.round(i.torrent.seedingTimeSec / 86400)} days); removed through qBittorrent`, bytes: i.size, grabId: i.grab.id, client: "qbittorrent", ref: i.torrent.hash, destructive: true });
         continue;
       }
-      // Usenet: only when no video is left (a pack's unimported extras stay for you to look at).
+      // Usenet: only when no video is left (a pack's unimported extras stay for you to look at), unless it was a batch
+      // whose other files were never wanted (smart batch grabs).
       const videos = listVideos(i.local);
-      if (videos.length) continue;
+      if (videos.length && !batchLeftovers(i.grab.id)) continue;
       actions.push({ step: "leftover", target: i.arr, why: "imported; only leftovers (no video) remain", bytes: i.size, grabId: i.grab.id, client: "sabnzbd", ref: i.grab.client_ref, destructive: true });
       continue;
     }
@@ -448,6 +450,34 @@ export function downloadsStatus() {
   return { measure: last ? { byScope: last.byScope, disk: last.disk, errors: last.errors } : null, rules: [...ruleState.entries()].map(([id, st]) => ({ id, ...st })), paused: !!why, why };
 }
 
+/** A batch grab whose download holds files nobody wanted (smart batch grabs, batch.ts): those go with its folder. */
+function batchLeftovers(grabId: number) {
+  const r = db.prepare("SELECT batch, episode_ids, movie_id FROM grabs WHERE id = ?").get(grabId) as { batch: string | null; episode_ids: string; movie_id: number | null } | undefined;
+  if (!r || !readBatch(r.batch)?.leftovers) return false;
+  if (r.movie_id) return true;
+  // Only when every episode the grab wanted got its file: a wanted file the import couldn't place stays for you.
+  const ids = JSON.parse(r.episode_ids) as number[];
+  if (!ids.length) return false;
+  const have = cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE has_file = 1 AND id IN (${ids.map(() => "?").join(",")})`).get(...ids) as { n: number };
+  return have.n === ids.length;
+}
+
+/**
+ * SABnzbd's history delete with del_files can leave a finished job's folder behind: AnimeArr deletes it itself, under
+ * the clean-up's rules (deleting switched on; only inside AnimeArr's own Usenet download folder, never the folder
+ * itself, never a library or allowed root; only this job's storage path). Returns what it did, or null.
+ */
+export function removeJobFolder(storage: string | null | undefined): string | null {
+  if (!storage || !getSettings().downloads.allowDelete) return null;
+  const local = mappedPath(clientToSonarr(storage)).replace(/[\/]+$/, "");
+  const rootsLocal = roots().filter((r) => r.client === "sabnzbd").map((r) => path.resolve(r.local));
+  if (!rootsLocal.some((r) => path.resolve(local).startsWith(r + path.sep)) || inProtected(local)) return null;
+  if (!fs.existsSync(local)) return null;
+  fs.rmSync(local, { recursive: true, force: true });
+  last = null;
+  return local;
+}
+
 /**
  * Cleans one grab's download right after its outcome is final (the user's rule): after a confirmed import, or after it
  * failed its check. Usenet: the folder goes now. Torrent: a rejected one goes now (with its data); an imported one
@@ -474,11 +504,13 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
       if (!h?.storage) return null;
       const local = mappedPath(clientToSonarr(h.storage));
       const rootsLocal = roots().map((r) => r.local);
-      if (!rootsLocal.some((r) => path.resolve(local).startsWith(path.resolve(r) + path.sep))) return null;
-      // Like the sweep: only when no video is left (a pack's unimported files stay for you to look at).
-      if (fs.existsSync(local) && !listVideos(local).length) {
+      if (!rootsLocal.some((r) => path.resolve(local).startsWith(path.resolve(r) + path.sep)) || inProtected(local)) return null;
+      // Like the sweep: only when no video is left (a pack's unimported files stay for you to look at). A batch whose
+      // other files were never wanted (only some episodes, or the movie from a season batch) goes with its leftovers.
+      const leftovers = batchLeftovers(g.id);
+      if (fs.existsSync(local) && (leftovers || !listVideos(local).length)) {
         fs.rmSync(local, { recursive: true, force: true });
-        did = "deleted the download folder";
+        did = leftovers ? "deleted the download folder with the batch's unneeded files" : "deleted the download folder";
       }
     }
   } catch (e) {

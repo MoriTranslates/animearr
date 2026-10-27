@@ -11,7 +11,15 @@ export interface ClientJob {
   ref: string;
   /** "sabnzbd" / "qbittorrent" (the primary slots) or an added client's id. */
   client: string;
+  /** Added stopped (paused) for file selection: must be started once the unwanted files are skipped. */
+  paused?: boolean;
+  /** Freshly added for file selection (never set for a torrent the client already had: its files are left alone). */
+  select?: boolean;
 }
+
+/** One file of a torrent, as its client lists it (index = the client's file index). */
+export interface ClientFile { index: number; name: string; size: number }
+export interface AddTorrentOpts { seedRatio?: number | null; seedTimeMin?: number | null; /** Add it stopped (only clients that can select files honour this). */ paused?: boolean }
 
 export type ClientType = "sabnzbd" | "qbittorrent" | "nzbget" | "transmission";
 export interface ResolvedClient { id: string; type: ClientType; name: string; protocol: "usenet" | "torrent"; priority: number; enabled: boolean; configured: boolean; category: string; cfg: ClientCfg | null }
@@ -56,10 +64,21 @@ export interface ClientStatus {
 /** Narrow interface so the pipeline can be tested with a mock. */
 export interface DownloadClients {
   addNzb(data: Buffer, name: string): Promise<ClientJob>;
-  addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts?: { seedRatio?: number | null; seedTimeMin?: number | null }): Promise<ClientJob>;
+  addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts?: AddTorrentOpts): Promise<ClientJob>;
   status(job: ClientJob): Promise<ClientStatus>;
   /** Removes the job from the client and deletes its downloaded data (never library files). */
   remove(job: ClientJob): Promise<void>;
+  /**
+   * Optional capability: partial downloads (skip some files of a torrent). Clients without it download whole batches;
+   * the import then takes only the wanted files. canSelectFiles says whether the client holding the job has it.
+   */
+  canSelectFiles?(job: ClientJob): boolean;
+  /** The torrent's files; null while it has no metadata yet (a magnet). */
+  listFiles?(job: ClientJob): Promise<ClientFile[] | null>;
+  /** Wanted files download, skipped ones don't (priority 0 / unwanted). */
+  selectFiles?(job: ClientJob, wanted: number[], skipped: number[]): Promise<void>;
+  /** Starts a job that was added stopped. */
+  start?(job: ClientJob): Promise<void>;
 }
 
 // ---------------------------------------------------------------- SABnzbd
@@ -137,7 +156,7 @@ const primary = {
     if (!r.nzo_ids?.[0]) throw new Error("SABnzbd did not accept the NZB");
     return { client: "sabnzbd", ref: r.nzo_ids[0] };
   },
-  async addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts: { seedRatio?: number | null; seedTimeMin?: number | null } = {}): Promise<ClientJob> {
+  async addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts: AddTorrentOpts = {}): Promise<ClientJob> {
     const s = getSettings().qbittorrent;
     const tag = `animearr-${Date.now().toString(36)}`;
     const form = new FormData();
@@ -161,12 +180,23 @@ const primary = {
     else throw new Error("Nothing to send to qBittorrent");
     if (opts.seedRatio != null) form.append("ratioLimit", String(opts.seedRatio));
     if (opts.seedTimeMin != null) form.append("seedingTimeLimit", String(opts.seedTimeMin));
+    if (opts.paused) {
+      if (src.magnet) {
+        // A stopped magnet never fetches its metadata: let it run until the metadata is in, then qBittorrent stops it
+        // (stopCondition, qBittorrent 4.5+; older versions keep going and the files are skipped as soon as listed).
+        form.append("stopCondition", "MetadataReceived");
+      } else {
+        form.append("paused", "true"); // qBittorrent 4.x
+        form.append("stopped", "true"); // qBittorrent 5.x
+      }
+    }
     await qbit("/torrents/add", { method: "POST", body: form });
     const known = infoHash(src);
-    if (known) return { client: "qbittorrent", ref: known };
+    const extra = opts.paused ? { paused: true, select: true } : {};
+    if (known) return { client: "qbittorrent", ref: known, ...extra };
     for (let i = 0; i < 10; i++) {
       const list = (await (await qbit(`/torrents/info?tag=${encodeURIComponent(tag)}`)).json()) as { hash: string }[];
-      if (list[0]) return { client: "qbittorrent", ref: list[0].hash };
+      if (list[0]) return { client: "qbittorrent", ref: list[0].hash, ...extra };
       await new Promise((r) => setTimeout(r, 1500));
     }
     throw new Error("qBittorrent accepted the torrent but it did not appear");
@@ -217,11 +247,13 @@ const primary = {
         await sab({ mode: "queue", name: "delete", value: job.ref, del_files: "1" });
         return;
       }
-      const h = await sab<{ history: { slots: { nzo_id: string; category: string }[] } }>({ mode: "history", nzo_ids: job.ref });
+      const h = await sab<{ history: { slots: { nzo_id: string; category: string; storage?: string }[] } }>({ mode: "history", nzo_ids: job.ref });
       const hs = h.history.slots.find((x) => x.nzo_id === job.ref);
       if (!hs) return;
       if (hs.category !== cat) throw new Error(`that SABnzbd job is in category "${hs.category}", not "${cat}"; leaving it alone`);
       await sab({ mode: "history", name: "delete", value: job.ref, del_files: "1" });
+      // A finished job's files survive del_files: AnimeArr removes the job's folder itself (same rules as the clean-up).
+      if (hs.storage) await import("../downloads.js").then((m) => m.removeJobFolder(hs.storage)).catch(() => undefined);
       return;
     }
     const cat = getSettings().qbittorrent.category;
@@ -230,6 +262,31 @@ const primary = {
     if (!tor) return;
     if (tor.category !== cat) throw new Error(`that torrent is in category "${tor.category}", not "${cat}"; leaving it alone`);
     await qbit("/torrents/delete", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ hashes: job.ref, deleteFiles: "true" }) });
+  },
+};
+
+const formBody = (o: Record<string, string>) => ({ method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(o) });
+
+/** qBittorrent's file selection (partial downloads): /torrents/files, /torrents/filePrio (0 = do not download), start. */
+export const qbitFiles = {
+  async list(ref: string): Promise<ClientFile[] | null> {
+    const files = (await (await qbit(`/torrents/files?hash=${encodeURIComponent(ref)}`)).json()) as { index?: number; name: string; size: number }[];
+    // No metadata yet (a magnet): an empty list.
+    if (!Array.isArray(files) || !files.length) return null;
+    return files.map((f, i) => ({ index: f.index ?? i, name: f.name, size: f.size }));
+  },
+  async select(ref: string, wanted: number[], skipped: number[]) {
+    if (skipped.length) await qbit("/torrents/filePrio", formBody({ hash: ref, id: skipped.join("|"), priority: "0" }));
+    // Wanted ones keep (or get back) normal priority.
+    if (wanted.length) await qbit("/torrents/filePrio", formBody({ hash: ref, id: wanted.join("|"), priority: "1" })).catch(() => undefined);
+  },
+  async start(ref: string) {
+    try {
+      await qbit("/torrents/start", formBody({ hashes: ref })); // qBittorrent 5.x
+    } catch (e) {
+      if (!/HTTP 404/.test((e as Error).message)) throw e;
+      await qbit("/torrents/resume", formBody({ hashes: ref })); // qBittorrent 4.x
+    }
   },
 };
 
@@ -271,7 +328,7 @@ export const realClients: DownloadClients = {
     for (const c of list) {
       try {
         if (c.type === "qbittorrent") return await primary.addTorrent(src, name, opts);
-        return { client: c.id, ref: await transmissionDriver.add(c.cfg!, src, opts) };
+        return { client: c.id, ...(await transmissionDriver.add(c.cfg!, src, opts)) };
       } catch (e) {
         last = e as Error;
         if (!fallBack(e)) break;
@@ -292,7 +349,37 @@ export const realClients: DownloadClients = {
     if (!c?.cfg) return;
     return driver(c).remove(c.cfg, job.ref);
   },
+  canSelectFiles(job) {
+    if (job.client === "qbittorrent") return true;
+    return !!fileDriver(job);
+  },
+  async listFiles(job) {
+    if (job.client === "qbittorrent") return qbitFiles.list(job.ref);
+    const f = fileDriver(job);
+    if (!f) throw new Error("this download client can't select files");
+    return f.d.listFiles(f.cfg, job.ref);
+  },
+  async selectFiles(job, wanted, skipped) {
+    if (job.client === "qbittorrent") return qbitFiles.select(job.ref, wanted, skipped);
+    const f = fileDriver(job);
+    if (!f) throw new Error("this download client can't select files");
+    return f.d.selectFiles(f.cfg, job.ref, wanted, skipped);
+  },
+  async start(job) {
+    if (job.client === "qbittorrent") return qbitFiles.start(job.ref);
+    const f = fileDriver(job);
+    if (f) await f.d.start(f.cfg, job.ref);
+  },
 };
+
+/** The added client holding a job, when it has the file-selection capability. */
+interface FileCapable { listFiles(c: ClientCfg, ref: string): Promise<ClientFile[] | null>; selectFiles(c: ClientCfg, ref: string, wanted: number[], skipped: number[]): Promise<void>; start(c: ClientCfg, ref: string): Promise<void> }
+function fileDriver(job: ClientJob): { d: FileCapable; cfg: ClientCfg } | null {
+  const c = byId(job.client);
+  if (!c?.cfg) return null;
+  const d = driver(c) as Partial<FileCapable>;
+  return d.listFiles && d.selectFiles && d.start ? { d: d as FileCapable, cfg: c.cfg } : null;
+}
 
 /** Connection test for an added client (before or after saving). */
 export async function testClient(c: ClientCfg) {
