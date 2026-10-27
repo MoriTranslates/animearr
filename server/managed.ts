@@ -8,6 +8,7 @@
  *   P(profile language) ≥ 50%.
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
+import { isDropped } from "./dropped.js";
 import { parseRelease } from "./core/parser.js";
 import { matchMovie } from "./movies.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
@@ -100,6 +101,10 @@ export function setManaged(tvdbIds: number[], on: boolean, opts: { live?: boolea
       continue;
     }
     if (on) {
+      if (isDropped(tvdbId)) {
+        refused.push({ tvdbId, title: s.title, reason: "you dropped it (un-drop it on its page first)" });
+        continue;
+      }
       if (!underAllowedRoot(s.path)) {
         refused.push({ tvdbId, title: s.title, reason: `its folder ${s.path} is not under an allowed root folder` });
         continue;

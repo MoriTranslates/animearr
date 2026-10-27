@@ -15,8 +15,8 @@ import { logDecision } from "./activity.js";
 import { searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "./arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
-import { isReleased, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "./movies.js";
-import type { Candidate } from "./pipeline.js";
+import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "./movies.js";
+import { FETCH_PREFIX, type Candidate } from "./pipeline.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
 const HOUR = 3_600_000;
@@ -41,9 +41,12 @@ export function planMovies(now = Date.now()) {
     for (const m of movies) {
       const row = db.prepare("SELECT * FROM movie_search WHERE movie_id = ?").get(m.id) as Row | undefined;
       const want = isWanted(m.id);
-      const wanted = want && !m.has_file && underAllowedRoot(m.path);
+      const live = liveAction(m);
+      const wanted = want && !m.has_file && underAllowedRoot(m.path) && !live;
       if (!wanted) {
-        if (row && row.state !== "done") db.prepare("UPDATE movie_search SET state = 'done', last_why = ? WHERE movie_id = ?").run(m.has_file ? "has a file" : !want ? "not wanted in AnimeArr" : "outside the allowed root folders", m.id);
+        const why = m.has_file ? "has a file" : !want ? "not wanted in AnimeArr" : live ? `looks live-action (TMDB genres: ${live}); not searched automatically` : "outside the allowed root folders";
+        if (row && row.state !== "done") db.prepare("UPDATE movie_search SET state = 'done', last_why = ? WHERE movie_id = ?").run(why, m.id);
+        else if (!row && live && want && !m.has_file) db.prepare("INSERT INTO movie_search (movie_id, state, next_at, last_why) VALUES (?, 'done', ?, ?)").run(m.id, now, why);
         continue;
       }
       const rel = releaseAt(m);
@@ -131,9 +134,14 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
         logDecision("skip", { title: label, why: `Movie search for ${label}: ${why}. Next try in ${Math.round(wait / HOUR)} h.`, detail: { movieId: r.movie_id } });
         continue;
       }
+      const sentAt = Date.now();
       const out = await deps.grab({ movieId: r.movie_id, candidate: toCand(ok[0]), fallbacks: ok.slice(1, 6).map(toCand), origin: "managed" });
       const state = out.dryRun ? "would-grab" : out.failed ? "retry" : "grabbed";
-      db.prepare("UPDATE movie_search SET state = ?, attempts = ?, last_at = ?, next_at = ?, last_why = ?, grab_id = ? WHERE movie_id = ?").run(state, attempts, now, out.failed ? now + (attempts >= 2 ? wait : HOUR) : now, out.message, out.dryRun || out.failed ? null : out.id, r.movie_id);
+      // Only download links that failed (an indexer problem): not the movie's attempt; try again in an hour, when
+      // the circuit breaker or the health penalty steers to another indexer.
+      const fetchOnly = !!out.failed && !(db.prepare("SELECT 1 FROM grabs WHERE movie_id = ? AND at >= ? AND (error IS NULL OR error NOT LIKE ?) LIMIT 1").get(r.movie_id, sentAt, `${FETCH_PREFIX}%`));
+      const used = fetchOnly ? r.attempts : attempts;
+      db.prepare("UPDATE movie_search SET state = ?, attempts = ?, last_at = ?, next_at = ?, last_why = ?, grab_id = ? WHERE movie_id = ?").run(state, used, now, out.failed ? now + (fetchOnly || attempts < 2 ? HOUR : wait) : now, out.message, out.dryRun || out.failed ? null : out.id, r.movie_id);
     } catch (e) {
       db.prepare("UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ? WHERE movie_id = ?").run(attempts, now, now + (attempts >= 2 ? wait : HOUR), `Error: ${(e as Error).message}`, r.movie_id);
     }

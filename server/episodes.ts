@@ -3,6 +3,7 @@
  * delete file, re-grab, the series header and the agenda calendar.
  * Destructive actions are user-confirmed in the UI, guarded by the allowed root folders, and logged.
  */
+import { isDropped } from "./dropped.js";
 import { artFor } from "./home.js";
 import { anidbSpecialKind } from "./anidb.js";
 import { NATIVE_BASE } from "./native.js";
@@ -231,6 +232,7 @@ export function seriesHeader(tvdbId: number) {
     managed: listManaged().find((m) => m.tvdbId === tvdbId) ?? null,
     allowed: underAllowedRoot(s.path),
     monitoredInSonarr: !!s.monitored,
+    dropped: isDropped(tvdbId),
   };
 }
 

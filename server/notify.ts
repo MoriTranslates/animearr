@@ -7,15 +7,16 @@ import { liveFixesFor, linkFor, type FixContext } from "./fixes.js";
 import { db, dbState } from "./db.js";
 import { getSettings } from "./settings.js";
 
-export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused";
-export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused"];
+export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
+export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused", "indexer"];
 
-const ICON: Record<NotifyEvent, string> = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️" };
-const TITLE: Record<NotifyEvent, string> = { grabbed: "Grabbed", imported: "Imported", failed: "Problem", paused: "Grabs paused" };
+const ICON: Record<NotifyEvent, string> = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" };
+const TITLE: Record<NotifyEvent, string> = { grabbed: "Grabbed", imported: "Imported", failed: "Problem", paused: "Grabs paused", indexer: "Indexer" };
 
 /** Which notification (if any) an activity entry is. */
 export function eventOf(kind: string, why: string, detail: unknown): NotifyEvent | null {
-  const d = (detail ?? {}) as { final?: boolean; grabId?: number };
+  const d = (detail ?? {}) as { final?: boolean; grabId?: number; breaker?: string };
+  if (d.breaker === "off" || (d.breaker === "on" && /working again/.test(why))) return "indexer"; // the circuit breaker tripped / recovered
   if (kind === "grab") return "grabbed";
   if (kind === "import") return d.final || (!d.grabId && /^Imported /.test(why)) ? "imported" : null;
   if (kind === "fail" || kind === "verify-fail") return "failed";

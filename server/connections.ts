@@ -2,6 +2,8 @@
  * Settings → Indexers / Download clients / Media servers / Migration: one overview of every connection with a live
  * status ("Connected · v4.3.2" / "Can't reach: …"), what it's used for (grabs), and indexer health. Read-only.
  */
+import { syncProwlarrSelection, type AnimeFit } from "./indexerPick.js";
+import { breakerList } from "./health.js";
 import { db } from "./db.js";
 import { getSettings } from "./settings.js";
 import { testProwlarr } from "./arr/prowlarr.js";
@@ -15,7 +17,7 @@ import { nzbgetDriver, transmissionDriver } from "./arr/moreClients.js";
 import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
 export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
-export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null }
+export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null; breaker?: ReturnType<typeof breakerList>[number] | null; pick?: { use: boolean; fit: AnimeFit | null; animeCategories: boolean; isNew: boolean } | null }
 
 const TIMEOUT = 6000;
 async function probe<T>(fn: () => Promise<T>): Promise<{ ok: boolean; v: T | null; error: string | null }> {
@@ -86,6 +88,18 @@ async function build() {
   );
   for (const ix of listIndexers())
     indexers.push({ id: ix.numId, key: ix.id, name: ix.name, protocol: ix.protocol, enabled: ix.enabled, priority: ix.priority, source: "direct", kind: ix.kind, grabs: ix.grabs, failures: ix.failures, lastError: ix.lastError });
+  // Which Prowlarr indexers AnimeArr asks (defaults for new ones), with the anime-fit hint.
+  if (prow?.ok) {
+    try {
+      const picks = new Map((await syncProwlarrSelection()).map((x) => [x.id, x]));
+      for (const ix of indexers) if (ix.source === "prowlarr") ix.pick = picks.get(ix.id) ?? null;
+    } catch {
+      /* the cards still show without it */
+    }
+  }
+  // The circuit breaker's state per indexer (off for grabbing after repeated failures).
+  const br = new Map(breakerList().map((b) => [b.indexerId, b]));
+  for (const ix of indexers) ix.breaker = br.get(ix.id)?.state !== "on" ? (br.get(ix.id) ?? null) : null;
   const prefs = s.clientPrefs ?? {};
   return {
     clients: [

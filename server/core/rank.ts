@@ -62,7 +62,7 @@ export interface Known {
   inLibrary?: boolean;
   blocklisted?: string | null;
   /** Recent download-link failures of the release's indexer (learned; see health.ts). */
-  indexerHealth?: { failures: number; ok: number; lastWhy: string };
+  indexerHealth?: { failures: number; ok: number; lastWhy: string; off?: boolean };
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -300,7 +300,11 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   }
   // An indexer whose download links keep failing goes behind equivalent releases elsewhere (still usable as a fallback).
   const ih = known.indexerHealth;
-  if (ih && ih.failures > 0) {
+  if (ih?.off) {
+    // The circuit breaker: shown, never picked automatically.
+    reject = reject ?? `${info.indexer ?? "its indexer"} is off for grabbing (downloads kept failing${ih.lastWhy ? `: ${ih.lastWhy}` : ""})`;
+    flags.push({ key: "indexerOff", label: `${info.indexer ?? "Indexer"} is off`, tone: "bad" });
+  } else if (ih && ih.failures > 0) {
     const bad = ih.failures >= 2 && ih.failures > ih.ok;
     score -= bad ? 40 : 10;
     flags.push({ key: "indexerHealth", label: `${info.indexer ?? "Indexer"} failing lately (${ih.failures})`, tone: bad ? "bad" : "warn" });

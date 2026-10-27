@@ -21,7 +21,7 @@ import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
 import { cache, db, dbState } from "./db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
-import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, MAX_ATTEMPTS, realDeps, runTimeSec, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, runTimeSec, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
@@ -51,8 +51,24 @@ export interface MovieRow {
   in_cinemas?: number | null;
   digital_release?: number | null;
   physical_release?: number | null;
+  genres?: string;
 }
 export interface MovieFile { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; runTime: string | null; resolution: string | null }
+
+/**
+ * A live-action film in the anime movie folder (e.g. "Grand Blue" 2020, the live-action adaptation): Radarr/TMDB list
+ * genres but not Animation. Returns those genres (truthy) or null. Unknown genres (movies added in AnimeArr, which
+ * come from AniList and are anime) never count.
+ */
+export function liveAction(m: Pick<MovieRow, "genres">): string | null {
+  let g: string[] = [];
+  try {
+    g = JSON.parse(m.genres ?? "[]") as string[];
+  } catch {
+    return null;
+  }
+  return g.length && !g.some((x) => /^anim/i.test(x)) ? g.join(", ") : null;
+}
 
 /**
  * Whether AnimeArr wants this movie (searches for it while it has no file). AnimeArr's own flag; Radarr's monitored
@@ -169,7 +185,10 @@ export function movieDetail(id: number) {
 // ---------------------------------------------------------------- search
 
 const ROMAN: Record<string, string> = { i: "1", ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" };
-const MARKER = /\b(the movie|movie|gekijouban|gekijoban|film)\b|劇場版/gi;
+const MARKER = /\b(the movie|movie|gekijouban|gekijoban|eiga|film)\b|劇場版|映画/gi;
+/** Symbols that tell sequels/specials apart ("五等分の花嫁∽" vs "五等分の花嫁＊" vs the movie); punctuation otherwise. */
+const SYMBOLS = /[∽∾∞*]/gu;
+const symbolsOf = (t: string) => [...new Set(t.normalize("NFKC").replace(/\[[^\]]*\]|\([^)]*\)/g, " ").match(SYMBOLS) ?? [])].sort().join("");
 
 /** Lower-case, accents and punctuation removed, "the movie"/"gekijouban" dropped, roman numerals as digits. */
 export function normTitle(t: string) {
@@ -202,8 +221,14 @@ function titleScore(a: string, b: string) {
 }
 
 /** Does a release name look like this movie? Returns a confidence (0 = no) and why. */
-export function matchMovie(p: ParsedRelease, m: { title: string; original_title: string | null; alt_titles: string[]; year: number | null }): { confidence: number; why: string } {
-  const titles = [m.title, m.original_title ?? "", ...m.alt_titles].filter(Boolean);
+export function matchMovie(p: ParsedRelease, m: { title: string; original_title: string | null; alt_titles: string[]; year: number | null }, series: string[] = []): { confidence: number; why: string } {
+  const all = [m.title, m.original_title ?? "", ...m.alt_titles].filter(Boolean);
+  // A title with a distinctive symbol only matches a release that has the same symbol (and the other way round).
+  const relSyms = symbolsOf(p.raw);
+  // Same for "Specials"/"OVA" titles: a release that doesn't say so is the movie or the series, not the special.
+  const kindWord = /\b(specials?|ova|oad)\b/i;
+  const titles = all.filter((t) => symbolsOf(t) === relSyms && (!kindWord.test(t) || kindWord.test(p.raw)));
+  if (!titles.length) return { confidence: 0, why: "other title" };
   const ownYears = new Set(titles.flatMap((t) => t.match(/\b(?:19|20)\d{2}\b/g) ?? []));
   // Movie-style names keep the year and tech tags in the parsed title: also try the part before them (but not at a
   // year that is part of the movie's own title, e.g. "Pokémon: The Movie 2000").
@@ -228,6 +253,13 @@ export function matchMovie(p: ParsedRelease, m: { title: string; original_title:
   // "X The Movie" in Radarr vs a release that's just "X": could be the TV series, unless it says movie or has the year.
   const markerInTitle = titles.some((t) => new RegExp(MARKER.source, "i").test(t));
   const markerInRelease = p.special === "movie" || new RegExp(MARKER.source, "i").test(p.raw);
+  // Neither a year nor "movie": a release that fits a TV series of the library as well is that series (a BD batch
+  // of "Grand Blue Dreaming" isn't the film "Grand Blue").
+  if (!p.year && !markerInRelease && series.length) {
+    let tv = 0;
+    for (const n of names) for (const s of series) tv = Math.max(tv, titleScore(n, s));
+    if (tv >= 0.75 && tv >= best) return { confidence: 0, why: "the TV series" };
+  }
   let confidence = exact ? (p.year && m.year ? 97 : 88) : p.year && m.year ? 82 : 70;
   if (markerInTitle && !markerInRelease && !(p.year && m.year)) confidence = Math.min(confidence, 70);
   return { confidence, why: `${exact ? "title matches" : `title ${Math.round(best * 100)}% similar`}${p.year ? `, year ${p.year}` : ""}` };
@@ -283,9 +315,10 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
       }
     })(), year: o.year },
   }));
+  const seriesTitles = [...new Set([...(cache.prepare("SELECT title FROM series").all() as { title: string }[]).map((x) => x.title), ...(cache.prepare("SELECT DISTINCT title FROM alt_titles").all() as { title: string }[]).map((x) => x.title)])];
   for (const r of raw.values()) {
     const p = parseRelease(r.title);
-    const match = matchMovie(p, info);
+    const match = matchMovie(p, info, seriesTitles);
     if (!match.confidence) {
       skipped[match.why] = (skipped[match.why] ?? 0) + 1;
       continue;
@@ -396,7 +429,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   } catch (e) {
     setState(id, "failed", (e as Error).message);
     logDecision("fail", { title: label, release: c.title, why: `Couldn't send ${c.title}: ${(e as Error).message}`, detail: { grabId: id, movieId: m.id } });
-    const next = await movieNext({ ...req, attempt: req.attempt ?? 1 }, deps, (e as Error).message);
+    const next = await movieNext({ ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
   }
 }
@@ -407,9 +440,9 @@ function movieRequest(row: GrabRow): MovieGrabRequest {
 }
 
 /** Tries the next candidate of a failed movie grab (skipping blocklisted ones). */
-export async function movieNext(req: MovieGrabRequest, deps: PipelineDeps, reason: string) {
+export async function movieNext(req: MovieGrabRequest, deps: PipelineDeps, reason: string, cause?: unknown) {
   const attempt = (req.attempt ?? 1) + 1;
-  const [next, ...rest] = req.fallbacks.filter((f) => !isBlocked(f));
+  const [next, ...rest] = remainingFallbacks(req.fallbacks, cause);
   if (!next || attempt > MAX_ATTEMPTS) {
     logDecision("skip", { title: movieById(req.movieId)?.title, why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : ""}`, detail: { movieId: req.movieId } });
     return null;

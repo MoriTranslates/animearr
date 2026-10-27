@@ -1,4 +1,10 @@
 import crypto from "node:crypto";
+import { setIndexerUse } from "./indexerPick.js";
+import { droppedList, dropShow, refuseDropped, undropShow } from "./dropped.js";
+import { breakerList, breakerTick, setBreaker, testIndexer as retestIndexer, type Fetcher } from "./health.js";
+import { watchLinks } from "./watchIn.js";
+import { indexerNumId, searchIndexer } from "./indexers.js";
+import { deleteOverrides, fileDetail, peekFrames, renameSidecarBack, rescanOne, setTrackLanguage, useSidecar } from "./detection.js";
 import { applyArrPreview, arrPreview, createCategory, listFolders, saveWizard, wizardState } from "./wizard.js";
 import { addJackettTracker, deleteClient, deleteIndexer, indexerCatalog, jackettTrackers, listClients, listIndexers, saveClient, saveIndexer, setClientPrefs, testExtraClient, testIndexer } from "./connectionsAdmin.js";
 import { airingShowCount, homeSummary } from "./home.js";
@@ -19,7 +25,7 @@ import fastifyStatic from "@fastify/static";
 import { authState, COOKIE, csrfOk, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, SETUP_TOKEN, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
-import { prowlarrConfigured, testProwlarr } from "./arr/prowlarr.js";
+import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, testProwlarr } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
 import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
@@ -41,7 +47,7 @@ import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
-import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning } from "./mediafiles.js";
+import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
 import { scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
@@ -273,6 +279,67 @@ app.get<{ Querystring: { from?: string; managed?: string } }>("/api/home", async
 
 // ---------------------------------------------------------------- indexers & download clients (Settings cards)
 app.get("/api/catalog/indexers", async () => indexerCatalog());
+// ---------------------------------------------------------------- dropped shows
+app.get("/api/dropped", async () => droppedList());
+app.post<{ Params: { tvdbId: string }; Body: { why?: string; unmonitor?: boolean } }>("/api/series/:tvdbId/drop", async (req) => {
+  writable();
+  const t = id(req.params.tvdbId);
+  if (!t) throw fail("Unknown show", 400);
+  return dropShow(t, { why: String(req.body?.why ?? ""), unmonitor: req.body?.unmonitor === true });
+});
+app.delete<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/drop", async (req) => (writable(), undropShow(id(req.params.tvdbId))));
+// ---------------------------------------------------------------- indexer circuit breaker
+const breakerDeps = {
+  fetch: (r: Parameters<Fetcher>[0]) => fetchReleaseFile({ guid: r.guid, title: r.title, size: r.size ?? 0, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, downloadUrl: r.downloadUrl ?? undefined, magnetUrl: r.magnetUrl ?? undefined }),
+  search: async (indexerId: number) => {
+    const ix = (getSettings().indexers ?? []).find((x) => indexerNumId(x.id) === indexerId);
+    if (!ix) return false;
+    await searchIndexer(ix, ix.kind === "rss" ? "anime" : "", { limit: 5 });
+    return true;
+  },
+};
+app.get("/api/indexers/breaker", async () => breakerList());
+app.post<{ Params: { id: string }; Body: { use?: boolean } }>("/api/indexers/prowlarr/:id/use", async (req) => {
+  writable();
+  const ixId = id(req.params.id);
+  if (!ixId) throw fail("Unknown indexer", 400);
+  const r = await setIndexerUse(ixId, req.body?.use !== false);
+  invalidateConnections();
+  return r;
+});
+app.post<{ Params: { id: string }; Body: { action?: string } }>("/api/indexers/breaker/:id", async (req) => {
+  writable();
+  const ixId = id(req.params.id);
+  if (!ixId) throw fail("Unknown indexer", 400);
+  const known = [...(prowlarrConfigured() ? (await prowlarrIndexers()).map((x) => x.id) : []), ...(getSettings().indexers ?? []).map((x) => indexerNumId(x.id))];
+  if (!known.includes(ixId)) throw fail("Unknown indexer", 404);
+  const action = req.body?.action;
+  if (action === "test") return retestIndexer(ixId, breakerDeps, Date.now(), true);
+  if (action === "on" || action === "keep-off") return (setBreaker(ixId, action), { ok: true });
+  throw fail("action must be test, on or keep-off", 400);
+});
+// ---------------------------------------------------------------- one file: watch in…, fix detection, peek
+/** Only files inside AnimeArr's library folders. */
+const libraryFile = (p: unknown) => {
+  const s = String(p ?? "");
+  const clean = s.startsWith("/") && !s.includes("\\") && !s.split("/").some((seg) => seg === ".." || seg === ".") && path.posix.normalize(s) === s;
+  if (!clean || !libraryRoots().some((r) => s.startsWith(`${r.replace(/\/+$/, "")}/`))) throw fail("That file isn't in a library folder", 400);
+  return s;
+};
+app.get<{ Querystring: { path?: string; title?: string; kind?: string } }>("/api/watch", async (req) => watchLinks(libraryFile(req.query.path), String(req.query.title ?? ""), req.query.kind === "movie" ? "movie" : "episode"));
+app.get<{ Querystring: { path?: string } }>("/api/files/detail", async (req) => fileDetail(libraryFile(req.query.path)));
+app.post<{ Body: Record<string, unknown> }>("/api/files/track", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  return setTrackLanguage({ path: libraryFile(b.path), trackIndex: Number(b.trackIndex), lang: b.lang ? String(b.lang) : null, forced: b.forced === true, scope: b.scope === "season" || b.scope === "group" ? b.scope : "file", tvdbId: b.tvdbId ? Number(b.tvdbId) : null, season: b.season !== undefined && b.season !== null ? Number(b.season) : null, group: b.group ? String(b.group) : null, title: b.title ? String(b.title) : undefined, alsoTag: b.alsoTag === true });
+});
+app.post<{ Body: Record<string, unknown> }>("/api/files/sidecar", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  return useSidecar({ video: libraryFile(b.video), file: String(b.file ?? ""), lang: String(b.lang ?? "en"), tvdbId: b.tvdbId ? Number(b.tvdbId) : null, title: b.title ? String(b.title) : undefined });
+});
+app.post<{ Body: { path?: string } }>("/api/files/rescan", async (req) => (writable(), rescanOne(libraryFile(req.body?.path))));
+app.get<{ Querystring: { path?: string } }>("/api/files/peek", async (req) => ({ frames: await peekFrames(libraryFile(req.query.path), null) }));
 // ---------------------------------------------------------------- setup wizard
 app.get("/api/wizard", async () => wizardState());
 app.put<{ Body: Record<string, unknown> }>("/api/wizard", async (req) => (writable(), saveWizard(req.body ?? {})));
@@ -737,6 +804,7 @@ app.post<{ Body: { anilistId: number; rootFolder: string; kind?: "show" | "movie
     return { ...mv, then };
   }
   const scope = b.scope ? validateScope(b.scope) : null;
+  refuseDropped((db.prepare("SELECT tvdb_id FROM entries WHERE anilist_id = ?").get(Number(b.anilistId)) as { tvdb_id: number | null } | undefined)?.tvdb_id);
   const added = await addShow({ anilistId: Number(b.anilistId), rootFolder: String(b.rootFolder ?? "") });
   if (b.profileId || b.sizePreset) setSeriesPrefs(added.tvdbId, b.profileId || null, null, (b.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]);
   if (scope) setScope([added.tvdbId], scope);
@@ -1019,6 +1087,15 @@ app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
     case "remonitor":
       await unmonitorInSonarr(Number(a.tvdbId), true);
       break;
+    case "undrop":
+      undropShow(Number(a.tvdbId));
+      break;
+    case "delete-overrides":
+      deleteOverrides(String(a.ids).split(",").map(Number).filter(Boolean));
+      break;
+    case "rename-sidecar-back":
+      renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });
+      break;
   }
   markUndone(d.id);
   logDecision("info", { tvdbId: d.tvdbId, title: d.title, why: `Undid: ${d.why}` });
@@ -1110,6 +1187,7 @@ every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
 every(10 * 60_000, () => movieTick(), "movie search");
+every(15 * 60_000, () => breakerTick(breakerDeps), "indexer re-tests");
 every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "file scan");
 every(30 * 60_000, () => fillInTick(), "fill-in");
 every(6 * 3_600_000, () => catalogTick(), "catalog");

@@ -172,8 +172,8 @@ async function syncRadarr() {
   let n = 0;
   tx(cache, () => {
     cache.prepare(`DELETE FROM movies WHERE id < ${NATIVE_BASE}`).run(); // native movies (added in AnimeArr) stay
-    const ins = cache.prepare(`INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = cache.prepare(`INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release, genres)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const ms = (d?: string) => (d && Number.isFinite(Date.parse(d)) ? Date.parse(d) : null);
     for (const m of movies) {
       const anime = isAnime(m);
@@ -183,7 +183,7 @@ async function syncRadarr() {
       const poster = (m as { images?: { coverType: string; remoteUrl?: string }[] }).images?.find((i) => i.coverType === "poster")?.remoteUrl ?? null;
       ins.run(m.id, m.tmdbId ?? null, m.imdbId ?? null, m.title, m.originalTitle ?? null, m.year ?? null, m.path, m.rootFolderPath ?? null, m.monitored ? 1 : 0, m.hasFile ? 1 : 0, m.runtime ?? null,
         m.qualityProfileId, JSON.stringify(m.tags ?? []), JSON.stringify((m.alternateTitles ?? []).map((a) => a.title)), file ? JSON.stringify(file) : null, anime ? 1 : 0, poster, Date.now(),
-        m.status ?? null, m.isAvailable ? 1 : 0, ms(m.inCinemas), ms(m.digitalRelease), ms(m.physicalRelease));
+        m.status ?? null, m.isAvailable ? 1 : 0, ms(m.inCinemas), ms(m.digitalRelease), ms(m.physicalRelease), JSON.stringify(m.genres ?? []));
     }
   });
   return n;

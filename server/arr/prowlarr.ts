@@ -33,6 +33,15 @@ export async function testProwlarr(c: Conn) {
   return { version: s.version, indexers: indexers.map(({ id, name, protocol, enable, priority }) => ({ id, name, protocol, enable, priority: priority ?? null })) };
 }
 
+export interface ProwlarrIndexerDetail { id: number; name: string; definitionName: string | null; protocol: string; enable: boolean; animeCategories: boolean }
+/** Prowlarr's indexers with whether they carry anime (Newznab category 5070 or one of its sub-categories). */
+export async function prowlarrIndexerDetails(): Promise<ProwlarrIndexerDetail[]> {
+  type Cat = { id: number; subCategories?: Cat[] };
+  const has = (cats: Cat[] | undefined): boolean => (cats ?? []).some((c) => c.id === 5070 || has(c.subCategories));
+  const list = await call<{ id: number; name: string; definitionName?: string; protocol: string; enable: boolean; capabilities?: { categories?: Cat[] } }[]>("GET", "/indexer");
+  return list.map((x) => ({ id: x.id, name: x.name, definitionName: x.definitionName ?? null, protocol: x.protocol, enable: x.enable, animeCategories: has(x.capabilities?.categories) }));
+}
+
 export async function prowlarrIndexers() {
   return (await call<{ id: number; name: string; protocol: string; enable: boolean }[]>("GET", "/indexer")).map(({ id, name, protocol, enable }) => ({ id, name, protocol, enable }));
 }

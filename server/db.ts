@@ -346,6 +346,13 @@ const USER_MIGRATIONS: string[] = [
   // 24: creditless OP/ED in the monitoring scope. Shows that already have their own scope keep what they search (0);
   // new scopes say it explicitly (the UI's default is on).
   `ALTER TABLE series_scope ADD COLUMN creditless INTEGER NOT NULL DEFAULT 0;`,
+  // 25: the user's subtitle-track corrections ("this is English", "signs only"); survive rescans
+  `CREATE TABLE track_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL, track_index INTEGER NOT NULL, lang TEXT, forced INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, UNIQUE(path, track_index));`,
+  // 26: the per-indexer circuit breaker (3 failed downloads in a row: off for grabbing, re-tested 6 h / 12 h / daily)
+  `CREATE TABLE indexer_breaker (indexer_id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '', dl_streak INTEGER NOT NULL DEFAULT 0, search_streak INTEGER NOT NULL DEFAULT 0,
+     state TEXT NOT NULL DEFAULT 'on', trip_kind TEXT, off_since INTEGER, next_check INTEGER, step INTEGER NOT NULL DEFAULT 0, last_error TEXT, last_kind TEXT, last_at INTEGER, updated_at INTEGER NOT NULL);`,
+  // 27: shows the user dropped on purpose: never managed, grabbed, filled in or re-added
+  `CREATE TABLE dropped (tvdb_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
@@ -370,7 +377,7 @@ const CACHE_SCHEMA = `
   CREATE TABLE movies (id INTEGER PRIMARY KEY, tmdb_id INTEGER, imdb_id TEXT, title TEXT NOT NULL, original_title TEXT, year INTEGER, path TEXT,
     root_folder TEXT, monitored INTEGER NOT NULL, has_file INTEGER NOT NULL, runtime INTEGER, quality_profile_id INTEGER, tags TEXT NOT NULL DEFAULT '[]',
     alt_titles TEXT NOT NULL DEFAULT '[]', file TEXT, is_anime INTEGER NOT NULL DEFAULT 0, poster TEXT, synced_at INTEGER NOT NULL,
-    status TEXT, is_available INTEGER NOT NULL DEFAULT 0, in_cinemas INTEGER, digital_release INTEGER, physical_release INTEGER);
+    status TEXT, is_available INTEGER NOT NULL DEFAULT 0, in_cinemas INTEGER, digital_release INTEGER, physical_release INTEGER, genres TEXT NOT NULL DEFAULT '[]');
   -- AniList art per AniDB entry (via the Fribb mapping), for poster-forward lists.
   CREATE TABLE covers (anidb_id INTEGER PRIMARY KEY, anilist_id INTEGER, cover TEXT, banner TEXT, color TEXT, fetched_at INTEGER NOT NULL);
 `;
@@ -395,7 +402,12 @@ function migrateUser() {
 
 function migrateCache() {
   const v = (cache.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  if (v === CACHE_VERSION) return;
+  if (v === CACHE_VERSION) {
+    // Added columns that don't need a rebuild (movies added in AnimeArr live in this table too).
+    const cols = (cache.prepare("PRAGMA table_info(movies)").all() as { name: string }[]).map((c) => c.name);
+    if (cols.length && !cols.includes("genres")) cache.exec("ALTER TABLE movies ADD COLUMN genres TEXT NOT NULL DEFAULT '[]'");
+    return;
+  }
   const tables = (cache.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((t) => t.name);
   cache.exec("BEGIN IMMEDIATE");
   try {

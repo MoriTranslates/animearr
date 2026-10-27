@@ -9,6 +9,7 @@
  * Paths are stored as the *arr/library sees them (the same paths Sonarr/Radarr use), mapped to this machine's paths
  * through Settings → Paths for reading.
  */
+import { applyOverrides } from "./detection.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -252,7 +253,7 @@ const toRecord = (r: Row) => ({
   container: r.container,
   video: JSON.parse(r.video) as MediaRecord["video"],
   audio: JSON.parse(r.audio) as AudioTrack[],
-  subs: JSON.parse(r.subs) as SubTrack[],
+  subs: applyOverrides(r.path, JSON.parse(r.subs) as SubTrack[]),
   sidecars: JSON.parse(r.sidecars) as MediaRecord["sidecars"],
   error: r.error,
 });

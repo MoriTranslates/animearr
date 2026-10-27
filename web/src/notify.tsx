@@ -5,8 +5,8 @@ import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface Bell { unread: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused"; title: string; body: string; read: boolean; fixes?: import("./api").Fix[] }[] }
-const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️" } as const;
+interface Bell { unread: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; read: boolean; fixes?: import("./api").Fix[] }[] }
+const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" } as const;
 
 /** The in-app bell: grabbed / imported / failed / paused, newest first; opening it marks them read. */
 export function BellButton() {
@@ -103,7 +103,7 @@ export function NotifyCard({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void })
           {t("notify.ntfyToken")}
           <SecretInput value={n.ntfyToken} onChange={(v) => set({ ntfyToken: v })} label={t("notify.ntfyToken")} />
         </label>
-        {(["grabbed", "imported", "failed", "paused"] as const).map((ev) => (
+        {(["grabbed", "imported", "failed", "paused", "indexer"] as const).map((ev) => (
           <Toggle key={ev} checked={n.events[ev]} onChange={(v) => set({ events: { ...n.events, [ev]: v } })} label={t(`notify.ev.${ev}` as I18nKey)} />
         ))}
       </div>

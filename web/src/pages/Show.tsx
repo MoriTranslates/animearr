@@ -6,7 +6,7 @@ import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, 
 import { Ring } from "../posters";
 import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { ScopeEditor } from "../scope";
@@ -37,6 +37,8 @@ interface Header {
   profile: { id: string; name: string; watchMode: WatchMode; profileMode: WatchMode; source: string; original: string[] };
   managed: { dryRun: boolean } | null;
   allowed: boolean;
+  dropped?: boolean;
+  monitoredInSonarr?: boolean;
 }
 
 interface ShowData {
@@ -64,7 +66,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
   const [tab, setTabState] = useState<ShowTab>(() => (["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes"));
-  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "remove">(() => (query().get("rename") === "1" ? "rename" : null));
+  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
   const [linking, setLinking] = useState(false);
   const toast = useToast();
 
@@ -120,6 +122,15 @@ export function Show({ tvdbId }: { tvdbId: number }) {
     else u.searchParams.set("tab", x);
     history.replaceState(null, "", u.pathname + u.search);
   };
+  const undrop = async () => {
+    try {
+      await api(`/series/${tvdbId}/drop`, { method: "DELETE" });
+      toast(t("drop.undone"));
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
   const refreshScan = async () => {
     try {
       const r = await api<{ files: number; probed: number; removed: number }>(`/series/${tvdbId}/scan`, { body: {} });
@@ -159,6 +170,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   { label: t("files.refreshScan"), onSelect: () => void refreshScan() },
                   { label: t("franchise.linkMenu"), onSelect: () => (setLinking(true), setTab("movies")) },
                   ...links.map((l) => ({ label: l.label, onSelect: () => window.open(l.href!, "_blank", "noopener,noreferrer") })),
+                  { label: h.dropped ? t("drop.undo") : t("drop.menu"), onSelect: () => (h.dropped ? void undrop() : setPanel("drop")) },
                   { label: t("add.remove"), onSelect: () => setPanel("remove"), hidden: !h.native, danger: true },
                 ]}
               />
@@ -173,6 +185,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               {h.network && <span>{h.network}</span>}
               <span>{t("show.seasonsEps", { s: seasons.filter(([n]) => n > 0).length, e: s.rows.filter((r) => r.season > 0).length })}</span>
               {!!h.genres?.length && <span className="hide-phone">{h.genres.slice(0, 3).join(", ")}</span>}
+              {h.dropped && <span className="dropped-flag">{t("drop.flag")}</span>}
               {h.managed && (
                 <span className="managed-flag">
                   ★ {t("chip.managed")}
@@ -418,6 +431,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
         </Modal>
       )}
+      {panel === "drop" && <DropShow tvdbId={tvdbId} title={h.title} sonarr={!h.native && !!h.monitoredInSonarr} onClose={() => setPanel(null)} onDone={() => void d.reload()} />}
       {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
     </section>
   );
@@ -760,5 +774,34 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
         </>
       )}
     </details>
+  );
+}
+
+/** "Drop this show": AnimeArr stops managing it and never grabs, fills in or re-adds it. Files are kept. */
+function DropShow({ tvdbId, title, sonarr, onClose, onDone }: { tvdbId: number; title: string; sonarr: boolean; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [unmonitor, setUnmonitor] = useState(true);
+  return (
+    <Confirm
+      title={t("drop.title", { title })}
+      confirmLabel={t("drop.confirm")}
+      onClose={onClose}
+      onConfirm={async () => {
+        try {
+          await api(`/series/${tvdbId}/drop`, { body: { unmonitor: sonarr && unmonitor } });
+          toast(t("drop.done", { title }));
+          onDone();
+        } catch (e) {
+          toast((e as Error).message, true);
+        }
+      }}
+    >
+      <p>{t("drop.body")}</p>
+      {sonarr && (
+        <label className="check">
+          <input type="checkbox" checked={unmonitor} onChange={(e) => setUnmonitor(e.target.checked)} /> {t("drop.unmonitor")}
+        </label>
+      )}
+    </Confirm>
   );
 }

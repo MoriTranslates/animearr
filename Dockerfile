@@ -15,7 +15,8 @@ LABEL org.opencontainers.image.title="AnimeArr" \
 # ffprobe is used to verify downloaded files.
 # 7zz (package 7zip) unpacks torrents that arrive as 7z/ZIP archives (Settings → extraction). Alpine builds it without
 # the RAR codec, so RAR sets need attention instead (see BACKLOG).
-RUN apk add --no-cache ffmpeg 7zip
+# mkvtoolnix: "Also fix the tag inside the file" (mkvpropedit edits an MKV header in place, no remux).
+RUN apk add --no-cache ffmpeg 7zip mkvtoolnix
 ENV NODE_ENV=production ANIMEARR_CONFIG=/config PORT=8484
 WORKDIR /app
 COPY --from=build /app/package.json ./

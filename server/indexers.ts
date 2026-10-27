@@ -4,6 +4,8 @@
  * the same shape as Prowlarr's, so search, ranking, health and grabbing don't care where a release came from.
  * Mixing with Prowlarr is fine; Prowlarr stays optional.
  */
+import { ensureProwlarrSelection } from "./indexerPick.js";
+import { describeFetchError, noteSeen, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import crypto from "node:crypto";
 import { getSettings, type IndexerCfg } from "./settings.js";
 import { prowlarrConfigured, prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
@@ -210,16 +212,21 @@ export const searchConfigured = () => prowlarrConfigured() || directIndexers().l
  */
 export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean } = {}): Promise<ProwlarrRelease[]> {
   const jobs: Promise<ProwlarrRelease[]>[] = [];
-  if (prowlarrConfigured()) jobs.push(prowlarrSearch(query, opts));
+  if (prowlarrConfigured()) {
+    await ensureProwlarrSelection();
+    jobs.push(prowlarrSearch(query, opts));
+  }
   for (const ix of directIndexers()) {
     // A search-URL template needs words; the empty "latest releases" poll skips it.
     if (ix.kind === "rss" && !query.trim()) continue;
     jobs.push(
       searchIndexer(ix, query, { limit: opts.limit, categories: opts.categories && opts.categories.length ? opts.categories : undefined }).then(
-        (rows) => (lastErrors.delete(ix.id), rows),
+        (rows) => (lastErrors.delete(ix.id), recordIndexerSuccess(indexerNumId(ix.id), "search"), rows),
         (e) => {
-          lastErrors.set(ix.id, { at: Date.now(), why: `${ix.name}: ${redactUrl((e as Error).message)}` });
-          return Promise.reject(new Error(`${ix.name}: ${(e as Error).message}`));
+          const why = redactUrl(describeFetchError(e));
+          lastErrors.set(ix.id, { at: Date.now(), why: `${ix.name}: ${why}` });
+          recordIndexerFailure(indexerNumId(ix.id), why, Date.now(), { name: ix.name, kind: "search" });
+          return Promise.reject(new Error(`${ix.name}: ${why}`));
         },
       ),
     );
@@ -228,7 +235,9 @@ export async function searchAll(query: string, opts: { limit?: number; categorie
   const settled = await Promise.allSettled(jobs);
   const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
   if (!ok.length) throw (settled[0] as PromiseRejectedResult).reason;
-  return ok.flatMap((r) => r.value);
+  const all = ok.flatMap((r) => r.value);
+  for (const r of all) noteSeen(r.indexerId, { guid: r.guid, title: r.title, protocol: r.protocol, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, size: r.size });
+  return all;
 }
 
 /** The last search error per direct indexer id (shown on its card; cleared by the next good search). */

@@ -31,7 +31,7 @@ const newId = (p: string) => `${p}-${crypto.randomBytes(4).toString("hex")}`;
 
 let catalogCache: { at: number; v: Catalog } | null = null;
 interface CatalogEntry { id: string; name: string; kind: IndexerCfg["kind"]; protocol: "usenet" | "torrent"; url: string; apiPath: string; categories: number[]; needsKey: boolean; access: string; visibility: string; language: string; goodFor: string; recommended: boolean; addable?: boolean; viaProwlarr?: boolean; checked: { date: string; status: string; note: string } }
-interface Catalog { version: number; updated: string; entries: CatalogEntry[] }
+interface Catalog { version: number; updated: string; entries: CatalogEntry[]; animeFit?: { great?: string[]; general?: string[]; not?: string[] } }
 
 /** The curated catalogue (catalog/indexers.json next to the app; editable without a code change). */
 export function indexerCatalog(): Catalog {

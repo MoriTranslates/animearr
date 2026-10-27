@@ -1129,3 +1129,16 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .sheet dl.facts > div.wide { flex-direction: column; gap: 4px; }
 .sheet dl.facts > div.wide dd { text-align: left; background: var(--panel-2); border-radius: 10px; padding: 8px 10px; }
 .sheet h3 { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); font-family: var(--font); margin-top: 6px; }
+/* Indexer circuit breaker on its card */
+.conn-card.tripped { border-color: color-mix(in oklab, var(--bad) 55%, transparent); }
+.breaker { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.breaker .quiet-status { white-space: normal; align-items: flex-start; }
+.breaker .quiet-status .dot { margin-top: 6px; flex: none; }
+.breaker .row { flex-wrap: wrap; }
+.dropped-flag { color: var(--bad); font-weight: 600; }
+/* Prowlarr indexer selection */
+.conn-card.skipped { opacity: .62; }
+.conn-card.skipped:hover, .conn-card.skipped:focus-within { opacity: 1; }
+.conn-card .chip.tiny { font-size: 11px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; }
+.use-toggle { font-size: var(--text-sm); margin-top: 4px; }
+.pick-note { margin: 0; }

@@ -38,6 +38,9 @@ async function plexCall<T>(p: string, conn: Conn = getSettings().plex, method = 
   }
 }
 
+/** Read-only Plex API call (for "Watch in Plex"). */
+export const plexApi = <T>(p: string) => plexCall<T>(p);
+
 export async function plexSections(conn?: Conn): Promise<PlexSection[]> {
   const d = await plexCall<{ MediaContainer: { Directory?: { key: string; title: string; type: string; Location?: { path: string }[] }[] } }>("/library/sections", conn);
   return (d?.MediaContainer.Directory ?? []).map((x) => ({ key: x.key, title: x.title, type: x.type, locations: (x.Location ?? []).map((l) => l.path.replace(/\\/g, "/").replace(/\/+$/, "")) }));

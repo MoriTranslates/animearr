@@ -91,7 +91,7 @@ export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 export interface Settings {
   sonarr: { url: string; apiKey: string; /** Optional: also import series with this Sonarr tag even when not seriesType=anime. */ animeTag: string };
   radarr: { url: string; apiKey: string; /** Movies under these root folders count as anime. */ animeRoots: string[]; animeProfileIds: number[] };
-  prowlarr: { url: string; apiKey: string; /** Newznab categories searched. */ categories: number[]; indexerIds: number[] };
+  prowlarr: { url: string; apiKey: string; /** Newznab categories searched. */ categories: number[]; /** Indexers AnimeArr asks (empty = all). */ indexerIds: number[]; /** Prowlarr indexers seen (defaults applied). */ knownIds: number[]; /** New ones to review (badge). */ newIds: number[] };
   sabnzbd: { url: string; apiKey: string; category: string };
   qbittorrent: { url: string; username: string; password: string; category: string };
   /** Priority / enabled for the SABnzbd and qBittorrent slots (by id "sabnzbd" / "qbittorrent"). */
@@ -222,7 +222,7 @@ export interface Settings {
     sourceRoots: string[];
   };
   /** Notifications (minimal): Discord webhook and/or ntfy, per event. Webhook URL and ntfy token are stored encrypted. */
-  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean } };
+  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean } };
   /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
   cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
@@ -279,7 +279,7 @@ export const DEFAULT_PROFILE: LanguageProfile = {
 const DEFAULTS: Settings = {
   sonarr: { url: "", apiKey: "", animeTag: "" },
   radarr: { url: "", apiKey: "", animeRoots: [], animeProfileIds: [] },
-  prowlarr: { url: "", apiKey: "", categories: [5070, 5000, 2000], indexerIds: [] },
+  prowlarr: { url: "", apiKey: "", categories: [5070, 5000, 2000], indexerIds: [], knownIds: [], newIds: [] },
   sabnzbd: { url: "", apiKey: "", category: "animearr" },
   qbittorrent: { url: "", username: "", password: "", category: "animearr" },
   clientPrefs: {},
@@ -302,7 +302,7 @@ const DEFAULTS: Settings = {
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
   cutover: { allowArrWrites: false },
-  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true } },
+  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true } },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
@@ -365,7 +365,7 @@ const SECRET_FOR_URL: [string, string][] = [
   ["plex.url", "plex.token"],
   ["notify.ntfyUrl", "notify.ntfyToken"],
 ];
-const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "radarr.animeProfileIds", "managed.backoffMin"]);
+const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "prowlarr.knownIds", "prowlarr.newIds", "radarr.animeProfileIds", "managed.backoffMin"]);
 const SEASONS = ["all", "first", "latest", "recent"];
 const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 const ENUMS: Record<string, readonly string[]> = {

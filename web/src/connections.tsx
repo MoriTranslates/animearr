@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { api, type Settings as S } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Confirm, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
+import { Confirm, dateTime, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
 import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, type CatalogEntry, type DirectIndexer, type ExtraClient } from "./connectionsEdit";
 
 /**
@@ -12,7 +12,71 @@ import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newCl
  */
 
 export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
-export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null }
+export interface Breaker { indexerId: number; name: string; state: "on" | "off" | "kept-off"; streak: number; offSince: number | null; nextCheck: number | null; lastError: string | null; lastKind: "download" | "search" | null }
+export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null; breaker?: Breaker | null; pick?: { use: boolean; fit: "great" | "general" | "not" | null; animeCategories: boolean; isNew: boolean } | null }
+
+/** "Use for anime searches" on a Prowlarr indexer card (Prowlarr itself is never changed). */
+function UseToggle({ id, use, onChanged }: { id: number; use: boolean; onChanged: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  return (
+    <label className="check small use-toggle" onClick={stop} onKeyDown={stop}>
+      <input
+        type="checkbox"
+        checked={use}
+        disabled={busy}
+        onChange={async (e) => {
+          setBusy(true);
+          try {
+            await api(`/indexers/prowlarr/${id}/use`, { body: { use: e.target.checked } });
+            onChanged();
+          } catch (err) {
+            toast((err as Error).message, true);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />{" "}
+      {t("pick.use")}
+    </label>
+  );
+}
+const FIT_TONE = { great: "good", general: "info", not: "warn" } as const;
+
+/** The circuit breaker on an indexer card: why it's off, when it's re-tested, and the user's buttons. */
+function BreakerStatus({ b, onChanged }: { b: Breaker; onChanged: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const act = async (action: "test" | "on" | "keep-off") => {
+    setBusy(true);
+    try {
+      const r = await api<{ ok?: boolean; why?: string; state?: string }>(`/indexers/breaker/${b.indexerId}`, { method: "POST", body: { action } });
+      if (action === "test") toast(r.ok ? t(r.state === "kept-off" ? "breaker.testOkKept" : "breaker.testOk", { why: r.why ?? "" }) : t("breaker.testFail", { why: r.why ?? "" }), !r.ok);
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  return (
+    <span className="breaker" onClick={stop} onKeyDown={stop}>
+      <span className="quiet-status bad-text" title={b.lastError ?? undefined}>
+        <span className="dot bad" aria-hidden="true" />
+        {b.state === "kept-off" ? t("breaker.keptOff") : t(b.lastKind === "search" ? "breaker.offSearch" : "breaker.off", { n: b.streak })}
+        {b.lastError ? ` · ${t("breaker.lastError", { why: b.lastError })}` : ""}
+        {b.state === "off" && b.nextCheck ? ` · ${t("breaker.next", { when: dateTime(b.nextCheck) })}` : ""}
+      </span>
+      <span className="row gap-s">
+        <button type="button" className="small" disabled={busy} onClick={() => void act("test")}>{t("breaker.test")}</button>
+        <button type="button" className="small" disabled={busy} onClick={() => void act("on")}>{t("breaker.turnOn")}</button>
+        {b.state !== "kept-off" && <button type="button" className="small ghost" disabled={busy} onClick={() => void act("keep-off")}>{t("breaker.keepOff")}</button>}
+      </span>
+    </span>
+  );
+}
 export interface ClientRow extends ConnStatus { type: "sabnzbd" | "qbittorrent" | "nzbget" | "transmission"; name: string; priority: number; enabled: boolean }
 export interface Overview { clients: ClientRow[]; indexerSources: ConnStatus[]; indexers: IndexerRow[]; mediaServers: ConnStatus[]; migration: ConnStatus[]; protocolOrder: ("usenet" | "torrent")[]; noPreference?: boolean; duplicates?: { id: string; name: string; with: string }[]; delays?: { usenetDelayMin: number; torrentDelayMin: number } }
 
@@ -385,13 +449,13 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const prow = statusOf(o.data?.indexerSources, "prowlarr");
   const col = (p: Protocol) => {
     const list = (o.data?.indexers ?? []).filter((x) => x.protocol === p);
-    const failing = list.filter((x) => x.failures > 0).length;
+    const failing = list.filter((x) => x.failures > 0 || x.breaker).length;
     return (
       <Column protocol={p} title={t(p === "usenet" ? "conn.col.usenetIndexers" : "conn.col.torrentIndexers")} summary={o.data ? `${t("conn.indexerCount", { n: list.length })}${failing ? ` · ${t("conn.failing", { n: failing })}` : ""}` : ""}>
         {list.map((x) => (
           <div
             key={x.key ?? x.id}
-            className={`conn-card card indexer${x.enabled ? "" : " off"}${x.source === "direct" ? " clickable" : ""}`}
+            className={`conn-card card indexer${x.enabled ? "" : " off"}${x.breaker ? " tripped" : ""}${x.pick && !x.pick.use ? " skipped" : ""}${x.source === "direct" ? " clickable" : ""}`}
             role={x.source === "direct" ? "button" : undefined}
             tabIndex={x.source === "direct" ? 0 : undefined}
             onClick={() => {
@@ -408,19 +472,31 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
               {x.name.slice(0, 2)}
             </span>
             <span className="conn-text">
-              <span className="strong">{x.name}</span>
+              <span className="strong">
+                {x.name}
+                {x.pick?.isNew && <span className="chip warn tiny">{t("pick.new")}</span>}
+                {x.pick?.fit && <span className={`chip ${FIT_TONE[x.pick.fit]} tiny`}>{t(`pick.fit.${x.pick.fit}` as I18nKey)}</span>}
+              </span>
               <span className="muted small">
                 {t(p === "usenet" ? "conn.proto.usenet" : "conn.proto.torrent")} · {x.source === "direct" ? t("conn.direct") : t("conn.viaProwlarr")}
                 {x.priority !== null ? ` · ${t("conn.priority", { n: x.priority })}` : ""}
               </span>
               {!x.enabled ? (
                 <span className="quiet-status"><span className="dot off" aria-hidden="true" />{t("conn.disabled")}</span>
+              ) : x.breaker ? (
+                <BreakerStatus b={x.breaker} onChanged={refresh} />
               ) : x.failures ? (
                 <span className="quiet-status warn-text" title={x.lastError ?? undefined}><span className="dot warn" aria-hidden="true" />{t("conn.failures", { n: x.failures, why: x.lastError ?? "" })}</span>
               ) : (
                 <span className="quiet-status"><span className="dot good" aria-hidden="true" />{t("conn.healthy")}</span>
               )}
               {x.grabs > 0 && <span className="muted small">{t("conn.usedForShort", { n: x.grabs })}</span>}
+              {x.pick && (
+                <>
+                  <UseToggle id={x.id} use={x.pick.use} onChanged={refresh} />
+                  {!x.pick.use && <span className="muted small">{t("pick.skipped")}</span>}
+                </>
+              )}
             </span>
           </div>
         ))}
@@ -434,6 +510,7 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       <SectionIntro icon="⌕" text={t("conn.intro.indexers")}>
       </SectionIntro>
       <ProtocolBar onChanged={() => void o.fresh()} />
+      {prow?.configured && <p className="muted small pick-note">{t("pick.note")}</p>}
       <HowItFits here="indexers" />
       <h2 className="eyebrow">{t("conn.managers")}</h2>
       <div className="conn-grid managers">

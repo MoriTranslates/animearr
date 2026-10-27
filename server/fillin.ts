@@ -4,6 +4,7 @@
  * wave starts. Activating a show makes it managed (live unless the global dry-run is on) with its monitoring scope;
  * the missing-episode search (and its hourly limit) does the actual searching.
  */
+import { isDropped } from "./dropped.js";
 import { logDecision } from "./activity.js";
 import { cache, db, dbState, setJob } from "./db.js";
 import { listManaged, setManaged } from "./managed.js";
@@ -26,7 +27,7 @@ export function addToQueue(tvdbIds: number[], now = Date.now()) {
   let pos = (db.prepare("SELECT COALESCE(MAX(position), 0) AS p FROM fill_queue").get() as { p: number }).p;
   let added = 0;
   for (const id of tvdbIds) {
-    if (!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ?").get(id)) continue;
+    if (!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ?").get(id) || isDropped(id)) continue;
     added += Number(db.prepare("INSERT INTO fill_queue (tvdb_id, position, state, added_at) VALUES (?, ?, 'queued', ?) ON CONFLICT(tvdb_id) DO NOTHING").run(id, ++pos, now).changes);
   }
   return { added };

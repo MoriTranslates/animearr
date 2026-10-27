@@ -11,6 +11,7 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
+import { refuseDropped } from "./dropped.js";
 import { seedLimitsFor } from "./indexers.js";
 import { supersededBy } from "./fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
@@ -35,7 +36,7 @@ import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { ffprobe, judge, type ProbeResult } from "./verify.js";
 import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
 import { importMovie, movieNextForRow } from "./movies.js";
-import { isTitleEncodingError, recordIndexerFailure } from "./health.js";
+import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import { scanFolder } from "./mediafiles.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 
@@ -149,20 +150,45 @@ function scheduleAfter(episodeIds: number[], outcome: "done" | "retry", why: str
     db.prepare("UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'").run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
 }
 
+/** The .nzb/.torrent couldn't be fetched: the indexer's problem (health), not the release's or the episode's. */
+export class FetchFailedError extends Error {
+  readonly fetchFailed = true;
+  constructor(
+    message: string,
+    readonly indexerId: number | null,
+  ) {
+    super(message);
+  }
+}
+export const isFetchFailure = (e: unknown): e is FetchFailedError => !!(e as { fetchFailed?: boolean } | null)?.fetchFailed;
+/** Prefix of a fetch failure's message (also how it's recognised in grabs.error). */
+export const FETCH_PREFIX = "Couldn't download the";
+
 /**
- * Fetches the NZB/torrent; a failing download link counts against the indexer's health (learned ranking penalty),
- * except Prowlarr's HTTP 500 on non-ASCII titles, which isn't the indexer's fault. Either way the caller just moves
- * on to the next candidate (no blocklist: the release itself may be fine).
+ * Fetches the NZB/torrent. A failing download link counts against the indexer (ranking penalty, then the circuit
+ * breaker after 3 in a row), except Prowlarr's HTTP 500 on non-ASCII titles, which isn't the indexer's fault. The
+ * caller moves on to a candidate from another indexer without using up an attempt (no blocklist: the release is fine).
  */
 export async function fetchOrNote(deps: PipelineDeps, c: Candidate) {
   try {
-    return await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+    const out = await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+    recordIndexerSuccess(c.indexerId);
+    return out;
   } catch (e) {
-    const msg = (e as Error).message;
-    if (isTitleEncodingError(msg, c.title)) throw new Error(`Prowlarr couldn't serve this release (HTTP 500 on its non-ASCII name); trying the next one`);
-    recordIndexerFailure(c.indexerId, msg);
-    throw e;
+    const msg = describeFetchError(e, c.downloadUrl);
+    if (isTitleEncodingError(msg, c.title)) throw new FetchFailedError(`${FETCH_PREFIX} release: Prowlarr couldn't serve it (HTTP 500 on its non-ASCII name); trying the next one`, null);
+    recordIndexerFailure(c.indexerId, msg, Date.now(), { name: c.indexer });
+    throw new FetchFailedError(`${FETCH_PREFIX} ${c.protocol === "usenet" ? ".nzb" : ".torrent"} from ${c.indexer ?? "the indexer"}: ${msg}`, c.indexerId ?? null);
   }
+}
+
+/**
+ * What's left to try: not blocklisted, not from an indexer that's off; after a fetch failure, not from that same
+ * indexer either (its host is likely down for all of them).
+ */
+export function remainingFallbacks(fallbacks: Candidate[], failed?: unknown) {
+  const badIndexer = isFetchFailure(failed) ? failed.indexerId : null;
+  return fallbacks.filter((f) => !isBlocked(f) && !indexerOff(f.indexerId) && !(badIndexer && f.indexerId === badIndexer));
 }
 
 /** Starts a grab (or records what it would do in dry-run). */
@@ -170,6 +196,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const series = seriesByTvdb(req.tvdbId);
   if (!series) throw Object.assign(new Error("Unknown series; sync the library first"), { statusCode: 404 });
+  refuseDropped(req.tvdbId); // a show the user dropped is never grabbed, whoever asks
   if (!underAllowedRoot(series.path)) {
     const roots = getSettings().allowedRoots;
     throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you allowed in Settings → Safety.`), { statusCode: 403 });
@@ -226,15 +253,17 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   } catch (e) {
     setState(id, "failed", (e as Error).message);
     logDecision("fail", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Couldn't send ${c.title}: ${(e as Error).message}`, detail: { grabId: id } });
-    const next = await tryNext(id, { ...req, attempt: req.attempt ?? 1 }, deps, (e as Error).message);
+    // A fetch failure doesn't use up an attempt: the next candidate (from another indexer) gets a full try.
+    const next = await tryNext(id, { ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
   }
 }
 
-async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, reason: string): Promise<Awaited<ReturnType<typeof startGrab>> | null> {
+async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, reason: string, cause?: unknown): Promise<Awaited<ReturnType<typeof startGrab>> | null> {
   const attempt = (req.attempt ?? 1) + 1;
-  // Skip fallbacks that got blocklisted meanwhile (e.g. the same release cross-posted on another indexer).
-  const [next, ...rest] = req.fallbacks.filter((f) => !isBlocked(f));
+  // Skip fallbacks that got blocklisted meanwhile (e.g. the same release cross-posted on another indexer), and those
+  // from an indexer that is off or whose download link just failed.
+  const [next, ...rest] = remainingFallbacks(req.fallbacks, cause);
   if (!next || attempt > MAX_ATTEMPTS) {
     logDecision("skip", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : ""}`, detail: { grabId } });
     scheduleAfter(req.episodeIds, "retry", `last grab failed: ${reason}`);
