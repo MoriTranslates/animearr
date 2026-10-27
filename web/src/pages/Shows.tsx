@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate, query } from "../App";
 import { t } from "../i18n";
 import { Confirm, Empty, ErrorBox, Menu, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
@@ -12,7 +12,11 @@ export function Shows({ status }: { status: Status }) {
   usePageTitle(t("shows.title"));
   const toast = useToast();
   const data = useLoad(() => api<{ season: { name: string; year: number }; allowedRoots: string[]; series: LibraryShow[] }>("/library/candidates"), []);
-  const [filter, setFilter] = useState<Filter>("airing");
+  // All shows by default (a show just added must be visible; "Airing this season" hid it). ?filter= picks another.
+  const [filter, setFilter] = useState<Filter>(() => {
+    const f = query().get("filter") as Filter | null;
+    return f && ["airing", "continuing", "managed", "all"].includes(f) ? f : "all";
+  });
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -126,7 +130,7 @@ export function Shows({ status }: { status: Status }) {
               )}
             </div>
           </div>
-          {!shown.length && <Empty icon="▦" action={filter !== "all" ? { label: t("shows.filter.all"), run: () => setFilter("all") } : { label: t("nav.find"), run: () => navigate("/find") }}>{t("shows.empty")}</Empty>}
+          {!shown.length && <Empty icon="▦" action={filter !== "all" ? { label: t("shows.filter.all"), run: () => setFilter("all") } : { label: t("nav.find"), run: () => navigate("/find") }}>{t(!(data.data?.series.length ?? 0) ? "shows.emptyLibrary" : "shows.empty")}</Empty>}
           <div className="poster-grid lib-grid">
             {shown.map((s) => (
               <article key={s.tvdbId} className={`lib-card${sel.has(s.tvdbId) ? " selected" : ""}`}>

@@ -22,6 +22,7 @@ export const setupStrings = {
   "wiz.done.notWorkingShort": "not working",
   "wiz.preferTorrent": "You set up torrents only, so torrents are now tried first (Prefer Usenet or torrents, in Language profiles).",
   "wiz.preferUsenet": "You set up Usenet only, so Usenet is now tried first (Prefer Usenet or torrents, in Language profiles).",
+  "shows.emptyLibrary": "Your library is empty. Add a show with Find & add, or connect Sonarr in Settings → Migration to bring yours in.",
   "dl.thresholdGb": "is over (GB)",
   "dl.thresholdItems": "is over",
   "job.anidb": "AniDB titles download",

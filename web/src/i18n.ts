@@ -949,7 +949,7 @@ const en = {
   "shows.clear": "Clear selection",
   "shows.noRoots": "No allowed root folder yet, so AnimeArr can't manage any show. Pick one in Settings → Safety.",
   "shows.refused": "Not managed: {list}",
-  "shows.empty": "No shows match. Sync your library first, or change the filter.",
+  "shows.empty": "No shows match this filter. Show all shows, or change the filter.",
   "shows.count": "{shown} of {total} shows",
 
   "managed.title": "Automation schedule",
