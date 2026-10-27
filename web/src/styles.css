@@ -1366,3 +1366,8 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .st.dl span { font-size: 0.5625rem; }
 .burst small { font-size: 0.625rem; }
 .pmeta b { white-space: nowrap; }
+.done-list { padding: var(--space-3) var(--space-4); }
+@media (hover: hover) {
+  .fill-row .menu, .qcard .qclient .menu { opacity: 0; transition: opacity 0.15s; }
+  .fill-row:hover .menu, .fill-row:focus-within .menu, .qcard:hover .qclient .menu, .qcard:focus-within .qclient .menu { opacity: 1; }
+}

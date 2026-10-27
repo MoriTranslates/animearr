@@ -9,7 +9,7 @@ import { DownloadClients, Indexers, Migration, type SaveNow } from "../connectio
 import { t, type I18nKey } from "../i18n";
 import { SeasonHeader } from "../seasonal";
 import { Settings, type SettingsTab } from "./Settings";
-import { ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { ErrorBox, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
 
 /**
  * First-run setup: two paths chosen on the welcome screen. Every step can be skipped and comes back later from
@@ -286,7 +286,7 @@ function IndexersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   );
 }
 
-interface Preview { sonarr?: { animeSeries: number; roots: string[]; clients: { name: string; type: string; enabled: boolean; protocol: string; host: string | null; port: number | null; ssl?: boolean; urlBase?: string; category: string | null }[]; indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[]; plex: boolean; tags: string[] }; radarr?: { animeMovies: number; roots: string[] } }
+interface Preview { sonarrError?: string; radarrError?: string; sonarr?: { animeSeries: number; roots: string[]; clients: { name: string; type: string; enabled: boolean; protocol: string; host: string | null; port: number | null; ssl?: boolean; urlBase?: string; category: string | null }[]; indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[]; plex: boolean; tags: string[] }; radarr?: { animeMovies: number; roots: string[] } }
 
 /** What Sonarr/Radarr have, with a checkbox per piece to take over. */
 function PreviewStep({ onApplied }: { onApplied: () => void }) {
@@ -305,7 +305,12 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
   const qb = so?.clients.find((c) => /qbittorrent/i.test(c.type) && c.enabled);
   return (
     <div className="stack">
-      {!so && !d.data.radarr && <p className="warn-text">{t("wiz.preview.none")}</p>}
+      {(d.data.sonarrError || d.data.radarrError) && (
+        <p className="error">
+          {t("wiz.preview.error", { why: (d.data.sonarrError ?? d.data.radarrError)! })}
+        </p>
+      )}
+      {!so && !d.data.radarr && !d.data.sonarrError && !d.data.radarrError && <p className="warn-text">{t("wiz.preview.none")}</p>}
       {so && (
         <div className="card pad stack">
           <h3>Sonarr</h3>
@@ -406,8 +411,11 @@ function DoneStep({ path }: { path: Path }) {
   const toast = useToast();
   return (
     <div className="stack">
+      {o.data && !o.data.clients.some((c) => c.configured) && <p className="banner warn">{t("wiz.done.noClient")}</p>}
+      {o.data && !o.data.indexers.length && <p className="banner warn">{t("wiz.done.noIndexer")}</p>}
+      <GoLive />
       {o.data && (
-        <ul className="plain card pad stack">
+        <ul className="plain card pad stack done-list">
           <li>
             {t("wiz.done.clients")}: {o.data.clients.filter((c) => c.configured).map((c) => c.name).join(", ") || "—"}
           </li>
@@ -443,6 +451,30 @@ function DoneStep({ path }: { path: Path }) {
         <PhonePanel />
       </div>
       <p className="muted small">{t("wiz.done.later")}</p>
+    </div>
+  );
+}
+
+/** The last step: dry run (on by default) and the automatic searches, explained, with the switches right here. */
+function GoLive() {
+  const toast = useToast();
+  const d = useLoad(() => api<{ managed: { dryRun: boolean }; backlog: { enabled: boolean }; movieSearch: { enabled: boolean } }>("/settings"), []);
+  if (!d.data) return null;
+  const put = async (body: unknown) => {
+    try {
+      await api("/settings", { method: "PUT", body });
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  return (
+    <div className="card pad stack">
+      <h3>{t("wiz.live.title")}</h3>
+      <p className="muted small">{t("wiz.live.help")}</p>
+      <Toggle checked={!d.data.managed.dryRun} onChange={(v) => void put({ managed: { dryRun: !v } })} label={t("wiz.live.real")} />
+      <Toggle checked={d.data.backlog.enabled} onChange={(v) => void put({ backlog: { enabled: v } })} label={t("wiz.live.missing")} />
+      <Toggle checked={d.data.movieSearch.enabled} onChange={(v) => void put({ movieSearch: { enabled: v } })} label={t("wiz.live.movies")} />
     </div>
   );
 }

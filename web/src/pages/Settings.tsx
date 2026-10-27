@@ -1,5 +1,5 @@
 import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
@@ -34,11 +34,15 @@ export type SettingsTab = Tab;
 /** `only`: one section without the Settings frame (the setup wizard embeds them). */
 export function Settings({ status, onSaved, only }: { status: Status; onSaved: () => void; only?: Tab }) {
   usePageTitle(only ? t("wiz.title") : t("settings.title"));
+  // (the section title is set below, once the tab is known)
   const toast = useToast();
   const q = query().get("tab") ?? "";
   const initial = (ALIAS[q] ?? q) as Tab;
   const desktop = typeof window !== "undefined" && window.matchMedia?.("(min-width: 761px)").matches;
   const [tab, setTabState] = useState<Tab | null>(only ?? (TABS.includes(initial) ? initial : desktop ? TABS[0] : null));
+  useEffect(() => {
+    if (!only) document.title = tab ? `${t(`settings.tab.${tab}` as I18nKey)} · ${t("settings.title")} · AnimeArr` : `${t("settings.title")} · AnimeArr`;
+  }, [tab, only]);
   const loaded = useLoad(() => api<S>("/settings"), []);
   const [s, setS] = useState<S | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -72,6 +76,16 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
     setS((x) => (x ? fn(structuredClone(x)) : x));
     setDirty(true);
   };
+  // In the wizard (only mode), leaving the step saves what was changed (Next/Back never drop edits).
+  const latest = useRef<{ s: S | null; dirty: boolean }>({ s: null, dirty: false });
+  latest.current = { s, dirty };
+  useEffect(
+    () => () => {
+      if (only && latest.current.dirty && latest.current.s) void api("/settings", { method: "PUT", body: latest.current.s }).catch(() => undefined);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   async function save() {
     if (!s) return;
     try {
@@ -971,6 +985,7 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
           <input type="checkbox" checked={bypass} onChange={(e) => void setMode(e.target.checked)} /> {t("security.bypass")}
         </label>
         <p className="muted small">{t("security.bypassHelp")}</p>
+        {bypass && <p className="warn-text small">{t("security.bypassWarn")}</p>}
       </div>
     </div>
   );

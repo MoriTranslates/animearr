@@ -102,6 +102,12 @@ export async function arrPreview() {
   const s = getSettings();
   const out: Record<string, unknown> = {};
   if (s.sonarr.url && s.sonarr.apiKey) {
+    // A wrong key or address must say so (not look like an empty Sonarr).
+    const reach = await jsonCall<{ version: string }>("Sonarr", s.sonarr, "/api/v3", "GET", "/system/status").then(
+      () => null,
+      (e: Error) => e.message,
+    );
+    if (reach) return { ...out, sonarrError: reach };
     const call = <T>(p: string) => jsonCall<T>("Sonarr", s.sonarr, "/api/v3", "GET", p).catch(() => null);
     const [roots, clients, indexers, notes, tags] = await Promise.all([
       call<{ path: string; freeSpace?: number }[]>("/rootfolder"),
@@ -110,7 +116,9 @@ export async function arrPreview() {
       call<{ name: string; implementation: string }[]>("/notification"),
       call<{ id: number; label: string }[]>("/tag"),
     ]);
-    const animeSeries = (cache.prepare("SELECT COUNT(*) AS n FROM series").get() as { n: number }).n;
+    // Sonarr's own count (AnimeArr's copy may not be synced yet on a fresh install).
+    const all = await call<{ seriesType?: string; rootFolderPath?: string }[]>("/series");
+    const animeSeries = all ? all.filter((x) => x.seriesType === "anime").length : (cache.prepare("SELECT COUNT(*) AS n FROM series").get() as { n: number }).n;
     out.sonarr = {
       animeSeries,
       roots: (roots ?? []).map((r) => r.path),
@@ -121,6 +129,11 @@ export async function arrPreview() {
     };
   }
   if (s.radarr.url && s.radarr.apiKey) {
+    const reach = await jsonCall<{ version: string }>("Radarr", s.radarr, "/api/v3", "GET", "/system/status").then(
+      () => null,
+      (e: Error) => e.message,
+    );
+    if (reach) return { ...out, radarrError: reach };
     const call = <T>(p: string) => jsonCall<T>("Radarr", s.radarr, "/api/v3", "GET", p).catch(() => null);
     const roots = await call<{ path: string }[]>("/rootfolder");
     const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies").get() as { n: number }).n;

@@ -6,7 +6,7 @@ import { setIndexerUse } from "./indexerPick.js";
 import { droppedList, dropShow, refuseDropped, undropShow } from "./dropped.js";
 import { breakerList, breakerTick, setBreaker, testIndexer as retestIndexer, type Fetcher } from "./health.js";
 import { watchLinks } from "./watchIn.js";
-import { indexerNumId, searchIndexer } from "./indexers.js";
+import { indexerNumId, searchConfigured, searchIndexer } from "./indexers.js";
 import { deleteOverrides, fileDetail, peekFrames, renameSidecarBack, rescanOne, setTrackLanguage, useSidecar } from "./detection.js";
 import { applyArrPreview, arrPreview, createCategory, listFolders, saveWizard, wizardState } from "./wizard.js";
 import { addJackettTracker, deleteClient, deleteIndexer, indexerCatalog, jackettTrackers, listClients, listIndexers, saveClient, saveIndexer, setClientPrefs, testExtraClient, testIndexer } from "./connectionsAdmin.js";
@@ -76,7 +76,7 @@ import { applyRenameRouted, executeImport, executeMovieImport, planImport, planM
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
-import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
+import { checkPassword, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
 
 // UMASK (like the *arr images): files and folders AnimeArr's importer creates get the usual 775/664 with UMASK=002.
@@ -90,7 +90,12 @@ const STARTED = Date.now();
  * URL base for a reverse proxy on a sub-path (https://host/animearr/): URL_BASE, or Settings → System (restart).
  * Incoming URLs have it stripped, so every route stays the same; the page gets a <base href> for its assets.
  */
-const URL_BASE = ((process.env.URL_BASE ?? getSettings().urlBase ?? "").trim().replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1"));
+const URL_BASE = (() => {
+  const v = (process.env.URL_BASE ?? getSettings().urlBase ?? "").trim().replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1");
+  if (URL_BASE_RE.test(v)) return v;
+  console.warn(`Ignoring the URL base "${v}": use something like /animearr (letters, digits, . _ ~ - only)`);
+  return "";
+})();
 const app = Fastify({
   rewriteUrl: (req) => {
     const u = req.url ?? "/";
@@ -1029,10 +1034,11 @@ app.put<{ Params: { id: string }; Body: { profileId?: string | null; watchMode?:
 // Grabs pick from the server's own last results (never a download URL sent by the browser).
 const lastMovieResults = new Map<number, { at: number; results: Awaited<ReturnType<typeof searchMovie>>["results"] }>();
 app.post<{ Params: { id: string } }>("/api/movies/:id/search", async (req) => {
-  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
   const r = await searchMovie(id(req.params.id));
   lastMovieResults.set(r.movie.id, { at: Date.now(), results: r.results });
-  return { ...r, dryRun: getSettings().managed.dryRun };
+  // Download links carry indexer API keys/passkeys: never sent to the browser (grabs use the cached results).
+  return { ...r, results: r.results.map(({ downloadUrl: _d, magnetUrl: _m, ...x }) => x), dryRun: getSettings().managed.dryRun };
 });
 app.post<{ Params: { id: string }; Body: { guid?: string; confirm?: boolean; replace?: boolean } }>("/api/movies/:id/grab", async (req) => {
   writable();
@@ -1240,8 +1246,15 @@ await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: false 
 const sendIndex = (reply: import("fastify").FastifyReply) => {
   const file = path.join(WEB_DIR, "index.html");
   if (!fs.existsSync(file)) return reply.code(503).send("Web UI not built yet: run npm run build");
-  const html = fs.readFileSync(file, "utf8").replace("<head>", `<head>\n    <base href="${URL_BASE}/" />`);
-  return reply.type("text/html; charset=utf-8").header("Cache-Control", "no-cache").send(html);
+  const html = fs.readFileSync(file, "utf8").replace("<head>", `<head>\n    <base href="${URL_BASE.replace(/[^A-Za-z0-9._~/-]/g, "")}/" />`);
+  // No framing (clickjacking), no referrer leaks; scripts only from ourselves.
+  return reply
+    .type("text/html; charset=utf-8")
+    .header("Cache-Control", "no-cache")
+    .header("X-Frame-Options", "DENY")
+    .header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; script-src 'self'")
+    .header("Referrer-Policy", "no-referrer")
+    .send(html);
 };
 app.get("/", { config: { public: true } }, async (_req, reply) => sendIndex(reply));
 app.setNotFoundHandler((req, reply) => (req.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : sendIndex(reply)));
@@ -1332,6 +1345,8 @@ every(60_000, async () => {
   }
 }, "rss");
 
-if (await ensureDefaultAccount()) app.log.warn(`First start: log in with ${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password}, then change the password in Settings → Security.`);
+// First start: no default login (a known password would be open to anyone who port-forwards). The account is created
+// in the browser, from the home network or with this one-time setup code.
+if (!getSettings().auth.passwordHash) app.log.warn(`First start: open AnimeArr in your browser to create your account. Setup code (needed when you're not on the same network): ${SETUP_TOKEN}`);
 await app.listen({ host: "0.0.0.0", port: PORT });
-if (await usingDefaultPassword()) app.log.warn(`The login is still the default (${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password}). Change it in Settings → Security.`);
+if (await usingDefaultPassword()) app.log.warn("The login is still the old default password. Change it in Settings → Security.");

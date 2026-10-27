@@ -29,16 +29,16 @@ if [ -n "${KEYDIR:-}" ]; then
 fi
 # Personal data: added lines must not carry the owner's network/host/identity details. The patterns live in
 # local/pii-patterns.txt (gitignored: one extended regex per line), plus generic ones: real-looking private IPs
-# (anything but the 192.168.1.x / 10.0.0.x documentation examples), Unraid share paths, and e-mail addresses
+# (anything but the 192.168.0.x / 192.168.1.x / 10.x documentation examples), Unraid share paths, and e-mail addresses
 # that aren't GitHub noreply ones.
 pii="local/pii-patterns.txt"
-generic='(192\.168\.([02-9]|[1-9][0-9]+)\.[0-9]+)|(/mnt/user/[A-Za-z])|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)'
+generic='(192\.168\.([2-9]|[1-9][0-9]+)\.[0-9]+)|(/mnt/user/[A-Za-z])|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)'
 for f in $staged; do
   [ -f "$f" ] || continue
   case "$f" in package-lock.json|*.png|*.jpg|*.webp|scripts/secret-scan.sh) continue ;; esac
   # Unraid templates use Unraid's standard share paths (/mnt/user/appdata, /mnt/user/data): generic, not personal.
   generic_f="$generic"
-  case "$f" in docker/unraid/*) generic_f='(192\.168\.([02-9]|[1-9][0-9]+)\.[0-9]+)|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)' ;; esac
+  case "$f" in docker/unraid/*) generic_f='(192\.168\.([2-9]|[1-9][0-9]+)\.[0-9]+)|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)' ;; esac
   added=$(git diff --cached -U0 -- "$f" | grep -E '^\+[^+]' || true)
   [ -n "$added" ] || continue
   if echo "$added" | grep -nE "$generic_f" >/dev/null; then

@@ -93,8 +93,20 @@ export async function fetchReleaseFile(r: ProwlarrRelease): Promise<{ data?: Buf
     if (loc.startsWith("magnet:")) return { magnet: loc, filename: r.title };
     const res2 = await fetch(loc, { signal: AbortSignal.timeout(60_000) });
     if (!res2.ok) throw new Error(`Download link failed (HTTP ${res2.status})`);
-    return { data: Buffer.from(await res2.arrayBuffer()), filename: r.title };
+    return { data: await capped(res2), filename: r.title };
   }
   if (!res.ok) throw new Error(`Download link failed (HTTP ${res.status}) at ${new URL(r.downloadUrl).host}`);
-  return { data: Buffer.from(await res.arrayBuffer()), filename: r.title };
+  return { data: await capped(res), filename: r.title };
+}
+
+/** An .nzb/.torrent is small: anything over 25 MB isn't one (and isn't read into memory). */
+async function capped(res: Response) {
+  const max = 25 * 1024 * 1024;
+  if (Number(res.headers.get("content-length") ?? 0) > max) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new Error("The download link returned something too big to be an .nzb or .torrent");
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > max) throw new Error("The download link returned something too big to be an .nzb or .torrent");
+  return buf;
 }

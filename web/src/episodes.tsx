@@ -328,7 +328,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
   dialogOpen.current = actions.open;
   return (
     <div className="sheet-back" onClick={onClose}>
-      <aside className="sheet card" role="dialog" aria-modal="true" aria-label={t("ep.details")} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div className="sheet card" role="dialog" aria-modal="true" aria-label={t("ep.details")} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="sh-hero" style={showVars(d?.art?.color)}>
           {(d?.art?.banner || d?.art?.cover) && <span className="sh-art" style={{ backgroundImage: `url(${thumbUrl((d.art.banner ?? d.art.cover)!, d.art.banner ? "xl" : "md")})` }} aria-hidden="true" />}
           <div className="sheet-grip" aria-hidden="true" />
@@ -514,7 +514,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
           </div>
         )}
         {actions.ui}
-      </aside>
+      </div>
     </div>
   );
 }

@@ -13,11 +13,13 @@ if [ "$(id -u)" = "0" ]; then
   PUID="${PUID:-1000}"
   PGID="${PGID:-1000}"
   case "$PUID$PGID" in *[!0-9]*) echo "PUID and PGID must be numbers" >&2; exit 1 ;; esac
+  [ "$PUID" = "0" ] && echo "Warning: PUID=0 runs AnimeArr as root; use your media user's id instead" >&2
   mkdir -p /config
   # Only the config folder (never the media mounts); only when it isn't already owned by PUID:PGID.
   if [ "$(stat -c %u:%g /config)" != "$PUID:$PGID" ]; then
     echo "Setting the owner of /config to $PUID:$PGID"
-    chown -R "$PUID:$PGID" /config
+    # -h: symlinks themselves, never what they point to.
+    chown -R -h "$PUID:$PGID" /config
   fi
   export HOME=/config
   exec su-exec "$PUID:$PGID" "$@"

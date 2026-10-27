@@ -201,18 +201,17 @@ export function inSourceRoots(real: string) {
 }
 
 /**
- * A download AnimeArr itself grabbed (its own grab record and client job): trusted wherever the client saved it, as
- * long as that's inside the downloads mount (/data). `trusted` is that job's own payload path (Sonarr view).
+ * A download AnimeArr itself grabbed (its own grab record and client job): trusted wherever the client saved it
+ * (any mount name), except inside the library, the bin or AnimeArr's own folder. `trusted` is that job's payload path.
  */
 export function trustedSource(real: string, trusted: string | null | undefined) {
   if (!trusted) return false;
   const local = localPath(trusted);
-  const dataRoot = localPath("/data");
-  if (!local || !dataRoot) return false;
+  if (!local) return false;
   try {
     const t = fs.realpathSync(local);
-    const d = fs.realpathSync(dataRoot);
-    return under(t, d) && under(real, t);
+    // AnimeArr's own grab, wherever its client saved it: never the library, the bin or AnimeArr's own folder.
+    return !forbiddenSource(t) && under(real, t);
   } catch {
     return false;
   }

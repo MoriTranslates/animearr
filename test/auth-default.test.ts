@@ -6,14 +6,12 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-auth-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { ensureDefaultAccount, usingDefaultPassword, setAccount, getSettings, checkPassword } = await import("../server/settings.js");
+const { usingDefaultPassword, setAccount, getSettings, DEFAULT_LOGIN } = await import("../server/settings.js");
 
-test("fresh install gets admin / animearr, flagged as the default password until changed", async () => {
-  assert.equal(await ensureDefaultAccount(), true);
-  assert.equal(getSettings().auth.username, "admin");
-  assert.equal(await checkPassword("animearr", getSettings().auth.passwordHash), true);
+test("fresh install has NO account (created in the browser); an old default password is still flagged until changed", async () => {
+  assert.equal(getSettings().auth.passwordHash, "", "no default login on a fresh install");
+  await setAccount(DEFAULT_LOGIN.username, DEFAULT_LOGIN.password);
   assert.equal(await usingDefaultPassword(), true);
-  assert.equal(await ensureDefaultAccount(), false, "never overwrites an existing account");
   await setAccount("admin", "something-else-123");
   assert.equal(await usingDefaultPassword(), false);
   assert.equal(getSettings().auth.bypassLocal, false, "no-password-on-LAN stays off unless the user ticks it");

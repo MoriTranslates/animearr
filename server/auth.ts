@@ -72,7 +72,38 @@ const FORWARD_HEADERS = ["x-forwarded-for", "forwarded", "x-real-ip", "cf-connec
  */
 export function isLocalRequest(req: FastifyRequest) {
   if (!PROXY_TRUSTED && FORWARD_HEADERS.some((h) => req.headers[h])) return false;
-  return isPrivateIp(req.ip);
+  // A hop-count TRUST_PROXY trusts whatever is in front blindly: no "local" bypass with it.
+  if (typeof trustProxyOption() === "number") return false;
+  return isHomeNetwork(req.ip) && !isProxyPeer(req.socket?.remoteAddress ?? "");
+}
+
+const v4 = (ip: string) => (ip.startsWith("::ffff:") ? ip.slice(7) : ip);
+const inCidr = (ip: string, cidr: string) => {
+  const [base, bits] = cidr.split("/");
+  const a = v4(ip);
+  if (!net.isIPv4(a) || !net.isIPv4(base)) return false;
+  const n = (x: string) => x.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
+  const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+  return (n(a) & mask) === (n(base) & mask);
+};
+/**
+ * The home network, for the "no password on my local network" bypass: 10/8, 192.168/16 and IPv6 ULA/link-local by
+ * default. 172.16/12 (Docker's own networks, where a reverse proxy or Docker's NAT gateway would make every request
+ * look local) and loopback never count, unless ANIMEARR_LOCAL_NETWORKS lists them (comma-separated CIDRs).
+ */
+export function isHomeNetwork(ip: string) {
+  const custom = (process.env.ANIMEARR_LOCAL_NETWORKS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (custom.length) return custom.some((c) => inCidr(ip, c));
+  const a = v4(ip);
+  if (net.isIPv4(a)) return inCidr(a, "10.0.0.0/8") || inCidr(a, "192.168.0.0/16");
+  return /^f[cd]/i.test(ip) || /^fe80:/i.test(ip);
+}
+/** The socket peer is a loopback or a trusted proxy: then it isn't the user's device. */
+function isProxyPeer(peer: string) {
+  const p = v4(peer);
+  if (p === "127.0.0.1" || p.startsWith("127.") || peer === "::1") return true;
+  const t = trustProxyOption();
+  return Array.isArray(t) && t.some((c) => (c.includes("/") ? inCidr(p, c) : c === p));
 }
 
 /**
@@ -82,6 +113,7 @@ export function isLocalRequest(req: FastifyRequest) {
 export function hostAllowed(req: FastifyRequest) {
   const host = (req.headers.host ?? "").replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
   if (!host) return false;
+  // An IP literal can't be DNS-rebound; a home-network name is fine. (Proxies are ruled out by isLocalRequest.)
   if (net.isIP(host) || host === "localhost" || !host.includes(".") || host.endsWith(".local") || host.endsWith(".lan") || host.endsWith(".home.arpa")) return true;
   return (process.env.ANIMEARR_ALLOWED_HOSTS ?? "").split(",").map((x) => x.trim().toLowerCase()).includes(host);
 }

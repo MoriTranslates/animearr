@@ -340,7 +340,7 @@ const DEFAULTS: Settings = {
     propers: "preferAndUpgrade",
     unmonitorDeleted: false,
     fileDate: "none",
-    recycleBin: "/media/Recycle/animearr/",
+    recycleBin: "", // set in Settings → Media management (no bin = replacements are refused, never deleted)
     recycleBinCleanupDays: 14,
     rescanAfterRefresh: "always",
     analyseVideoFiles: true,
@@ -378,6 +378,8 @@ const SECRET_FOR_URL: [string, string][] = [
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "prowlarr.knownIds", "prowlarr.newIds", "radarr.animeProfileIds", "managed.backoffMin"]);
 const SEASONS = ["all", "first", "latest", "recent"];
 const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
+/** URL base: "" or "/segment[/segment…]" (no quotes, spaces or anything HTML/URL-special). */
+export const URL_BASE_RE = /^(\/[A-Za-z0-9._~-]+)*$/;
 const ENUMS: Record<string, readonly string[]> = {
   "ui.textScale": ["sm", "md", "lg", "xl"],
   "repair.mode": ["off", "log", "auto"],
@@ -457,6 +459,17 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
   if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
+  // Service addresses are web addresses (a javascript: link would be clickable in the UI).
+  if (/(^|\.)url$/i.test(path) || path === "externalUrl") {
+    const v = String(patch ?? "").trim();
+    if (v === "" || /^https?:\/\/[^\s"'<>]+$/i.test(v)) return v;
+    throw Object.assign(new Error(`${path} must start with http:// or https://`), { statusCode: 400 });
+  }
+  if (path === "urlBase") {
+    const v = String(patch ?? "").trim().replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1");
+    if (URL_BASE_RE.test(v)) return v;
+    throw Object.assign(new Error("The URL base looks like /animearr (letters, digits, . _ ~ - only)"), { statusCode: 400 });
+  }
   if (path === "notify.discordWebhook") {
     const v = String(patch ?? "").trim();
     if (v === "" || v === MASK || /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+(?:\?[\w=&-]*)?$/.test(v)) return v;
@@ -646,15 +659,8 @@ export async function checkPassword(pw: string, stored: string) {
   return want.length === got.length && crypto.timingSafeEqual(got, want);
 }
 
-/** Fresh installs start with this login; the app nags until the password is changed. */
+/** The login earlier dev builds created on first start. Still flagged (and nagged about) if an install kept it. */
 export const DEFAULT_LOGIN = { username: "admin", password: "animearr" } as const;
-
-/** Creates the default account on a fresh install (no account yet). */
-export async function ensureDefaultAccount() {
-  if (dbState.corrupt || getSettings().auth.passwordHash) return false;
-  await setAccount(DEFAULT_LOGIN.username, DEFAULT_LOGIN.password);
-  return true;
-}
 
 let defaultCheck: { hash: string; result: boolean } | null = null;
 /** True while the account password is still the default one (cached per stored hash, so it costs one scrypt). */
