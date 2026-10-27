@@ -5,6 +5,7 @@ import { Zap } from "lucide-react";
 import { fixesForMessage, runFix, type Flag, BASE } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { exclaimMode } from "./appearance";
+import { detailFor } from "./errors";
 
 // ---------------------------------------------------------------- toasts (manga speech bubbles by default)
 
@@ -109,7 +110,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="toast-emote" aria-hidden="true">
               {EMOTE[x.kind]}
             </span>
-            <span className="toast-msg">{x.msg}</span>
+            <span className="toast-msg">{x.error ? <ErrorText msg={x.msg} /> : x.msg}</span>
             {x.action && (
               <button className="primary" onClick={() => (x.action!.run(), close(x.id))}>
                 {x.action.label}
@@ -200,9 +201,25 @@ export function Confirm({ title, children, confirmLabel, onConfirm, onClose, dan
 export function ErrorBox({ error, retry }: { error: string; retry?: () => void }) {
   return (
     <div className="banner error-box" role="alert">
-      <p>{t("common.error", { error })}</p>
+      <ErrorText msg={error} />
       {retry && <button onClick={retry}>{t("app.retry")}</button>}
     </div>
+  );
+}
+
+/** An error in plain words, with the raw text behind "Details" when the server sent one (errors.ts). */
+export function ErrorText({ msg, className = "" }: { msg: string; className?: string }) {
+  const detail = detailFor(msg);
+  return (
+    <span className={`error-text ${className}`}>
+      {msg}
+      {detail && (
+        <details className="error-details">
+          <summary>{t("common.details")}</summary>
+          <code>{detail}</code>
+        </details>
+      )}
+    </span>
   );
 }
 

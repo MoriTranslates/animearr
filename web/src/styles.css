@@ -1390,3 +1390,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .browse-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .browse-meta { flex: none; display: inline-flex; gap: var(--space-2, 8px); align-items: center; white-space: nowrap; }
 @media (max-width: 560px) { .browse-item { flex-wrap: wrap; } .browse-meta { width: 100%; padding-left: 24px; } }
+
+/* ---- setup/settings fixes (playtest 27 Oct): error details, folder picker, wizard */
+.error-text { display: inline; }
+.error-details { margin-top: 4px; font-size: var(--text-xs, 0.8rem); font-weight: 400; }
+.error-details summary { cursor: pointer; opacity: 0.8; }
+.error-details code { display: block; white-space: pre-wrap; word-break: break-word; opacity: 0.85; margin-top: 2px; }

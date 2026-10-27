@@ -3,7 +3,7 @@ import { api } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import type { LanguageProfile } from "./profiles";
-import { Confirm, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";
+import { Confirm, ErrorText, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";
 
 /** Dialogs and controls for Settings → Indexers / Download clients: added clients, direct indexers, the catalogue. */
 
@@ -210,7 +210,7 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
           {t("common.add")}
         </button>
       </details>
-      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>}
       <div className="row between">
         {c.id ? (
           <button className="danger" disabled={busy} onClick={() => setDel(true)}>
@@ -403,7 +403,7 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
       <Toggle checked={ix.enabled} onChange={(v) => set({ enabled: v })} label={t("clients.enabled")} />
       {res && (
         <div className={`small ${res.ok ? "good-text" : "warn-text"}`}>
-          <p>{res.text}</p>
+          <p>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>
           {res.sample && (
             <ul className="plain mono muted">
               {res.sample.map((x) => (

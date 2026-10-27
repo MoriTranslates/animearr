@@ -14,7 +14,7 @@ import { LibraryFolders } from "../folders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
-import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
@@ -614,8 +614,8 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
               const r = await api<{ version: string; name: string; sections: { title: string; locations: string[] }[] }>("/test/plex", { body: { url: p.url, apiKey: p.token } });
               setRes({ ok: true, text: t("plex.testOk", { name: r.name, version: r.version, libs: r.sections.map((x) => `${x.title} (${x.locations.join(", ")})`).join("; ") }) });
             } catch (e) {
+              // Shown under the form (a toast on top covered its buttons).
               setRes({ ok: false, text: (e as Error).message });
-              toast((e as Error).message, true);
             }
           }}
         >
@@ -635,7 +635,7 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
         <Toggle checked={p.enabled} onChange={(v) => set({ enabled: v })} label={t("plex.enabled")} />
       </div>
       <MappingList value={p.pathMappings} onChange={(v) => set({ pathMappings: v })} title={t("plex.paths")} help={t("plex.pathsHelp")} />
-      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>}
     </div>
   );
 }

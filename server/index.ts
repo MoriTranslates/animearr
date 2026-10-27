@@ -14,6 +14,7 @@ import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
+import { humanizeError } from "./errors.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -135,7 +136,11 @@ app.addHook("onResponse", async (req, reply) => {
 });
 app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   app.log.warn(redactUrl(err.message));
-  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(err.message), fixes: fixesFor(err.message) });
+  // Plain words for connection errors ("SABnzbd unreachable (fetch failed)" → which address, what to check); the raw
+  // text rides along as `detail` (the UI shows it behind "Details"). Fixes still match the raw text.
+  const ctx = err as Error & { service?: string; url?: string };
+  const h = humanizeError(err.message, { service: ctx.service, url: ctx.url });
+  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(h.message), ...(h.detail ? { detail: redactUrl(h.detail) } : {}), fixes: fixesFor(err.message) });
 });
 
 const fail = (msg: string, code = 400) => Object.assign(new Error(msg), { statusCode: code });
@@ -151,10 +156,11 @@ const writable = () => {
 /** Outbound service URLs: http(s) only, never link-local / cloud metadata addresses. */
 function checkOutbound(url: string) {
   let u: URL;
+  if (!url.trim()) throw fail("Enter the address first, e.g. http://192.168.1.10:8080");
   try {
     u = new URL(url);
   } catch {
-    throw fail("That address isn't a valid URL (it should start with http://)");
+    throw fail(`"${url}" isn't a full address. It should look like http://192.168.1.10:8080 (with http:// and the port).`);
   }
   if (!/^https?:$/.test(u.protocol)) throw fail("Address must start with http:// or https://");
   if (/^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw fail("That address isn't allowed");
@@ -408,22 +414,45 @@ app.get("/api/indexers", async () => ({ indexers: listIndexers() }));
 app.post<{ Body: Record<string, unknown> }>("/api/indexers", async (req) => (writable(), invalidateConnections(), saveIndexer(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), saveIndexer(req.params.id, req.body ?? {})));
 app.delete<{ Params: { id: string } }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), deleteIndexer(req.params.id), { ok: true }));
-app.post<{ Body: Record<string, unknown> }>("/api/indexers/test", async (req) => testIndexer(req.body ?? {}));
-app.post<{ Body: Record<string, unknown> }>("/api/jackett/trackers", async (req) => ({ trackers: await jackettTrackers(req.body ?? {}) }));
+/** Runs a connection test; its error carries the service and address tested (for humanizeError). */
+async function tested<T>(service: string, url: unknown, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    throw Object.assign(e as Error, { service, url: String(url ?? "").trim() });
+  }
+}
+app.post<{ Body: Record<string, unknown> }>("/api/indexers/test", async (req) => tested(String(req.body?.name || "The indexer"), req.body?.url, () => testIndexer(req.body ?? {})));
+app.post<{ Body: Record<string, unknown> }>("/api/jackett/trackers", async (req) => {
+  // Empty fields: say which (the button used to do nothing).
+  if (!String(req.body?.url ?? "").trim()) throw fail("Enter Jackett's address first, e.g. http://192.168.1.10:9117");
+  if (!String(req.body?.apiKey ?? "").trim()) throw fail("Enter Jackett's API key first (top right of Jackett's page).");
+  return tested("Jackett", req.body?.url, async () => ({ trackers: await jackettTrackers(req.body ?? {}) }));
+});
 app.post<{ Body: Record<string, unknown> }>("/api/jackett/add", async (req) => (writable(), invalidateConnections(), addJackettTracker(req.body ?? {})));
 app.get("/api/clients", async () => ({ clients: listClients() }));
 app.post<{ Body: Record<string, unknown> }>("/api/clients", async (req) => (writable(), invalidateConnections(), saveClient(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), saveClient(req.params.id, req.body ?? {})));
 app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), deleteClient(req.params.id), { ok: true }));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id/prefs", async (req) => (writable(), invalidateConnections(), setClientPrefs(req.params.id, req.body ?? {})));
-app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => testExtraClient(req.body ?? {}));
+app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => tested(String(req.body?.name || req.body?.type || "The download client"), req.body?.url, () => testExtraClient(req.body ?? {})));
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 
+const SERVICE_NAMES: Record<string, string> = { sonarr: "Sonarr", radarr: "Radarr", prowlarr: "Prowlarr", sabnzbd: "SABnzbd", plex: "Plex", qbittorrent: "qBittorrent" };
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
+  const svc = req.params.service;
+  try {
+    return await testService(svc, req.body ?? {});
+  } catch (e) {
+    // The error names the service and the address tested (humanizeError, in the error handler).
+    const stored = (getSettings() as unknown as Record<string, { url?: string }>)[svc]?.url ?? "";
+    throw Object.assign(e as Error, { service: SERVICE_NAMES[svc], url: String(req.body?.url ?? stored).trim() });
+  }
+});
+async function testService(service: string, b: TestBody) {
   const s = getSettings();
-  const b = req.body ?? {};
-  switch (req.params.service) {
+  switch (service) {
     case "sonarr": {
       const c = withSecret(b.url, b.apiKey, s.sonarr.url, s.sonarr.apiKey);
       const conn = { url: c.url, apiKey: c.secret };
@@ -452,7 +481,7 @@ app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", 
     }
   }
   throw fail("Unknown service", 404);
-});
+}
 
 /** Sonarr root folders, for the "allowed root folders" picker (suggests /media/AnimeArr when present; never auto-enabled). */
 app.get("/api/sonarr/rootfolders", async () => {

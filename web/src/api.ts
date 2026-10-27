@@ -1,3 +1,5 @@
+import { humanError, rememberDetail } from "./errors";
+
 /** A problem's fix, as the server describes it (rendered as a button; see server/fixes.ts). */
 export interface Fix { action: string; label: string; params?: Record<string, unknown> }
 
@@ -25,7 +27,13 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["X-AnimeArr"] = "1"; // CSRF guard: cross-site forms can't set custom headers
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${BASE}/api${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: "same-origin", signal: opts.signal });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: "same-origin", signal: opts.signal });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    throw new ApiError(humanError(e), 0); // AnimeArr itself didn't answer (raw text kept for "Details")
+  }
   const text = await res.text();
   let data: Record<string, unknown> | undefined;
   try {
@@ -35,7 +43,8 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   }
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event("animearr:auth"));
-    const msg = (data?.error as string) ?? res.statusText;
+    const msg = humanError((data?.error as string) ?? res.statusText);
+    rememberDetail(msg, data?.detail as string | undefined);
     if (Array.isArray(data?.fixes) && (data!.fixes as Fix[]).length) {
       errorFixes.set(msg, data!.fixes as Fix[]);
       if (errorFixes.size > 50) errorFixes.delete(errorFixes.keys().next().value!);

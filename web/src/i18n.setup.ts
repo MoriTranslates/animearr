@@ -9,6 +9,7 @@ export const setupStrings = {
   "managed.olderOpen": "Switch it on",
   "managed.olderN": "{n} missing",
   "wiz.stepDone": "done",
+  "common.details": "Details",
   "folders.remove": "Remove",
   "folders.add": "Add a library folder",
   "folders.chosen": "Already chosen",
