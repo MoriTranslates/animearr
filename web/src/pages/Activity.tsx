@@ -4,7 +4,7 @@ import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Empty, ErrorBox, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tone = "good" | "bad" | "warn" | "info" | "accent";
 const KIND_TONE: Record<string, Tone> = {
@@ -49,9 +49,41 @@ export function DecisionCard({ d, onUndone }: { d: Decision; onUndone?: () => vo
 
 interface Ev { key: string; at: number; items: Decision[] }
 
+/** The first sentence of a long "why" (the card's one muted line; the rest is under Details). */
+function short(why: string, max = 120) {
+  const cut = why.replace(/\s+/g, " ").split(/(?<=[.;])\s|: (?=[A-Z])/)[0].replace(/[.;]$/, "");
+  return cut.length > max ? `${cut.slice(0, max - 1)}…` : cut;
+}
+/** "SubsPlease · 1080p" from a release name. */
+function releaseLine(release: string | null) {
+  if (!release) return "";
+  const group = /^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:-xpost)?$/.exec(release)?.[1] ?? null;
+  const res = /\b(2160|1080|720|480)p\b/i.exec(release)?.[1];
+  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "BD" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : null;
+  return [group, src, res ? `${res}p` : null].filter(Boolean).join(" · ");
+}
+/** The card's headline, in plain words: "Imported Trinity Seven S01E03", "Couldn't import Quintuplets∽". */
+function headline(lead: Decision, k: string) {
+  const what = [lead.title || (lead.tvdbId ? t("activity.show") : ""), lead.label].filter(Boolean).join(" ");
+  const verb: Record<string, I18nKey> = { import: "activity.h.import", grab: "activity.h.grab", "would-grab": "activity.h.wouldGrab", "verify-ok": "activity.h.checked", "verify-fail": "activity.h.rejected", skip: "activity.h.skip", search: "activity.h.search", plex: "activity.h.plex" };
+  if (k === "fail") return /couldn't import/i.test(lead.why) ? t("activity.h.failImport", { what }) : t("activity.h.fail", { what });
+  if (verb[k] && what) return t(verb[k], { what });
+  return short(lead.why, 90);
+}
+/** The one muted line under the headline: the key reason for problems, group · quality otherwise. */
+function subline(lead: Decision, release: string | null) {
+  if (PROBLEM.has(lead.kind)) {
+    const m = /couldn't import it: (.*?)(?:\. The download is kept.*)?$/i.exec(lead.why);
+    return short(m ? m[1] : lead.why.replace(/^.*?failed verification: /i, ""));
+  }
+  return releaseLine(release) || (lead.title ? short(lead.why) : "");
+}
+/** Routine background entries (searches that found nothing): hidden from "All" unless asked for. */
+export const isBackground = (d: Decision) => d.kind === "search" || (d.kind === "skip" && /nothing (acceptable|found)|0 acceptable|no results?/i.test(d.why));
+
 /**
- * One event: a grab and everything that followed it (download, checks, import, Plex) is ONE card with a stage track,
- * not five log lines. The newest problem (or the newest step) is the sentence; the rest is under "Steps".
+ * One event as a compact card (the Home "Just arrived" style): poster | plain headline | status | time, one muted line,
+ * fix buttons for problems; the full release, the long reasons and the steps are under "Details".
  */
 function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () => void; showDate?: boolean }) {
   const toast = useToast();
@@ -63,29 +95,32 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
   const fixes = ev.items.find((x) => x.fixes?.length)?.fixes;
   const undoable = ev.items.filter((x) => x.undo && !x.undoneAt);
   const track = steps.length > 1 ? [...new Map(steps.map((x) => [kindOf(x), x])).values()] : [];
-  const long = lead.why.length > 160;
+  const cover = ev.items.find((x) => x.cover)?.cover ?? null;
+  const link = lead.tvdbId ? `/show/${lead.tvdbId}` : lead.movieId ? `/movie/${lead.movieId}` : null;
+  const tone = KIND_TONE[k] ?? "info";
+  const sub = subline(lead, release);
   return (
-    <article className={`card event${PROBLEM.has(lead.kind) ? " problem" : ""}`}>
-      <span className={`event-icon ${KIND_TONE[k] ?? "info"}`} aria-hidden="true">
-        {KIND_ICON[k] ?? "•"}
-      </span>
+    <article className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}`}>
+      {link ? (
+        <Link to={link} className="event-thumb">
+          {cover ? <img src={thumbUrl(cover, "sm")} alt="" loading="lazy" /> : <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>}
+        </Link>
+      ) : (
+        <span className="event-thumb" aria-hidden="true">
+          <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>
+        </span>
+      )}
       <div className="event-body">
         <div className="event-head">
-          <span className="event-kind">{kindLabel(k)}</span>
-          {lead.tvdbId ? (
-            <Link to={`/show/${lead.tvdbId}`} className="strong clamp1">
-              {lead.title || t("activity.show")}
-            </Link>
-          ) : (
-            lead.title && <strong className="clamp1">{lead.title}</strong>
-          )}
-          <time className="muted small event-time" dateTime={new Date(ev.at).toISOString()}>
-            {showDate ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : time(ev.at)}
+          <span className={`event-dot ${tone}`} aria-hidden="true">
+            {KIND_ICON[k] ?? "•"}
+          </span>
+          <h3 className="event-title">{link ? <Link to={link}>{headline(lead, k)}</Link> : headline(lead, k)}</h3>
+          <time className="muted small event-time" dateTime={new Date(ev.at).toISOString()} title={new Date(ev.at).toLocaleString()}>
+            {showDate ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : relTime(ev.at)}
           </time>
         </div>
-        <button className={`event-why why-text${open || !long ? "" : " clamp2"}`} onClick={() => long && setOpen(!open)} aria-expanded={long ? open : undefined} disabled={!long}>
-          {lead.why}
-        </button>
+        {sub && <p className="event-sub" title={lead.why}>{sub}</p>}
         {!!track.length && (
           <ol className="stage-track" aria-label={t("activity.steps")}>
             {track.map((x) => (
@@ -95,44 +130,42 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
             ))}
           </ol>
         )}
-        {release && <span className="mono muted small clamp1 event-release" title={release}>{release}</span>}
         <FixButtons fixes={fixes} />
-        {(steps.length > 1 || undoable.length > 0 || ev.items.some((x) => x.undoneAt)) && (
-          <div className="row">
-            {steps.length > 1 && (
-              <button className="linklike small" aria-expanded={open} onClick={() => setOpen(!open)}>
-                {open ? t("activity.hideSteps") : t("activity.showSteps", { n: steps.length })}
-              </button>
-            )}
-            {undoable.map((x) => (
-              <button
-                key={x.id}
-                className="small"
-                onClick={async () => {
-                  try {
-                    await api(`/activity/${x.id}/undo`, { body: {} });
-                    toast(t("common.undone"));
-                    onUndone?.();
-                  } catch (e) {
-                    toast((e as Error).message, true);
-                  }
-                }}
-              >
-                {t("common.undo")}
-                {undoable.length > 1 ? `: ${kindLabel(kindOf(x))}` : ""}
-              </button>
-            ))}
-            {ev.items.some((x) => x.undoneAt) && <Chip tone="info">{t("common.undone")}</Chip>}
+        <div className="row event-actions">
+          <button className="linklike small" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? t("activity.hideDetails") : t("activity.details")}
+          </button>
+          {undoable.map((x) => (
+            <button
+              key={x.id}
+              className="small"
+              onClick={async () => {
+                try {
+                  await api(`/activity/${x.id}/undo`, { body: {} });
+                  toast(t("common.undone"));
+                  onUndone?.();
+                } catch (e) {
+                  toast((e as Error).message, true);
+                }
+              }}
+            >
+              {t("common.undo")}
+              {undoable.length > 1 ? `: ${kindLabel(kindOf(x))}` : ""}
+            </button>
+          ))}
+          {ev.items.some((x) => x.undoneAt) && <Chip tone="info">{t("common.undone")}</Chip>}
+        </div>
+        {open && (
+          <div className="event-details">
+            {release && <p className="mono small event-release">{release}</p>}
+            <ol className="event-steps small">
+              {steps.map((x) => (
+                <li key={x.id}>
+                  <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong> <span className="why-text">{x.why}</span>
+                </li>
+              ))}
+            </ol>
           </div>
-        )}
-        {open && steps.length > 1 && (
-          <ol className="event-steps small">
-            {steps.map((x) => (
-              <li key={x.id}>
-                <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong> <span className="why-text">{x.why}</span>
-              </li>
-            ))}
-          </ol>
         )}
       </div>
     </article>
@@ -192,12 +225,35 @@ export function Activity() {
     setExtra([]);
     return api<Decision[]>(`/activity${kinds ? `?kinds=${kinds}` : ""}`);
   }, [filter]);
-  const all = useMemo(() => [...(list.data ?? []), ...extra], [list.data, extra]);
+  const [bg, setBg] = useState(() => {
+    try {
+      return localStorage.getItem("animearr.activity.bg") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const loaded = useMemo(() => [...(list.data ?? []), ...extra], [list.data, extra]);
+  // Routine searches that found nothing are background noise in "All": counted per day, shown on request.
+  const all = useMemo(() => (filter === "all" && !bg ? loaded.filter((d) => !isBackground(d)) : loaded), [loaded, filter, bg]);
+  const hiddenByDay = useMemo(() => {
+    const m = new Map<number, number>();
+    if (filter === "all" && !bg) for (const d of loaded) if (isBackground(d)) m.set(dayKey(d.at), (m.get(dayKey(d.at)) ?? 0) + 1);
+    return m;
+  }, [loaded, filter, bg]);
+  const toggleBg = () => {
+    setBg(!bg);
+    try {
+      localStorage.setItem("animearr.activity.bg", bg ? "0" : "1");
+    } catch {
+      /* per device only */
+    }
+  };
   const days = useMemo(() => {
     const map = new Map<number, Ev[]>();
     for (const ev of groupEvents(all)) map.set(dayKey(ev.at), [...(map.get(dayKey(ev.at)) ?? []), ev]);
-    return [...map];
-  }, [all]);
+    for (const d of hiddenByDay.keys()) if (!map.has(d)) map.set(d, []);
+    return [...map].sort((a, b) => b[0] - a[0]);
+  }, [all, hiddenByDay]);
   // Refresh while the page is open, so grabs and imports move on by themselves.
   useEffect(() => {
     const id = setInterval(() => void list.reload(), 15_000);
@@ -224,9 +280,21 @@ export function Activity() {
       {list.error && <ErrorBox error={list.error} retry={list.reload} />}
       {list.loading && !list.data && <Spinner label={t("app.loading")} />}
       {list.data && !all.length && <Empty icon="≡">{filter === "problems" ? t("activity.noProblems") : t("activity.empty")}</Empty>}
+      {filter === "all" && (
+        <label className="check small activity-bg">
+          <input type="checkbox" checked={bg} onChange={toggleBg} /> {t("activity.showBackground")}
+        </label>
+      )}
       {days.map(([day, evs]) => (
         <div key={day} className="day-group">
-          <h2 className="agenda-date">{dayTitle(day)}</h2>
+          <h2 className="agenda-date">
+            {dayTitle(day)}
+            {!!hiddenByDay.get(day) && (
+              <button className="linklike small day-hidden" onClick={toggleBg}>
+                {t("activity.hiddenSearches", { n: hiddenByDay.get(day)! })}
+              </button>
+            )}
+          </h2>
           <div className="list">
             {evs.map((ev) => (
               <EventCard key={ev.key} ev={ev} onUndone={list.reload} />

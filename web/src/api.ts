@@ -67,6 +67,10 @@ export type Tone = "good" | "bad" | "warn" | "info";
 export interface Flag { key: string; label: string; tone: Tone }
 
 export interface Decision {
+  /** Activity list only: the show/movie poster and a short episode label. */
+  cover?: string | null;
+  label?: string;
+  movieId?: number | null;
   id: number;
   at: number;
   kind: string;

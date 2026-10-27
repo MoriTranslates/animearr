@@ -1078,8 +1078,30 @@ app.post<{ Params: { id: string } }>("/api/grabs/:id/retry", async (req) => {
 // ---------------------------------------------------------------- activity log + undo
 
 app.get<{ Querystring: { before?: string; tvdbId?: string; kinds?: string } }>("/api/activity", async (req) =>
-  listDecisions({ before: req.query.before ? Number(req.query.before) : undefined, tvdbId: req.query.tvdbId ? Number(req.query.tvdbId) : undefined, kinds: req.query.kinds ? req.query.kinds.split(",") : undefined, limit: 100 }),
+  withArt(listDecisions({ before: req.query.before ? Number(req.query.before) : undefined, tvdbId: req.query.tvdbId ? Number(req.query.tvdbId) : undefined, kinds: req.query.kinds ? req.query.kinds.split(",") : undefined, limit: 100 })),
 );
+/** Activity cards: the show/movie poster and a short episode label ("S01E02–E04"), looked up once per page. */
+function withArt<T extends { tvdbId: number | null; episodeIds: number[]; detail: unknown }>(list: T[]) {
+  const covers = new Map<string, string | null>();
+  const coverOf = (key: string, get: () => string | null) => (covers.has(key) ? covers.get(key)! : (covers.set(key, get()), covers.get(key)!));
+  return list.map((d) => {
+    const movieId = (d.detail as { movieId?: number } | null)?.movieId;
+    const cover = d.tvdbId
+      ? coverOf(`s${d.tvdbId}`, () => {
+          const s = cache.prepare("SELECT tvdb_id, poster FROM series WHERE tvdb_id = ?").get(d.tvdbId) as { tvdb_id: number; poster: string | null } | undefined;
+          return s ? coverFor(s) : null;
+        })
+      : movieId
+        ? coverOf(`m${movieId}`, () => (cache.prepare("SELECT poster FROM movies WHERE id = ?").get(movieId) as { poster: string | null } | undefined)?.poster ?? null)
+        : null;
+    let label = "";
+    if (d.episodeIds.length) {
+      const eps = d.episodeIds.map((e) => cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(e) as { season: number; episode: number } | undefined).filter((x): x is { season: number; episode: number } => !!x).sort((a, b) => a.season - b.season || a.episode - b.episode);
+      if (eps.length) label = `S${String(eps[0].season).padStart(2, "0")}E${String(eps[0].episode).padStart(2, "0")}${eps.length > 1 ? `–E${String(eps[eps.length - 1].episode).padStart(2, "0")}` : ""}`;
+    }
+    return { ...d, cover, label, movieId: movieId ?? null };
+  });
+}
 app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
   writable();
   const d = getDecision(id(req.params.id));

@@ -2,6 +2,7 @@
  * Home: one summary for the dashboard (airing today, what needs you, downloading, just arrived, ready to binge, this
  * week), from data AnimeArr already has. The expensive counts (files without the profile's language) are memoized.
  */
+import { isDropped } from "./dropped.js";
 import { clientName } from "./arr/clients.js";
 import { cache, db } from "./db.js";
 import { calendar, episodeRows } from "./episodes.js";
@@ -142,14 +143,20 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
 
   // Just arrived: what was imported in the last 7 days, newest first, one card per show+episode.
   const done = db.prepare("SELECT id, tvdb_id, movie_id, episode_ids, updated_at FROM grabs WHERE dry_run = 0 AND state = 'done' AND movie_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 60").all(now - 7 * DAY) as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; updated_at: number }[];
-  const seen = new Set<string>();
-  const justArrived: { tvdbId: number; title: string; cover: string | null; color: string | null; label: string; at: number }[] = [];
+  // One poster per show (its episodes of the week together: "S01E03–E04"); shows the user dropped don't appear.
+  const byShow = new Map<number, { ids: Set<number>; at: number }>();
   for (const g of done) {
-    const ids = JSON.parse(g.episode_ids) as number[];
-    const key = `${g.tvdb_id}:${ids.join(",")}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    justArrived.push({ tvdbId: g.tvdb_id, ...showOf(g.tvdb_id), label: epLabel(ids), at: g.updated_at });
+    if (isDropped(g.tvdb_id)) continue;
+    const cur = byShow.get(g.tvdb_id) ?? { ids: new Set<number>(), at: g.updated_at };
+    for (const id of JSON.parse(g.episode_ids) as number[]) cur.ids.add(id);
+    byShow.set(g.tvdb_id, cur);
+  }
+  const justArrived: { tvdbId: number; title: string; cover: string | null; color: string | null; label: string; at: number }[] = [];
+  for (const [tvdbId, v] of byShow) {
+    const eps = [...v.ids].map((id) => ({ id, e: cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(id) as { season: number; episode: number } | undefined })).filter((x) => x.e).sort((a, b) => a.e!.season - b.e!.season || a.e!.episode - b.e!.episode);
+    const seasons = new Set(eps.map((x) => x.e!.season));
+    const label = !eps.length ? "" : eps.length === 1 ? epLabel([eps[0].id]) : seasons.size === 1 ? `${sxe(eps[0].e!.season, eps[0].e!.episode)}–E${String(eps[eps.length - 1].e!.episode).padStart(2, "0")}` : `${epLabel([eps[0].id])} +${eps.length - 1}`;
+    justArrived.push({ tvdbId, ...showOf(tvdbId), label, at: v.at });
     if (justArrived.length >= 12) break;
   }
   const importsThisWeek = (db.prepare("SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND state = 'done' AND updated_at > ?").get(now - 7 * DAY) as { n: number }).n;

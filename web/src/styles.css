@@ -1180,3 +1180,28 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .release-line.muted, .mono.muted { color: color-mix(in srgb, var(--text) 82%, var(--panel)); }
 .warn-text, .error { line-height: 1.5; }
 p.warn-text, li.warn-text { max-width: 75ch; }
+
+/* Activity, Home-style compact cards (contrast round) */
+.event2 { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: var(--space-3); padding: var(--space-3); align-items: start; }
+.event2.problem { border-left: 3px solid var(--bad); }
+.event2.tone-warn.problem { border-left-color: var(--warn); }
+.event-thumb { width: 52px; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--panel-2); display: grid; place-items: center; }
+.event-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.event2 .event-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.event-dot { flex: none; font-size: var(--text-sm); font-weight: 700; }
+.event-dot.good { color: var(--good); }
+.event-dot.bad { color: var(--bad); }
+.event-dot.warn { color: var(--warn); }
+.event-dot.info { color: var(--info); }
+.event-dot.accent { color: var(--accent-2); }
+.event-title { margin: 0; font-size: var(--text-md); font-weight: 650; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+.event-title a { color: inherit; text-decoration: none; }
+.event-title a:hover { text-decoration: underline; }
+.event-sub { margin: 2px 0 0; color: var(--muted); font-size: var(--text-sm); max-width: 75ch; overflow-wrap: anywhere; }
+.event-actions { gap: 10px; margin-top: 2px; }
+.event-details { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; max-width: 75ch; }
+.event-details .event-release { color: color-mix(in srgb, var(--text) 82%, var(--panel)); margin: 0 0 6px; }
+.event-steps { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
+.day-hidden { margin-left: 10px; font-weight: 400; }
+.activity-bg { margin: 6px 0 4px; }
+@media (max-width: 600px) { .event2 { grid-template-columns: 40px minmax(0, 1fr); } .event-thumb { width: 40px; } }
