@@ -6,6 +6,8 @@ import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why, ReleaseName } from "./ui";
 import { showVars } from "./season";
+import { languageList, languageName } from "./lang";
+import { kindLabel } from "./pages/Activity";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -244,14 +246,36 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
 
 // ---------------------------------------------------------------- the episode sheet (bottom sheet on phones, side panel on desktop)
 
-const langName = (l: string | null) => {
-  if (!l) return null;
-  try {
-    return new Intl.DisplayNames(undefined, { type: "language" }).of(l) ?? l;
-  } catch {
-    return l; // a malformed tag from the file
-  }
-};
+const langName = (l: string | null) => (l ? languageName(l) : null);
+const kindWord = (k: string) => kindLabel(k);
+/** "[SubsPlease] Show - 01 (1080p)" → "SubsPlease"; "Show.S01E01.1080p.WEB-ToonsHub" → "ToonsHub". */
+const groupOf = (release: string | null | undefined) => (release ? (/^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:\.\w{2,4})?$/.exec(release)?.[1] ?? null) : null);
+/** "ToonsHub · WEB · 1080p" from a release name (the name itself is a detail). */
+function releaseBits(release: string) {
+  const res = /\b(2160|1080|720|480)p\b/i.exec(release)?.[1];
+  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "Blu-ray" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : /\bHDTV\b/i.test(release) ? "TV" : null;
+  return [groupOf(release), src, res ? `${res}p` : null].filter(Boolean).join(" · ");
+}
+/**
+ * The Subtitles fact in words, agreeing with the status badge: "English (full)", "English (signs only)", "None",
+ * "No English (has Indonesian, Thai)", plus the other languages.
+ */
+function subsLine(d: Detail, lang: string) {
+  const L = languageName(lang);
+  const code = d.file?.lang?.code;
+  const own = d.own?.subs ?? [];
+  const side = d.own?.sidecars ?? [];
+  const tracks = own.length || side.length;
+  const all = tracks ? [...own.map((x) => x.lang), ...side.map((x) => x.lang)] : (d.file?.subs ?? []);
+  const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))];
+  const also = others.length ? ` · ${t("ep.subsAlso", { langs: languageList(others) })}` : "";
+  if (code === "forced-only") return t("ep.subsSigns", { lang: L }) + also;
+  if (code === "untagged") return t("ep.subsUnlabelled");
+  const full = tracks ? own.some((x) => x.lang === lang && !x.partial) || side.some((x) => x.lang === lang) : (d.file?.subs ?? []).includes(lang);
+  if (full) return t("ep.subsFull", { lang: L }) + also;
+  if (!all.length) return t("ep.subsNone");
+  return t("ep.subsNoTarget", { lang: L, langs: languageList(others) });
+}
 /** "English", "Japanese + English", "1 track, language unknown". */
 function trackAudio(d: Detail) {
   const a = d.own?.audio ?? [];
@@ -276,12 +300,12 @@ interface Detail extends EpisodeRow {
   tvdbId: number;
   seriesTitle: string;
   grabs: { id: number; at: number; release: string; protocol: string; state: string; dry_run: number; why: string; error: string | null; progress: number | null }[];
-  activity: { id: number; at: number; kind: string; why: string }[];
+  activity: { id: number; at: number; kind: string; why: string; summary?: string | null; resolved?: boolean }[];
   verify: { at: number; ok: boolean; why: string } | null;
   currentRelease: string | null;
 }
 
-export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = false, dryRun = true, lang = "en" }: { episodeId: number; onClose: () => void; onChanged?: () => void; managedLive?: boolean; dryRun?: boolean; lang?: string }) {
+export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = false, dryRun = true, lang = "en", focus }: { episodeId: number; onClose: () => void; onChanged?: () => void; managedLive?: boolean; dryRun?: boolean; lang?: string; focus?: "fix" }) {
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -318,6 +342,8 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d?.status, err]);
   const label = d ? sxe(d.season, d.episode) : "";
+  // The release group: the file's own, else the release it came from (never "—" next to a grab history that names it).
+  const group = d?.file ? (d.file.group ?? groupOf(d.currentRelease) ?? groupOf(d.grabs.find((g) => g.state === "done")?.release)) : null;
   const actions = useEpisodeActions({
     tvdbId: d?.tvdbId ?? 0,
     episodes: d ? [{ id: d.id, label, release: d.currentRelease, file: d.file?.name ?? null, fileEpisodes: d.file?.episodes }] : [],
@@ -349,7 +375,8 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             <div className="row">
               <StatusPill e={d} lang={lang} />
               <span className="muted small">
-                {d.airUtc && d.airUtc > Date.now() ? t("ep.airs") : t("ep.aired")} {d.airUtc ? dateTime(d.airUtc) : "—"}
+                {/* A file before the listed date: streaming sites often release a week before the TV broadcast that TVDB lists. */}
+                {d.airUtc && d.airUtc > Date.now() ? (d.file ? t("ep.outEarly", { when: dateTime(d.airUtc) }) : `${t("ep.airs")} ${dateTime(d.airUtc)}`) : `${t("ep.aired")} ${d.airUtc ? dateTime(d.airUtc) : "—"}`}
               </span>
             </div>
             {d.movie && (
@@ -386,50 +413,22 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             )}
             {d.file ? (
               <dl className="facts">
-                <div className="wide">
-                  <dt>{t("ep.file")}</dt>
-                  <dd className="mono small">{d.file.path}</dd>
+                {/* The friendly facts first; the file path, codecs, tracks and release names are under Technical details. */}
+                <div>
+                  <dt>{t("ep.quality")}</dt>
+                  <dd>{resLabel(d.file.resolution) ?? d.file.quality ?? "—"}</dd>
                 </div>
                 <div>
                   <dt>{t("ep.size")}</dt>
-                  <dd>
-                    {d.file.size ? fmtSize(d.file.size) : "—"}
-                    {d.file.codec ? <span className="muted small"> · {d.file.codec.toUpperCase()}</span> : null}
-                  </dd>
-                </div>
-                {d.file.changed && (
-                  <div className="wide">
-                    <dt>{t("ep.changed")}</dt>
-                    <dd>
-                      {t("ep.lineage", {
-                        source: [d.file.changed.fromQuality, d.file.group, d.file.changed.fromSize ? fmtSize(d.file.changed.fromSize) : null].filter(Boolean).join(" · "),
-                        imported: d.file.changed.importedAt ? new Date(d.file.changed.importedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "?",
-                        now: [(d.file.changed.codec ?? "").toUpperCase(), fmtSize(d.file.changed.toSize)].filter(Boolean).join(" · "),
-                        changed: new Date(d.file.changed.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                      })}
-                      {d.currentRelease && <span className="muted small mono"> · {d.currentRelease}</span>}
-                    </dd>
-                  </div>
-                )}
-                <div>
-                  <dt>{t("ep.quality")}</dt>
-                  <dd>
-                    {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
-                    {/* Sonarr's quality label only when it disagrees with the file itself. */}
-                    {d.file.quality && resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, "")) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("ep.group")}</dt>
-                  <dd>{d.file.group ?? "—"}{d.file.platform ? ` · ${d.file.platform}` : ""}</dd>
-                </div>
-                <div>
-                  <dt>{t("ep.subtitles")}</dt>
-                  <dd>{d.file.subs.join(", ") || "—"}</dd>
+                  <dd>{d.file.size ? fmtSize(d.file.size) : "—"}</dd>
                 </div>
                 <div>
                   <dt>{t("ep.audio")}</dt>
-                  <dd>{d.file.audio.join(", ") || "—"}</dd>
+                  <dd>{trackAudio(d)}</dd>
+                </div>
+                <div>
+                  <dt>{t("ep.subtitles")}</dt>
+                  <dd>{subsLine(d, lang)}</dd>
                 </div>
                 <div>
                   <dt>{t("ep.runtime")}</dt>
@@ -446,68 +445,130 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                   <Peek path={d.file.path} />
                 </div>
                 {d.file.lang && ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) || d.file.lang.code === "untagged") && <Verdicts tvdbId={d.tvdbId} season={d.season} lang={lang} onFind={actions.search} onDone={() => (load(), onChanged?.())} />}
-                {d.file.lang && d.file.lang.state !== "ok" && (
-                  <div className="track-summary">
-                    <p className="small">
-                      <b>{t("ep.audio")}:</b> {trackAudio(d)} · <b>{t("ep.subtitles")}:</b> {trackSubs(d)}
-                    </p>
-                    <p className="muted small">{d.file.lang.why}</p>
-                  </div>
-                )}
                 <FixDetection
                   path={d.file.path}
                   tvdbId={d.tvdbId}
                   season={d.season}
-                  group={d.file.group}
+                  group={group}
                   title={d.seriesTitle}
-                  defaultOpen={d.file.lang?.code === "untagged" || d.file.lang?.code === "forced-only"}
+                  defaultOpen={focus === "fix" || d.file.lang?.code === "untagged" || d.file.lang?.code === "forced-only"}
+                  focus={focus === "fix"}
                   onChanged={() => (load(), onChanged?.())}
                 />
               </div>
             )}
-            {d.own && (
-              <details>
-                <summary className="small">{t("files.ownTracks")}</summary>
-                <ul className="plain small">
-                  {d.own.audio.map((a) => (
-                    <li key={`a${a.index}`}>🔊 {a.lang ?? "?"} · {a.codec}{a.channels ? ` ${a.channels}ch` : ""}{a.title ? ` · ${a.title}` : ""}{a.default ? ` · ${t("files.default")}` : ""}</li>
-                  ))}
-                  {d.own.subs.map((s) => (
-                    <li key={`s${s.index}`} className={s.partial ? "warn-text" : undefined}>💬 {s.lang ?? "?"} · {s.codec}{s.title ? ` · ${s.title}` : ""}{s.partial ? ` · ${t("files.partial")}` : ""}{s.default ? ` · ${t("files.default")}` : ""}</li>
-                  ))}
-                  {d.own.sidecars.map((s) => (
-                    <li key={s.file}>📄 {s.lang ?? "?"} · {s.file}</li>
+            {!!d.grabs.length && (
+              <>
+                <h3>{t("ep.history")}</h3>
+                <ul className="plain">
+                  {d.grabs.map((g) => (
+                    <li key={g.id} className="history-row">
+                      <div className="row between">
+                        <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : "info"}>{t(`grab.${g.state}` as I18nKey) || g.state}</Chip>
+                        <span className="muted small">{dateTime(g.at)}</span>
+                      </div>
+                      <p className="small muted">{releaseBits(g.release) || t("ep.aVersion")}</p>
+                      <Why summary={t("activity.detailsShort")} lines={[g.release, g.why, ...(g.error ? [g.error] : [])]} />
+                    </li>
                   ))}
                 </ul>
-              </details>
+              </>
             )}
-            {d.verify && (
-              <p className={d.verify.ok ? "good-text small" : "warn-text small"}>
-                {d.verify.ok ? "✓" : "✕"} {t("ep.verified")}: {d.verify.why}
-              </p>
-            )}
-            <h3>{t("ep.history")}</h3>
-            {!d.grabs.length && <p className="muted small">{t("ep.noHistory")}</p>}
-            <ul className="plain">
-              {d.grabs.map((g) => (
-                <li key={g.id} className="history-row">
-                  <div className="row between">
-                    <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : "info"}>{t(`grab.${g.state}` as I18nKey) || g.state}</Chip>
-                    <span className="muted small">{dateTime(g.at)}</span>
-                  </div>
-                  <p className="small"><ReleaseName name={g.release} /></p>
-                  <Why lines={[g.why, ...(g.error ? [g.error] : [])]} />
-                </li>
-              ))}
-            </ul>
-            <h3>{t("ep.activity")}</h3>
-            <ul className="plain">
-              {d.activity.map((a) => (
-                <li key={a.id} className="small">
-                  <span className="muted">{dateTime(a.at)}</span> · <Chip>{a.kind}</Chip> {a.why}
-                </li>
-              ))}
-            </ul>
+            <details className="tech-details">
+              <summary>{t("ep.technical")}</summary>
+              <div className="stack">
+                {d.file && (
+                  <dl className="facts">
+                    <div className="wide">
+                      <dt>{t("ep.file")}</dt>
+                      <dd className="mono small">{d.file.path}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("ep.source")}</dt>
+                      <dd>
+                        {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
+                        {/* Sonarr's quality label only when it disagrees with the file itself. */}
+                        {d.file.quality && resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, "")) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("ep.codec")}</dt>
+                      <dd>{d.file.codec ? d.file.codec.toUpperCase() : "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("ep.group")}</dt>
+                      <dd>
+                        {group ?? "—"}
+                        {d.file.platform ? ` · ${d.file.platform}` : ""}
+                      </dd>
+                    </div>
+                    {d.file.changed && (
+                      <div className="wide">
+                        <dt>{t("ep.changed")}</dt>
+                        <dd>
+                          {t("ep.lineage", {
+                            source: [d.file.changed.fromQuality, group, d.file.changed.fromSize ? fmtSize(d.file.changed.fromSize) : null].filter(Boolean).join(" · "),
+                            imported: d.file.changed.importedAt ? new Date(d.file.changed.importedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "?",
+                            now: [(d.file.changed.codec ?? "").toUpperCase(), fmtSize(d.file.changed.toSize)].filter(Boolean).join(" · "),
+                            changed: new Date(d.file.changed.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                          })}
+                        </dd>
+                      </div>
+                    )}
+                    {d.currentRelease && (
+                      <div className="wide">
+                        <dt>{t("ep.release")}</dt>
+                        <dd className="small">
+                          <ReleaseName name={d.currentRelease} />
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+                {d.file?.lang && d.file.lang.state !== "ok" && <p className="muted small">{d.file.lang.why}</p>}
+                {d.own && (
+                  <>
+                    <h4 className="small">{t("files.ownTracks")}</h4>
+                    <ul className="plain small">
+                      {d.own.audio.map((a) => (
+                        <li key={`a${a.index}`}>
+                          🔊 {a.lang ? languageName(a.lang) : t("fix.untagged")} <span className="muted">· {[a.codec?.toUpperCase(), a.channels ? `${a.channels}ch` : null, a.title, a.default ? t("files.default") : null].filter(Boolean).join(" · ")}</span>
+                        </li>
+                      ))}
+                      {d.own.subs.map((x) => (
+                        <li key={`s${x.index}`} className={x.partial ? "warn-text" : undefined}>
+                          💬 {x.lang ? languageName(x.lang) : t("fix.untagged")}
+                          {x.partial ? ` (${t("ep.signsOnly")})` : ""} <span className="muted">· {[x.codec?.toUpperCase(), x.title, x.default ? t("files.default") : null].filter(Boolean).join(" · ")}</span>
+                        </li>
+                      ))}
+                      {d.own.sidecars.map((x) => (
+                        <li key={x.file}>
+                          📄 {x.lang ? languageName(x.lang) : t("fix.untagged")} <span className="muted mono">· {x.file}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {d.verify && (
+                  <p className={d.verify.ok ? "good-text small" : "warn-text small"}>
+                    {d.verify.ok ? "✓" : "✕"} {t("ep.verified")}: {d.verify.why}
+                  </p>
+                )}
+                {!!d.activity.length && (
+                  <>
+                    <h4 className="small">{t("ep.activity")}</h4>
+                    <ul className="plain">
+                      {d.activity.map((a) => (
+                        <li key={a.id} className="small">
+                          <span className="muted">{dateTime(a.at)}</span> · <strong>{kindWord(a.kind)}</strong> {a.summary ?? a.why}
+                          {a.resolved ? <span className="muted"> · {t("activity.resolved")}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </details>
             <Link to={`/activity`} className="small">
               {t("nav.activity")} →
             </Link>

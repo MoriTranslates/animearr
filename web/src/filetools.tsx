@@ -5,10 +5,11 @@
  * - Peek: three frames from the middle, to spot burned-in subtitles without opening a player;
  * - Fix detection: every track and subtitle file the scan saw, and the fixes for a wrong or missing language tag.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, Play, Wrench } from "lucide-react";
 import { api } from "./api";
 import { t } from "./i18n";
+import { languageName } from "./lang";
 import { Spinner, useToast } from "./ui";
 
 interface WatchLink { server: string; web: string; app: string | null }
@@ -175,8 +176,9 @@ interface Detail {
 const LANGS = ["en", "ja", "es", "pt", "fr", "de", "it", "ru", "zh", "ko", "ar"];
 
 /** Every track the scan saw and the fixes for a wrong or missing tag. Changes are logged in Activity, with undo. */
-export function FixDetection({ path, tvdbId, season, group, title, onChanged, defaultOpen = false }: { path: string; tvdbId?: number | null; season?: number | null; group?: string | null; title?: string; onChanged: () => void; defaultOpen?: boolean }) {
+export function FixDetection({ path, tvdbId, season, group, title, onChanged, defaultOpen = false, focus = false }: { path: string; tvdbId?: number | null; season?: number | null; group?: string | null; title?: string; onChanged: () => void; defaultOpen?: boolean; focus?: boolean }) {
   const toast = useToast();
+  const box = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(defaultOpen);
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -203,10 +205,20 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => void (defaultOpen && load()), []);
+  // Opened from ⋯ → Fix detection: this section is what the user came for, so it scrolls into view.
+  useEffect(() => {
+    if (!focus) return;
+    const id = requestAnimationFrame(() => {
+      box.current?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      box.current?.querySelector<HTMLElement>("summary")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focus]);
   const setTrack = (s: Track, lang: string | null, forced: boolean) =>
     run(() => api("/files/track", { body: { path, trackIndex: s.index, lang, forced, scope, tvdbId, season, group, title, alsoTag: alsoTag && scope !== "group" && d?.mkv } }), t("fix.saved"));
   return (
     <details
+      ref={box}
       className="fix-detection"
       open={open}
       onToggle={(e) => {
@@ -235,10 +247,11 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
               <ul className="plain small tracks">
                 {d.audio.map((a) => (
                   <li key={`a${a.index}`}>
-                    🔊 <b>{a.lang ?? t("fix.untagged")}</b> · {a.codec}
-                    {a.channels ? ` ${a.channels}ch` : ""}
-                    {a.title ? ` · “${a.title}”` : ""}
-                    {a.default ? ` · ${t("files.default")}` : ""}
+                    🔊 <b>{a.lang ? languageName(a.lang) : t("fix.untagged")}</b>
+                    <span className="muted">
+                      {a.title && a.title.toLowerCase() !== languageName(a.lang).toLowerCase() ? ` · “${a.title}”` : ""}
+                      {a.default ? ` · ${t("files.default")}` : ""} · {[a.codec?.toUpperCase(), a.channels ? `${a.channels}ch` : null].filter(Boolean).join(" ")}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -269,10 +282,13 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                 {(all ? d.subs : d.subs.filter((s) => !s.lang || s.lang === "en" || s.partial || s.forced || s.overridden)).map((s) => (
                   <li key={`s${s.index}`} className="track-row">
                     <span>
-                      💬 <b>{s.lang ?? t("fix.untagged")}</b> · {s.codec}
-                      {s.title ? ` · “${s.title}”` : ""}
-                      {s.forced || s.partial ? ` · ${t("files.partial")}` : ""}
-                      {s.default ? ` · ${t("files.default")}` : ""}
+                      💬 <b>{s.lang ? languageName(s.lang) : t("fix.untagged")}</b>
+                      {s.forced || s.partial ? ` (${t("ep.signsOnly")})` : ""}
+                      <span className="muted">
+                        {s.title && s.title.toLowerCase() !== languageName(s.lang).toLowerCase() ? ` · “${s.title}”` : ""}
+                        {s.default ? ` · ${t("files.default")}` : ""}
+                        {s.codec ? ` · ${s.codec.toUpperCase()}` : ""}
+                      </span>
                       {s.overridden ? <span className="tag info inline">{t("fix.yourFix")}</span> : null}
                     </span>
                     <span className="row">
@@ -280,7 +296,7 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                         <option value="">{t("fix.untagged")}</option>
                         {[...new Set([...LANGS, ...(s.lang ? [s.lang] : [])])].map((l) => (
                           <option key={l} value={l}>
-                            {l}
+                            {languageName(l)}
                           </option>
                         ))}
                       </select>
@@ -309,7 +325,7 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
           <ul className="plain small tracks">
             {d.sidecars.map((s) => (
               <li key={s.file}>
-                📄 <b>{s.lang ?? t("fix.untagged")}</b> · <span className="mono">{s.file}</span>
+                📄 <b>{s.lang ? languageName(s.lang) : t("fix.untagged")}</b> · <span className="mono">{s.file}</span>
               </li>
             ))}
             {d.strays.map((f) => (
