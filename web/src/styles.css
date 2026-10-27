@@ -1170,7 +1170,7 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 /* Open on your phone */
 .phone-panel { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 /* A QR code is always dark on white (both themes, forced-dark browsers too), wherever it renders. */
-.qr { background: #fff; color: #000; padding: 8px; border-radius: 10px; width: 180px; max-width: 100%; color-scheme: light; forced-color-adjust: none; }
+.qr { background: #fff; color: #000; padding: 8px; border-radius: 10px; width: 180px; max-width: 100%; color-scheme: light only; forced-color-adjust: none; }
 .qr svg { display: block; width: 100%; height: auto; }
 .qr svg rect[fill="#ffffff"], .qr svg rect[fill="white"] { fill: #fff; }
 .qr svg path { fill: #000; }

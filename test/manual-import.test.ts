@@ -218,3 +218,13 @@ test("JSON responses are ASCII-only (a client that decodes as cp1252 can't garbl
   // Decoded as Latin-1 it is still the same JSON.
   assert.deepEqual(JSON.parse(Buffer.from(s, "utf8").toString("latin1")), v);
 });
+
+test("a manual import from a grab's fix finishes that grab (and cleans up by the usual rule)", async () => {
+  const { finishGrabByHand } = await import("../server/pipeline.js");
+  const g = db.prepare("SELECT id FROM grabs WHERE state = 'needs-attention' ORDER BY id DESC LIMIT 1").get() as { id: number };
+  const cleaned: [number, string][] = [];
+  assert.equal(await finishGrabByHand(g.id, "Date A Live: Date to Date (2013)", { cleanup: async (id, o) => (cleaned.push([id, o]), null) }), true);
+  assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(g.id) as { state: string }).state, "done");
+  assert.deepEqual(cleaned, [[g.id, "imported"]]);
+  assert.equal(await finishGrabByHand(g.id, "again", { cleanup: async () => null }), false, "only once");
+});

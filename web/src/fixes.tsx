@@ -98,8 +98,8 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
     setBusy(true);
     try {
       const r = movieId
-        ? await api<{ items: PlanItem[]; notes?: string[] }>("/import/movie-plan", { body: { movieId, path: p } })
-        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", { body: { tvdbId, path: p, episodeIds: chosen.length ? chosen : undefined } });
+        ? await api<{ items: PlanItem[]; notes?: string[] }>("/import/movie-plan", { body: { movieId, path: p, grabId: grabId ?? undefined } })
+        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", { body: { tvdbId, path: p, episodeIds: chosen.length ? chosen : undefined, grabId: grabId ?? undefined } });
       setItems(r.items);
       setNotes(r.notes ?? []);
     } catch (e) {

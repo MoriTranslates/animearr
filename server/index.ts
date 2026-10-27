@@ -911,16 +911,21 @@ app.delete<{ Params: { tvdbId: string } }>("/api/add/:tvdbId", async (req) => {
 
 // ---------------------------------------------------------------- AnimeArr's own importer + renamer (plans first)
 
-app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null } }>("/api/import/plan", async (req) => {
+/** A manual import opened from a grab: its release name (quality, group) and client (torrents are copied, keep seeding). */
+const grabSource = (b: { release?: string; client?: string | null; grabId?: number | null }) => {
+  const g = b.grabId ? (db.prepare("SELECT release, client FROM grabs WHERE id = ?").get(Number(b.grabId)) as { release: string; client: string | null } | undefined) : undefined;
+  return { release: b.release ?? g?.release, client: b.client ?? g?.client ?? null };
+};
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; grabId?: number | null } }>("/api/import/plan", async (req) => {
   const b = req.body ?? ({} as never);
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
-  return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
+  return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b) });
 });
 app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; dryRun?: boolean; grabId?: number | null } }>("/api/import/run", async (req) => {
   writable();
   const b = req.body ?? ({} as never);
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
-  const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), release: b.release, client: b.client ?? null });
+  const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b) });
   const results = await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only, grabId: b.grabId ? Number(b.grabId) : undefined });
   // Opened from a grab's fix: everything it was for is imported → the grab is done.
   if (b.grabId && b.dryRun === false && results.length && results.every((r) => r.done)) await finishGrabByHand(Number(b.grabId), plan.seriesTitle);
@@ -937,10 +942,10 @@ app.get<{ Querystring: { path?: string; grabId?: string } }>("/api/import/browse
   return { ...browseImport({ path: want, extra: [grabPath] }), grabPath };
 });
 /** Movie import plan (a dry run; nothing is changed). */
-app.post<{ Body: { movieId: number; path: string; release?: string; client?: string | null } }>("/api/import/movie-plan", async (req) => {
+app.post<{ Body: { movieId: number; path: string; release?: string; client?: string | null; grabId?: number | null } }>("/api/import/movie-plan", async (req) => {
   const b = req.body ?? ({} as never);
   if (!id(b.movieId) || !b.path) throw fail("movieId and path are required", 400);
-  return planMovieImport({ movieId: Number(b.movieId), path: String(b.path), release: b.release, client: b.client ?? null });
+  return planMovieImport({ movieId: Number(b.movieId), path: String(b.path), ...grabSource(b) });
 });
 app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/rename", async (req) => renamePlan(id(req.params.tvdbId)));
 app.post<{ Params: { tvdbId: string }; Body: { fileIds: number[] } }>("/api/series/:tvdbId/rename", async (req) => {
@@ -1122,7 +1127,7 @@ app.post<{ Params: { id: string } }>("/api/grabs/:id/next", async (req) => {
 app.post<{ Body: { movieId: number; path: string; grabId?: number | null } }>("/api/import/movie-run", async (req) => {
   writable();
   const grabId = req.body?.grabId ? Number(req.body.grabId) : undefined;
-  const plan = await planMovieImport({ movieId: id(req.body?.movieId), path: String(req.body?.path ?? "") });
+  const plan = await planMovieImport({ movieId: id(req.body?.movieId), path: String(req.body?.path ?? ""), ...grabSource(req.body ?? {}) });
   const results = await executeMovieImport(plan, { grabId });
   if (grabId && results.length && results.every((r) => r.done)) await finishGrabByHand(grabId, plan.title);
   return { plan, results };
