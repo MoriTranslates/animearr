@@ -9,7 +9,7 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:24-alpine
 LABEL org.opencontainers.image.title="AnimeArr" \
-      org.opencontainers.image.description="Anime-first companion for Sonarr/Radarr/Prowlarr" \
+      org.opencontainers.image.description="Anime-first library manager (works with Sonarr, Radarr and Prowlarr)" \
       org.opencontainers.image.source="https://github.com/MoriTranslates/animearr" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 # ffprobe is used to verify downloaded files.

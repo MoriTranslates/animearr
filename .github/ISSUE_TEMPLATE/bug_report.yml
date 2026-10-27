@@ -1,0 +1,46 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please **remove API keys, passwords and private addresses** from anything you paste.
+        Security problems: please don't file them here, see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: AnimeArr version
+      description: Shown at the bottom of every page (e.g. 0.9.0-beta).
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where does it run?
+      options: [Unraid, Synology, TrueNAS SCALE, Docker on Linux, Docker Desktop (Windows/macOS), Raspberry Pi / ARM, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Screenshots help a lot (the Activity entry, its "Details", or the Queue item).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open …  2. Click …  3. See …"
+  - type: textarea
+    id: release
+    attributes:
+      label: Release name(s) involved (if any)
+      description: For wrong matches or language checks, the exact release name and the show/episode it was meant for.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: "`docker logs animearr --tail 200` (check for keys first)."
+      render: text
