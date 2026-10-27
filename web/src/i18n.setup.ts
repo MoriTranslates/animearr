@@ -28,6 +28,8 @@ export const setupStrings = {
   "media.permissionsHelp": "Only if other apps (Plex, your PC) can't open the files AnimeArr imports. Most setups, Unraid included, leave this off.",
   "media.chmodHelp": "Who may read and change new folders, as a number: 775 = you and your group can change them, everyone can read.",
   "media.chownHelp": "Optional: the group new files belong to (e.g. users). Leave empty if unsure.",
+  "jackett.needUrl": "Enter Jackett's address first, e.g. http://192.168.1.10:9117",
+  "jackett.needKey": "Enter Jackett's API key first (top right of Jackett's page).",
   "dl.thresholdGb": "is over (GB)",
   "dl.thresholdItems": "is over",
   "job.anidb": "AniDB titles download",

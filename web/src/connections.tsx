@@ -302,7 +302,7 @@ function PrimaryFields({ k, draft, set }: { k: Key; draft: S; set: (fn: (x: S) =
     <div className="form">
       <label>
             {t("settings.url")}
-            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : "http://192.168.1.10:8989"} />
+            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : k === "radarr" ? "http://192.168.1.10:7878" : k === "plex" ? "http://192.168.1.10:32400" : "http://192.168.1.10:8989"} />
           </label>
           {k === "qbittorrent" ? (
             <>

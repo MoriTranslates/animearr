@@ -559,12 +559,17 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
   const [key, setKey] = useState("");
   const [list, setList] = useState<{ id: string; name: string; type: string; language: string; feed: string; added: boolean }[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // Shown in the dialog (a toast could hide behind it); empty fields are said, not silently ignored.
+  const [err, setErr] = useState<string | null>(null);
   const load = async () => {
+    setErr(null);
+    if (!url.trim()) return setErr(t("jackett.needUrl"));
+    if (!key.trim()) return setErr(t("jackett.needKey"));
     setBusy(true);
     try {
       setList((await api<{ trackers: NonNullable<typeof list> }>("/jackett/trackers", { body: { url, apiKey: key } })).trackers);
     } catch (e) {
-      toast((e as Error).message, true);
+      setErr((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -582,9 +587,14 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
           <SecretInput value={key} onChange={setKey} label={t("settings.apiKey")} />
         </label>
       </div>
-      <button className="self-start" disabled={busy || !url || !key} onClick={() => void load()}>
-        {t("jackett.load")}
+      <button className="self-start" disabled={busy} onClick={() => void load()}>
+        {busy ? t("common.working") : t("jackett.load")}
       </button>
+      {err && (
+        <p className="warn-text small" role="alert">
+          <ErrorText msg={err} />
+        </p>
+      )}
       {list && !list.length && <p className="muted small">{t("jackett.none")}</p>}
       {list && !!list.length && (
         <ul className="plain stack">
