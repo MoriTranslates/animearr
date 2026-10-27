@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { PhonePanel } from "../phone";
-import { applyFont } from "../appearance";
+import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
@@ -253,6 +253,7 @@ function Appearance() {
           </select>
           <span className="muted small">{t("appearance.paletteHelp")}</span>
         </label>
+        <TextSize />
         <label>
           {t("appearance.font")}
           <select
@@ -943,6 +944,47 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
         </label>
         <p className="muted small">{t("security.bypassHelp")}</p>
       </div>
+    </div>
+  );
+}
+
+/** Text size, per device (this browser), with an optional "save as my default" for new devices. */
+function TextSize() {
+  const toast = useToast();
+  const [k, setK] = useState(() => store.get<string>("textScale", "md"));
+  const pick = (v: string) => {
+    setK(v);
+    store.set("textScale", v);
+    applyTextScale(v);
+  };
+  return (
+    <div className="text-size field">
+      <span>{t("appearance.textSize")}</span>
+      <div className="seg" role="group" aria-label={t("appearance.textSize")}>
+        {TEXT_SCALES.map((x) => (
+          <button key={x.key} type="button" aria-pressed={k === x.key} onClick={() => pick(x.key)}>
+            {t(`appearance.textSize.${x.key}` as I18nKey)}
+          </button>
+        ))}
+      </div>
+      <p className="preview">{t("appearance.textSize.preview")}</p>
+      <div className="row">
+        <button
+          type="button"
+          className="small ghost"
+          onClick={async () => {
+            try {
+              await api("/settings", { method: "PUT", body: { ui: { textScale: k } } });
+              toast(t("appearance.textSize.saved"));
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          {t("appearance.textSize.default")}
+        </button>
+      </div>
+      <span className="muted small">{t("appearance.textSize.help")}</span>
     </div>
   );
 }

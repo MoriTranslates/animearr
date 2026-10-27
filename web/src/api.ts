@@ -54,6 +54,8 @@ export interface Status {
   librarySeries?: number;
   warnings?: string[];
   uiLanguage?: string;
+  /** The saved default text size (a device's own choice wins). */
+  textScale?: string | null;
   defaultPassword?: boolean;
   bypassLocal?: boolean;
   queue?: { active: number; attention: number };

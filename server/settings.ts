@@ -263,7 +263,7 @@ export interface Settings {
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
-  ui: { language: string };
+  ui: { language: string; /** Text size for devices that haven't picked their own (sm/md/lg/xl). */ textScale?: string };
   auth: { username: string; passwordHash: string; bypassLocal: boolean };
   /** Admin API key, accepted only in the X-Api-Key header. */
   apiKey: string;
@@ -352,7 +352,7 @@ const DEFAULTS: Settings = {
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
   externalUrl: "",
-  ui: { language: "en" },
+  ui: { language: "en", textScale: "md" },
   auth: { username: "", passwordHash: "", bypassLocal: false },
   apiKey: "",
   secret: "",

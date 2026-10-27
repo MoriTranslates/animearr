@@ -24,3 +24,16 @@ export function exclaimMode(): Exclaim {
   const v = store.get<string>("exclaim", "sometimes");
   return v === "off" || v === "always" ? v : "sometimes";
 }
+
+/** Text size steps: Small 90 %, Default 100 %, Large 112.5 %, Extra large 125 %. */
+export const TEXT_SCALES = [
+  { key: "sm", scale: 0.9 },
+  { key: "md", scale: 1 },
+  { key: "lg", scale: 1.125 },
+  { key: "xl", scale: 1.25 },
+] as const;
+export type TextScale = (typeof TEXT_SCALES)[number]["key"];
+export function applyTextScale(k: string | null | undefined) {
+  const s = TEXT_SCALES.find((x) => x.key === k)?.scale ?? 1;
+  document.documentElement.style.setProperty("--text-scale", String(s));
+}

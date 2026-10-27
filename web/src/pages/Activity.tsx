@@ -89,10 +89,14 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const steps = [...ev.items].sort((a, b) => a.at - b.at || a.id - b.id);
-  const lead = [...ev.items].sort((a, b) => b.at - a.at || b.id - a.id).find((x) => PROBLEM.has(x.kind) && !x.undoneAt) ?? ev.items.find((x) => kindOf(x) !== "plex") ?? ev.items[0];
+  // The headline is the newest meaningful step: a problem, the final import, or the grab (not a clean-up note).
+  const newest = [...ev.items].sort((a, b) => b.at - a.at || b.id - a.id);
+  const meaningful = (x: Decision) => (PROBLEM.has(x.kind) && !x.undoneAt) || (x.kind === "import" && !!(x.detail as { final?: boolean } | null)?.final) || x.kind === "grab" || x.kind === "would-grab";
+  const lead = newest.find(meaningful) ?? newest.find((x) => kindOf(x) !== "plex" && x.kind !== "info") ?? newest[0];
   const k = kindOf(lead);
   const release = ev.items.find((x) => x.release)?.release ?? null;
-  const fixes = ev.items.find((x) => x.fixes?.length)?.fixes;
+  // Fix buttons only while the problem is the latest word (a later successful import settles it).
+  const fixes = PROBLEM.has(lead.kind) ? ev.items.find((x) => x.fixes?.length)?.fixes : undefined;
   const undoable = ev.items.filter((x) => x.undo && !x.undoneAt);
   const track = steps.length > 1 ? [...new Map(steps.map((x) => [kindOf(x), x])).values()] : [];
   const cover = ev.items.find((x) => x.cover)?.cover ?? null;
@@ -100,7 +104,7 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
   const tone = KIND_TONE[k] ?? "info";
   const sub = subline(lead, release);
   return (
-    <article className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}`}>
+    <article className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}`}>
       {link ? (
         <Link to={link} className="event-thumb">
           {cover ? <img src={thumbUrl(cover, "sm")} alt="" loading="lazy" /> : <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>}

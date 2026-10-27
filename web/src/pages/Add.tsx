@@ -82,7 +82,8 @@ export function Add() {
   return (
     <section className="stack">
       <h1>{t("find.title")}</h1>
-      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.placeholder")} aria-label={t("find.title")} autoFocus className="add-search" />
+      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.placeholder")} aria-label={t("find.title")} aria-describedby="find-help" autoFocus className="add-search" />
+      <p id="find-help" className="muted small field-hint">{t("add.help")}</p>
       {debounced.length < 2 && (
         <div className="stack">
           {!!recent().length && (
@@ -108,7 +109,6 @@ export function Add() {
               <span className="muted small">{t("find.identifyHelp")}</span>
             </Link>
           </div>
-          <p className="muted small">{t("add.help")}</p>
         </div>
       )}
       {debounced.length >= 2 && !!hits.length && (

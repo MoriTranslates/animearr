@@ -21,7 +21,7 @@ import { Settings } from "./pages/Settings";
 import { Show } from "./pages/Show";
 import { Shows } from "./pages/Shows";
 import { ToastProvider, useToast } from "./ui";
-import { applyFont } from "./appearance";
+import { applyFont, applyTextScale } from "./appearance";
 import { applySeason, seasonOf } from "./season";
 import { CalendarDays, Download, Ellipsis, History, House, LibraryBig, ListFilter, ListOrdered, ScanSearch, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sparkles } from "lucide-react";
 
@@ -79,6 +79,7 @@ export function applyTheme(theme: string) {
   // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
   document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
   applyFont(store.get<string>("font", "inter"));
+  applyTextScale(store.get<string>("textScale", "md"));
   // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
   document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
 }
@@ -101,6 +102,7 @@ export function App() {
     try {
       const s = await api<Status>("/status");
       setLanguage(s.uiLanguage ?? "en");
+      if (s.textScale && store.get<string | null>("textScale", null) === null) applyTextScale(s.textScale);
       setStatus(s);
       setError(null);
     } catch (e) {
