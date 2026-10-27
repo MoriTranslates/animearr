@@ -1023,7 +1023,7 @@ app.put<{ Params: { tvdbId: string }; Body: { action?: string } }>("/api/fillin/
 });
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
   writable();
-  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
   return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
 });
 app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wanted", async (req) => {
@@ -1034,7 +1034,8 @@ app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wante
 });
 app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:id/autosearch", async (req) => {
   writable();
-  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  // The same indexers as "Pick a version…" (Prowlarr or AnimeArr's own), not Prowlarr only.
+  if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
   return autoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
 });
 app.get("/api/files/summary", async () => fileSummary());
