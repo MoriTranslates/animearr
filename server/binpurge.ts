@@ -20,6 +20,8 @@ const DAY = 86_400_000;
 export function binFolder(): { local: string } | { error: string } {
   const bin = getSettings().media.recycleBin.trim().replace(/\/+$/, "");
   if (!bin) return { error: "no recycling bin is set" };
+  if (!bin.startsWith("/")) return { error: `the recycling bin "${bin}" isn't an absolute path` };
+  if (!libraryRoots().length) return { error: "the library isn't synced yet, so AnimeArr can't check the bin is outside it" };
   const local = path.resolve(mappedPath(bin));
   const depth = local.split(/[\\/]+/).filter(Boolean).length;
   if (bin === "" || bin === "/" || depth < 2) return { error: `the recycling bin "${bin}" is too close to the root of the disk` };

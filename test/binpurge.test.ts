@@ -8,6 +8,9 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 const { patchSettings } = await import("../server/settings.js");
+const { cache } = await import("../server/db.js");
+// The library (so the bin can be checked against it).
+cache.prepare("INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, synced_at) VALUES (1, 1, 'Show', '/media/Anime/Show', '/media/Anime', 1, 0)").run();
 const { purgeBin, noteBinned, binFolder } = await import("../server/binpurge.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-binf-"));

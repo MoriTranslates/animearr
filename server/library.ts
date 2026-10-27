@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { localPath } from "./paths.js";
 /**
  * Import / sync of the existing Sonarr and Radarr libraries into cache.db (companion mode: Sonarr stays the source of
  * truth for files). Read-only towards Sonarr/Radarr: nothing here changes their settings or data.
@@ -187,7 +189,16 @@ async function syncRadarr() {
     }
   });
   // Multi-part movies AnimeArr imported: Radarr doesn't see stacked parts, so its "no file" doesn't count.
-  for (const r of db.prepare("SELECT movie_id, file FROM movie_parts").all() as { movie_id: number; file: string }[]) cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ? AND has_file = 0").run(r.file, r.movie_id);
+  for (const r of db.prepare("SELECT movie_id, file FROM movie_parts").all() as { movie_id: number; file: string }[]) {
+    const parts = ((JSON.parse(r.file) as { parts?: string[] }).parts ?? []).map((p) => localPath(p));
+    // Parts deleted or replaced (or Radarr has its own file now): the record goes.
+    const has = cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(r.movie_id) as { has_file: number } | undefined;
+    if (has?.has_file || !parts.length || parts.some((p) => !p || !fs.existsSync(p))) {
+      db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
+      continue;
+    }
+    cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ? AND has_file = 0").run(r.file, r.movie_id);
+  }
   return n;
 }
 

@@ -600,6 +600,8 @@ const en = {
   "appearance.textSize.default": "Save as my default",
   "appearance.textSize.saved": "Saved: new devices start with this size",
   "appearance.textSize.help": "Applies to this device right away. Your browser zoom and system text size still apply on top.",
+  "replace.code.short": "too short (sample?)",
+  "replace.code.no-dub": "without the dub",
   "nav.home": "Home",
   "nav.managed": "Managed",
   "nav.shows": "Shows",

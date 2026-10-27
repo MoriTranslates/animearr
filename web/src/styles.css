@@ -1236,3 +1236,8 @@ h2.eyebrow, h3.eyebrow, .stack > .eyebrow { display: block; margin: var(--space-
 @media (max-width: 1100px) { .proto-cols { grid-template-columns: minmax(0, 1fr); } }
 .glass-btn { max-width: 100%; white-space: normal; text-align: left; }
 .hero-actions { flex-wrap: wrap; }
+
+/* Badges and tags grow with the text size instead of clipping it */
+.nav-badge, .bell-count { height: auto; min-height: 18px; padding-top: 1px; padding-bottom: 1px; }
+.tag { height: auto; min-height: 22px; }
+.tag.inline { height: auto; min-height: 18px; }

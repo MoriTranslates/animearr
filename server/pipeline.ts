@@ -665,11 +665,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         logDecision("fail", { tvdbId: row.tvdb_id, title: series.title, episodeIds: kept.map((k) => k.id), release: row.release, why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`, detail: { grabId: row.id } });
       }
       const keptNow = new Set(kept.map((k) => k.id));
-      // Episodes that kept their old file may still need this download (fix the cause, then Retry import): keep it.
-      return finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
+      // Episodes that kept their old file may still need this download: it stays, and the grab waits in "needs
+      // attention" so Retry import can finish them once the cause is fixed.
+      await finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
+      if (kept.length) setState(row.id, "needs-attention", `Replace season: ${kept.length} episode(s) kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}); fix the cause, then Retry import`);
+      return;
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
   }
+  if (replacing) return attention("Replace season needs AnimeArr's own importer (Settings → Media management → Importer)");
   const cmd = await deps.sonarr.importFiles(files, unpacked ? "move" : importModeFor(row.client));
   logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file(s) as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
   let status = "queued";

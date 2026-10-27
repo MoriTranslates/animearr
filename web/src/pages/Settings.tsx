@@ -951,7 +951,7 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
 /** Text size, per device (this browser), with an optional "save as my default" for new devices. */
 function TextSize() {
   const toast = useToast();
-  const [k, setK] = useState(() => store.get<string>("textScale", "md"));
+  const [k, setK] = useState(() => store.get<string | null>("textScale", null) ?? (window as unknown as { __textScaleDefault?: string }).__textScaleDefault ?? "md");
   const pick = (v: string) => {
     setK(v);
     store.set("textScale", v);

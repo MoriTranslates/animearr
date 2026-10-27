@@ -79,7 +79,9 @@ export function applyTheme(theme: string) {
   // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
   document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
   applyFont(store.get<string>("font", "inter"));
-  applyTextScale(store.get<string>("textScale", "md"));
+  // The device's own text size; without one, the saved default (applied when the status arrives).
+  const ts = store.get<string | null>("textScale", null);
+  if (ts) applyTextScale(ts);
   // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
   document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
 }
@@ -102,7 +104,10 @@ export function App() {
     try {
       const s = await api<Status>("/status");
       setLanguage(s.uiLanguage ?? "en");
-      if (s.textScale && store.get<string | null>("textScale", null) === null) applyTextScale(s.textScale);
+      if (store.get<string | null>("textScale", null) === null) {
+        applyTextScale(s.textScale ?? "md");
+        (window as unknown as { __textScaleDefault?: string }).__textScaleDefault = s.textScale ?? "md";
+      }
       setStatus(s);
       setError(null);
     } catch (e) {

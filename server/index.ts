@@ -698,11 +698,16 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });
   const fallbacks = cached.results.filter((r) => r !== pick && r.rank.accept && r.coversTarget).map(toCand);
   // Replace season: only season packs as fallbacks (a single episode can't replace a season).
+  if (req.body?.replace === true && pick.episodeIds.length < 2) throw fail("Replace season needs a season pack (this release has one episode)", 400);
   if (req.body?.replace === true) return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks: fallbacks.filter((f) => f.episodeIds.length > 1), origin: "manual", purpose: "replace" });
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
 /** Replace season: what would be replaced, and why (for the confirm). */
-app.get<{ Params: { tvdbId: string }; Querystring: { season?: string } }>("/api/series/:tvdbId/replace-season", async (req) => replaceSeasonPreview(id(req.params.tvdbId), Number(req.query.season ?? 1)));
+app.get<{ Params: { tvdbId: string }; Querystring: { season?: string } }>("/api/series/:tvdbId/replace-season", async (req) => {
+  const season = Number(req.query.season ?? 1);
+  if (!Number.isInteger(season) || season < 0) throw fail("Pick a season", 400);
+  return replaceSeasonPreview(id(req.params.tvdbId), season);
+});
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());

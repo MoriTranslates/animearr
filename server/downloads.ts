@@ -22,6 +22,7 @@ import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "./arr/
 import { cache, db, dbState } from "./db.js";
 import { clientToSonarr, mappedPath } from "./paths.js";
 import { ACTIVE, retryImport } from "./pipeline.js";
+import { libraryRoots } from "./mediafiles.js";
 import { getSettings } from "./settings.js";
 
 export interface FolderRule {
@@ -295,6 +296,12 @@ function seedingDone(t: OwnTorrent, now = Date.now()) {
 const NOT_RETRYABLE = /paused for a review|restarted|outside the allowed|several large|couldn't tell|two files|can't reach|archive|not from AnimeArr|only a manual import/i;
 const retried = new Set<number>();
 
+/** A library or allowed root (or inside one): never deleted by the clean-up, whatever a client says. */
+function inProtected(local: string) {
+  const p = path.resolve(local);
+  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
+  return roots.some((r) => p === r || p.startsWith(r + path.sep));
+}
 const failedAt = (grabId: number) => (db.prepare("SELECT updated_at FROM grabs WHERE id = ?").get(grabId) as { updated_at: number } | undefined)?.updated_at ?? null;
 
 /** The clean-up plan for AnimeArr's own download folders. Nothing is changed. */
@@ -349,7 +356,7 @@ export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now()
   // through qBittorrent (which deletes its own data) on the same rules; torrents no grab knows are left alone.
   if (!m.unreadable.includes("qbittorrent"))
     for (const o of m.outside ?? []) {
-      if (!o.grab) continue;
+      if (!o.grab || inProtected(mappedPath(clientToSonarr(o.t.contentPath)))) continue;
       const stopped = /^(pausedUP|stoppedUP)$/.test(o.t.state) || seedingDone(o.t, now);
       if (o.grab.state === "done" && stopped) actions.push({ step: "leftover", target: clientToSonarr(o.t.contentPath), why: `imported, and seeding is done (ratio ${o.t.ratio.toFixed(2)}); removed through qBittorrent`, bytes: o.t.size, grabId: o.grab.id, client: "qbittorrent", ref: o.t.hash, destructive: true });
       else if (o.grab.state === "failed" && now - (failedAt(o.grab.id) ?? now) > 3_600_000 && (stopped || /^(pausedDL|stoppedDL|error|missingFiles)$/.test(o.t.state))) actions.push({ step: "leftover", target: clientToSonarr(o.t.contentPath), why: "a failed/rejected download; removed with its data through qBittorrent", bytes: o.t.size, grabId: o.grab.id, client: "qbittorrent", ref: o.t.hash, destructive: true });
@@ -389,7 +396,7 @@ export async function runCleanup(opts: { only?: CleanupAction["step"][]; userAsk
     try {
       const local = mappedPath(a.target);
       // A torrent is removed through qBittorrent (its own data, its category checked there); folders only inside ours.
-      const viaClient = a.step === "leftover" && a.client === "qbittorrent" && !!a.ref;
+      const viaClient = a.step === "leftover" && a.client === "qbittorrent" && !!a.ref && !inProtected(local);
       if (a.step !== "retry" && !viaClient && !inside(local)) throw new Error("outside AnimeArr's own download folders");
       if (a.grabId && a.step !== "retry") {
         const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(a.grabId) as { state: string } | undefined;
@@ -457,7 +464,8 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
     if (g.client === "qbittorrent") {
       const t = (await deps.torrents()).find((x) => x.hash.toLowerCase() === g.client_ref!.toLowerCase());
       if (!t) return null;
-      if (outcome === "rejected" || seedingDone(t)) {
+      const rejectedLongEnough = outcome === "rejected" && Date.now() - (failedAt(g.id) ?? Date.now()) > 3_600_000;
+      if (rejectedLongEnough || (outcome === "imported" && seedingDone(t))) {
         await deps.remove({ client: "qbittorrent", ref: t.hash });
         did = outcome === "rejected" ? "removed the rejected torrent and its data" : "removed the torrent (seeding done)";
       } else did = null; // still seeding: the sweep removes it when the seeding rules are met
@@ -467,7 +475,8 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
       const local = mappedPath(clientToSonarr(h.storage));
       const rootsLocal = roots().map((r) => r.local);
       if (!rootsLocal.some((r) => path.resolve(local).startsWith(path.resolve(r) + path.sep))) return null;
-      if (fs.existsSync(local)) {
+      // Like the sweep: only when no video is left (a pack's unimported files stay for you to look at).
+      if (fs.existsSync(local) && !listVideos(local).length) {
         fs.rmSync(local, { recursive: true, force: true });
         did = "deleted the download folder";
       }

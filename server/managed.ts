@@ -268,7 +268,8 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const weight = profileFor(st.tvdb_id).groupConsistency ?? "prefer";
   const sid = (cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(st.tvdb_id) as { id: number } | undefined)?.id;
   const sg = sid !== undefined ? seasonGroupOf(sid, season, weight, [st.episode_id]) : null;
-  if (sg && ok.length && !ok.some((r) => r.group?.toLowerCase() === sg.group.toLowerCase())) {
+  // Only when the season's group hasn't posted at all (a release of it that was rejected is no reason to wait).
+  if (sg && ok.length && !res.results.some((r) => r.group?.toLowerCase() === sg.group.toLowerCase())) {
     const air = (cache.prepare("SELECT air_utc FROM episodes WHERE id = ?").get(st.episode_id) as { air_utc: number | null } | undefined)?.air_utc ?? null;
     const until = air !== null ? air + (sg.weight === "strong" ? 72 : 24) * 3_600_000 : 0;
     if (until > now) {

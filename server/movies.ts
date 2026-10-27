@@ -497,6 +497,8 @@ async function importParts(
 ) {
   const native = isNativeMovieId(m.id);
   const runtime = live.runtime ?? m.runtime ?? null;
+  // Without the movie's runtime nothing proves these are its parts (they could be two episodes).
+  if (!runtime) return attention(`the download has ${parts.length} numbered parts, but the movie's runtime isn't known to check them against; import them by hand`);
   let total = 0;
   for (const [i, p] of parts.entries()) {
     const local = deps.localPath(p.path);
@@ -512,6 +514,7 @@ async function importParts(
   const imp = getSettings().importer;
   if (!native && imp.engine === "sonarr") return attention(`a ${parts.length}-part movie is imported by AnimeArr's own importer (Settings → Media management → Importer)`);
   if (!imp.allowReal || !imp.movies) return attention("real movie imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
+  if (!((imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= parts.length)) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
   try {
     const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
     const plans = [];

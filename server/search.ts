@@ -123,9 +123,6 @@ export function comboQueries(titles: string[], libraryTitle: string, max = 3): s
  * with its source, when the profile wants consistency. Files being replaced still count (they show the season's style
  * only if most agree; a mixed season has no clear group).
  */
-/** Per search: the season group of each season seen (set by deepSearch, read by knownFor). */
-const seasonGroupMemo = new Map<string, Known["seasonGroup"]>();
-
 export function seasonGroupOf(seriesId: number, season: number | null, weight: "off" | "prefer" | "strong" = "prefer", exclude: number[] = []): Known["seasonGroup"] {
   if (weight === "off" || season === null) return null;
   const rows = cache.prepare("SELECT e.id, e.episode, f.release_group AS grp, f.scene_name AS scene FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? ORDER BY e.episode").all(seriesId, season) as { id: number; episode: number; grp: string | null; scene: string | null }[];
@@ -147,7 +144,7 @@ export function seasonGroupOf(seriesId: number, season: number | null, weight: "
   return { group: name, source: best[1].source, weight };
 }
 
-function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean): Known {
+function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean, groups?: Map<string, Known["seasonGroup"]>): Known {
   const k: Known = {};
   const prof = profileFor(series.tvdbId);
   for (const lang of prof.subLangs) {
@@ -159,7 +156,7 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   const scene = cache.prepare("SELECT 1 FROM files WHERE series_id = ? AND scene_name = ? LIMIT 1").get(series.id, r.title.replace(/-xpost$/i, ""));
   if (scene) k.inLibrary = true;
   k.indexerHealth = indexerHealth(r.indexerId);
-  k.seasonGroup = seasonGroupMemo.get(`${series.id}:${season}`) ?? null;
+  k.seasonGroup = groups?.get(`${season}`) ?? null;
   return k;
 }
 
@@ -221,7 +218,9 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const romaji = entry ? ctx.index.anidbTitle(entry.aid) : null;
   // Group consistency: the season's group, per season of the targets (not counting the episodes being replaced).
   const weight = profileFor(tvdbId).groupConsistency ?? "prefer";
-  for (const s of new Set(all.map((e) => e.season))) seasonGroupMemo.set(`${series.id}:${s}`, seasonGroupOf(series.id, s, weight, targets.map((t) => t.id)));
+  // Per search (concurrent searches don't share it); only the seasons this search is about.
+  const groups = new Map<string, Known["seasonGroup"]>();
+  for (const s of new Set(targets.map((e) => e.season))) groups.set(`${s}`, seasonGroupOf(series.id, s, weight, targets.map((t) => t.id)));
   const seasonSize = new Map<number, number>();
   for (const e of all) seasonSize.set(e.season, (seasonSize.get(e.season) ?? 0) + 1);
   const tier1 = [...tier1Queries(series.title, romaji, targets, seasonSize), ...(opts.extraQueries ?? [])];
@@ -256,7 +255,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
       return;
     }
     const ss = eps[0]?.season ?? null;
-    const known = knownFor(r, series, ss, !id.parsed.group);
+    const known = knownFor(r, series, ss, !id.parsed.group, groups);
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
     const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length, runtimeMin: runtimeOf.get(eps[0]?.id) ?? null }, prof, learned, known);
     results.push({

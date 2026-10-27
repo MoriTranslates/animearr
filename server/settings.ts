@@ -375,6 +375,7 @@ const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "p
 const SEASONS = ["all", "first", "latest", "recent"];
 const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 const ENUMS: Record<string, readonly string[]> = {
+  "ui.textScale": ["sm", "md", "lg", "xl"],
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
