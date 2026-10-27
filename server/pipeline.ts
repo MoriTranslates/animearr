@@ -210,7 +210,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   refuseDropped(req.tvdbId); // a show the user dropped is never grabbed, whoever asks
   if (!underAllowedRoot(series.path)) {
     const roots = getSettings().allowedRoots;
-    throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you allowed in Settings → Safety.`), { statusCode: 403 });
+    throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you chose in Settings → Automation & safety → Library folders.`), { statusCode: 403 });
   }
   const c = req.candidate;
   const dryRun = req.origin === "manual" ? getSettings().managed.dryRun || (!!req.automatic && managedDryRun(req.tvdbId) === true) : isDryRun(managedDryRun(req.tvdbId));
@@ -612,7 +612,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       unpackRel = `${folder}/${UNPACK_DIR}/${row.id}/`;
       logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: wanted, release: row.release, why: `Unpacked ${row.release}: ${x.files.length} video file(s)`, detail: { grabId: row.id } });
     }
-  } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Safety, or unpack it by hand`);
+  } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Automation & safety, or unpack it by hand`);
   // Folder only: given a seriesId, Sonarr's preview ignores the folder and lists the series' library files instead.
   // A native show (added in AnimeArr) has no Sonarr: the folder is listed here.
   const native = isNativeSeriesId(series.id);

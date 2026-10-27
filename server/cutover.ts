@@ -184,8 +184,8 @@ export async function cutoverPlan(deps = { sonarrLists: sonarr.getImportLists, s
   const checklist: { item: string; ok: boolean; detail: string }[] = [];
   checklist.push({ item: "AnimeArr imports by itself", ok: s.importer.engine === "animearr" && s.importer.allowReal && s.importer.movies, detail: "required for the switch: Settings → Media management → Importer (own importer, real imports, movie imports)" });
   checklist.push({ item: "No review pause on imports", ok: s.importer.realBudget < 0, detail: `real-import budget is ${s.importer.realBudget < 0 ? "unlimited" : s.importer.realBudget}; shows only AnimeArr has wait in "needs attention" while it's paused` });
-  checklist.push({ item: "AnimeArr scans its library files", ok: s.library.scan, detail: "Settings → Safety → Library files: needed so AnimeArr knows every file" });
-  checklist.push({ item: "Plex scans after AnimeArr's imports", ok: s.plex.enabled && !!s.plex.url, detail: "Settings → Connections → Plex (Sonarr's/Radarr's Plex connection won't see AnimeArr's imports)" });
+  checklist.push({ item: "AnimeArr scans its library files", ok: s.library.scan, detail: "Settings → System → Library files: needed so AnimeArr knows every file" });
+  checklist.push({ item: "Plex scans after AnimeArr's imports", ok: s.plex.enabled && !!s.plex.url, detail: "Settings → Media servers (Sonarr's/Radarr's Plex connection won't see AnimeArr's imports)" });
   try {
     const lists = (await deps.sonarrLists()).filter((l) => l.enabled !== false && l.enableAutomaticAdd !== false);
     checklist.push({ item: "Sonarr import lists", ok: !lists.length, detail: lists.length ? `${lists.map((l) => l.name).join(", ")} could add anime back (removed shows get an import-list exclusion)` : "none adding automatically" });

@@ -804,7 +804,7 @@ app.post("/api/downloads/cleanup/plan", async () => {
 });
 app.post<{ Body: { only?: string[] } }>("/api/downloads/cleanup/run", async (req) => {
   writable();
-  if (getSettings().downloads.cleanup === "off") throw fail("The clean-up is switched off (Settings → Downloads)", 409);
+  if (getSettings().downloads.cleanup === "off") throw fail("The clean-up is switched off (Settings → Download folders)", 409);
   const steps = ["retry", "leftover", "quarantine"] as const;
   const only = req.body?.only?.filter((x): x is (typeof steps)[number] => (steps as readonly string[]).includes(x));
   return { results: await runCleanup({ only, userAsked: true }) };

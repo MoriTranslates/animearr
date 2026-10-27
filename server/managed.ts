@@ -114,7 +114,7 @@ export function setManaged(tvdbIds: number[], on: boolean, opts: { live?: boolea
       const r = db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO NOTHING").run(tvdbId, s.id, s.title, live ? 0 : 1, Date.now());
       if (r.changes) {
         changed++;
-        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr${live ? "" : " (in dry run: it only logs what it would grab; Settings → Safety → Dry run)"}`, undo: { action: "unmanage", args: { tvdbId } } });
+        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr${live ? "" : " (in dry run: it only logs what it would grab; Settings → Automation & safety → Practice mode)"}`, undo: { action: "unmanage", args: { tvdbId } } });
       }
     } else {
       const r = db.prepare("DELETE FROM managed WHERE tvdb_id = ?").run(tvdbId);

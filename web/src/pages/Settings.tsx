@@ -632,6 +632,9 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
         <label className="field">
           {t("plex.token")}
           <SecretInput value={p.token} onChange={(v) => set({ token: v })} label={t("plex.token")} />
+          <a className="small" href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noreferrer">
+            {t("plex.tokenLink")} ↗
+          </a>
         </label>
         <Toggle checked={p.enabled} onChange={(v) => set({ enabled: v })} label={t("plex.enabled")} />
       </div>
@@ -774,11 +777,17 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
             </button>
           </span>
           <span className="muted small">{t("meta.tmdbHelp")}</span>
+          <a className="small" href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">
+            {t("meta.tmdbLink")} ↗
+          </a>
         </label>
         <label>
           {t("meta.anidb")}
           <input value={m.anidbClient} onChange={(e) => setM((x) => ({ ...x, anidbClient: e.target.value }))} placeholder="animearr" />
           <span className="muted small">{t("meta.anidbHelp")}</span>
+          <a className="small" href="https://anidb.net/software/add" target="_blank" rel="noreferrer">
+            {t("meta.anidbLink")} ↗
+          </a>
         </label>
         <label>
           {t("meta.anidbVer")}

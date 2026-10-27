@@ -397,7 +397,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   const m = movieById(req.movieId);
   if (!m) throw Object.assign(new Error("Unknown movie; sync the library first"), { statusCode: 404 });
   if (!underAllowedRoot(m.path)) {
-    throw Object.assign(new Error(`${m.title} is in ${path.posix.dirname(m.path)}, which is not an allowed root folder. AnimeArr only grabs and imports movies inside the root folders you allowed in Settings → Safety.`), { statusCode: 403 });
+    throw Object.assign(new Error(`${m.title} is in ${path.posix.dirname(m.path)}, which is not an allowed root folder. AnimeArr only grabs and imports movies inside the root folders you chose in Settings → Automation & safety → Library folders.`), { statusCode: 403 });
   }
   // Never replace a library file unless the user asked for exactly that.
   if (m.has_file && !req.replace) throw Object.assign(new Error(`${m.title} already has a file; confirm replacing it`), { statusCode: 409 });
