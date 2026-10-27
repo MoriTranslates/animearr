@@ -15,7 +15,7 @@ An anime-first, phone-first companion for Sonarr, Radarr and Prowlarr. v0.1 is t
 - grabs with confirmation, imports through Sonarr with explicit episode IDs, then verifies the file;
 - "Managed shows" for the current season, with dry-run on by default.
 
-See [PROPOSAL.md](PROPOSAL.md) (release plan at the top) and [BACKLOG.md](BACKLOG.md).
+See [BACKLOG.md](BACKLOG.md) for what is planned.
 
 ## Run locally
 
@@ -25,9 +25,8 @@ npm run dev        # builds the web UI, then runs the server on http://localhost
 npm test           # parser, resolver, ranking and pipeline tests
 ```
 
-Docker: `docker build -t animearr .` then run with `-p 8484:8484 -v /mnt/cache/appdata/animearr:/config`.
-On Unraid, the template in `/boot/config/plugins/dockerMan/templates-user/my-animearr.xml` (br0, 192.168.1.13:8484) also mounts
-the downloads (`/data`) and anime libraries (`/media/Anime`, `/media/AnimeArr`) read-only, at the same paths Sonarr uses, so
+Docker: `docker build -t animearr .` then run with `-p 8484:8484 -v /path/to/appdata/animearr:/config`.
+Mount the downloads (e.g. `/data`) and the anime libraries (e.g. `/media/Anime`) at the same paths Sonarr uses, so
 AnimeArr can check files with ffprobe before importing them.
 Keep `/config` on a local disk (on Unraid `/mnt/cache/appdata`, not `/mnt/user`): SQLite can be damaged on network or FUSE filesystems.
 

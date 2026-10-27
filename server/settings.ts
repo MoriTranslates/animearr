@@ -8,7 +8,7 @@ const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: numbe
 export interface PathMapping {
   /** Path as Sonarr / the download client sees it, e.g. /media/Anime or /data. */
   from: string;
-  /** Same place as the other side sees it, e.g. //NAS/Anime (Windows) or /path/to/Anime. */
+  /** Same place as the other side sees it, e.g. //NAS/Anime (Windows) or /srv/media/Anime. */
   to: string;
 }
 

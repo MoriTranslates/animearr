@@ -1,6 +1,6 @@
 # AnimeArr backlog
 
-Ideas that are **not** in the current step, so they aren't lost. The release plan is at the top of [PROPOSAL.md](PROPOSAL.md#release-plan-authoritative-updated-2026-10-25).
+Ideas that are **not** in the current step, so they aren't lost. 
 Rule: each step is complete, tested and in daily use, then hardened, before the next one starts.
 
 ## Must-have before tagging 1.0
@@ -19,9 +19,9 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Importer: stays "through Sonarr/Radarr" with real imports and renames OFF until the first plans are approved; then the switch is Settings → Media management → Importer (each change confirmed)
 - Media management starts from Sonarr's/Radarr's own naming + media-management values (copied once at startup, "Copy settings from Sonarr/Radarr" redoes it), so the takeover renames nothing just because defaults differ. AnimeArr's recycling bin stays its own: /media/Recycle/animearr/, 14 days
 - Recycling-bin retention purge (deleting files older than 14 days from /media/Recycle/animearr/) is NOT active yet: its first run is a cleanup deletion, so it waits for a dry-run report
-- Hardlinks are impossible on the server: Downloads live on the cache pool and Anime on the array (different filesystems under Unraid's /mnt/user), so torrent imports are COPIES. A copy doubles cache usage until the torrent's seeding is done — the download-folder rules' leftover/seeding cleanup must count and remove these imported-and-copied payloads (folder-size metric excludes them while seeding; cleanup removes them after the seeding rules)
+- Hardlinks are impossible when downloads and the library are on different filesystems (e.g. an Unraid cache pool vs. the array), so torrent imports are COPIES there. A copy doubles cache usage until the torrent's seeding is done — the download-folder rules' leftover/seeding cleanup must count and remove these imported-and-copied payloads (folder-size metric excludes them while seeding; cleanup removes them after the seeding rules)
 - Real imports by AnimeArr's own importer run on a budget (Settings → Media management → Importer): 1 for the first one, then a review pause; beyond it, imports go through Sonarr
-- Bulk rename (4,800 files in 378 shows) waits for the user: a taste decision that also touches Plex (rescans) and Tdarr (path-keyed records). Only the Absolute Duo test batch was approved
+- Bulk rename of an existing library waits for the user: a taste decision that also touches Plex (rescans) and Tdarr (path-keyed records). Only the Absolute Duo test batch was approved
 - Recycling-bin auto-empty stays OFF until the user confirms
 - Native Add (shows): a show whose AniList entry maps to a TVDB series becomes that TVDB series (TVDB numbering, all entries mapped to it); anything TVDB doesn't have is added on its own as season 1 under a synthetic id. Specials (TVDB season 0) and "a" (absolute) mappings aren't split into TVDB seasons yet. If Sonarr later has the same series, Sonarr's copy is used and the native one is parked
 - Native Add: ⚡ "search now" searches up to 26 aired, missing episodes; a longer backlog goes to the fill-in queue instead
@@ -48,7 +48,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - Upgrades: a file that also holds other episodes (multi-episode file) is never replaced automatically; it becomes "import by hand"
 - Size presets: Lean is the default for every profile and is a strong penalty, not a rejection (a bigger release still gets grabbed when nothing smaller exists). Lean ceilings per minute: 2160p 170 MB, 1080p 85 MB, 720p 45 MB, 480p 25 MB
 - Episode Title Required "always" (Sonarr's value) also uses the catalog's titles before refusing an import
-- Renamer checked against Sonarr's own rename preview on the server: 4,779 of 4,781 planned renames identical; the 2 differences are titles starting with a censored word ("- - Is All You Need"), where AnimeArr drops the doubled dash
+- Renamer checked against Sonarr's own rename preview on a real library: all but 2 planned renames identical; the 2 differences are titles starting with a censored word ("- - Is All You Need"), where AnimeArr drops the doubled dash
 - Movie import/rename stay with Radarr this round (movie naming settings and previews exist; the movie importer comes with native Add)
 
 ## 1.0 = takeover (binding)
@@ -79,7 +79,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 ### Downloads
 - [x] Missing-episode search for managed shows (rate-limited) · [x] queue health (stalls, metadata, client errors, Sonarr queue report)
 - [ ] RAR unpacking: Alpine's 7-Zip has no RAR codec. Options: a RAR-capable unpacker in the image (unrar freeware binary, or a Debian base with 7zip-rar), or libarchive's bsdtar (RAR4/partial RAR5). Needs a user decision (licence/image size)
-- [ ] Unpacking needs the container's /data mount writable (currently read-only on the server)
+- [ ] Unpacking needs the container's /data mount writable (read-only in some setups)
 - [ ] Missing-episode search for non-managed shows via Sonarr's search command (opt-in; Sonarr is read-only today)
 
 ### Model and data

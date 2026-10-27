@@ -11,3 +11,7 @@ dist/
 .sab
 .radarr
 .prowlarr
+
+# Owner-only notes and machine-specific scripts (never published)
+private/
+local/

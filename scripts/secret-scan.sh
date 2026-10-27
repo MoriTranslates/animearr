@@ -27,5 +27,23 @@ if [ -n "${KEYDIR:-}" ]; then
     done <<< "$keys"
   done
 fi
+# Personal data: added lines must not carry the owner's network/host/identity details. The patterns live in
+# local/pii-patterns.txt (gitignored: one extended regex per line), plus generic ones: real-looking private IPs
+# (anything but the 192.168.1.x / 10.0.0.x documentation examples), Unraid share paths, and e-mail addresses
+# that aren't GitHub noreply ones.
+pii="local/pii-patterns.txt"
+generic='(192\.168\.([02-9]|[1-9][0-9]+)\.[0-9]+)|(/mnt/user/[A-Za-z])|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)'
+for f in $staged; do
+  [ -f "$f" ] || continue
+  case "$f" in package-lock.json|*.png|*.jpg|*.webp|scripts/secret-scan.sh) continue ;; esac
+  added=$(git diff --cached -U0 -- "$f" | grep -E '^\+[^+]' || true)
+  [ -n "$added" ] || continue
+  if echo "$added" | grep -nE "$generic" >/dev/null; then
+    echo "PERSONAL DATA? (private IP / share path / e-mail) in $f:"; echo "$added" | grep -nE "$generic" | cut -c1-120; fail=1
+  fi
+  if [ -f "$pii" ] && echo "$added" | grep -niEf "$pii" >/dev/null; then
+    echo "PERSONAL DATA (local/pii-patterns.txt) in $f:"; echo "$added" | grep -niEf "$pii" | cut -c1-120; fail=1
+  fi
+done
 [ $fail -eq 0 ] && echo "secret scan: clean ($(echo "$staged" | grep -c .) staged files)"
 exit $fail

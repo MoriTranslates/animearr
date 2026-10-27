@@ -2,7 +2,7 @@
 
 *Research date: 2026-10-25. Web research only. Status and licence data come from GitHub, Docker Hub and Unraid CA listings, community posts, and prior knowledge (cutoff mid-2026). A "?" marks anything not re-verified this session; check it before relying on it.*
 
-Companion docs: `01_codebase.md`, `02_metadata_mapping.md`, `03_spec_roadmap.md` (phases 0 to 3 follow that roadmap).
+Companion docs: `01_codebase.md`, `02_metadata_mapping.md`.
 
 ---
 
@@ -149,7 +149,7 @@ Other verdicts: **IRRELEVANT** = no anime value, or the tool is dead. Exceptions
 
 ## 2. Proposed built-in modules ("one Anime Arr to rule them all")
 
-Ordered by value to an anime library owner. The phases follow `03_spec_roadmap.md`, plus a Phase 4 for family/extras.
+Ordered by value to an anime library owner. Phases 0 to 3 follow the roadmap, plus a Phase 4 for family/extras.
 
 | # | Module | Absorbs | Phase |
 |---|---|---|---|
