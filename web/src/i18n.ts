@@ -557,7 +557,7 @@ const en = {
   "phone.qrLabel": "QR code for {url}",
   "phone.copy": "Copy",
   "phone.copied": "Address copied",
-  "phone.copyFailed": "Couldn't copy; select the address and copy it",
+  "phone.copyFailed": "This browser won't let AnimeArr copy here, so the address is selected: press Ctrl+C (or long-press it and choose Copy).",
   "phone.sameWifi": "Your phone must be on the same Wi-Fi (this is a home-network address).",
   "phone.step.scan": "Scan the code with your phone's camera and open the link.",
   "phone.step.ios": "Share → Add to Home Screen.",
