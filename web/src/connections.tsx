@@ -456,6 +456,7 @@ function ClientFlags({ priority, enabled }: { priority: number; enabled: boolean
 
 export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const o = useOverview();
+  const toast = useToast();
   const [edit, setEdit] = useState<Key | null>(null);
   const [pick, setPick] = useState<Protocol | null>(null);
   const [ixEdit, setIxEdit] = useState<{ ix: DirectIndexer; entry: CatalogEntry | null } | null>(null);
@@ -535,7 +536,7 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
             <ConnCard k="prowlarr" st={prow} loading={o.loading} onEdit={() => setEdit("prowlarr")} extra={prow?.configured ? <span className="muted small">{t("conn.prowlarrSync")}</span> : null} />
             {prow?.configured && (
               <div className="row small">
-                <button className="small" onClick={() => void o.fresh()}>
+                <button className="small" onClick={() => void o.fresh().then(() => toast(t("conn.synced")))}>
                   ↻ {t("conn.syncNow")}
                 </button>
                 {s.prowlarr.url && (

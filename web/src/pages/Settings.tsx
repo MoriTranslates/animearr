@@ -847,7 +847,18 @@ function LibraryFiles() {
       {x.errors > 0 && (
         <details>
           <summary className="small">{t("files.errors", { n: x.errors })}</summary>
-          <ul className="plain small">{x.errorSamples.map((e) => <li key={e.path}><span className="mono">{e.path}</span> · {e.error}</li>)}</ul>
+          <ul className="plain small">
+            {x.errorSamples.map((e) => {
+              // "ffprobe failed: Command failed: ffprobe -v error …" in plain words; the raw text behind Details.
+              const plain = /ffprobe/i.test(e.error) ? t("files.unreadable") : e.error;
+              if (plain !== e.error) rememberDetail(plain, e.error);
+              return (
+                <li key={e.path}>
+                  <span className="mono">{e.path}</span> · {plain === e.error ? e.error : <details className="error-details"><summary>{plain}</summary><code>{e.error}</code></details>}
+                </li>
+              );
+            })}
+          </ul>
         </details>
       )}
       <div className="row">

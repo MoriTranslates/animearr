@@ -276,7 +276,7 @@ function IndexersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
         await api("/indexers", { body: fromEntry(e) });
         n++;
       }
-      toast(t("wiz.starterAdded", { n }));
+      toast(n ? t("wiz.starterAdded", { n }) : t("wiz.starterAlready"));
       setKey((k) => k + 1);
     } catch (e) {
       toast((e as Error).message, true);
