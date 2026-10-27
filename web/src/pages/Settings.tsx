@@ -648,6 +648,7 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
 function Paths({ s, upd }: { s: S; upd: Upd }) {
   return (
     <div className="stack">
+      <p className="banner slim small">{t("paths.containerHint")}</p>
       <MappingList value={s.localPathMappings} onChange={(v) => upd((x) => ({ ...x, localPathMappings: v }))} title={t("settings.paths.local")} help={t("settings.paths.localHelp")} />
       <MappingList value={s.remotePathMappings} onChange={(v) => upd((x) => ({ ...x, remotePathMappings: v }))} title={t("settings.paths.remote")} help={t("settings.paths.remoteHelp")} />
     </div>
@@ -726,7 +727,11 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
         <p className="muted small">{t("meta.help")}</p>
         {d.data && (
           <>
-            <p className="small">{t("meta.counts", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}</p>
+            <p className="small">{t("meta.counts", { entries: d.data.entries, episodes: d.data.episodes })}</p>
+            <details className="small muted">
+              <summary>{t("common.details")}</summary>
+              {t("meta.countsDetail", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}
+            </details>
             {d.data.lastJob && <p className="small muted">{d.data.lastJob.detail}</p>}
             <div className="chips">
               {Object.entries(d.data.providers).map(([k, on]) => (

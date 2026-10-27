@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useUnsaved } from "./unsaved";
+import { languageNames } from "./lang";
 import { api } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast } from "./ui";
@@ -101,10 +102,12 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
         <label>
           {t("settings.profile.subs")}
           <ListInput value={p.subLangs} onChange={(v) => set({ subLangs: v })} label={t("settings.profile.subs")} placeholder="en" />
+          {!!p.subLangs.length && <span className="muted small">{languageNames(p.subLangs)}</span>}
         </label>
         <label>
           {t("profiles.dubLangs")}
           <ListInput value={p.dubLangs} onChange={(v) => set({ dubLangs: v })} label={t("profiles.dubLangs")} placeholder="en" />
+          {!!p.dubLangs.length && <span className="muted small">{languageNames(p.dubLangs)}</span>}
         </label>
         <label>
           {t("settings.profile.protocol")}

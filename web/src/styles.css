@@ -1400,3 +1400,5 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .dl-rule select, .dl-rule input:not([type="checkbox"]) { width: 100%; max-width: 100%; min-width: 0; }
 .dl-rule .row > .field { min-width: 0; }
 .dl-rule select { text-overflow: ellipsis; }
+.cat-boxes { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.cat-boxes legend { padding: 0; margin-bottom: 4px; font-size: var(--text-sm); color: var(--muted); }

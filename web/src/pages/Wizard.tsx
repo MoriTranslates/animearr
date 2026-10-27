@@ -340,7 +340,10 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
           <ul className="plain small">
             {so.clients.map((c) => (
               <li key={c.name}>
-                {c.name} · {c.type} · {c.protocol} {url(c) && <span className="mono muted">{url(c)}</span>} {c.enabled ? "" : `· ${t("clients.disabled")}`}
+                {/* "qBittorrent (torrents) at 192.168.1.10:8080", not "qBittorrent · QBittorrent · torrent". */}
+                {t(c.protocol === "usenet" ? "wiz.preview.clientUsenet" : "wiz.preview.clientTorrent", { name: c.name })}
+                {c.host && <span className="muted"> {t("wiz.preview.at", { addr: `${c.host}${c.port ? `:${c.port}` : ""}` })}</span>}
+                {c.enabled ? "" : ` · ${t("clients.disabled")}`}
               </li>
             ))}
           </ul>
