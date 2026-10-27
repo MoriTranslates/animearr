@@ -53,6 +53,7 @@ import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
+import { rootRefusal } from "./roots.js";
 import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
@@ -459,7 +460,9 @@ app.get("/api/sonarr/rootfolders", async () => {
   // Radarr's root folders too (movies), when Radarr is set up.
   const movieRoots = radarrConfigured() ? await radarrRootFolders().catch(() => []) : [];
   const roots = [...o.roots.map((r) => ({ ...r, app: "sonarr" })), ...movieRoots.filter((r) => !o.roots.some((x) => x.path === r.path)).map((r) => ({ id: r.id, path: r.path, freeSpace: r.freeSpace, app: "radarr" }))];
-  return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots };
+  // `refused`: saved folders that can't be a library (e.g. /config from before that was checked), with why.
+  const refused = Object.fromEntries(getSettings().allowedRoots.map((r) => [r, rootRefusal(r, CONFIG_DIR)]).filter(([, why]) => why));
+  return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots, refused };
 });
 
 // ---------------------------------------------------------------- library import / sync, managed shows

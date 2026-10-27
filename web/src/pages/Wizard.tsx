@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, Check, Folder, FolderOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { LibraryFolders } from "../folders";
 import { PhonePanel } from "../phone";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Settings as S, type Status } from "../api";
@@ -173,56 +174,11 @@ function AccountStep({ status }: { status: Status }) {
 
 /** Folder browser over the container's mounts: pick the series and movie library folders. */
 function FoldersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
-  const [p, setP] = useState("/");
-  const d = useLoad(() => api<{ path: string; parent: string | null; writable: boolean; dirs: { name: string; path: string; writable: boolean }[] }>(`/fs/folders?path=${encodeURIComponent(p)}`), [p]);
-  const roots = s.allowedRoots;
-  const add = (r: string) => void saveNow((x) => ({ ...x, allowedRoots: [...new Set([...x.allowedRoots, r])] }));
-  const remove = (r: string) => void saveNow((x) => ({ ...x, allowedRoots: x.allowedRoots.filter((y) => y !== r) }));
   return (
     <div className="stack">
       <p className="banner slim small">{t("wiz.folders.docker")}</p>
-      <div className="card pad stack">
-        <h3>{t("wiz.folders.chosen")}</h3>
-        {!roots.length && <p className="muted small">{t("wiz.folders.none")}</p>}
-        <ul className="plain">
-          {roots.map((r) => (
-            <li key={r} className="row between">
-              <span className="mono">{r}</span>
-              <button className="small ghost" onClick={() => remove(r)}>
-                {t("common.delete")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="card pad stack folder-browser">
-        <div className="row between">
-          <span className="mono">{d.data?.path ?? p}</span>
-          {d.data && (
-            <button className="small primary" disabled={!d.data.writable || roots.includes(d.data.path)} onClick={() => add(d.data!.path)}>
-              {d.data.writable ? t("wiz.folders.use") : t("wiz.folders.readOnly")}
-            </button>
-          )}
-        </div>
-        {d.error && <p className="warn-text small">{d.error}</p>}
-        <ul className="plain folder-list">
-          {d.data?.parent && (
-            <li>
-              <button className="linklike" onClick={() => setP(d.data!.parent!)}>
-                <FolderOpen className="lucide" aria-hidden="true" /> ..
-              </button>
-            </li>
-          )}
-          {d.data?.dirs.map((x) => (
-            <li key={x.path}>
-              <button className="linklike" onClick={() => setP(x.path)}>
-                <Folder className="lucide" aria-hidden="true" /> {x.name}
-              </button>
-              {!x.writable && <span className="muted small"> · {t("wiz.folders.readOnly")}</span>}
-            </li>
-          ))}
-        </ul>
-        <p className="muted small">{t("wiz.folders.what")}</p>
+      <div className="card pad">
+        <LibraryFolders roots={s.allowedRoots} onAdd={(r) => saveNow((x) => ({ ...x, allowedRoots: [...new Set([...x.allowedRoots, r])] }))} onRemove={(r) => saveNow((x) => ({ ...x, allowedRoots: x.allowedRoots.filter((y) => y !== r) }))} />
       </div>
     </div>
   );

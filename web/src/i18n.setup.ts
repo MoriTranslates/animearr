@@ -8,4 +8,11 @@ export const setupStrings = {
   "managed.olderOff": "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search finds them once it's switched on, or tap ⚡ on the show's page.",
   "managed.olderOpen": "Switch it on",
   "managed.olderN": "{n} missing",
+  "folders.remove": "Remove",
+  "folders.add": "Add a library folder",
+  "folders.chosen": "Already chosen",
+  "folders.notLibrary": "Can't use this one",
+  "folders.notHere": "not for your library",
+  "folders.readOnlyHelp": "AnimeArr can't write here, so it can't put shows in this folder. Pick another one, or give the container write access to it.",
+  "folders.fromArr": "Folders Sonarr and Radarr use",
 };

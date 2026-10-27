@@ -9,6 +9,7 @@ import { Cutover } from "../cutover";
 import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type SaveNow } from "../connections";
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
+import { LibraryFolders } from "../folders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
@@ -104,7 +105,9 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
       const base = loaded.data ?? s!;
       const next = await api<S>("/settings", { method: "PUT", body: fn(structuredClone(base)) });
       loaded.setData(next);
+      // Unsaved edits elsewhere on the page stay; the saved change is applied to them too (a later Save keeps it).
       if (!dirty) setS(next);
+      else setS((x) => (x ? fn(structuredClone(x)) : x));
       toast(t("common.saved"));
       onSaved();
       return true;
@@ -137,7 +140,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {x === "profile" && <ProfilesEditor />}
           {x === "media" && <MediaManagement s={s} upd={upd} />}
           {x === "downloads" && <DownloadRules s={s} upd={upd} />}
-          {x === "safety" && <Safety s={s} upd={upd} />}
+          {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}
           {x === "paths" && <Paths s={s} upd={upd} />}
           {x === "metadata" && <Metadata s={s} upd={upd} />}
           {x === "appearance" && <Appearance />}
@@ -362,39 +365,47 @@ function ShowDryRuns() {
   );
 }
 
-function Safety({ s, upd }: { s: S; upd: Upd }) {
-  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null }>("/sonarr/rootfolders"), []);
+function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow: SaveNow }) {
+  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null; refused?: Record<string, string> }>("/sonarr/rootfolders"), []);
   const m = s.managed;
+  // Library folders and practice mode save at once (a switch that only looked switched was the playtest's trap).
+  const setRoots = async (fn: (r: string[]) => string[]) => {
+    if (await saveNow((x) => ({ ...x, allowedRoots: fn(x.allowedRoots) }))) void roots.reload();
+  };
+  const arrRoots = (roots.data?.roots ?? []).filter((r) => !s.allowedRoots.includes(r.path));
   const setM = (fn: (x: S["managed"]) => S["managed"]) => upd((x) => ({ ...x, managed: fn(x.managed) }));
   return (
     <div className="stack">
       <div className="card pad stack">
         <div className="row between">
           <h2>{t("dry.section")}</h2>
-          <span className={`state-pill ${m.dryRun ? "warn" : "good"}`}>{m.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
+          <span className={`state-pill ${saved.managed.dryRun ? "warn" : "good"}`}>{saved.managed.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
         </div>
         <p className="muted small">{t("dry.sectionHelp")}</p>
-        <Toggle checked={m.dryRun} onChange={(v) => setM((x) => ({ ...x, dryRun: v }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
+        <Toggle checked={saved.managed.dryRun} onChange={(v) => void saveNow((x) => ({ ...x, managed: { ...x.managed, dryRun: v } }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
         <ShowDryRuns />
       </div>
-      <div className="card pad stack">
+      <div className="card pad stack" id="library-folders">
         <h2>{t("settings.safety.roots")}</h2>
         <p className="muted small">{t("settings.safety.rootsHelp")}</p>
-        {roots.error && <p className="warn-text">{roots.error}</p>}
-        <div className="stack">
-          {(roots.data?.roots ?? []).map((r) => (
-            <label key={r.path} className="check">
-              <input
-                type="checkbox"
-                checked={s.allowedRoots.includes(r.path)}
-                onChange={(e) => upd((x) => ({ ...x, allowedRoots: e.target.checked ? [...x.allowedRoots, r.path] : x.allowedRoots.filter((y) => y !== r.path) }))}
-              />
-              <span className="mono">{r.path}</span>
-              {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>}
-              {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
-            </label>
-          ))}
-        </div>
+        <LibraryFolders roots={saved.allowedRoots} refused={roots.data?.refused} onAdd={(r) => setRoots((x) => [...new Set([...x, r])])} onRemove={(r) => setRoots((x) => x.filter((y) => y !== r))} />
+        {!!arrRoots.length && (
+          <div className="stack">
+            <h3>{t("folders.fromArr")}</h3>
+            <ul className="plain stack">
+              {arrRoots.map((r) => (
+                <li key={r.path} className="row between">
+                  <span>
+                    <span className="mono">{r.path}</span> {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>} {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
+                  </span>
+                  <button className="small" onClick={() => void setRoots((x) => [...new Set([...x, r.path])])}>
+                    {t("common.add")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <div className="card pad stack">
         <h2>{t("scope.defaults")}</h2>
