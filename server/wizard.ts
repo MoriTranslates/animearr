@@ -137,7 +137,7 @@ export async function arrPreview() {
     if (reach) return { ...out, radarrError: reach };
     const call = <T>(p: string) => jsonCall<T>("Radarr", s.radarr, "/api/v3", "GET", p).catch(() => null);
     const roots = await call<{ path: string }[]>("/rootfolder");
-    const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies").get() as { n: number }).n;
+    const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies WHERE is_anime = 1").get() as { n: number }).n;
     out.radarr = { animeMovies, roots: (roots ?? []).map((r) => r.path) };
   }
   return out;
