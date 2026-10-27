@@ -1396,3 +1396,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .error-details { margin-top: 4px; font-size: var(--text-xs, 0.8rem); font-weight: 400; }
 .error-details summary { cursor: pointer; opacity: 0.8; }
 .error-details code { display: block; white-space: pre-wrap; word-break: break-word; opacity: 0.85; margin-top: 2px; }
+/* Download folder rules: fields never wider than the card (the "Then" select was cut off at 390px). */
+.dl-rule select, .dl-rule input:not([type="checkbox"]) { width: 100%; max-width: 100%; min-width: 0; }
+.dl-rule .row > .field { min-width: 0; }
+.dl-rule select { text-overflow: ellipsis; }

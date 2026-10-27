@@ -17,6 +17,8 @@ export const setupStrings = {
   "folders.notHere": "not for your library",
   "folders.readOnlyHelp": "AnimeArr can't write here, so it can't put shows in this folder. Pick another one, or give the container write access to it.",
   "folders.fromArr": "Folders Sonarr and Radarr use",
+  "dl.thresholdGb": "is over (GB)",
+  "dl.thresholdItems": "is over",
   "job.anidb": "AniDB titles download",
   "job.catalog": "Anime catalog refresh",
   "job.covers": "Cover pictures",
