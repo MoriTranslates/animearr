@@ -190,6 +190,21 @@ test("browse: only inside the download roots, newest first, sizes and videos fla
   assert.equal(browseImport({ path: "/data/other", extra: ["/data/other"] }).entries[0].name, "secret.mkv");
 });
 
+test("browse: a grab whose download is one file outside the roots shows that file, and nothing beside it", () => {
+  write(path.join(OTHER, "single", "[RUDY] Quints - 01.mkv"), "x".repeat(10));
+  write(path.join(OTHER, "single", "neighbour.mkv"), "y");
+  const grab = "/data/other/single/[RUDY] Quints - 01.mkv";
+  const r = browseImport({ path: grab, extra: [grab] });
+  assert.equal(r.path, grab);
+  assert.equal(r.parent, null, "no way up out of a single-file download");
+  assert.deepEqual(r.entries.map((e) => [e.name, e.dir, e.video]), [["[RUDY] Quints - 01.mkv", false, true]]);
+  assert.ok(browseImport({ extra: [grab] }).entries.some((e) => e.path === grab), "listed among the roots");
+  assert.throws(() => browseImport({ path: "/data/other/single", extra: [grab] }), /only browses/);
+  assert.throws(() => browseImport({ path: "/data/other/single/neighbour.mkv", extra: [grab] }), /only browses/);
+  // Without the grab, the same file stays off limits (a typed path can't reach it).
+  assert.throws(() => browseImport({ path: grab }), /only browses/);
+});
+
 test("a leftover .animearr-part from a cut-off import is cleared before the retry (only while the source exists)", () => {
   const src = path.join(DL, "kc", "KanColle.mkv");
   write(src, "movie");

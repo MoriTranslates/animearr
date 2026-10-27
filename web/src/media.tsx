@@ -354,7 +354,11 @@ export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number
         <input value={p} onChange={(e) => (setP(e.target.value), setPlan(null))} placeholder="/data/completed/animearr/…" aria-label={t("import.path")} className="grow" spellCheck={false} />
       </details>
       <div className="row">
-        {p && <span className="mono small grow">{p}</span>}
+        {p && (
+          <span className="small grow" title={p}>
+            {t("import.selected")} <strong>{p.replace(/\/+$/, "").split("/").pop()}</strong>
+          </span>
+        )}
         <button className="small" disabled={busy || !p.trim()} onClick={() => run(true)}>
           {t("import.preview")}
         </button>

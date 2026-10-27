@@ -133,7 +133,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
             <Why lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
               <FixButtons fixes={g.fixes} />
-              {g.state === "needs-attention" && (
+              {g.state === "needs-attention" && !g.fixes?.some((f) => f.action === "retryImport") && (
                 <button
                   className="small"
                   onClick={async () => {

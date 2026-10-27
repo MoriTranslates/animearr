@@ -50,6 +50,8 @@ export function FixHost() {
           return void call(`/grabs/${p.grabId}/keep`, {}, t("fix.kept"));
         case "tryNext":
           return void call(`/grabs/${p.grabId}/next`, {}, t("fix.next"));
+        case "retryImport":
+          return void call(`/grabs/${p.grabId}/retry`, {}, t("managed.retried"));
         case "openRule":
           return navigate("/settings?tab=downloads");
         case "resumeRule":
@@ -90,6 +92,7 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
   const [items, setItems] = useState<PlanItem[] | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [place, setPlace] = useState("");
   useEffect(() => {
     if (tvdbId) void api<{ episodes: Ep[] }>(`/series/${tvdbId}`).then((s) => setEps(s.episodes), () => setEps([]));
   }, [tvdbId]);
@@ -108,16 +111,12 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
       setBusy(false);
     }
   };
-  useEffect(() => {
-    if (initialPath && !pick) void plan(initialPath);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const select = (p: string, dir: boolean) => {
+  // Nothing is planned on open (the grab's file is only pre-selected); a file the user picks is checked right away.
+  const select = (p: string, dir: boolean, auto: boolean) => {
     setPath(p);
     setItems(null);
     setNotes([]);
-    // A file was picked: show straight away where it would go.
-    if (!dir && !pick) void plan(p);
+    if (!dir && !pick && !auto) void plan(p);
   };
   const run = async () => {
     setBusy(true);
@@ -135,12 +134,13 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
       setBusy(false);
     }
   };
+  const ready = items?.filter((i) => !i.problem).length ?? 0;
   const label = (e: Ep) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}${e.title ? ` · ${e.title}` : ""}`;
   return (
     <Modal title={t(pick ? "fix.pickTitle" : "fix.importTitle")} onClose={onClose}>
       <div className="stack">
         <p className="muted small">{t("import.browseHelp")}</p>
-        <ImportBrowser start={initialPath} grabId={grabId} selected={path} onSelect={select} />
+        <ImportBrowser start={initialPath} grabId={grabId} selected={path} onSelect={select} onPlace={setPlace} />
         <details className="small">
           <summary>{t("import.typePath")}</summary>
           <label className="stack small">
@@ -149,8 +149,8 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
           </label>
         </details>
         {path && (
-          <p className="small">
-            {t("import.selected")} <span className="mono">{path}</span>
+          <p className="small import-selected">
+            {t("import.selected")} <strong>{place && path.split("/").pop() === place.split(" › ").pop() ? place : path.split("/").pop()}</strong>
           </p>
         )}
         {tvdbId && (
@@ -170,9 +170,6 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
             )}
           </label>
         )}
-        <button className="small self-start" disabled={busy || !path.trim()} onClick={() => void plan()}>
-          {t("import.preview")}
-        </button>
         {notes.map((n) => (
           <p key={n} className="small muted">
             {n}
@@ -186,20 +183,34 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
                 <span>
                   <b>{i.label}</b> · {t(`import.action.${i.action}` as I18nKey)}
                 </span>
-                <span className="mono muted">{i.source.split(/[\/]/).pop()}</span>
-                {i.destArr && <span className="mono muted">→ {i.destArr}</span>}
+                <span className="muted">{i.source.split(/[\/]/).pop()}</span>
+                {i.destArr && (
+                  <span className="muted" title={i.destArr}>
+                    → {i.destArr.split("/").slice(-2).join(" › ")}
+                  </span>
+                )}
                 {i.replaces && <span className="muted">{t("import.replaces")}</span>}
                 {i.problem && <Chip tone="warn">{i.problem}</Chip>}
               </li>
             ))}
           </ul>
         )}
-        <div className="row">
+        <div className="row import-actions">
           <button onClick={onClose}>{t("common.cancel")}</button>
-          <button className="primary" disabled={busy || !items?.some((i) => !i.problem)} onClick={() => void run()}>
-            {t("import.run")}
-          </button>
+          {/* One clear next step: check where it goes first, then import (the button says how many). */}
+          {!items ? (
+            <button className="primary" disabled={busy || !path.trim()} onClick={() => void plan()}>
+              {busy ? t("import.checking") : t("import.check")}
+            </button>
+          ) : (
+            <button className="primary" disabled={busy || !ready} onClick={() => void run()}>
+              {t("import.runN", { n: ready })}
+            </button>
+          )}
         </div>
+        <p className="small muted import-state" aria-live="polite">
+          {!path.trim() ? t("import.state.pick") : !items ? t("import.state.check") : ready ? t("import.state.ready", { n: ready }) : t("import.state.none")}
+        </p>
       </div>
     </Modal>
   );

@@ -865,21 +865,28 @@ export interface BrowseResult { roots: { path: string; label: string }[]; path: 
 
 /** Where a manual import may browse: the importer's source roots, plus a grab's own download folder (resolved by the server). */
 export function browseRoots(extra: (string | null | undefined)[] = []) {
-  const out: { path: string; local: string; label: string }[] = [];
-  for (const [i, raw] of [...(getSettings().importer.sourceRoots ?? []), ...extra].entries()) {
+  const out: { path: string; local: string; label: string; file?: boolean }[] = [];
+  const own = getSettings().importer.sourceRoots ?? [];
+  for (const [i, raw] of [...own, ...extra].entries()) {
     if (!raw) continue;
     const p = raw.replace(/\\/g, "/").replace(/\/+$/, "");
     if (!p.startsWith("/") || out.some((r) => r.path === p)) continue;
     const local = localPath(p);
     if (!local) continue;
+    const fromGrab = i >= own.length;
     let real: string;
+    let file = false;
     try {
       real = fs.realpathSync(local);
-      if (!fs.statSync(real).isDirectory() || forbiddenSource(real)) continue;
+      const st = fs.statSync(real);
+      // A grab's download can be one file (a single-episode torrent): that file alone is browsable, nothing beside it.
+      if (fromGrab && st.isFile()) file = true;
+      else if (!st.isDirectory()) continue;
+      if (forbiddenSource(real)) continue;
     } catch {
       continue;
     }
-    out.push({ path: p, local: real, label: i >= (getSettings().importer.sourceRoots ?? []).length ? "download" : "source" });
+    out.push({ path: p, local: real, label: fromGrab ? "download" : "source", ...(file ? { file } : {}) });
   }
   return out;
 }
