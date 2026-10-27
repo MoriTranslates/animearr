@@ -4,7 +4,7 @@ import { LostAtSea } from "./merry";
 import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
 import { BellButton } from "./notify";
-import { api, store, type Status } from "./api";
+import { api, store, type Status, appPath, withBase } from "./api";
 import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
 import { Add } from "./pages/Add";
@@ -58,14 +58,14 @@ const MORE: NavItem[] = [
 const KNOWN = ["/", "/welcome", "/managed", "/shows", "/add", "/find", "/show", "/movies", "/movie", "/calendar", "/fillin", "/queue", "/audit", "/search", "/activity", "/settings"];
 
 export function navigate(to: string) {
-  history.pushState(null, "", to);
+  history.pushState(null, "", withBase(to));
   window.dispatchEvent(new PopStateEvent("popstate"));
   window.scrollTo(0, 0);
 }
 
 export function Link({ to, children, className, current, style, title }: { to: string; children: React.ReactNode; className?: string; current?: boolean; style?: React.CSSProperties; title?: string }) {
   return (
-    <a href={to} className={className} style={style} title={title} aria-current={current ? "page" : undefined} onClick={(e) => (e.preventDefault(), navigate(to))}>
+    <a href={withBase(to)} className={className} style={style} title={title} aria-current={current ? "page" : undefined} onClick={(e) => (e.preventDefault(), navigate(to))}>
       {children}
     </a>
   );
@@ -87,7 +87,7 @@ export function applyTheme(theme: string) {
 }
 
 export function App() {
-  const [path, setPath] = useState(location.pathname);
+  const [path, setPath] = useState(appPath());
   const [, setSearch] = useState(location.search);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +97,7 @@ export function App() {
 
   // A fresh install (nothing connected at all, setup not finished) opens the setup wizard.
   useEffect(() => {
-    if (status?.loggedIn && status.freshInstall && location.pathname === "/") navigate("/welcome");
+    if (status?.loggedIn && status.freshInstall && appPath() === "/") navigate("/welcome");
   }, [status?.loggedIn, status?.freshInstall]);
 
   const refreshStatus = useCallback(async () => {
@@ -119,7 +119,7 @@ export function App() {
     applyTheme(store.get("theme", "dark"));
     void refreshStatus();
     const onPop = () => {
-      setPath(location.pathname);
+      setPath(appPath());
       setSearch(location.search);
       setMoreOpen(false);
       document.getElementById("main")?.focus();

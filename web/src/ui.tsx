@@ -1,7 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { SheepShip } from "./merry";
 import { Zap } from "lucide-react";
-import { fixesForMessage, runFix, type Flag } from "./api";
+import { fixesForMessage, runFix, type Flag, BASE } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { exclaimMode } from "./appearance";
 
@@ -426,7 +426,7 @@ export function Why({ summary, lines }: { summary?: string; lines: string[] }) {
 
 const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|image\.tmdb\.org|artworks\.thetvdb\.com|thetvdb\.com)\//;
 /** A cover at the size it's shown: AnimeArr's thumbnail cache (the provider's smaller rendition), else the URL as is. */
-export const thumbUrl = (src: string, size: "sm" | "md" | "lg" | "xl") => (IMG_HOSTS.test(src) ? `/api/img?s=${size}&u=${encodeURIComponent(src)}` : src);
+export const thumbUrl = (src: string, size: "sm" | "md" | "lg" | "xl") => (IMG_HOSTS.test(src) ? `${BASE}/api/img?s=${size}&u=${encodeURIComponent(src)}` : src);
 const COVER_PX: Record<string, [number, number]> = { sm: [48, 68], md: [84, 120], lg: [200, 300] };
 
 export function Cover({ src, alt, size = "md", hero = false }: { src: string | null | undefined; alt: string; size?: "sm" | "md" | "lg"; hero?: boolean }) {

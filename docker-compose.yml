@@ -1,0 +1,22 @@
+# AnimeArr: docker compose example (beta).
+# Put AnimeArr next to Sonarr/Radarr and give it the SAME paths they use for downloads and the library, so it can
+# check files with ffprobe and import them. One /data mount holding both downloads and media (TRaSH-guides style)
+# lets imports be hardlinks instead of copies.
+services:
+  animearr:
+    image: ghcr.io/moritranslates/animearr:beta
+    container_name: animearr
+    restart: unless-stopped
+    environment:
+      - PUID=1000        # the user that owns your media (Unraid 99, Synology 1026, TrueNAS SCALE 568)
+      - PGID=1000        # its group (Unraid 100, Synology 100, TrueNAS SCALE 568)
+      - UMASK=002
+      - TZ=Etc/UTC       # e.g. Europe/Berlin, America/New_York
+      # - URL_BASE=/animearr   # only behind a reverse proxy on a sub-path
+    volumes:
+      # Settings and databases: keep this on a LOCAL disk (SQLite breaks on SMB/NFS shares).
+      - ./animearr/config:/config
+      # Downloads + library under one folder, the same path as in Sonarr/Radarr and your download clients.
+      - /path/to/data:/data
+    ports:
+      - 8484:8484

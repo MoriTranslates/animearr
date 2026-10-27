@@ -1,3 +1,4 @@
+import os from "node:os";
 /**
  * AnimeArr's own file records (1.0 takeover, step 1). AnimeArr scans its library roots itself and ffprobes every
  * video file: tracks, languages, forced flags, codecs, runtime, size, mtime, and the subtitle sidecars next to it.
@@ -192,7 +193,8 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
     );
     let i = 0;
     await Promise.all(
-      Array.from({ length: Math.min(2, todo.length) }, async () => {
+      // Gentle by default (NAS CPUs are small): 1 probe at a time below 4 cores, else 2; Settings can raise it.
+      Array.from({ length: Math.min(scanWorkers(), todo.length) }, async () => {
         while (i < todo.length) {
           const f = todo[i++];
           let rec: Awaited<ReturnType<typeof probeFile>> | null = null;
@@ -392,4 +394,11 @@ export function ownFile(arrPath: string, arr: { size?: number | null; dateAdded?
   if (!arr.size || rec.size === arr.size) return rec;
   const added = arr.dateAdded ? Date.parse(arr.dateAdded) : NaN;
   return Number.isFinite(added) && rec.mtime > added ? rec : null;
+}
+
+/** ffprobe processes at once during a library scan. */
+export function scanWorkers() {
+  const set = getSettings().library.scanConcurrency ?? 0;
+  if (set > 0) return Math.min(8, set);
+  return os.cpus().length < 4 ? 1 : 2;
 }

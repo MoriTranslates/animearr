@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { api, type Settings as S } from "./api";
+import { api, type Settings as S, withBase } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { Confirm, dateTime, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
@@ -400,7 +400,7 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       <p className="small muted">
         {o.data?.noPreference ? t("conn.prioNone") : t(o.data?.protocolOrder?.[0] === "torrent" ? "conn.prioTorrent" : "conn.prioUsenet")}
         {o.data?.delays && (o.data.delays.usenetDelayMin || o.data.delays.torrentDelayMin) ? ` · ${t("conn.prioDelays", { u: o.data.delays.usenetDelayMin, t: o.data.delays.torrentDelayMin })}` : ""} ·{" "}
-        <a href="/settings?tab=indexers" onClick={(e) => (e.preventDefault(), navigate("/settings?tab=indexers"))}>
+        <a href={withBase("/settings?tab=indexers")} onClick={(e) => (e.preventDefault(), navigate("/settings?tab=indexers"))}>
           {t("conn.prioChange")}
         </a>
       </p>

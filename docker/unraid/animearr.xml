@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>AnimeArr</Name>
+  <Repository>ghcr.io/moritranslates/animearr:beta</Repository>
+  <Registry>https://github.com/MoriTranslates/animearr/pkgs/container/animearr</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MoriTranslates/animearr/issues</Support>
+  <Project>https://github.com/MoriTranslates/animearr</Project>
+  <Overview>BETA. AnimeArr is an anime-first library manager that works alongside (and can take over from) Sonarr, Radarr and Prowlarr: AniList/AniDB-aware identification, release ranking with subtitle-language checks, verified imports, a seasonal calendar and a phone-friendly UI.[br][br]Give it the same download and media paths as Sonarr/Radarr. Keep /config on the cache/a local disk (appdata), never on /mnt/user directly for SQLite safety.</Overview>
+  <Category>MediaApp:Video Downloaders:</Category>
+  <WebUI>http://[IP]:[PORT:8484]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/MoriTranslates/animearr/main/web/public/favicon.svg</Icon>
+  <DonateText>Support AnimeArr on Ko-fi</DonateText>
+  <DonateLink>https://ko-fi.com/moritranslates</DonateLink>
+  <ExtraParams/>
+  <Config Name="WebUI port" Target="8484" Default="8484" Mode="tcp" Description="AnimeArr web interface" Type="Port" Display="always" Required="true" Mask="false">8484</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/animearr" Mode="rw" Description="Settings and databases. Prefer a cache-only appdata share." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/animearr</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/data" Mode="rw" Description="Downloads + media, mounted at the same path Sonarr/Radarr use." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User id (Unraid: 99 = nobody)" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group id (Unraid: 100 = users)" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="File permissions mask" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Time zone, e.g. Europe/Berlin" Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
+  <Config Name="URL base" Target="URL_BASE" Default="" Mode="" Description="Only behind a reverse proxy on a sub-path, e.g. /animearr" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

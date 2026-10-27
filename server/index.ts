@@ -86,7 +86,18 @@ const WEB_DIR = path.join(ROOT_DIR, "dist", "web");
 const PORT = Number(process.env.PORT ?? 8484);
 const STARTED = Date.now();
 
+/**
+ * URL base for a reverse proxy on a sub-path (https://host/animearr/): URL_BASE, or Settings → System (restart).
+ * Incoming URLs have it stripped, so every route stays the same; the page gets a <base href> for its assets.
+ */
+const URL_BASE = ((process.env.URL_BASE ?? getSettings().urlBase ?? "").trim().replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1"));
 const app = Fastify({
+  rewriteUrl: (req) => {
+    const u = req.url ?? "/";
+    if (!URL_BASE) return u;
+    if (u === URL_BASE) return "/";
+    return u.startsWith(`${URL_BASE}/`) ? u.slice(URL_BASE.length) : u;
+  },
   logger: { level: process.env.LOG_LEVEL ?? "info", serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
   trustProxy: trustProxyOption() as string[] | false,
   bodyLimit: 1_000_000,
@@ -1224,10 +1235,16 @@ app.post("/api/system/cache/reset", async (req) => {
 if (!fs.existsSync(path.join(WEB_DIR, "index.html"))) app.log.warn(`No web build in ${WEB_DIR} yet; run "npm run build" (the API works meanwhile).`);
 fs.mkdirSync(WEB_DIR, { recursive: true });
 // wildcard: true serves files built after startup too (vite build while the dev server runs).
-await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: ["index.html"] });
-app.setNotFoundHandler((req, reply) =>
-  req.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : fs.existsSync(path.join(WEB_DIR, "index.html")) ? reply.sendFile("index.html") : reply.code(503).send("Web UI not built yet: run npm run build"),
-);
+await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: false });
+/** The page itself, with <base href> set to the URL base (so relative asset URLs work on any path). */
+const sendIndex = (reply: import("fastify").FastifyReply) => {
+  const file = path.join(WEB_DIR, "index.html");
+  if (!fs.existsSync(file)) return reply.code(503).send("Web UI not built yet: run npm run build");
+  const html = fs.readFileSync(file, "utf8").replace("<head>", `<head>\n    <base href="${URL_BASE}/" />`);
+  return reply.type("text/html; charset=utf-8").header("Cache-Control", "no-cache").send(html);
+};
+app.get("/", { config: { public: true } }, async (_req, reply) => sendIndex(reply));
+app.setNotFoundHandler((req, reply) => (req.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : sendIndex(reply)));
 
 // ---------------------------------------------------------------- background jobs
 

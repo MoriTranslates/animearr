@@ -1,0 +1,11 @@
+{
+  "name": "AnimeArr",
+  "short_name": "AnimeArr",
+  "description": "Anime-first library manager",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d14",
+  "theme_color": "#0b0d14",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

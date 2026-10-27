@@ -2,7 +2,7 @@ import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, 
 import { useEffect, useState } from "react";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
-import { api, fmtSize, store, type PathMapping, type Settings as S, type Status } from "../api";
+import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
@@ -65,7 +65,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
     if (dirty && !window.confirm(t("settings.unsavedLeave"))) return;
     if (dirty && loaded.data) (setS(loaded.data), setDirty(false));
     setTabState(x);
-    history.pushState(null, "", x ? `/settings?tab=${x}` : "/settings");
+    history.pushState(null, "", withBase(x ? `/settings?tab=${x}` : "/settings"));
     window.scrollTo(0, 0);
   };
   const upd = (fn: (x: S) => S) => {
@@ -158,7 +158,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
             {g.tabs.map((x) => (
               <li key={x.id}>
                 <a
-                  href={`/settings?tab=${x.id}`}
+                  href={withBase(`/settings?tab=${x.id}`)}
                   className={tab === x.id ? "active" : ""}
                   aria-current={tab === x.id ? "page" : undefined}
                   onClick={(e) => (e.preventDefault(), setTab(x.id))}
@@ -805,6 +805,7 @@ function System({ status }: { status: Status }) {
   return (
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
+      <ServerOptions />
       <LibraryFiles />
       <div className="card pad stack">
         <h2>{t("phone.settingsTitle")}</h2>
@@ -870,7 +871,7 @@ function System({ status }: { status: Status }) {
           className="self-start"
           onClick={async () => {
             await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
-            location.href = "/welcome";
+            location.href = withBase("/welcome");
           }}
         >
           {t("wiz.runAgain")}
@@ -879,7 +880,7 @@ function System({ status }: { status: Status }) {
           className="self-start"
           onClick={async () => {
             await api("/auth/logout", { body: {} });
-            location.href = "/";
+            location.href = withBase("/");
           }}
         >
           {t("settings.system.logout")}
@@ -1012,6 +1013,51 @@ function TextSize() {
         </button>
       </div>
       <span className="muted small">{t("appearance.textSize.help")}</span>
+    </div>
+  );
+}
+
+/** Server options that rarely change: URL base (reverse proxy on a sub-path) and library scan concurrency. */
+function ServerOptions() {
+  const toast = useToast();
+  const d = useLoad(() => api<S>("/settings"), []);
+  const [base, setBase] = useState<string | null>(null);
+  const [conc, setConc] = useState<number | null>(null);
+  if (!d.data) return null;
+  const b = base ?? d.data.urlBase ?? "";
+  const c = conc ?? d.data.library.scanConcurrency ?? 0;
+  const save = async () => {
+    try {
+      await api("/settings", { method: "PUT", body: { urlBase: b.trim(), library: { scanConcurrency: c } } });
+      toast(t(b.trim() !== (d.data!.urlBase ?? "") ? "server.savedRestart" : "common.saved"));
+      await d.reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+  return (
+    <div className="card pad stack form">
+      <h2>{t("server.title")}</h2>
+      <label>
+        {t("server.urlBase")}
+        <input value={b} onChange={(e) => setBase(e.target.value)} placeholder="/animearr" />
+        <span className="muted small">{t("server.urlBaseHelp")}</span>
+      </label>
+      <label>
+        {t("server.scanConc")}
+        <select value={c} onChange={(e) => setConc(Number(e.target.value))}>
+          <option value={0}>{t("server.scanAuto")}</option>
+          {[1, 2, 3, 4].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <span className="muted small">{t("server.scanHelp")}</span>
+      </label>
+      <button className="primary self-start" onClick={() => void save()}>
+        {t("common.save")}
+      </button>
     </div>
   );
 }

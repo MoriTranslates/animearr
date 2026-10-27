@@ -48,7 +48,7 @@ export function Add() {
   useEffect(() => {
     if (debounced.length < 2) return;
     const h = setTimeout(() => remember(debounced), 1500);
-    history.replaceState(null, "", `${location.pathname}?q=${encodeURIComponent(debounced)}`);
+    history.replaceState(null, "", `${location.pathname}?q=${encodeURIComponent(debounced)}`); // keeps the URL base as is
     return () => clearTimeout(h);
   }, [debounced]);
   const d = useLoad(() => (debounced.length >= 2 ? api<{ results: AddResult[]; anilist: string }>(`/add/search?q=${encodeURIComponent(debounced)}`) : Promise.resolve({ results: [] as AddResult[], anilist: "ok" })), [debounced]);

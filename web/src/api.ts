@@ -13,12 +13,19 @@ export class ApiError extends Error {
   }
 }
 
+/** The URL base the server runs under ("" at the root, "/animearr" behind a sub-path proxy), from <base href>. */
+export const BASE = (document.querySelector("base")?.getAttribute("href") ?? "/").replace(/\/+$/, "");
+/** A path inside the app, as the browser sees it ("/show/1" → "/animearr/show/1"). */
+export const withBase = (p: string) => (p.startsWith("/") ? `${BASE}${p}` : p);
+/** The app path of the current location (the URL base removed). */
+export const appPath = () => (BASE && location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) || "/" : location.pathname);
+
 export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const method = opts.method ?? (opts.body === undefined ? "GET" : "POST");
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["X-AnimeArr"] = "1"; // CSRF guard: cross-site forms can't set custom headers
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`/api${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: "same-origin", signal: opts.signal });
+  const res = await fetch(`${BASE}/api${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: "same-origin", signal: opts.signal });
   const text = await res.text();
   let data: Record<string, unknown> | undefined;
   try {
@@ -212,6 +219,8 @@ export interface Settings {
   importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean; realBudget: number; movies: boolean; sourceRoots: string[] };
   sync: { intervalHours: number };
   externalUrl: string;
+  urlBase?: string;
+  library: { scan: boolean; scanConcurrency?: number };
   ui: { language: string };
   auth: { username: string; hasPassword: boolean; bypassLocal: boolean };
 }

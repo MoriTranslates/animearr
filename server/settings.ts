@@ -167,7 +167,8 @@ export interface Settings {
    */
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
   /** AnimeArr's own file records: scan the library roots and ffprobe every file (read-only). */
-  library: { scan: boolean };
+  /** scanConcurrency: ffprobe processes at once while scanning the library (0 = automatic: 1 below 4 CPU cores, else 2). */
+  library: { scan: boolean; scanConcurrency: number };
   /** Media management (mirrors Sonarr/Radarr; defaults read from their config). */
   media: {
     renameEpisodes: boolean;
@@ -263,6 +264,8 @@ export interface Settings {
   sync: { intervalHours: number };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
+  /** URL base for a reverse proxy on a sub-path ("/animearr"); the URL_BASE env wins; needs a restart. */
+  urlBase: string;
   ui: { language: string; /** Text size for devices that haven't picked their own (sm/md/lg/xl). */ textScale?: string };
   auth: { username: string; passwordHash: string; bypassLocal: boolean };
   /** Admin API key, accepted only in the X-Api-Key header. */
@@ -304,7 +307,7 @@ const DEFAULTS: Settings = {
   extraction: { enabled: false },
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
-  library: { scan: true },
+  library: { scan: true, scanConcurrency: 0 },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
   cutover: { allowArrWrites: false },
@@ -352,6 +355,7 @@ const DEFAULTS: Settings = {
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
   externalUrl: "",
+  urlBase: "",
   ui: { language: "en", textScale: "md" },
   auth: { username: "", passwordHash: "", bypassLocal: false },
   apiKey: "",
@@ -360,7 +364,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -419,6 +423,7 @@ const RANGES: Record<string, [number, number]> = {
   "fillIn.advancePct": [50, 100],
   "fillIn.stallDays": [1, 60],
   "movieSearch.perHour": [1, 12],
+  "library.scanConcurrency": [0, 8],
   "movieSearch.retryDays": [1, 60],
   "dualUpgrade.recheckDays": [1, 60],
   "dualUpgrade.maxAgeDays": [7, 3650],

@@ -36,10 +36,13 @@ generic='(192\.168\.([02-9]|[1-9][0-9]+)\.[0-9]+)|(/mnt/user/[A-Za-z])|([A-Za-z0
 for f in $staged; do
   [ -f "$f" ] || continue
   case "$f" in package-lock.json|*.png|*.jpg|*.webp|scripts/secret-scan.sh) continue ;; esac
+  # Unraid templates use Unraid's standard share paths (/mnt/user/appdata, /mnt/user/data): generic, not personal.
+  generic_f="$generic"
+  case "$f" in docker/unraid/*) generic_f='(192\.168\.([02-9]|[1-9][0-9]+)\.[0-9]+)|([A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|proton)\.[a-z]+)' ;; esac
   added=$(git diff --cached -U0 -- "$f" | grep -E '^\+[^+]' || true)
   [ -n "$added" ] || continue
-  if echo "$added" | grep -nE "$generic" >/dev/null; then
-    echo "PERSONAL DATA? (private IP / share path / e-mail) in $f:"; echo "$added" | grep -nE "$generic" | cut -c1-120; fail=1
+  if echo "$added" | grep -nE "$generic_f" >/dev/null; then
+    echo "PERSONAL DATA? (private IP / share path / e-mail) in $f:"; echo "$added" | grep -nE "$generic_f" | cut -c1-120; fail=1
   fi
   if [ -f "$pii" ] && echo "$added" | grep -niEf "$pii" >/dev/null; then
     echo "PERSONAL DATA (local/pii-patterns.txt) in $f:"; echo "$added" | grep -niEf "$pii" | cut -c1-120; fail=1

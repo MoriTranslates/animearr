@@ -1,3 +1,4 @@
+import { withBase } from "./api";
 import { Check, Clock, Star, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { showVars } from "./season";
@@ -47,7 +48,7 @@ export function PosterCard({ title, cover, color, status, progress, managed, onC
   const style = { ...showVars(color), ...(width ? { "--pw": `${width}px` } : {}) } as React.CSSProperties;
   if (href)
     return (
-      <a className={`pcard ${className}`} href={href} style={style} onClick={(e) => (e.preventDefault(), onClick?.())}>
+      <a className={`pcard ${className}`} href={withBase(href)} style={style} onClick={(e) => (e.preventDefault(), onClick?.())}>
         {inner}
       </a>
     );
