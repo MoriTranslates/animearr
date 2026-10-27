@@ -127,3 +127,21 @@ test("Prowlarr indexer selection: anime-fit hints and defaults for new indexers"
   assert.deepEqual(r.filter((x) => x.isNew).map((x) => x.id), [4, 5]);
   patchSettings((s) => ({ ...s, prowlarr: { ...s.prowlarr, indexerIds: [], knownIds: [], newIds: [] } }));
 });
+
+test("a movie download with several large files offers Import manually…", async () => {
+  const { fixesFor } = await import("../server/fixes.js");
+  const f = fixesFor("Downloaded X but couldn't import it: the download has several large video files (a.mkv, b.mkv); import the right one by hand. The download is kept", { movieId: 1351, grabId: 74, kind: "fail" });
+  assert.equal(f[0]?.action, "importManual");
+});
+
+test("multi-part movies: numbered parts of similar size are imported as pt1/pt2 in order", async () => {
+  const { multiPart } = await import("../server/movies.js");
+  const GB = 1e9;
+  const qq = [
+    { path: "/d/x/[Itsuki Gang] The Quintessential Quintuplets~ Specials - S00E03 [BD 1080p x265 Opus].mkv", size: 1.1 * GB },
+    { path: "/d/x/[Itsuki Gang] The Quintessential Quintuplets~ Specials - S00E02 [BD 1080p x265 Opus].mkv", size: 1.0 * GB },
+  ];
+  assert.deepEqual(multiPart(qq)?.map((f) => f.path.includes("S00E02")), [true, false], "ordered by part number");
+  assert.equal(multiPart([{ path: "/d/Movie A.mkv", size: 4 * GB }, { path: "/d/Movie B.mkv", size: 3.8 * GB }]), null, "two unnumbered movies: ask");
+  assert.equal(multiPart([{ path: "/d/x - 01.mkv", size: 4 * GB }, { path: "/d/x - 01v2.mkv", size: 3.9 * GB }]), null, "same number twice: ask");
+});

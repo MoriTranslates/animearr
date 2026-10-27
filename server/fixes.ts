@@ -40,6 +40,8 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
     const path = /(\/data\/\S[^]*?) isn't in AnimeArr's own/i.exec(why)?.[1] ?? null;
     add({ action: "importManual", label: "Import manually…", params: { ...target, path, grabId: ctx.grabId ?? null } });
   }
+  // A movie download with several big files (two movies? a multi-part special?): the user picks, in the import dialog.
+  if (/several large video files|import the right (?:one|file) by hand/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId ?? null } });
   if (/couldn't tell which (?:file is which )?episode|couldn't map the episode|two files look like the same episode|import (?:it|them|this one) by hand/i.test(why)) add({ action: "pickEpisode", label: "Pick episode…", params: { ...target, grabId: ctx.grabId ?? null } });
   if ((ctx.kind === "verify-fail" || /failed verification/i.test(why)) && /sub|English|dialogue|audio|dub/i.test(why)) {
     add({ action: "regrab", label: "Re-grab", params: target });

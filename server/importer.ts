@@ -566,7 +566,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
 export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; notes: string[] }
 
 /** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
-export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null } }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
+export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null }; part?: number }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
   const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; year: number | null; path: string; file: string | null } | undefined;
   if (!mv) throw err("Unknown movie", 404);
   const m = getSettings().media;
@@ -590,7 +590,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   const bySize = files.map((f) => ({ f, size: fs.statSync(f).size })).sort((a, b) => b.size - a.size);
   const main = bySize[0];
   const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
-  if (bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand` }], notes };
+  if (bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand, or as parts` }], notes };
   let probe: Probe | null = null;
   try {
     probe = await deps.probe(main.f);
@@ -600,9 +600,11 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   const release = input.release ?? path.basename(main.f).replace(/\.[^.]+$/, "");
   const ext = path.extname(main.f).toLowerCase();
   const opts = namingOptions();
-  const name = m.renameMovies
+  const name0 = m.renameMovies
     ? renderMovie(m.movieFormat, { movieTitle: mv.title, year: mv.year, quality: qualityName(release, probe?.video?.height ?? null), mediaInfo: mediaInfoOf(probe), releaseGroup: parseRelease(release).group, imdbId: mv.imdb_id, tmdbId: mv.tmdb_id, originalTitle: release }, { ...opts, colonReplacement: m.movieColonReplacement ?? opts.colonReplacement })
     : path.basename(main.f).replace(/\.[^.]+$/, "");
+  // One part of a multi-part movie: Plex's stacking names ("<Movie> (Year) - pt1.mkv", "- pt2.mkv").
+  const name = input.part ? `${name0} - pt${input.part}` : name0;
   let problem: string | null = null;
   if (!name.trim() || name.startsWith(".")) problem = "the movie format gives an empty file name";
   else if (Buffer.byteLength(name + ext) > MAX_NAME_BYTES) problem = "the file name would be too long";
@@ -619,6 +621,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
     /* keep the first problem */
   } else if (!underAllowedRoot(mv.path)) problem = "outside the allowed root folders";
   else if (currentArr && !currentLocal) problem = "AnimeArr can't reach the movie's current file, so it can't replace it";
+  else if (currentLocal && input.part) problem = "the movie already has a file: replacing it with a multi-part release is done by hand";
   else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
   else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
   else if (!freeSpaceOk(dest, main.size)) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;

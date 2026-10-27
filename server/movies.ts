@@ -461,6 +461,83 @@ const toLangsFile = (f: NonNullable<RadarrMovie["movieFile"]>) => ({ path: f.pat
 // ---------------------------------------------------------------- import
 
 /** Imports a finished movie download through Radarr's ManualImport (explicit movie id), verifying before and after. */
+/**
+ * The parts of a multi-part movie in a download: 2-6 big files of similar size (within 40 % of the biggest), each
+ * with its own order number (S00E02/S00E03, "- 01"/"- 02", "Part 1"/"Part 2", "pt1"), all different. Null = not parts.
+ */
+export function multiPart<T extends { path: string; size?: number }>(files: T[]): T[] | null {
+  const big = [...files].sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
+  const top = big[0]?.size ?? 0;
+  const parts = big.filter((f) => (f.size ?? 0) > top * 0.6);
+  if (parts.length < 2 || parts.length > 6 || big.some((f) => (f.size ?? 0) > top * 0.4 && (f.size ?? 0) <= top * 0.6)) return null;
+  const order = (f: T) => {
+    const name = path.posix.basename(f.path);
+    const pt = /\b(?:pt|part)[ ._-]?(\d{1,2})\b/i.exec(name)?.[1];
+    if (pt) return Number(pt);
+    const p = parseRelease(name);
+    return p.episodes[0] ?? p.absolute[0] ?? p.specialNumber ?? null;
+  };
+  const keyed = parts.map((f) => ({ f, n: order(f) }));
+  if (keyed.some((k) => k.n === null) || new Set(keyed.map((k) => k.n)).size !== keyed.length) return null;
+  return keyed.sort((a, b) => a.n! - b.n!).map((k) => k.f);
+}
+
+/** Imports a multi-part movie as Plex-stacked parts (pt1, pt2, …), each verified first; runtimes must add up. */
+async function importParts(
+  row: GrabRow,
+  m: MovieRow,
+  live: { path: string; hasFile: boolean; runtime?: number | null },
+  parts: { path: string; size?: number }[],
+  prof: ReturnType<typeof profileForMovie>,
+  deps: PipelineDeps,
+  attention: (why: string) => void,
+  fail: (why: string, imported: boolean) => Promise<void>,
+  label: string,
+  trusted: string,
+) {
+  const native = isNativeMovieId(m.id);
+  const runtime = live.runtime ?? m.runtime ?? null;
+  let total = 0;
+  for (const [i, p] of parts.entries()) {
+    const local = deps.localPath(p.path);
+    if (!local) return attention(`can't reach ${p.path} from AnimeArr (check Settings → Paths)`);
+    const probe = await deps.probe(local);
+    total += probe.durationSec ?? 0;
+    const v = judge(probe, prof, runtime ? Math.round(runtime / parts.length) : null, null);
+    if (!v.ok && !row.keep) return fail(`part ${i + 1} (${path.posix.basename(p.path)}): ${v.why}`, false);
+    logDecision("verify-ok", { title: label, release: row.release, why: `Checked part ${i + 1} of ${parts.length} (${path.posix.basename(p.path)}) before import: ${v.why}`, detail: { grabId: row.id, movieId: m.id } });
+  }
+  // The parts must add up to the movie (TMDB runtime), or it's something else (e.g. a batch of episodes).
+  if (runtime && total && (total / 60 < runtime * 0.75 || total / 60 > runtime * 1.35)) return attention(`the download has ${parts.length} parts adding up to ${Math.round(total / 60)} min, but the movie is ${runtime} min; import the right file by hand`);
+  const imp = getSettings().importer;
+  if (!native && imp.engine === "sonarr") return attention(`a ${parts.length}-part movie is imported by AnimeArr's own importer (Settings → Media management → Importer)`);
+  if (!imp.allowReal || !imp.movies) return attention("real movie imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
+  try {
+    const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
+    const plans = [];
+    for (const [i, p] of parts.entries()) plans.push(await planMovieImport({ movieId: m.id, path: p.path, release: row.release, client: row.client, automatic: true, trusted, part: i + 1, live: native ? undefined : { path: live.path, currentFile: liveFile } }));
+    const items = plans.flatMap((x) => x.items);
+    const res = await executeMovieImport({ ...plans[0], items }, { grabId: row.id });
+    const bad = res.find((r) => !r.done);
+    if (bad || res.length !== parts.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
+    if (!native) {
+      const wants = new Set(items.map((x) => x.destArr));
+      let after: Awaited<ReturnType<NonNullable<PipelineDeps["radarr"]>["movie"]>> | null = null;
+      for (let i = 0; i < 24; i++) {
+        after = await deps.radarr!.movie(m.id);
+        if (after.movieFile?.path && wants.has(after.movieFile.path)) break;
+        await deps.sleep(5000);
+      }
+      if (!after?.movieFile?.path || !wants.has(after.movieFile.path)) return attention(`AnimeArr imported the ${parts.length} parts, but Radarr hasn't picked them up yet (a Rescan in Radarr fixes it)`);
+      cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ?").run(JSON.stringify(toLangsFile(after.movieFile)), m.id);
+    }
+  } catch (e) {
+    return attention(`AnimeArr's importer: ${(e as Error).message}`);
+  }
+  setState(row.id, "done");
+  logDecision("import", { title: label, release: row.release, why: `Imported ✓ ${label}: a ${parts.length}-part release, imported as pt1…pt${parts.length} (Plex plays them as one movie)`, detail: { grabId: row.id, movieId: m.id, final: true } });
+}
+
 export async function importMovie(row: GrabRow, clientPath: string, deps: PipelineDeps = realDeps) {
   const m = movieById(row.movie_id!);
   const label = m ? (m.year ? `${m.title} (${m.year})` : m.title) : `movie ${row.movie_id}`;
@@ -499,8 +576,15 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   // The movie is the biggest file; extras stay out. Two big files = maybe two movies: let the user decide.
   const bySize = [...inThis].sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
   const main = bySize[0];
-  if (bySize[1] && (bySize[1].size ?? 0) > (main.size ?? 0) * 0.4) return attention(`the download has several large video files (${bySize.slice(0, 3).map((x) => path.posix.basename(x.path)).join(", ")}); import the right one by hand`);
   const prof = profileForMovie(m.id);
+  // Several big files: a multi-part movie (a 2-part special filed as one movie) when they're numbered parts of similar
+  // size whose runtimes add up to the movie's; anything else is for the user to decide.
+  let parts: typeof inThis | null = null;
+  if (bySize[1] && (bySize[1].size ?? 0) > (main.size ?? 0) * 0.4) {
+    parts = multiPart(inThis);
+    if (!parts) return attention(`the download has several large video files (${bySize.slice(0, 3).map((x) => path.posix.basename(x.path)).join(", ")}); import the right one by hand`);
+  }
+  if (parts) return importParts(row, m, live, parts, prof, deps, attention, fail, label, p0);
   const parsed = parseRelease(row.release);
   const learnKey = parsed.platform ?? sourceKey(row.release, null, parsed.source);
   // A dual-audio upgrade replaces a placeholder: only a file with the original audio AND the dub counts.
