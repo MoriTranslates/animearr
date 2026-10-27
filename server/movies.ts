@@ -161,6 +161,13 @@ export function movieDetail(id: number) {
     imdbId: m.imdb_id,
     title: m.title,
     originalTitle: m.original_title,
+    genres: (() => {
+      try {
+        return JSON.parse(m.genres ?? "[]") as string[];
+      } catch {
+        return [];
+      }
+    })(),
     altTitles: JSON.parse(m.alt_titles) as string[],
     year: m.year,
     runtime: m.runtime,

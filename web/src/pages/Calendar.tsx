@@ -257,6 +257,7 @@ function Week({ from, byDay, onOpen }: { from: number; byDay: Map<number, Entry[
           <div key={day} className={`week-day${day === today ? " today" : ""}`} style={{ "--heat": Math.min(1, list.length / Math.max(4, busiest)) } as React.CSSProperties}>
             <h2 className="week-hd">
               <span className="eyebrow">{new Date(day).toLocaleDateString(undefined, { weekday: "short" })}</span>
+              <span className="week-kanji jp" lang="ja" aria-hidden="true">{"日月火水木金土"[new Date(day).getDay()]}</span>
               <span className="week-num">{new Date(day).getDate()}</span>
               <span className="muted small week-count">{list.length ? t("cal.eps", { n: list.length }) : ""}</span>
             </h2>

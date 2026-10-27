@@ -396,7 +396,14 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   return (
     <div className="stack">
       <SectionIntro icon="↓" text={t("conn.intro.clients")} />
-      <ProtocolBar onChanged={refresh} />
+      {/* Protocol priority and delays live in one place (Indexers); here just what they are. */}
+      <p className="small muted">
+        {o.data?.noPreference ? t("conn.prioNone") : t(o.data?.protocolOrder?.[0] === "torrent" ? "conn.prioTorrent" : "conn.prioUsenet")}
+        {o.data?.delays && (o.data.delays.usenetDelayMin || o.data.delays.torrentDelayMin) ? ` · ${t("conn.prioDelays", { u: o.data.delays.usenetDelayMin, t: o.data.delays.torrentDelayMin })}` : ""} ·{" "}
+        <a href="/settings?tab=indexers" onClick={(e) => (e.preventDefault(), navigate("/settings?tab=indexers"))}>
+          {t("conn.prioChange")}
+        </a>
+      </p>
       <HowItFits here="clients" />
       <div className="proto-cols">
         {col("usenet")}

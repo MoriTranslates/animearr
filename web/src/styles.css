@@ -1310,3 +1310,53 @@ h2.season-name-h { font-size: var(--text-lg); margin: 0; }
 .state-pill.good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
 .state-pill.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .small-h { font-size: var(--text-md); margin: 4px 0 0; }
+.miss-why { color: var(--warn); }
+.modal-foot { position: sticky; bottom: 0; background: var(--panel); padding: 10px 0 2px; border-top: 1px solid var(--line); z-index: 2; flex-wrap: wrap; }
+.add-advanced > summary { cursor: pointer; color: var(--muted); font-size: var(--text-sm); }
+.mode-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 999px; overflow: hidden; flex-wrap: wrap; align-self: flex-start; }
+.mode-seg button { border: 0; border-radius: 0; background: none; padding: 8px 16px; min-height: 40px; }
+.mode-seg button.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.mode-seg button.on::before { content: none; }
+
+/* Styled selects: no native chrome, an SVG chevron */
+select { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a3a9bb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+.settings-nav .more-icon { width: 18px; height: 18px; flex: none; }
+/* Calendar (UI review): week columns at least 150px (scroll sideways when narrow); no tall empty cards */
+.week { grid-template-columns: repeat(7, minmax(150px, 1fr)); overflow-x: auto; }
+.week-day { min-height: 0; align-self: start; }
+@media (max-width: 760px) { .week { grid-template-columns: none; } .week-day { min-height: 0; } }
+.cal-head, .calendar-hero { position: sticky; top: 64px; z-index: 3; }
+.week-kanji { font-size: var(--text-sm); color: var(--faint); margin-left: -2px; }
+
+.empty-bubble { position: relative; margin: 6px 0 0; padding: 10px 16px; border-radius: 16px; background: var(--panel-2); color: var(--text); max-width: 46ch; }
+.empty-bubble::after { content: ""; position: absolute; left: 50%; top: -7px; width: 14px; height: 14px; background: var(--panel-2); transform: translateX(-50%) rotate(45deg); border-radius: 3px; }
+.empty-jp { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--faint); }
+
+/* Season complete: a few momiji drift down (fall only; nothing with reduced motion) */
+.momiji { position: absolute; inset: -30px 0 auto 0; height: 0; pointer-events: none; display: none; }
+:root[data-season="fall"] .momiji { display: block; }
+.momiji i { position: absolute; top: 0; font-style: normal; font-size: var(--text-md); animation: momiji-fall 2.6s ease-in forwards; opacity: 0; }
+.momiji i:nth-child(1) { left: 12%; animation-delay: 0.1s; }
+.momiji i:nth-child(2) { left: 48%; animation-delay: 0.5s; }
+.momiji i:nth-child(3) { left: 80%; animation-delay: 0.9s; }
+@keyframes momiji-fall { 0% { transform: translateY(0) rotate(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(110px) rotate(200deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .momiji { display: none !important; } }
+
+/* Show hero (UI review): bigger key-art, long titles fit, a calm progress ring, a softer sheet scrim */
+@media (min-width: 900px) { .kv-hero { min-height: 420px; } }
+.hero-title.long { font-size: clamp(1.75rem, 3vw, 2.4rem); }
+.kv-hero .ring-fg { stroke: var(--show, var(--accent)); }
+.sheet-back { background: rgb(0 0 0 / 0.55); backdrop-filter: blur(2px); }
+
+.event2 { cursor: pointer; }
+.event2:hover { border-color: var(--line-2); }
+.event-title { font-family: var(--font); font-weight: 600; font-size: var(--text-md); }
+.event-chev { background: none; border: 0; padding: 2px 0; color: var(--muted); min-height: 24px; }
+.event-chev:hover { color: var(--text); }
+@media (max-width: 600px) { .event2 .event-head { flex-wrap: wrap; } .event2 .event-time { order: 3; flex-basis: 100%; margin-left: 0; } }
+
+/* Per-row ⋯ menus show on hover/focus where there is a mouse (hundreds of them made lists noisy) */
+@media (hover: hover) {
+  .ep-row .ep-menu, .fill-row .menu-wrap, .q-row .menu-wrap { opacity: 0; transition: opacity 0.15s; }
+  .ep-row:hover .ep-menu, .ep-row:focus-within .ep-menu, .fill-row:hover .menu-wrap, .fill-row:focus-within .menu-wrap { opacity: 1; }
+}

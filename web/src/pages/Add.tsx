@@ -5,6 +5,8 @@ import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
 import { ScopeFields, type Scope } from "../scope";
 import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { PosterCard } from "../posters";
+import { seasonOf } from "../season";
 
 interface AddResult {
   anilistId: number;
@@ -98,6 +100,7 @@ export function Add() {
               </div>
             </>
           )}
+          <SeasonPicks onPick={(title) => setQ(title)} />
           <h2 className="eyebrow">{t("find.tools")}</h2>
           <div className="tiles">
             <Link to="/search" className="card pad tile link-tile">
@@ -180,7 +183,8 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
   const [profileId, setProfileId] = useState("");
   const [size, setSize] = useState<SizePreset | "">("");
   const [scope, setScope] = useState<Scope | null>(null);
-  const [then, setThen] = useState<"search" | "queue" | "none">("search");
+  // Nothing downloads unless the user picks "Add & start downloading" (the user's rule: no grab on a casual tap).
+  const [then, setThen] = useState<"search" | "queue" | "none">("none");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!s.data) return;
@@ -189,6 +193,18 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
     setScope((x) => x ?? (r.status === "FINISHED" ? s.data!.scope.ended : s.data!.scope.continuing));
   }, [s.data, r.status, r.kind]);
   const movie = r.kind === "MOVIE";
+  const add = async (how: "search" | "queue" | "none") => {
+    setBusy(true);
+    try {
+      const res = await api<{ tvdbId?: number; movieId?: number; title: string; path: string }>("/add", { body: { anilistId: r.anilistId, rootFolder: root, kind: movie ? "movie" : "show", profileId: profileId || null, sizePreset: movie ? null : size || null, scope: movie ? null : scope, then: movie && how === "queue" ? "none" : how } });
+      toast(t("add.added", { title: res.title, path: res.path }));
+      navigate(res.movieId ? `/movie/${res.movieId}` : `/show/${res.tvdbId}`);
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Modal title={t("add.sheetTitle", { title: r.title })} onClose={onClose}>
       {(!s.data || !profiles.data) && <Spinner label={t("app.loading")} />}
@@ -206,77 +222,62 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
               <span className="muted">{r.tvdbId ? t("add.tvdbMapped", { id: r.tvdbId }) : t("add.noTvdb")}</span>
             </div>
           </div>
-          {(
-            <div className="form">
-              <label>
-                {t("add.root")}
-                <select value={root} onChange={(e) => setRoot(e.target.value)}>
-                  {s.data.allowedRoots.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("profiles.profile")}
-                <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-                  <option value="">{t("profiles.followDefault")}</option>
-                  {profiles.data.profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!movie && (
-              <label>
-                {t("size.preset")}
-                <select value={size} onChange={(e) => setSize(e.target.value as SizePreset | "")}>
-                  <option value="">{t("size.profileDefault")}</option>
-                  {SIZE_PRESETS.map((x) => (
-                    <option key={x} value={x}>
-                      {t(`size.${x}` as I18nKey)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              )}
-              {scope && !movie && <ScopeFields value={scope} onChange={setScope} />}
-              <fieldset className="stack">
-                <legend>{t("add.then")}</legend>
-                {(movie ? (["search", "none"] as const) : (["search", "queue", "none"] as const)).map((x) => (
-                  <label key={x} className="row small">
-                    <input type="radio" name="then" checked={then === x} onChange={() => setThen(x)} />
-                    {t(`add.then.${movie && x !== "queue" ? `movie.${x}` : x}` as I18nKey)}
-                  </label>
+          <div className="form">
+            <label>
+              {t("profiles.profile")}
+              <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
+                <option value="">{t("profiles.followDefault")}</option>
+                {profiles.data.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
                 ))}
-              </fieldset>
-            </div>
-          )}
-          <div className="row">
+              </select>
+            </label>
+            {/* Everything else has a sensible default: tucked away. */}
+            <details className="add-advanced">
+              <summary>{t("add.advanced")}</summary>
+              <div className="form">
+                <label>
+                  {t("add.root")}
+                  <select value={root} onChange={(e) => setRoot(e.target.value)}>
+                    {s.data.allowedRoots.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {!movie && (
+                  <label>
+                    {t("size.preset")}
+                    <select value={size} onChange={(e) => setSize(e.target.value as SizePreset | "")}>
+                      <option value="">{t("size.profileDefault")}</option>
+                      {SIZE_PRESETS.map((x) => (
+                        <option key={x} value={x}>
+                          {t(`size.${x}` as I18nKey)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scope && !movie && <ScopeFields value={scope} onChange={setScope} />}
+                {!movie && (
+                  <label className="row small">
+                    <input type="checkbox" checked={then === "queue"} onChange={(e) => setThen(e.target.checked ? "queue" : "none")} /> {t("add.then.queue")}
+                  </label>
+                )}
+              </div>
+            </details>
+          </div>
+          <div className="row end modal-foot">
             <button onClick={onClose}>{t("common.cancel")}</button>
-            {(
-              <button
-                className="primary"
-                disabled={busy || !root}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    const res = await api<{ tvdbId?: number; movieId?: number; title: string; path: string }>("/add", { body: { anilistId: r.anilistId, rootFolder: root, kind: movie ? "movie" : "show", profileId: profileId || null, sizePreset: movie ? null : size || null, scope: movie ? null : scope, then } });
-                    toast(t("add.added", { title: res.title, path: res.path }));
-                    navigate(res.movieId ? `/movie/${res.movieId}` : `/show/${res.tvdbId}`);
-                  } catch (e) {
-                    toast((e as Error).message, true);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                {then === "search" ? "⚡ " : ""}
-                {t(movie ? "add.confirmMovie" : "add.confirm")}
-              </button>
-            )}
+            <button disabled={busy || !root} onClick={() => void add(then === "queue" ? "queue" : "none")}>
+              {then === "queue" ? t("add.addQueue") : t("add.addOnly")}
+            </button>
+            <button className="primary" disabled={busy || !root} onClick={() => void add("search")}>
+              ⚡ {t(movie ? "add.addGetMovie" : "add.addGet")}
+            </button>
           </div>
         </div>
       )}
@@ -314,6 +315,22 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
           <p>{t(movieId ? "add.removeMovieBody" : "add.removeBody")}</p>
         </Confirm>
       )}
+    </>
+  );
+}
+
+/** The empty Find page: this season's popular shows that aren't in the library yet (tap → search it, then Add). */
+function SeasonPicks({ onPick }: { onPick: (title: string) => void }) {
+  const d = useLoad(() => api<{ items: { anilistId: number; title: string; cover: string | null; color: string | null; episodes: number | null; format: string | null }[] }>("/add/season"), []);
+  if (!d.data?.items.length) return null;
+  return (
+    <>
+      <h2 className="eyebrow">{t("find.thisSeason", { season: seasonOf().name })}</h2>
+      <div className="posters hscroll">
+        {d.data.items.map((m) => (
+          <PosterCard key={m.anilistId} title={m.title} cover={m.cover} color={m.color} onClick={() => onPick(m.title)} meta={<span className="clamp1">{m.title}</span>} />
+        ))}
+      </div>
     </>
   );
 }

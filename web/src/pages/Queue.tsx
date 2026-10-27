@@ -111,7 +111,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
             )}
             <div className="row between qmeta">
               <span className="muted small">
-                {g.state === "downloading" && g.stage === "waiting" ? `⇢ ${g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}` : g.live?.etaSec ? t("queue.speedEta", { speed: fmtSize(g.live.speed ?? 0), eta: eta(g.live.etaSec) }) : g.state === "downloading" ? t("queue.progressNoEta", { pct }) : ""}
+                {g.state === "downloading" && g.stage === "waiting" ? `⇢ ${g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}` : g.live?.etaSec ? t("queue.speedEta", { speed: fmtSize(g.live.speed ?? 0), eta: eta(g.live.etaSec) }) : g.state === "downloading" ? statusLine(g) : ""}
               </span>
               <span className="row qclient">
                 <span className="muted small">
@@ -319,4 +319,14 @@ export function ReleaseLine({ release }: { release: string }) {
       <ReleaseName name={release} />
     </button>
   );
+}
+
+/** What a download is doing when there's no ETA: "Queued in qBittorrent · 1 seeder", "Stalled · 0 seeders". */
+function statusLine(g: { live?: { state: string; clientStatus?: string; seeders?: number | null; message?: string } | null; clientName?: string | null; protocol: string }) {
+  const l = g.live;
+  if (!l) return t("queue.waitingClient");
+  if (l.state === "unknown") return l.message ?? t("queue.waitingClient");
+  const raw = l.clientStatus ?? l.state;
+  const what = /stalled/i.test(raw) ? t("queue.st.stalled") : /queued|paused|stopped/i.test(raw) ? t("queue.st.queued", { client: g.clientName || g.protocol }) : /meta/i.test(raw) ? t("queue.st.meta") : /check/i.test(raw) ? t("queue.st.checking") : t("queue.st.downloading");
+  return l.seeders !== null && l.seeders !== undefined ? `${what} · ${t("queue.seeders", { n: l.seeders })}` : what;
 }

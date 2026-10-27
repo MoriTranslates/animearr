@@ -10,7 +10,8 @@ import { showVars } from "./season";
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
 export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string }; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
-export interface EpisodeRow { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
+export interface EpisodeRow {
+  missingWhy?: string | null; id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
 
 const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
@@ -413,7 +414,9 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 <div>
                   <dt>{t("ep.quality")}</dt>
                   <dd>
-                    {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"} <span className="muted small">{t("ep.sonarrLabel", { label: d.file.quality ?? "?" })}</span>
+                    {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
+                    {/* Sonarr's quality label only when it disagrees with the file itself. */}
+                    {d.file.quality && resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, "")) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
                   </dd>
                 </div>
                 <div>

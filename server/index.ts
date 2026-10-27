@@ -74,7 +74,7 @@ async function catalogTick(force = false) {
 import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
-import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd } from "./native.js";
+import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -825,6 +825,7 @@ app.put<{ Body: { allowArrWrites?: boolean } }>("/api/cutover/allow", async (req
 // ---------------------------------------------------------------- native Add (no Sonarr/Radarr)
 
 app.get<{ Querystring: { q?: string } }>("/api/add/search", async (req) => searchAdd(String(req.query.q ?? "").slice(0, 200)));
+app.get("/api/add/season", async () => ({ items: await seasonPicks().catch(() => []) }));
 app.post<{ Body: { anilistId: number; rootFolder: string; kind?: "show" | "movie"; profileId?: string | null; sizePreset?: string | null; scope?: Scope | null; then?: "search" | "queue" | "none"; live?: boolean } }>("/api/add", async (req) => {
   writable();
   const b = req.body ?? ({} as never);

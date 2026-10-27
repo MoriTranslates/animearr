@@ -1,3 +1,4 @@
+import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
@@ -16,11 +17,11 @@ import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, 
 type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
 /** Settings, grouped like Sonarr's: a left sub-nav on desktop, a list on phones. */
-const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: string }[] }[] = [
-  { label: "settings.group.connect", tabs: [{ id: "indexers", icon: "⌕" }, { id: "clients", icon: "↓" }, { id: "mediaservers", icon: "▶" }, { id: "notifications", icon: "🔔" }, { id: "migration", icon: "⇄" }] },
-  { label: "settings.group.library", tabs: [{ id: "profile", icon: "◐" }, { id: "media", icon: "▦" }, { id: "paths", icon: "⤳" }, { id: "metadata", icon: "ⓘ" }] },
-  { label: "settings.group.automation", tabs: [{ id: "safety", icon: "★" }, { id: "downloads", icon: "⛁" }] },
-  { label: "settings.group.general", tabs: [{ id: "appearance", icon: "◑" }, { id: "security", icon: "🔒" }, { id: "system", icon: "⚙" }] },
+const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: LucideIcon }[] }[] = [
+  { label: "settings.group.connect", tabs: [{ id: "indexers", icon: SearchIcon }, { id: "clients", icon: Download }, { id: "mediaservers", icon: MonitorPlay }, { id: "notifications", icon: BellIcon }, { id: "migration", icon: ArrowLeftRight }] },
+  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
+  { label: "settings.group.automation", tabs: [{ id: "safety", icon: ShieldCheck }, { id: "downloads", icon: HardDrive }] },
+  { label: "settings.group.general", tabs: [{ id: "appearance", icon: Palette }, { id: "security", icon: Lock }, { id: "system", icon: Cog }] },
 ];
 const TABS = SECTIONS.flatMap((x) => x.tabs.map((y) => y.id));
 /** Old links (?tab=connections, ?tab=cutover) still land in the right place. */
@@ -36,7 +37,8 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
   const toast = useToast();
   const q = query().get("tab") ?? "";
   const initial = (ALIAS[q] ?? q) as Tab;
-  const [tab, setTabState] = useState<Tab | null>(only ?? (TABS.includes(initial) ? initial : null));
+  const desktop = typeof window !== "undefined" && window.matchMedia?.("(min-width: 761px)").matches;
+  const [tab, setTabState] = useState<Tab | null>(only ?? (TABS.includes(initial) ? initial : desktop ? TABS[0] : null));
   const loaded = useLoad(() => api<S>("/settings"), []);
   const [s, setS] = useState<S | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -127,7 +129,8 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {x === "appearance" && <Appearance />}
           {x === "system" && <System status={status} />}
           {x === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-          {FORM_TABS.includes(x) && (
+          {/* The save bar appears only with unsaved changes (a disabled Save was just a muddy block). */}
+          {FORM_TABS.includes(x) && dirty && (
             <div className="sticky-actions row">
               <button className="primary" disabled={!dirty} onClick={save}>
                 {t("common.save")}
@@ -160,9 +163,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
                   aria-current={tab === x.id ? "page" : undefined}
                   onClick={(e) => (e.preventDefault(), setTab(x.id))}
                 >
-                  <span aria-hidden="true" className="more-icon">
-                    {x.icon}
-                  </span>
+                  <x.icon aria-hidden="true" className="lucide more-icon" />
                   <span className="grow">{t(`settings.tab.${x.id}` as I18nKey)}</span>
                   <span className="chevron" aria-hidden="true">
                     ›

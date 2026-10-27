@@ -137,7 +137,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                       onClick={() => setOpen(e.episodeId)}
                       meta={
                         <>
-                          <b>{time(e.airUtc)}</b>
+                          <b>{countdown(e.airUtc) ?? time(e.airUtc)}</b>
                           <span className="tnum">{sxe(e.season, e.episode)}</span>
                         </>
                       }
@@ -323,4 +323,16 @@ function ThisWeek({ list, onOpen }: { list: CalEntry[]; onOpen: (id: number) => 
       ))}
     </div>
   );
+}
+
+/** "ON AIR" for 30 minutes after the air time, "in 2 h 10 m" before it; otherwise null (the time is shown). */
+function countdown(airUtc: number, now = Date.now()) {
+  const d = airUtc - now;
+  if (d <= 0 && d > -30 * 60_000) return t("home.onAir");
+  if (d > 0 && d < 12 * 3_600_000) {
+    const h = Math.floor(d / 3_600_000);
+    const m = Math.round((d % 3_600_000) / 60_000);
+    return h ? t("home.inHM", { h, m }) : t("home.inM", { m });
+  }
+  return null;
 }

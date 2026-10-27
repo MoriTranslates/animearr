@@ -183,6 +183,7 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
   const [scope, setScope] = useState<"file" | "season" | "group">("file");
   const [alsoTag, setAlsoTag] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [all, setAll] = useState(false);
   const load = () =>
     api<Detail>(`/files/detail?path=${encodeURIComponent(path)}`)
       .then((x) => (setD(x), setErr(null)))
@@ -262,8 +263,10 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                   </label>
                 )}
               </div>
+              {d.subs.some((s) => !s.lang) && <p className="strong">{t("fix.whichEnglish")}</p>}
               <ul className="plain small tracks">
-                {d.subs.map((s) => (
+                {/* The tracks that matter first (no language, English, signs-only, your fixes); the rest on request. */}
+                {(all ? d.subs : d.subs.filter((s) => !s.lang || s.lang === "en" || s.partial || s.forced || s.overridden)).map((s) => (
                   <li key={`s${s.index}`} className="track-row">
                     <span>
                       💬 <b>{s.lang ?? t("fix.untagged")}</b> · {s.codec}
@@ -295,6 +298,11 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                   </li>
                 ))}
               </ul>
+              {!all && d.subs.some((s) => !(!s.lang || s.lang === "en" || s.partial || s.forced || s.overridden)) && (
+                <button type="button" className="linklike small self-start" onClick={() => setAll(true)}>
+                  {t("fix.showAll", { n: d.subs.length })}
+                </button>
+              )}
             </>
           )}
           {(!!d.sidecars.length || !!d.strays.length) && <h4>{t("fix.sidecars")}</h4>}

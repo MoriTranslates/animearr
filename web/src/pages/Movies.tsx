@@ -133,6 +133,7 @@ interface MovieDetail {
   cover: string | null;
   monitored: boolean;
   allowed: boolean;
+  genres?: string[];
   file: { path: string | null; sceneName: string | null; releaseGroup: string | null; quality: string | null; audio: string[]; subs: string[]; resolution: string | null } | null;
   verdict: { ok: boolean | null; why: string } | null;
   active: { id: number; state: string; progress: number | null; release: string } | null;
@@ -251,9 +252,13 @@ export function MoviePage({ id }: { id: number }) {
           <div className="chips hero-chips">
             {!m.released && <Chip tone="info">{t("movies.status.unreleased")}</Chip>}
             {!m.allowed && <Chip tone="warn" title={m.path}>{t("chip.outsideRoot")}</Chip>}
-            <button className="small" aria-pressed={m.monitored} onClick={() => void toggleWanted()} title={t("movies.wantedHelp")}>
-              {m.monitored ? `★ ${t("movies.wanted")}` : `☆ ${t("movies.notWanted")}`}
-            </button>
+            {/* "Wanted" only means something while the movie has no file. */}
+            {!m.file && (
+              <button className="small" aria-pressed={m.monitored} onClick={() => void toggleWanted()} title={t("movies.wantedHelp")}>
+                {m.monitored ? `★ ${t("movies.wanted")}` : `☆ ${t("movies.notWanted")}`}
+              </button>
+            )}
+            {!!m.genres?.length && <span className="muted small">{m.genres.slice(0, 3).join(", ")}</span>}
           </div>
           <div className="hero-actions">
             {m.allowed ? (

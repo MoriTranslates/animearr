@@ -97,6 +97,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               </span>
             )}
             {x.kind === "complete" && <SheepShip size={56} className="sail-by" />}
+            {x.kind === "complete" && (
+              <span className="momiji" aria-hidden="true">
+                <i>🍁</i>
+                <i>🍁</i>
+                <i>🍁</i>
+              </span>
+            )}
             {x.cover && <img className="toast-cover" src={thumbUrl(x.cover, "sm")} alt="" width={34} height={50} />}
             <span className="toast-emote" aria-hidden="true">
               {EMOTE[x.kind]}
@@ -205,7 +212,15 @@ export function Empty({ children, title, icon, action }: { children?: ReactNode;
         </span>
       )}
       {title && <p className="empty-title">{title}</p>}
-      {children && <p className="muted">{children}</p>}
+      {/* A speech bubble with a quiet "shizuka~" (just a little character on an empty page). */}
+      {children && (
+        <p className="empty-bubble">
+          {children}
+          <span className="empty-jp jp" lang="ja" aria-hidden="true">
+            静か～
+          </span>
+        </p>
+      )}
       {action && typeof action === "object" && "run" in (action as object) ? (
         <button className="small" onClick={(action as { run: () => void }).run}>
           {(action as { label: string }).label}

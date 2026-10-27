@@ -184,22 +184,26 @@ function ImporterCard({ s }: { s: S }) {
   return (
     <div className="card pad stack">
       <h2>{t("media.importer")}</h2>
-      <div className="chips">
-        <Chip tone={imp.engine === "animearr" ? "accent" : "info"}>{imp.engine === "animearr" ? t("media.engine.animearr") : t("media.engine.sonarr")}</Chip>
-        <Chip tone={imp.allowReal ? "good" : "warn"}>{imp.allowReal ? t("media.realOn") : t("media.realOff")}</Chip>
-        {imp.allowReal && imp.realBudget >= 0 && <Chip tone="warn">{t("media.budget", { n: imp.realBudget })}</Chip>}
-        <Chip tone={imp.allowRename ? "good" : "warn"}>{imp.allowRename ? t("media.renameOn") : t("media.renameOff")}</Chip>
+      {/* One control for one decision: what AnimeArr's importer may do. */}
+      <div className="seg mode-seg" role="radiogroup" aria-label={t("media.importer")}>
+        {(
+          [
+            ["preview", { allowReal: false, allowRename: false }],
+            ["import", { allowReal: true, allowRename: false }],
+            ["rename", { allowReal: true, allowRename: true }],
+          ] as const
+        ).map(([k, patch]) => {
+          const on = k === (!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename");
+          return (
+            <button key={k} type="button" role="radio" aria-checked={on} className={on ? "on" : ""} onClick={() => !on && setAsk(patch)}>
+              {t(`media.mode.${k}` as I18nKey)}
+            </button>
+          );
+        })}
       </div>
+      <p className="muted small">{t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}.help` as I18nKey)}</p>
+      {imp.allowReal && imp.realBudget >= 0 && <Chip tone="warn">{t("media.budget", { n: imp.realBudget })}</Chip>}
       <p className="muted small">{t("media.importerHelp")}</p>
-      <div className="row">
-
-        <button className="small" onClick={() => setAsk({ allowReal: !imp.allowReal })}>
-          {imp.allowReal ? t("media.realTurnOff") : t("media.realTurnOn")}
-        </button>
-        <button className="small" onClick={() => setAsk({ allowRename: !imp.allowRename })}>
-          {imp.allowRename ? t("media.renameTurnOff") : t("media.renameTurnOn")}
-        </button>
-      </div>
       {ask && (
         <Confirm title={t("media.confirmTitle")} confirmLabel={t("common.save")} danger={!!(ask.allowReal || ask.allowRename || ask.engine === "animearr")} onClose={() => setAsk(null)} onConfirm={async () => (await put(ask), setAsk(null))}>
           <p>{t("media.confirmBody")}</p>

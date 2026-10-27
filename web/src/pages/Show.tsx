@@ -186,8 +186,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 ]}
               />
             </div>
-            <h1 className="hero-title">{h.title}</h1>
-            {h.catalog?.titleNative && <p className="hero-jp jp" lang="ja">{h.catalog.titleNative}</p>}
+            <h1 className={`hero-title${h.title.length > 40 ? " long" : ""}`}>{h.title}</h1>
+            {h.catalog?.titleNative && h.catalog.titleNative !== h.title && <p className="hero-jp jp" lang="ja">{h.catalog.titleNative}</p>}
             <p className="hero-facts">
               <span>
                 <i className={`dot ${h.status === "continuing" ? "good" : "off"}`} aria-hidden="true" />
@@ -303,6 +303,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         const noLang = have.filter((r) => r.file && langOf(r.file, lang) === "no");
         const unknownLang = have.filter((r) => r.file && langOf(r.file, lang) === "unknown" && r.file.lang?.code !== "untagged");
         const untaggedLang = have.filter((r) => r.file?.lang?.code === "untagged");
+        // When most of the season shares the same language problem, the season tag says it once; rows keep their dot.
+        const quietLang = noLang.length >= Math.max(3, have.length * 0.6);
         const dl = rows.filter((r) => r.status === "downloading");
         const attention = rows.filter((r) => r.status === "attention");
         const quiet = !missing.length && !noLang.length && !unknownLang.length && !untaggedLang.length && !dl.length && !attention.length && have.length === aired.length;
@@ -369,7 +371,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             ) : (
               <ul className="ep-list">
                 {ordered_.main.map((r) => (
-                  <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
+                  <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} quietLang={quietLang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
                 ))}
               </ul>
             )}
@@ -488,7 +490,7 @@ function Synopsis({ text }: { text: string }) {
  * One episode row: a status dot in the number column, title + date · group, then quality and size as columns on
  * desktop; a chip only when something needs you (no subs, downloading, missing, attention).
  */
-function EpRow({ r, lang, showTitle = "", next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; showTitle?: string; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: () => void }) {
+function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; showTitle?: string; quietLang?: boolean; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: () => void }) {
   const toast = useToast();
   const ls = r.status === "have" && r.file ? langOf(r.file, lang) : "ok";
   const noLang = ls !== "ok";
@@ -513,6 +515,7 @@ function EpRow({ r, lang, showTitle = "", next = false, selecting, selected, onT
             {airLabel(r.airUtc)}
             {r.file?.group ? ` · ${r.file.group}` : ""}
             {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
+            {r.status === "missing" && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
             <span className="phone-meta">
               {quality ? ` · ${quality}` : ""}
               {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}
@@ -523,7 +526,7 @@ function EpRow({ r, lang, showTitle = "", next = false, selecting, selected, onT
         <span className="ep-sz muted small tnum">{r.file?.size ? fmtSize(r.file.size) : ""}</span>
         <span className="ep-status">
           {next ? <span className="tag next">{t("ep.next")}</span> : null}
-          {r.status === "have" && !noLang ? <span className="sr-only">{t("ep.status.have")}</span> : !next || r.status !== "unaired" ? <StatusPill e={r} lang={lang} /> : null}
+          {(r.status === "have" && (!noLang || (quietLang && ls === "no"))) || (r.status === "unaired" && !next) ? <span className="sr-only">{t(`ep.status.${r.status}` as I18nKey)}</span> : !next || r.status !== "unaired" ? <StatusPill e={r} lang={lang} /> : null}
         </span>
       </button>
       {r.file && !selecting && (
@@ -884,4 +887,12 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
       )}
     </Confirm>
   );
+}
+
+/** The scheduler's last word on a missing episode, short enough for a row ("nothing acceptable yet (0 of 14)"). */
+function shortWhy(why: string) {
+  const w = why.replace(/^Error: /, "").split(/(?<=\))[.;]|; |\. /)[0];
+  // Raw network errors aren't a reason anyone can act on.
+  if (/timeout|ECONN|fetch failed|socket/i.test(w)) return t("ep.searchTrouble");
+  return w.length > 80 ? `${w.slice(0, 79)}…` : w;
 }

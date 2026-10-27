@@ -162,6 +162,8 @@ export interface EpisodeRow {
   ahead?: number | null;
   /** Season 0 only: what kind of special this is (OVA, movie, recap, promo, …); junk ones are collapsed in lists. */
   special?: { type: string; cls: string } | null;
+  /** Missing: the last automatic search's outcome ("nothing with EN subs", …), when there was one. */
+  missingWhy?: string | null;
 }
 
 const tvdbOf = (seriesId: number) => (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id ?? 0;
@@ -197,13 +199,15 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
   const burned = new Map<number, string | null>();
   const burnedFor = (season: number) => (burned.has(season) ? burned.get(season)! : (burned.set(season, prof.subLangs.find((l) => !!burnedInFact(tvdb, season, l)) ?? null), burned.get(season)!));
   const judgeFor = (season: number): Judge => (p) => judge(p, prof, null, burnedFor(season));
+  // Why a missing episode is still missing: the scheduler's last word on it (no dead end on the row).
+  const lastWhy = new Map((db.prepare("SELECT episode_id, last_why FROM search_state WHERE tvdb_id = ? AND last_why != ''").all(tvdb) as { episode_id: number; last_why: string }[]).map((r) => [r.episode_id, r.last_why]));
   return eps.map((e) => {
     const g = active.get(e.id);
     const f = e.file_id ? files.get(e.file_id) : undefined;
     let status: EpisodeStatus = e.has_file || extraLinks.has(e.id) ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
     if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
     const fallback = !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id), judgeFor(e.season)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null };
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id), judgeFor(e.season)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null, missingWhy: status === "missing" ? (lastWhy.get(e.id) ?? null) : null };
   });
 }
 

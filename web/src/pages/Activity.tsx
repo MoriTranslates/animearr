@@ -104,7 +104,11 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
   const tone = KIND_TONE[k] ?? "info";
   const sub = subline(lead, release);
   return (
-    <article className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}`}>
+    <article
+      className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}${open ? " open" : ""}`}
+      // The whole card opens its details (links and buttons inside keep doing their own thing).
+      onClick={(e) => !(e.target as HTMLElement).closest("a, button, input, select, summary") && setOpen(!open)}
+    >
       {link ? (
         <Link to={link} className="event-thumb">
           <span className="sr-only">{lead.title || t("activity.show")}</span>
@@ -137,8 +141,8 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
         )}
         <FixButtons fixes={fixes} />
         <div className="row event-actions">
-          <button className="linklike small" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? t("activity.hideDetails") : t("activity.details")}
+          <button className="event-chev small" aria-expanded={open} aria-label={open ? t("activity.hideDetails") : t("activity.details")} onClick={() => setOpen(!open)}>
+            {open ? "▾" : "▸"} {t("activity.detailsShort")}
           </button>
           {undoable.map((x) => (
             <button
