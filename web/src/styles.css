@@ -1393,3 +1393,16 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 
 /* fix/playtest-view-b: calendar, home, library, movies, find & add */
 .movie-kicker { text-transform: none; letter-spacing: 0.02em; font-size: var(--text-sm); }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 var(--space-3); }
+.cal-key { display: inline-flex; align-items: center; gap: 4px; }
+.cal-swatch { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; border-radius: 5px; border: 1.5px solid var(--line); font-size: 11px; font-weight: 700; }
+.cal-key.have .cal-swatch { border-color: var(--good); color: var(--good); }
+.cal-key.missing .cal-swatch { border-color: var(--bad); color: var(--bad); }
+.cal-key.downloading .cal-swatch { border-color: var(--info); color: var(--info); }
+.cal-key.movie .cal-swatch { border-style: dashed; }
+/* Week view: titles wrap between words (no "Reincarna/ted"); a word too long for the column is clipped, not split. */
+.agenda-entry.dense .agenda-text .strong { overflow-wrap: normal; word-break: normal; hyphens: manual; -webkit-line-clamp: 3; font-size: var(--text-sm); line-height: 1.3; }
+.agenda-entry.dense .cover.sm { width: 28px; height: 40px; }
+.month-more { color: var(--accent-2); font-weight: 600; }
+.month-picked { scroll-margin-top: 72px; }
+.month-picked h2:focus { outline: none; }
