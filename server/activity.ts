@@ -55,6 +55,17 @@ export interface DecisionRow {
   undoneAt: number | null;
 }
 
+/**
+ * A problem that a later import settled: the same movie, or any of the same episodes, was imported afterwards (a
+ * rejected release followed by a good one). Such rows stay in the log, marked resolved, without fix buttons.
+ */
+export function resolvedLater(row: { id: number; tvdbId: number | null; episodeIds: number[]; movieId?: number | null }): boolean {
+  if (row.movieId) return !!db.prepare("SELECT 1 FROM decisions WHERE id > ? AND kind = 'import' AND why LIKE 'Imported%' AND json_extract(detail, '$.movieId') = ? LIMIT 1").get(row.id, row.movieId);
+  if (!row.tvdbId || !row.episodeIds.length) return false;
+  const later = db.prepare("SELECT episode_ids FROM decisions WHERE id > ? AND kind = 'import' AND why LIKE 'Imported%' AND tvdb_id = ? ORDER BY id LIMIT 200").all(row.id, row.tvdbId) as { episode_ids: string }[];
+  return later.some((l) => (JSON.parse(l.episode_ids) as number[]).some((e) => row.episodeIds.includes(e)));
+}
+
 export function listDecisions(opts: { tvdbId?: number; kinds?: string[]; before?: number; limit?: number } = {}): DecisionRow[] {
   const where: string[] = [];
   const args: (number | string)[] = [];
@@ -77,8 +88,9 @@ export function listDecisions(opts: { tvdbId?: number; kinds?: string[]; before?
     const detail = JSON.parse(r.detail) as { grabId?: number; movieId?: number };
     const episodeIds = JSON.parse(r.episode_ids) as number[];
     const problem = r.kind === "fail" || r.kind === "verify-fail" || r.kind === "skip" || (r.kind === "info" && /needs a look|paused|couldn't|failed/i.test(r.why));
-    const fixes = problem ? liveFixesFor(r.why, { kind: r.kind, grabId: detail.grabId ?? null, tvdbId: r.tvdb_id, movieId: detail.movieId ?? null, episodeIds }) : [];
-    return { id: r.id, at: r.at, kind: r.kind, tvdbId: r.tvdb_id, title: r.title, episodeIds, release: r.release, why: r.why, detail, undo: r.undo ? JSON.parse(r.undo) : null, undoneAt: r.undone_at, fixes };
+    const resolved = problem && resolvedLater({ id: r.id, tvdbId: r.tvdb_id, episodeIds, movieId: detail.movieId ?? null });
+    const fixes = problem && !resolved ? liveFixesFor(r.why, { kind: r.kind, grabId: detail.grabId ?? null, tvdbId: r.tvdb_id, movieId: detail.movieId ?? null, episodeIds }) : [];
+    return { id: r.id, at: r.at, kind: r.kind, tvdbId: r.tvdb_id, title: r.title, episodeIds, release: r.release, why: r.why, detail, undo: r.undo ? JSON.parse(r.undo) : null, undoneAt: r.undone_at, fixes, ...(problem ? { resolved } : {}) };
   });
 }
 

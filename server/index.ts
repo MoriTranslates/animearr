@@ -44,6 +44,7 @@ import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { backlogSummary, candidates, managePreview, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
+import { summarize } from "./summary.js";
 import { finishGrabByHand, grabDownloadPath, keepGrab, listGrabs, nextForGrab, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
@@ -786,9 +787,9 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
 // ---------------------------------------------------------------- notifications (bell + test)
 
 app.get("/api/notifications", async () => bell());
-app.post<{ Body: { upToId?: number } }>("/api/notifications/read", async (req) => {
+app.post<{ Body: { upToId?: number; ids?: number[] } }>("/api/notifications/read", async (req) => {
   writable();
-  markRead(Number(req.body?.upToId) || 0);
+  markRead(Number(req.body?.upToId) || 0, Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((n) => n > 0).slice(0, 500) : []);
   return bell();
 });
 app.post("/api/notifications/test", async () => {
@@ -1172,7 +1173,10 @@ function withArt<T extends { tvdbId: number | null; episodeIds: number[]; detail
       const eps = d.episodeIds.map((e) => cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(e) as { season: number; episode: number } | undefined).filter((x): x is { season: number; episode: number } => !!x).sort((a, b) => a.season - b.season || a.episode - b.episode);
       if (eps.length) label = `S${String(eps[0].season).padStart(2, "0")}E${String(eps[0].episode).padStart(2, "0")}${eps.length > 1 ? `–E${String(eps[eps.length - 1].episode).padStart(2, "0")}` : ""}`;
     }
-    return { ...d, cover, label, movieId: movieId ?? null };
+    // A plain one-line summary next to the raw message (old rows get one too); the title fills in when the entry lacks it.
+    const title = (d as { title?: string }).title || (d.tvdbId ? ((cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(d.tvdbId) as { title: string } | undefined)?.title ?? "") : movieId ? ((cache.prepare("SELECT title FROM movies WHERE id = ?").get(movieId) as { title: string } | undefined)?.title ?? "") : "");
+    const summary = summarize({ kind: (d as { kind?: string }).kind, why: (d as { why?: string }).why ?? "", title, label });
+    return { ...d, title, cover, label, movieId: movieId ?? null, summary };
   });
 }
 app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
