@@ -5,7 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getSettings, patchSettings } from "./settings.js";
+import { getSettings, patchSettings, type ClientCfg } from "./settings.js";
 import { jsonCall } from "./arr/http.js";
 import { logDecision } from "./activity.js";
 import { cache } from "./db.js";
@@ -143,9 +143,21 @@ export async function arrPreview() {
 }
 
 /** Applies the chosen pieces of an existing setup (roots → allowed roots; clients → SAB/qBit address and category). */
-export function applyArrPreview(input: { roots?: string[]; sab?: { url: string; category: string } | null; qbit?: { url: string; category: string } | null }) {
+export function applyArrPreview(input: { roots?: string[]; sab?: { url: string; category: string } | null; qbit?: { url: string; category: string } | null; others?: { type: string; name?: string; url: string }[] }) {
+  // Other clients Sonarr uses (NZBGet, Transmission, Deluge, rTorrent): added with their address and AnimeArr's own
+  // category; passwords aren't readable from Sonarr, so the user enters them and presses Test.
+  const types: Record<string, ClientCfg["type"]> = { nzbget: "nzbget", transmission: "transmission", deluge: "deluge", rtorrent: "rtorrent" };
+  const others = (input.others ?? [])
+    .map((o) => ({ type: types[String(o.type).toLowerCase()], name: String(o.name ?? "").slice(0, 60), url: String(o.url ?? "").replace(/\/+$/, "") }))
+    .filter((o) => o.type && /^https?:\/\//i.test(o.url));
   patchSettings((s) => ({
     ...s,
+    extraClients: [
+      ...(s.extraClients ?? []),
+      ...others
+        .filter((o) => !(s.extraClients ?? []).some((x) => x.type === o.type && x.url === o.url))
+        .map((o, i) => ({ id: `${o.type}-${Date.now().toString(36)}${i}`, type: o.type, name: o.name || o.type, url: o.type === "transmission" ? o.url.replace(/\/transmission\/?(rpc)?$/i, "") : o.url, username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] })),
+    ],
     allowedRoots: [...new Set([...s.allowedRoots, ...(input.roots ?? []).map((r) => String(r).replace(/\/+$/, "")).filter((r) => r.startsWith("/"))])],
     sabnzbd: input.sab && !s.sabnzbd.url ? { ...s.sabnzbd, url: String(input.sab.url).replace(/\/+$/, ""), category: s.sabnzbd.category } : s.sabnzbd,
     qbittorrent: input.qbit && !s.qbittorrent.url ? { ...s.qbittorrent, url: String(input.qbit.url).replace(/\/+$/, ""), category: s.qbittorrent.category } : s.qbittorrent,

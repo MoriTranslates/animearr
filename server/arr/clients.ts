@@ -1,5 +1,6 @@
 import { getSettings, type ClientCfg, type Settings } from "../settings.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
+import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
 
 /**
  * Download clients. AnimeArr sends its grabs with its own category ("animearr" by default), so Sonarr's own
@@ -21,9 +22,10 @@ export interface ClientJob {
 export interface ClientFile { index: number; name: string; size: number }
 export interface AddTorrentOpts { seedRatio?: number | null; seedTimeMin?: number | null; /** Add it stopped (only clients that can select files honour this). */ paused?: boolean }
 
-export type ClientType = "sabnzbd" | "qbittorrent" | "nzbget" | "transmission";
+type ExtraType = ClientCfg["type"];
+export type ClientType = "sabnzbd" | "qbittorrent" | ExtraType;
 export interface ResolvedClient { id: string; type: ClientType; name: string; protocol: "usenet" | "torrent"; priority: number; enabled: boolean; configured: boolean; category: string; cfg: ClientCfg | null }
-const PROTOCOL: Record<ClientType, "usenet" | "torrent"> = { sabnzbd: "usenet", nzbget: "usenet", qbittorrent: "torrent", transmission: "torrent" };
+export const PROTOCOL: Record<ClientType, "usenet" | "torrent"> = { sabnzbd: "usenet", nzbget: "usenet", qbittorrent: "torrent", transmission: "torrent", deluge: "torrent", rtorrent: "torrent" };
 
 /** Every download client: the SABnzbd/qBittorrent slots and the added ones, with priority and enabled. */
 export function clientList(s: Settings = getSettings()): ResolvedClient[] {
@@ -299,7 +301,24 @@ const fallBack = (e: unknown) => {
   return !/timeout|aborted|did not appear|returned no hash/i.test(m) && /unreachable|not configured|wrong username|login failed|refused|HTTP (4\d\d|5\d\d)|did not accept/i.test(m);
 };
 
-const driver = (c: ResolvedClient) => (c.type === "nzbget" ? nzbgetDriver : transmissionDriver);
+/** What an added ("+ Add") client's driver offers; the file-selection trio is the optional partial-download capability. */
+interface Driver {
+  test(c: ClientCfg): Promise<{ version: string; categoryExists?: boolean; categories?: string[] }>;
+  status(c: ClientCfg, ref: string): Promise<ClientStatus>;
+  remove(c: ClientCfg, ref: string): Promise<void>;
+  addNzb?(c: ClientCfg, data: Buffer, name: string): Promise<string>;
+  addTorrent?(c: ClientCfg, src: { data?: Buffer; magnet?: string }, name: string, opts: AddTorrentOpts): Promise<{ ref: string; paused?: boolean; select?: boolean }>;
+  listFiles?(c: ClientCfg, ref: string): Promise<ClientFile[] | null>;
+  selectFiles?(c: ClientCfg, ref: string, wanted: number[], skipped: number[]): Promise<void>;
+  start?(c: ClientCfg, ref: string): Promise<void>;
+}
+const DRIVERS: Record<ExtraType, Driver> = {
+  nzbget: { ...nzbgetDriver, addNzb: (c, data, name) => nzbgetDriver.add(c, data, name) },
+  transmission: { ...transmissionDriver, addTorrent: (c, src, _n, o) => transmissionDriver.add(c, src, o) },
+  deluge: { ...delugeDriver, remove: (c, ref) => delugeDriver.remove(c, ref, true), addTorrent: (c, src, _n, o) => delugeDriver.add(c, src, o) },
+  rtorrent: { ...rtorrentDriver, remove: (c, ref) => rtorrentDriver.remove(c, ref, true), addTorrent: (c, src, _n, o) => rtorrentDriver.add(c, src, o) },
+};
+const driver = (c: ResolvedClient) => DRIVERS[c.type as ExtraType];
 
 /**
  * The download clients as the pipeline sees them: a grab goes to the best client of its protocol (priority); if that
@@ -313,7 +332,7 @@ export const realClients: DownloadClients = {
     for (const c of list) {
       try {
         if (c.type === "sabnzbd") return await primary.addNzb(data, name);
-        return { client: c.id, ref: await nzbgetDriver.add(c.cfg!, data, name) };
+        return { client: c.id, ref: await driver(c).addNzb!(c.cfg!, data, name) };
       } catch (e) {
         last = e as Error;
         if (!fallBack(e)) break;
@@ -328,7 +347,7 @@ export const realClients: DownloadClients = {
     for (const c of list) {
       try {
         if (c.type === "qbittorrent") return await primary.addTorrent(src, name, opts);
-        return { client: c.id, ...(await transmissionDriver.add(c.cfg!, src, opts)) };
+        return { client: c.id, ...(await driver(c).addTorrent!(c.cfg!, src, name, opts ?? {})) };
       } catch (e) {
         last = e as Error;
         if (!fallBack(e)) break;
@@ -377,14 +396,20 @@ interface FileCapable { listFiles(c: ClientCfg, ref: string): Promise<ClientFile
 function fileDriver(job: ClientJob): { d: FileCapable; cfg: ClientCfg } | null {
   const c = byId(job.client);
   if (!c?.cfg) return null;
-  const d = driver(c) as Partial<FileCapable>;
+  const d = driver(c) as Partial<FileCapable> | undefined;
+  if (!d) return null;
   return d.listFiles && d.selectFiles && d.start ? { d: d as FileCapable, cfg: c.cfg } : null;
 }
 
 /** Connection test for an added client (before or after saving). */
 export async function testClient(c: ClientCfg) {
-  return c.type === "nzbget" ? nzbgetDriver.test(c) : transmissionDriver.test(c);
+  const d = DRIVERS[c.type as ExtraType];
+  if (!d) throw new Error(`Unknown download client type "${c.type}"`);
+  return d.test(c);
 }
+
+/** Which client types can download only some files of a batch (the partial-download capability). */
+export const partialCapable = (type: ClientType) => type === "qbittorrent" || !!(DRIVERS[type as ExtraType]?.listFiles && DRIVERS[type as ExtraType]?.selectFiles && DRIVERS[type as ExtraType]?.start);
 
 /** AnimeArr's own torrents (its category only), with what the folder rules and the clean-up need. Read-only. */
 export interface OwnTorrent { hash: string; name: string; contentPath: string; savePath: string; size: number; state: string; ratio: number; seedingTimeSec: number; completedOn: number | null; ratioLimit: number; seedingTimeLimitMin: number }

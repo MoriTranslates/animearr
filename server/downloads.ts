@@ -479,6 +479,22 @@ export function removeJobFolder(storage: string | null | undefined): string | nu
 }
 
 /**
+ * A torrent client that can't delete data itself (rTorrent): AnimeArr deletes the torrent's file or folder, with the
+ * same rules (deleting switched on; only inside one of the importer's source roots, never a root itself, never a
+ * library or allowed root). `arrPath` is the path as AnimeArr/Sonarr see it.
+ */
+export function removeDownloadPath(arrPath: string | null | undefined): string | null {
+  if (!arrPath || !getSettings().downloads.allowDelete) return null;
+  const local = mappedPath(arrPath.replace(/\/+$/, ""));
+  const rootsLocal = (getSettings().importer.sourceRoots ?? []).map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
+  if (!rootsLocal.some((r) => path.resolve(local).startsWith(r + path.sep)) || inProtected(local)) return null;
+  if (!fs.existsSync(local)) return null;
+  fs.rmSync(local, { recursive: true, force: true });
+  last = null;
+  return local;
+}
+
+/**
  * Cleans one grab's download right after its outcome is final (the user's rule): after a confirmed import, or after it
  * failed its check. Usenet: the folder goes now. Torrent: a rejected one goes now (with its data); an imported one
  * goes once qBittorrent stopped it or the seeding rules are met (otherwise the periodic sweep takes it later). Only

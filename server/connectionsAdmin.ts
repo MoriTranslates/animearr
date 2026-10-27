@@ -128,6 +128,9 @@ export function indexerDuplicates(prowlarrNames: string[]) {
 
 // ---------------------------------------------------------------- download clients
 
+const CLIENT_TYPES = ["nzbget", "transmission", "deluge", "rtorrent"] as const;
+const CLIENT_NAMES: Record<ClientCfg["type"], string> = { nzbget: "NZBGet", transmission: "Transmission", deluge: "Deluge", rtorrent: "rTorrent" };
+
 const maskClient = (c: ClientCfg) => ({ ...c, password: c.password ? MASK : "" });
 
 export function listClients() {
@@ -135,7 +138,7 @@ export function listClients() {
 }
 
 function cleanClient(input: Record<string, unknown>, cur: ClientCfg | null): ClientCfg {
-  const type = (["nzbget", "transmission"] as const).find((k) => k === input.type) ?? cur?.type;
+  const type = CLIENT_TYPES.find((k) => k === input.type) ?? cur?.type;
   if (!type) throw bad("Pick the client type");
   const url = httpUrl(input.url ?? cur?.url, "URL");
   const pw = input.password === undefined || isMasked(input.password) ? (cur && cur.url !== url ? "" : (cur?.password ?? "")) : String(input.password);
@@ -143,7 +146,7 @@ function cleanClient(input: Record<string, unknown>, cur: ClientCfg | null): Cli
   return {
     id: cur?.id ?? newId(type),
     type,
-    name: String(input.name ?? cur?.name ?? (type === "nzbget" ? "NZBGet" : "Transmission")).trim().slice(0, 60) || type,
+    name: String(input.name ?? cur?.name ?? CLIENT_NAMES[type]).trim().slice(0, 60) || type,
     url,
     username: String(input.username ?? cur?.username ?? "").trim().slice(0, 100),
     password: pw,

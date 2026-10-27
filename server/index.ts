@@ -402,7 +402,7 @@ app.put<{ Body: Record<string, unknown> }>("/api/wizard", async (req) => (writab
 app.get<{ Querystring: { path?: string } }>("/api/fs/folders", async (req) => listFolders(String(req.query.path ?? "/")));
 app.post<{ Body: { client?: string } }>("/api/wizard/category", async (req) => (writable(), createCategory(req.body?.client === "qbittorrent" ? "qbittorrent" : "sabnzbd")));
 app.get("/api/wizard/arr-preview", async () => arrPreview());
-app.post<{ Body: { roots?: string[]; sab?: { url: string; category: string } | null; qbit?: { url: string; category: string } | null } }>("/api/wizard/arr-apply", async (req) => (writable(), invalidateConnections(), applyArrPreview(req.body ?? {})));
+app.post<{ Body: { roots?: string[]; sab?: { url: string; category: string } | null; qbit?: { url: string; category: string } | null; others?: { type: string; name?: string; url: string }[] } }>("/api/wizard/arr-apply", async (req) => (writable(), invalidateConnections(), applyArrPreview(req.body ?? {})));
 app.get("/api/indexers", async () => ({ indexers: listIndexers() }));
 app.post<{ Body: Record<string, unknown> }>("/api/indexers", async (req) => (writable(), invalidateConnections(), saveIndexer(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), saveIndexer(req.params.id, req.body ?? {})));

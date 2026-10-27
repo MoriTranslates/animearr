@@ -13,7 +13,7 @@ import { testRadarr } from "./arr/radarr.js";
 import { testPlex } from "./plex.js";
 import { redactUrl } from "./arr/http.js";
 import { getSettings as settingsNow } from "./settings.js";
-import { nzbgetDriver, transmissionDriver } from "./arr/moreClients.js";
+import { testClient } from "./arr/clients.js";
 import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
 export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
@@ -78,10 +78,10 @@ async function build() {
       indexers.push({ id: ix.id, name: ix.name, protocol: ix.protocol === "torrent" ? "torrent" : "usenet", enabled: ix.enable, priority: ix.priority ?? null, source: "prowlarr", grabs: u.n, failures: f.n, lastError: f.n ? f.last : null });
     }
   }
-  // Added clients (NZBGet, Transmission) and direct indexers.
+  // Added clients (NZBGet, Transmission, Deluge, rTorrent) and direct indexers.
   const extras = await Promise.all(
     (settingsNow().extraClients ?? []).map(async (c) => {
-      const p = c.url ? await probe(() => (c.type === "nzbget" ? nzbgetDriver.test(c) : transmissionDriver.test(c))) : null;
+      const p = c.url ? await probe(() => testClient(c)) : null;
       const u = usage("client = ?", c.id);
       return { key: c.id, type: c.type, name: c.name, configured: !!c.url, ok: p ? p.ok : null, version: p?.v?.version ?? null, error: p?.error ?? null, grabs: u.n, lastGrabAt: u.last, priority: c.priority, enabled: c.enabled };
     }),

@@ -15,6 +15,11 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
   within a season. Burned-in and signs-only subtitles are spotted.
 - Managed shows, RSS-triggered and scheduled searches, a slow "fill-in" queue for backlogs, movie search, dual-audio
   upgrades. All start in dry run.
+- Smart batch grabs: per season, only the missing episodes or the whole season as a Replace season (one group, same
+  quality or better), with the reason in plain words. Torrent clients that can skip files (qBittorrent, Transmission,
+  Deluge, rTorrent) download only the wanted episodes of a batch; the rest download it whole and the unneeded files are
+  cleaned up after a confirmed import.
+- Download clients: SABnzbd, NZBGet, qBittorrent, Transmission, Deluge and rTorrent/ruTorrent.
 
 ### Checking and importing
 - Every download is probed before import (full subtitles in your language, the right audio, not a sample); failures are

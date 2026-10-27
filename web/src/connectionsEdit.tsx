@@ -8,7 +8,15 @@ import { Confirm, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, u
 /** Dialogs and controls for Settings → Indexers / Download clients: added clients, direct indexers, the catalogue. */
 
 type Protocol = "usenet" | "torrent";
-export interface ExtraClient { id?: string; type: "nzbget" | "transmission"; name: string; url: string; username: string; password: string; category: string; priority: number; enabled: boolean; removeCompleted: boolean; pathMappings: { from: string; to: string }[] }
+/** The "+ Add" client types, their display names, protocol, address hint and help text. */
+export type ExtraType = "nzbget" | "transmission" | "deluge" | "rtorrent";
+export const CLIENT_INFO: Record<ExtraType, { name: string; protocol: "usenet" | "torrent"; placeholder: string; help: I18nKey; labelHelp: I18nKey; username: boolean }> = {
+  nzbget: { name: "NZBGet", protocol: "usenet", placeholder: "http://192.168.1.10:6789", help: "clients.nzbgetHelp", labelHelp: "conn.categoryHelp", username: true },
+  transmission: { name: "Transmission", protocol: "torrent", placeholder: "http://192.168.1.10:9091", help: "clients.transmissionHelp", labelHelp: "clients.labelHelp", username: true },
+  deluge: { name: "Deluge", protocol: "torrent", placeholder: "http://192.168.1.10:8112", help: "clients.delugeHelp", labelHelp: "clients.delugeLabelHelp", username: false },
+  rtorrent: { name: "rTorrent", protocol: "torrent", placeholder: "http://192.168.1.10/RPC2", help: "clients.rtorrentHelp", labelHelp: "clients.rtorrentLabelHelp", username: true },
+};
+export interface ExtraClient { id?: string; type: ExtraType; name: string; url: string; username: string; password: string; category: string; priority: number; enabled: boolean; removeCompleted: boolean; pathMappings: { from: string; to: string }[] }
 export interface DirectIndexer { id?: string; kind: "newznab" | "torznab" | "nyaa" | "rss" | "subsplease"; protocol: Protocol; name: string; url: string; apiPath: string; apiKey: string; categories: number[]; priority: number; enabled: boolean; seedRatio: number | null; seedTimeMin: number | null; tags: string[]; catalogId: string | null }
 export interface CatalogEntry { id: string; name: string; kind: DirectIndexer["kind"]; protocol: Protocol; url: string; apiPath: string; categories: number[]; needsKey: boolean; access: string; visibility: string; language: string; goodFor: string; recommended: boolean; addable?: boolean; viaProwlarr?: boolean; checked: { date: string; status: string; note: string } }
 
@@ -87,7 +95,8 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   const [busy, setBusy] = useState(false);
   const [del, setDel] = useState(false);
   const set = (patch: Partial<ExtraClient>) => setC((x) => ({ ...x, ...patch }));
-  const name = c.type === "nzbget" ? "NZBGet" : "Transmission";
+  const info = CLIENT_INFO[c.type];
+  const name = info.name;
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -100,7 +109,7 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   };
   return (
     <Modal title={c.id ? c.name : t("clients.addTitle", { name })} onClose={onClose}>
-      <p className="muted small">{t(c.type === "nzbget" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {t(c.type === "nzbget" ? "clients.nzbgetHelp" : "clients.transmissionHelp")}</p>
+      <p className="muted small">{t(info.protocol === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {t(info.help)}</p>
       <div className="form">
         <label>
           {t("clients.name")}
@@ -108,20 +117,22 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
         </label>
         <label>
           {t("settings.url")}
-          <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={c.type === "nzbget" ? "http://192.168.1.10:6789" : "http://192.168.1.10:9091"} />
+          <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={info.placeholder} />
         </label>
-        <label>
-          {t("settings.username")}
-          <input value={c.username} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
-        </label>
+        {info.username && (
+          <label>
+            {t("settings.username")}
+            <input value={c.username} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
+          </label>
+        )}
         <label className="field">
           {t("settings.password")}
           <SecretInput value={c.password} onChange={(v) => set({ password: v })} label={t("settings.password")} />
         </label>
         <label>
-          {t(c.type === "nzbget" ? "settings.category" : "clients.label")}
+          {t(info.protocol === "usenet" ? "settings.category" : "clients.label")}
           <input value={c.category} onChange={(e) => set({ category: e.target.value })} />
-          <span className="muted small">{t(c.type === "nzbget" ? "conn.categoryHelp" : "clients.labelHelp")}</span>
+          <span className="muted small">{t(info.labelHelp)}</span>
         </label>
         <label>
           {t("clients.priority")}
@@ -212,7 +223,7 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   );
 }
 
-export const newClient = (type: "nzbget" | "transmission"): ExtraClient => ({ type, name: type === "nzbget" ? "NZBGet" : "Transmission", url: "", username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] });
+export const newClient = (type: ExtraType): ExtraClient => ({ type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] });
 
 /** Priority + enabled for the SABnzbd / qBittorrent slots. */
 export function PrimaryPrefs({ id, priority, enabled, onSaved }: { id: "sabnzbd" | "qbittorrent"; priority: number; enabled: boolean; onSaved: () => void }) {

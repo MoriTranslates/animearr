@@ -32,12 +32,31 @@ ready. Phone-friendly, seasonal, and a little bit extra.
   "Fix detection" for wrongly tagged tracks; **Replace season** swaps a bad season for a good pack, episode by episode,
   only after each new file passes its check (the old ones go to a recycling bin).
 - **Plays nicely with your stack.** Prowlarr or direct indexers (Newznab, Torznab, Nyaa, SubsPlease, RSS), with a
-  circuit breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission; Plex scans and "Watch in Plex"; Discord
-  and ntfy notifications; a migration path from Sonarr/Radarr.
+  circuit breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see the
+  [download client support](#download-clients) table); Plex scans and "Watch in Plex"; Discord and ntfy notifications;
+  a migration path from Sonarr/Radarr.
+- **Smart batch grabs.** A 26-episode batch when you're missing 4: torrent clients that can skip files download only
+  those 4 (plus their subtitles and fonts); per season it decides between "only the missing episodes" and "replace the
+  whole season with one group" (same quality or better), and says why in plain words.
 - **Looks after itself.** Stalled-download handling, clean-up after imports, a recycling bin with retention, nightly
   backups, a seasonal calendar with airing countdowns, an installable phone app (scan the QR code in Settings).
 
 What it doesn't do yet is listed in [PARITY.md](PARITY.md) (honestly) and [BACKLOG.md](BACKLOG.md).
+
+## Download clients
+
+| Client | Protocol | Add / status / progress | Category or label | Seeding & ratio | Remove (with data) | Partial batch downloads | Test | Wizard / Sonarr import |
+|---|---|---|---|---|---|---|---|---|
+| SABnzbd | Usenet | ✅ | category | n/a | ✅ (AnimeArr deletes the folder SABnzbd leaves behind) | — (whole batch; leftovers cleaned after import) | ✅ | ✅ / ✅ |
+| NZBGet | Usenet | ✅ | category | n/a | ✅ | — (whole batch) | ✅ | ✅ / ✅ |
+| qBittorrent | Torrent | ✅ | category | ✅ ratio + time | ✅ | ✅ | ✅ | ✅ / ✅ |
+| Transmission | Torrent | ✅ | label + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
+| Deluge (2.x; 1.3 best effort) | Torrent | ✅ | Label plugin (optional) + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
+| rTorrent / ruTorrent | Torrent | ✅ | d.custom1 label + sub-folder | ratio shown, no limit set | ✅ (AnimeArr deletes the data inside its download folders) | ✅ | ✅ | ✅ / ✅ |
+
+Clients without partial downloads (and all Usenet clients) download the whole batch; the import takes only the wanted
+files and the rest is cleaned up after a confirmed import. The download-folder clean-up and seeding rules (Settings →
+Downloads) read qBittorrent and SABnzbd only for now.
 
 ## Quick start (Docker)
 

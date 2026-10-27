@@ -29,7 +29,9 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Settings | Profiles | Sonarr/Radarr | 🟡 | Language profiles, watch modes, size presets, group consistency. Missing: quality profiles + cutoff, custom formats, release profiles (must / must-not contain), propers |
 | Settings | Protocol priority + delay profiles | Sonarr | ✅ | Prefer Usenet / Prefer torrents / No preference per profile (top of Indexers and Download clients); Usenet/torrent delays for automatic grabs; reasons say "(preferred)" |
 | Settings | Indexers | Sonarr/Radarr | ✅ | Cards in Usenet \| Torrent columns: Prowlarr's indexers (protocol, priority, learned health) and direct ones — custom Newznab/Torznab/RSS (keys encrypted, masked, redacted; categories 5070/5000/2000; priority; seed ratio; tags; Test with a sample search), Jackett trackers in one click, a curated anime catalogue (catalog/indexers.json, each entry checked live 2026-10-26), duplicate warnings. Prowlarr optional |
-| Settings | Download clients | Sonarr/Radarr | 🟡 | SABnzbd, qBittorrent, NZBGet, Transmission with priority, enabled, category/label, Test, per-client path mappings; grabs go to the best client of their protocol with fallback. Deluge/rTorrent later; "remove completed" for NZBGet not wired yet |
+| Settings | Download clients | Sonarr/Radarr | 🟡 | SABnzbd, qBittorrent, NZBGet, Transmission, Deluge, rTorrent with priority, enabled, category/label, Test, per-client path mappings; grabs go to the best client of their protocol with fallback. "Remove completed" for NZBGet not wired yet |
+| Grabbing | Partial batch downloads (skip episodes you have) | — | ✅ | Beyond Sonarr: qBittorrent, Transmission, Deluge, rTorrent download only the wanted files of a batch; others download the whole batch and the leftovers are cleaned after import |
+| Grabbing | Season consistency for batches | — | ✅ | Per season: only the missing episodes, or replace the whole season (same group/quality rules, old files to the bin only after the new ones pass) |
 | Settings | Media servers | Sonarr/Radarr | 🟡 | Plex (scan after import/rename). Jellyfin/Emby later |
 | Settings | Migration (Sonarr/Radarr) | — | ✅ | Settings → Migration: connections + cutover, "only needed until cutover" |
 | Settings | Connect / notifications | Sonarr/Radarr | 🟡 | Discord, ntfy, in-app bell (Needs action / Recent); every problem carries fix buttons. No generic webhook, email, Telegram, Pushover |
@@ -41,7 +43,6 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Library | Import an existing folder without Sonarr | Sonarr/Radarr | ❌ | New users add shows one by one (the wizard's "scan files" only reads them) |
 | Calendar | iCal feed | Sonarr/Radarr | ❌ | |
 | Lists | Import lists (AniList/MAL/Plex watchlist) | Sonarr/Radarr | ❌ | |
-| Download clients | Deluge, rTorrent | Sonarr/Radarr | ❌ | |
 | Media servers | Jellyfin, Emby, Kodi; NFO / .plexmatch | Sonarr/Radarr | ❌ | Plex only |
 | Auth | First-run account | Sonarr | ✅ | Created in the browser (home network or one-time setup code); no default password |
 

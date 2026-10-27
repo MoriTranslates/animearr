@@ -3,7 +3,7 @@ import { api, type Settings as S, withBase } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { Confirm, dateTime, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
-import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, type CatalogEntry, type DirectIndexer, type ExtraClient } from "./connectionsEdit";
+import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, CLIENT_INFO, type CatalogEntry, type DirectIndexer, type ExtraClient, type ExtraType } from "./connectionsEdit";
 
 /**
  * Settings → Indexers / Download clients / Media servers / Migration, Sonarr-style: one card per connection (what it
@@ -77,7 +77,7 @@ function BreakerStatus({ b, onChanged }: { b: Breaker; onChanged: () => void }) 
     </span>
   );
 }
-export interface ClientRow extends ConnStatus { type: "sabnzbd" | "qbittorrent" | "nzbget" | "transmission"; name: string; priority: number; enabled: boolean }
+export interface ClientRow extends ConnStatus { type: "sabnzbd" | "qbittorrent" | ExtraType; name: string; priority: number; enabled: boolean }
 export interface Overview { clients: ClientRow[]; indexerSources: ConnStatus[]; indexers: IndexerRow[]; mediaServers: ConnStatus[]; migration: ConnStatus[]; protocolOrder: ("usenet" | "torrent")[]; noPreference?: boolean; duplicates?: { id: string; name: string; with: string }[]; delays?: { usenetDelayMin: number; torrentDelayMin: number } }
 
 type Key = "sabnzbd" | "qbittorrent" | "prowlarr" | "plex" | "sonarr" | "radarr";
@@ -89,8 +89,8 @@ const TYPES: { id: string; name: string; protocol: Protocol | "both" | "media" |
   { id: "nzbget", name: "NZBGet", protocol: "usenet", kind: "client", ready: true, logo: "NZB" },
   { id: "qbittorrent", name: "qBittorrent", protocol: "torrent", kind: "client", key: "qbittorrent", ready: true, logo: "qB" },
   { id: "transmission", name: "Transmission", protocol: "torrent", kind: "client", ready: true, logo: "Tr" },
-  { id: "deluge", name: "Deluge", protocol: "torrent", kind: "client", ready: false, logo: "De" },
-  { id: "rtorrent", name: "rTorrent", protocol: "torrent", kind: "client", ready: false, logo: "rT" },
+  { id: "deluge", name: "Deluge", protocol: "torrent", kind: "client", ready: true, logo: "De" },
+  { id: "rtorrent", name: "rTorrent", protocol: "torrent", kind: "client", ready: true, logo: "rT" },
   { id: "prowlarr", name: "Prowlarr", protocol: "both", kind: "indexer", key: "prowlarr", ready: true, logo: "Pr" },
   { id: "newznab", name: "Newznab (custom)", protocol: "usenet", kind: "indexer", ready: false, logo: "NZ" },
   { id: "torznab", name: "Torznab (custom)", protocol: "torrent", kind: "indexer", ready: false, logo: "TZ" },
@@ -365,7 +365,8 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const rows = o.data?.clients ?? [];
   const configured = (k?: Key) => !!k && !!rows.find((c) => c.key === k)?.configured;
   const col = (p: Protocol) => {
-    const list = rows.filter((c) => c.configured && (p === "usenet" ? c.type === "sabnzbd" || c.type === "nzbget" : c.type === "qbittorrent" || c.type === "transmission")).sort((a, b) => a.priority - b.priority);
+    const protoOf = (c: ClientRow) => (c.type === "sabnzbd" ? "usenet" : c.type === "qbittorrent" ? "torrent" : CLIENT_INFO[c.type]?.protocol);
+    const list = rows.filter((c) => c.configured && protoOf(c) === p).sort((a, b) => a.priority - b.priority);
     const failing = list.filter((c) => c.ok === false).length;
     return (
       <Column protocol={p} title={t(p === "usenet" ? "conn.col.usenetClients" : "conn.col.torrentClients")} summary={o.data ? `${t("conn.count", { n: list.length })}${failing ? ` · ${t("conn.failing", { n: failing })}` : ""}` : ""}>
@@ -380,7 +381,7 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
               </span>
               <span className="conn-text">
                 <span className="strong">{c.name}</span>
-                <span className="muted small">{t(p === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {c.type === "nzbget" ? "NZBGet" : "Transmission"}</span>
+                <span className="muted small">{t(p === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {CLIENT_INFO[c.type as ExtraType]?.name ?? c.type}</span>
                 <StatusLine st={c} loading={o.loading} />
                 {c.grabs > 0 && <span className="muted small">{t("conn.usedFor", { n: c.grabs, when: c.lastGrabAt ? relTime(c.lastGrabAt) : "—" })}</span>}
                 <ClientFlags priority={c.priority} enabled={c.enabled} />
@@ -415,7 +416,7 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
           types={TYPES.filter((x) => x.kind === "client" && x.protocol === pick)}
           configured={configured}
           onPick={(k) => (setPick(null), setEdit(k))}
-          onPickType={(id) => (setPick(null), setExtra(newClient(id as "nzbget" | "transmission")))}
+          onPickType={(id) => (setPick(null), setExtra(newClient(id as ExtraType)))}
           onClose={() => setPick(null)}
         />
       )}

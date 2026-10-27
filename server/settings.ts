@@ -55,12 +55,12 @@ export type SizePreset = "lean" | "balanced" | "best";
 /** A download client added with "+ Add" (beyond the SABnzbd/qBittorrent slots). */
 export interface ClientCfg {
   id: string;
-  type: "nzbget" | "transmission";
+  type: ClientType;
   name: string;
   url: string;
   username: string;
   password: string;
-  /** NZBGet category; Transmission label + sub-folder of its download folder. */
+  /** NZBGet category; Transmission/Deluge/rTorrent label + sub-folder of its download folder. */
   category: string;
   /** 1 = tried first (per protocol). */
   priority: number;
@@ -70,6 +70,9 @@ export interface ClientCfg {
   /** This client's path → AnimeArr's path. */
   pathMappings: PathMapping[];
 }
+
+/** The "+ Add" download client types. */
+export type ClientType = "nzbget" | "transmission" | "deluge" | "rtorrent";
 
 /** An indexer AnimeArr searches directly (without Prowlarr). */
 export interface IndexerCfg {
@@ -102,7 +105,7 @@ export interface Settings {
   qbittorrent: { url: string; username: string; password: string; category: string };
   /** Priority / enabled for the SABnzbd and qBittorrent slots (by id "sabnzbd" / "qbittorrent"). */
   clientPrefs: Record<string, { priority: number; enabled: boolean }>;
-  /** Clients added with "+ Add" (NZBGet, Transmission). */
+  /** Clients added with "+ Add" (NZBGet, Transmission, Deluge, rTorrent). */
   extraClients: ClientCfg[];
   /** Indexers searched directly (in addition to Prowlarr's, or instead of them). */
   indexers: IndexerCfg[];

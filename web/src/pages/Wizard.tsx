@@ -303,6 +303,8 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
   const url = (c: { host: string | null; port: number | null; ssl?: boolean; urlBase?: string }) => (c.host ? `${c.ssl ? "https" : "http"}://${c.host}${c.port ? `:${c.port}` : ""}${c.urlBase ?? ""}` : "");
   const sab = so?.clients.find((c) => /sabnzbd/i.test(c.type) && c.enabled);
   const qb = so?.clients.find((c) => /qbittorrent/i.test(c.type) && c.enabled);
+  // NZBGet, Transmission, Deluge, rTorrent: added with their address (passwords are entered afterwards).
+  const others = (so?.clients ?? []).filter((c) => c.enabled && /^(nzbget|transmission|deluge|rtorrent)$/i.test(c.type) && url(c));
   return (
     <div className="stack">
       {(d.data.sonarrError || d.data.radarrError) && (
@@ -329,7 +331,7 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
               </li>
             ))}
           </ul>
-          {(sab || qb) && (
+          {(sab || qb || others.length > 0) && (
             <label className="check">
               <input type="checkbox" checked={useClients} onChange={(e) => setUseClients(e.target.checked)} /> {t("wiz.preview.useClients")}
             </label>
@@ -356,7 +358,7 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
         className="primary self-start"
         onClick={async () => {
           try {
-            await api("/wizard/arr-apply", { body: { roots: [...roots], sab: useClients && sab ? { url: url(sab), category: "animearr" } : null, qbit: useClients && qb ? { url: url(qb), category: "animearr" } : null } });
+            await api("/wizard/arr-apply", { body: { roots: [...roots], sab: useClients && sab ? { url: url(sab), category: "animearr" } : null, qbit: useClients && qb ? { url: url(qb), category: "animearr" } : null, others: useClients ? others.map((c) => ({ type: c.type, name: c.name, url: url(c) })) : [] } });
             toast(t("wiz.preview.applied"));
             onApplied();
           } catch (e) {
