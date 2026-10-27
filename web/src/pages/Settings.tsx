@@ -312,7 +312,7 @@ function Appearance() {
 type Upd = (fn: (x: S) => S) => void;
 
 /** Per-show dry-run overrides (managed shows). */
-function ShowDryRuns() {
+function ShowDryRuns({ globalOn }: { globalOn: boolean }) {
   const toast = useToast();
   const [q, setQ] = useState("");
   const d = useLoad(() => api<{ shows: { tvdbId: number; title: string; dryRun: boolean }[] }>("/managed"), []);
@@ -332,11 +332,12 @@ function ShowDryRuns() {
     <div className="stack">
       {/* Only the shows IN dry run are listed (not hundreds of switches); add one by searching. */}
       <h3 className="small-h">{t("dry.inDryRun", { n: on.length })}</h3>
+      {globalOn && <p className="muted small">{t("dry.showsGlobalOn")}</p>}
       {on.length ? (
         <ul className="plain stack">
           {on.map((x) => (
             <li key={x.tvdbId}>
-              <Toggle checked onChange={(v) => void set(x.tvdbId, v)} label={x.title} />
+              <Toggle checked onChange={(v) => void set(x.tvdbId, v)} label={t("dry.showToggleOn", { title: x.title })} />
             </li>
           ))}
         </ul>
@@ -381,7 +382,7 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
         </div>
         <p className="muted small">{t("dry.sectionHelp")}</p>
         <Toggle checked={saved.managed.dryRun} onChange={(v) => void saveNow((x) => ({ ...x, managed: { ...x.managed, dryRun: v } }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
-        <ShowDryRuns />
+        <ShowDryRuns globalOn={saved.managed.dryRun} />
       </div>
       <div className="card pad stack" id="library-folders">
         <h2>{t("settings.safety.roots")}</h2>
