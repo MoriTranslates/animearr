@@ -144,7 +144,7 @@ export function shortTitle(t: string): string {
  * Tier 1: the canonical title and the top romaji title, with the episode forms groups actually use
  * (S01E01 and "- 01"), or the season form for several episodes. 2-4 queries; most searches end here.
  */
-export function tier1Queries(canonical: string, romaji: string | null, targets: LibEpisode[]): string[] {
+export function tier1Queries(canonical: string, romaji: string | null, targets: LibEpisode[], seasonSize: Map<number, number> = new Map()): string[] {
   const titles = [...new Map([canonical, romaji].filter((x): x is string => !!x).map(shortTitle).filter((t) => t.length >= 3).map((t) => [normalizeTitle(t), t])).values()];
   const out = new Set<string>();
   const seasons = [...new Set(targets.map((t) => t.season))];
@@ -153,7 +153,18 @@ export function tier1Queries(canonical: string, romaji: string | null, targets: 
       const e = targets[0];
       if (e.season > 0) out.add(`${t} S${pad(e.season)}E${pad(e.episode)}`);
       out.add(`${t} ${pad(e.episode)}`);
-    } else for (const s of seasons) out.add(s > 0 ? `${t} S${s}` : t);
+    } else
+      for (const s of seasons) {
+        out.add(s > 0 ? `${t} S${s}` : t);
+        // Most of a season wanted: season packs are named "(Season 01)", "- Season 1", "(01-12)", "(Complete)", "Batch",
+        // often without "S1": the plain title finds them, plus the pack words for indexers that rank by match.
+        const n = targets.filter((x) => x.season === s).length;
+        if (s > 0 && n >= Math.max(2, Math.ceil((seasonSize.get(s) ?? n) / 2))) {
+          out.add(t);
+          out.add(`${t} batch`);
+          out.add(`${t} Season ${pad(s)}`);
+        }
+      }
   }
   return [...out];
 }
@@ -177,7 +188,9 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const season = targets[0].season;
   const entry = ctx.index.anidbIdsFor(tvdbId).sort((x, y) => Number(y.season === season) - Number(x.season === season))[0];
   const romaji = entry ? ctx.index.anidbTitle(entry.aid) : null;
-  const tier1 = [...tier1Queries(series.title, romaji, targets), ...(opts.extraQueries ?? [])];
+  const seasonSize = new Map<number, number>();
+  for (const e of all) seasonSize.set(e.season, (seasonSize.get(e.season) ?? 0) + 1);
+  const tier1 = [...tier1Queries(series.title, romaji, targets, seasonSize), ...(opts.extraQueries ?? [])];
   const combos = comboQueries(titles, series.title);
   const allCats = new Set(combos);
   const started = Date.now();

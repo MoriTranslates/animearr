@@ -347,7 +347,7 @@ export function parseRelease(input: string): ParsedRelease {
     const a = +m[1];
     const b = +m[2];
     const spacedDash = /\d\s+-\s+\d/.test(m[0]);
-    const batchWord = /(batch|complete)/i.test(s);
+    const batchWord = /\b(batch|complete)\b/i.test(s);
     if (spacedDash && !(m[1].startsWith("0") || batchWord)) continue;
     if (b > a && !(isYear(a) || isYear(b)) && b - a < 1500) {
       const off = m[0].search(/\d/);
@@ -426,7 +426,8 @@ export function parseRelease(input: string): ParsedRelease {
   let chosen: Marker[] = strong;
   if (!strong.some((x) => x.episodes || x.absolute || x.special !== undefined) && weak.length) {
     // Only a season token (or nothing): accept the first weak number after it ("Title S1 05", "Show One 07").
-    const afterTitle = weak.filter((w) => !firstStrong || w.at > firstStrong.at);
+    // ...but never the season token's own number ("Title - Season 1 [BD]" is the whole season, not episode 1).
+    const afterTitle = weak.filter((w) => (!firstStrong || w.at > firstStrong.at) && !strong.some((x) => w.at >= x.at && w.at < x.end));
     if (afterTitle.length) {
       chosen = [...strong, afterTitle[0]];
       if (!firstStrong) titleEnd = afterTitle[0].at;
@@ -503,6 +504,8 @@ export function parseRelease(input: string): ParsedRelease {
   title = title.replace(/\s*\(\s*Season\s+\d+\s*\)\s*$/i, "").trim();
   // Trailing ordinal season, "Season N" or "SN" inside the title: the season is already a marker.
   title = title.replace(/\s+\d{1,2}(?:st|nd|rd|th)\s+Season$/i, "").replace(/\s+Season\s+\d{1,2}$/i, "").replace(/\s+S\d{1,2}$/i, "").trim();
+  // "(Complete)", "Complete Series", "(Batch)" name the pack, not the show.
+  title = title.replace(/[\s(\[]*\b(?:complete(?:\s+series)?|batch)\b[)\]]?\s*$/i, "").trim();
   title = title.replace(/[\s\-–~|:,([]+$/, "").trim();
   if (!title && group && !lead) title = group;
 
