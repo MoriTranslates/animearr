@@ -9,14 +9,19 @@ import { Confirm, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, u
 
 type Protocol = "usenet" | "torrent";
 /** The "+ Add" client types, their display names, protocol, address hint and help text. */
-export type ExtraType = "nzbget" | "transmission" | "deluge" | "rtorrent";
+export type ExtraType = "nzbget" | "transmission" | "deluge" | "rtorrent" | "blackhole-usenet" | "blackhole-torrent";
+export const isBlackholeType = (t: string) => t === "blackhole-usenet" || t === "blackhole-torrent";
+/** What a blackhole can't do (its card, and the confirmation before turning it on). */
+export const BLACKHOLE_LOSES = (type: ExtraType): I18nKey[] => ["clients.bh.lose.progress", "clients.bh.lose.partial", "clients.bh.lose.stall", "clients.bh.lose.control", "clients.bh.lose.slower", "clients.bh.lose.names", ...(type === "blackhole-usenet" ? (["clients.bh.lose.usenet"] as I18nKey[]) : (["clients.bh.lose.magnets"] as I18nKey[]))];
 export const CLIENT_INFO: Record<ExtraType, { name: string; protocol: "usenet" | "torrent"; placeholder: string; help: I18nKey; labelHelp: I18nKey; username: boolean }> = {
   nzbget: { name: "NZBGet", protocol: "usenet", placeholder: "http://192.168.1.10:6789", help: "clients.nzbgetHelp", labelHelp: "conn.categoryHelp", username: true },
   transmission: { name: "Transmission", protocol: "torrent", placeholder: "http://192.168.1.10:9091", help: "clients.transmissionHelp", labelHelp: "clients.labelHelp", username: true },
   deluge: { name: "Deluge", protocol: "torrent", placeholder: "http://192.168.1.10:8112", help: "clients.delugeHelp", labelHelp: "clients.delugeLabelHelp", username: false },
   rtorrent: { name: "rTorrent", protocol: "torrent", placeholder: "http://192.168.1.10/RPC2", help: "clients.rtorrentHelp", labelHelp: "clients.rtorrentLabelHelp", username: true },
+  "blackhole-usenet": { name: "Usenet Blackhole", protocol: "usenet", placeholder: "", help: "clients.bh.usenetHelp", labelHelp: "clients.bh.note", username: false },
+  "blackhole-torrent": { name: "Torrent Blackhole", protocol: "torrent", placeholder: "", help: "clients.bh.torrentHelp", labelHelp: "clients.bh.note", username: false },
 };
-export interface ExtraClient { id?: string; type: ExtraType; name: string; url: string; username: string; password: string; category: string; priority: number; enabled: boolean; removeCompleted: boolean; pathMappings: { from: string; to: string }[] }
+export interface ExtraClient { watchFolder?: string; completedFolder?: string; saveMagnets?: boolean; timeoutHours?: number; id?: string; type: ExtraType; name: string; url: string; username: string; password: string; category: string; priority: number; enabled: boolean; removeCompleted: boolean; pathMappings: { from: string; to: string }[] }
 export interface DirectIndexer { id?: string; kind: "newznab" | "torznab" | "nyaa" | "rss" | "subsplease"; protocol: Protocol; name: string; url: string; apiPath: string; apiKey: string; categories: number[]; priority: number; enabled: boolean; seedRatio: number | null; seedTimeMin: number | null; tags: string[]; catalogId: string | null }
 export interface CatalogEntry { id: string; name: string; kind: DirectIndexer["kind"]; protocol: Protocol; url: string; apiPath: string; categories: number[]; needsKey: boolean; access: string; visibility: string; language: string; goodFor: string; recommended: boolean; addable?: boolean; viaProwlarr?: boolean; checked: { date: string; status: string; note: string } }
 
@@ -97,6 +102,10 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   const set = (patch: Partial<ExtraClient>) => setC((x) => ({ ...x, ...patch }));
   const info = CLIENT_INFO[c.type];
   const name = info.name;
+  const bh = isBlackholeType(c.type);
+  // A blackhole is turned on only after its Test passed (here) and the user confirmed what it can't do.
+  const [tested, setTested] = useState(false);
+  const [confirmOn, setConfirmOn] = useState(false);
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -110,6 +119,37 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   return (
     <Modal title={c.id ? c.name : t("clients.addTitle", { name })} onClose={onClose}>
       <p className="muted small">{t(info.protocol === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {t(info.help)}</p>
+      {bh && <BlackholeLoses type={c.type} />}
+      {bh ? (
+        <div className="form">
+          <label>
+            {t("clients.name")}
+            <input value={c.name} onChange={(e) => set({ name: e.target.value })} />
+          </label>
+          <label>
+            {t("clients.bh.watch")}
+            <input value={c.watchFolder ?? ""} onChange={(e) => set({ watchFolder: e.target.value })} placeholder="/data/blackhole/watch" />
+            <span className="muted small">{t(c.type === "blackhole-usenet" ? "clients.bh.watchHelpNzb" : "clients.bh.watchHelpTorrent")}</span>
+          </label>
+          <label>
+            {t("clients.bh.completed")}
+            <input value={c.completedFolder ?? ""} onChange={(e) => set({ completedFolder: e.target.value })} placeholder="/data/blackhole/completed" />
+            <span className="muted small">{t("clients.bh.completedHelp")}</span>
+          </label>
+          <label>
+            {t("clients.bh.timeout")}
+            <NumberInput value={c.timeoutHours ?? 24} min={1} max={720} onChange={(v) => set({ timeoutHours: v })} label={t("clients.bh.timeout")} />
+            <span className="muted small">{t("clients.bh.timeoutHelp")}</span>
+          </label>
+          <label>
+            {t("clients.priority")}
+            <NumberInput value={c.priority} min={1} max={50} onChange={(v) => set({ priority: v })} label={t("clients.priority")} />
+            <span className="muted small">{t("clients.bh.priorityHelp")}</span>
+          </label>
+          {c.type === "blackhole-torrent" && <Toggle checked={!!c.saveMagnets} onChange={(v) => set({ saveMagnets: v })} label={t("clients.bh.saveMagnets")} />}
+          {c.type === "blackhole-torrent" && <p className="muted small">{t("clients.bh.saveMagnetsHelp")}</p>}
+        </div>
+      ) : (
       <div className="form">
         <label>
           {t("clients.name")}
@@ -140,8 +180,20 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
           <span className="muted small">{t("clients.priorityHelp")}</span>
         </label>
       </div>
-      <Toggle checked={c.enabled} onChange={(v) => set({ enabled: v })} label={t("clients.enabled")} />
-      <details className="stack">
+      )}
+      {bh && !c.enabled && !tested && !initial.enabled && <p className="muted small">{t("clients.bh.testFirst")}</p>}
+      <Toggle
+        checked={c.enabled}
+        disabled={bh && !c.enabled && !tested && !initial.enabled}
+        onChange={(v) => (bh && v && !initial.enabled ? setConfirmOn(true) : set({ enabled: v }))}
+        label={t("clients.enabled")}
+      />
+      {confirmOn && (
+        <Confirm title={t("clients.bh.enableTitle", { name: c.name || name })} confirmLabel={t("clients.bh.enableConfirm")} onClose={() => setConfirmOn(false)} onConfirm={async () => (set({ enabled: true }), setConfirmOn(false))}>
+          <BlackholeLoses type={c.type} />
+        </Confirm>
+      )}
+      <details className="stack" hidden={bh}>
         <summary className="small">{t("clients.pathMappings")}</summary>
         <p className="muted small">{t("clients.pathMappingsHelp")}</p>
         {c.pathMappings.map((m, i) => (
@@ -174,6 +226,7 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
               void run(async () => {
                 try {
                   const r = await api<{ version: string; categoryExists?: boolean }>("/clients/test", { body: c });
+                  if (bh) setTested(true);
                   setRes({ ok: r.categoryExists !== false, text: t("settings.testOk", { app: c.name || name, version: r.version }) + (r.categoryExists === false ? ` · ${t("settings.categoryMissing", { cat: c.category, app: name })}` : "") });
                 } catch (e) {
                   setRes({ ok: false, text: (e as Error).message });
@@ -223,7 +276,25 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   );
 }
 
-export const newClient = (type: ExtraType): ExtraClient => ({ type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] });
+export const newClient = (type: ExtraType): ExtraClient =>
+  isBlackholeType(type)
+    ? { type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 50, enabled: false, removeCompleted: false, pathMappings: [], watchFolder: "", completedFolder: "", saveMagnets: false, timeoutHours: 24 }
+    : { type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] };
+
+/** "What you lose with Blackhole": the plain list on its card and in the confirmation before turning it on. */
+export function BlackholeLoses({ type }: { type: ExtraType }) {
+  return (
+    <div className="stack small">
+      <p className="muted">{t("clients.bh.note")}</p>
+      <p className="strong">{t("clients.bh.loseTitle")}</p>
+      <ul className="plain">
+        {BLACKHOLE_LOSES(type).map((k) => (
+          <li key={k}>· {t(k)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** Priority + enabled for the SABnzbd / qBittorrent slots. */
 export function PrimaryPrefs({ id, priority, enabled, onSaved }: { id: "sabnzbd" | "qbittorrent"; priority: number; enabled: boolean; onSaved: () => void }) {

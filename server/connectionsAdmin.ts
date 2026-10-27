@@ -7,6 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSettings, isMasked, MASK, patchSettings, type ClientCfg, type IndexerCfg } from "./settings.js";
 import { clientList, testClient } from "./arr/clients.js";
+import { checkFolders, isBlackhole } from "./arr/blackhole.js";
+import { mappedPath } from "./paths.js";
 import { hostOf, indexerNumId, lastErrors, searchIndexer } from "./indexers.js";
 import { db } from "./db.js";
 import { redactUrl } from "./arr/http.js";
@@ -128,8 +130,13 @@ export function indexerDuplicates(prowlarrNames: string[]) {
 
 // ---------------------------------------------------------------- download clients
 
-const CLIENT_TYPES = ["nzbget", "transmission", "deluge", "rtorrent"] as const;
-const CLIENT_NAMES: Record<ClientCfg["type"], string> = { nzbget: "NZBGet", transmission: "Transmission", deluge: "Deluge", rtorrent: "rTorrent" };
+const CLIENT_TYPES = ["nzbget", "transmission", "deluge", "rtorrent", "blackhole-usenet", "blackhole-torrent"] as const;
+const CLIENT_NAMES: Record<ClientCfg["type"], string> = { nzbget: "NZBGet", transmission: "Transmission", deluge: "Deluge", rtorrent: "rTorrent", "blackhole-usenet": "Usenet Blackhole", "blackhole-torrent": "Torrent Blackhole" };
+const folder = (v: unknown, what: string) => {
+  const p = String(v ?? "").trim().replace(/\/+$/, "");
+  if (!p.startsWith("/")) throw bad(`${what}: enter a full path starting with /`);
+  return p;
+};
 
 const maskClient = (c: ClientCfg) => ({ ...c, password: c.password ? MASK : "" });
 
@@ -140,6 +147,27 @@ export function listClients() {
 function cleanClient(input: Record<string, unknown>, cur: ClientCfg | null): ClientCfg {
   const type = CLIENT_TYPES.find((k) => k === input.type) ?? cur?.type;
   if (!type) throw bad("Pick the client type");
+  if (isBlackhole(type)) {
+    // A blackhole starts off; it is switched on only after its folders pass the check (and by the user).
+    const c: ClientCfg = {
+      id: cur?.id ?? newId(type),
+      type,
+      name: String(input.name ?? cur?.name ?? CLIENT_NAMES[type]).trim().slice(0, 60) || type,
+      url: "",
+      username: "",
+      password: "",
+      category: "animearr",
+      priority: int(input.priority, 1, 50, cur?.priority ?? 50),
+      enabled: typeof input.enabled === "boolean" ? input.enabled : (cur?.enabled ?? false),
+      removeCompleted: false,
+      pathMappings: [],
+      watchFolder: folder(input.watchFolder ?? cur?.watchFolder, "Watch folder"),
+      completedFolder: folder(input.completedFolder ?? cur?.completedFolder, "Completed folder"),
+      saveMagnets: type === "blackhole-torrent" ? (typeof input.saveMagnets === "boolean" ? input.saveMagnets : (cur?.saveMagnets ?? false)) : undefined,
+      timeoutHours: int(input.timeoutHours, 1, 720, cur?.timeoutHours ?? 24),
+    };
+    return c;
+  }
   const url = httpUrl(input.url ?? cur?.url, "URL");
   const pw = input.password === undefined || isMasked(input.password) ? (cur && cur.url !== url ? "" : (cur?.password ?? "")) : String(input.password);
   const maps = Array.isArray(input.pathMappings) ? input.pathMappings : (cur?.pathMappings ?? []);
@@ -167,6 +195,11 @@ export function saveClient(id: string | null, input: Record<string, unknown>) {
   const cur = id ? (list.find((x) => x.id === id) ?? null) : null;
   if (id && !cur) throw Object.assign(new Error("No such download client"), { statusCode: 404 });
   const c = cleanClient(input, cur);
+  // Turning a blackhole on: its folders must pass the check first (watch writable, completed readable and a source root).
+  if (isBlackhole(c.type) && c.enabled && !cur?.enabled) {
+    const problems = checkFolders(c, { local: mappedPath, sourceRoots: () => getSettings().importer.sourceRoots ?? [], now: Date.now });
+    if (problems.length) throw bad(`Can't enable ${c.name} yet: ${problems.join("; ")}`);
+  }
   patchSettings((s) => ({ ...s, extraClients: cur ? (s.extraClients ?? []).map((x) => (x.id === c.id ? c : x)) : [...(s.extraClients ?? []), c] }));
   logDecision("info", { why: `${cur ? "Changed" : "Added"} the download client ${c.name} (${c.type})` });
   return maskClient(c);

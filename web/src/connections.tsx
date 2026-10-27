@@ -3,7 +3,7 @@ import { api, type Settings as S, withBase } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { Confirm, dateTime, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
-import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, CLIENT_INFO, type CatalogEntry, type DirectIndexer, type ExtraClient, type ExtraType } from "./connectionsEdit";
+import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, CLIENT_INFO, isBlackholeType, type CatalogEntry, type DirectIndexer, type ExtraClient, type ExtraType } from "./connectionsEdit";
 
 /**
  * Settings → Indexers / Download clients / Media servers / Migration, Sonarr-style: one card per connection (what it
@@ -91,6 +91,8 @@ const TYPES: { id: string; name: string; protocol: Protocol | "both" | "media" |
   { id: "transmission", name: "Transmission", protocol: "torrent", kind: "client", ready: true, logo: "Tr" },
   { id: "deluge", name: "Deluge", protocol: "torrent", kind: "client", ready: true, logo: "De" },
   { id: "rtorrent", name: "rTorrent", protocol: "torrent", kind: "client", ready: true, logo: "rT" },
+  { id: "blackhole-usenet", name: "Usenet Blackhole (folder drop)", protocol: "usenet", kind: "client", ready: true, logo: "BH" },
+  { id: "blackhole-torrent", name: "Torrent Blackhole (folder drop)", protocol: "torrent", kind: "client", ready: true, logo: "BH" },
   { id: "prowlarr", name: "Prowlarr", protocol: "both", kind: "indexer", key: "prowlarr", ready: true, logo: "Pr" },
   { id: "newznab", name: "Newznab (custom)", protocol: "usenet", kind: "indexer", ready: false, logo: "NZ" },
   { id: "torznab", name: "Torznab (custom)", protocol: "torrent", kind: "indexer", ready: false, logo: "TZ" },
@@ -355,7 +357,8 @@ function Column({ protocol, title, summary, children }: { protocol: Protocol; ti
   );
 }
 
-export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
+/** wizard: the setup wizard's client step (it never offers Blackhole). */
+export function DownloadClients({ s, saveNow, wizard }: { s: S; saveNow: SaveNow; wizard?: boolean }) {
   const o = useOverview();
   const [edit, setEdit] = useState<Key | null>(null);
   const [extra, setExtra] = useState<ExtraClient | null>(null);
@@ -385,6 +388,7 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
                 <StatusLine st={c} loading={o.loading} />
                 {c.grabs > 0 && <span className="muted small">{t("conn.usedFor", { n: c.grabs, when: c.lastGrabAt ? relTime(c.lastGrabAt) : "—" })}</span>}
                 <ClientFlags priority={c.priority} enabled={c.enabled} />
+                {isBlackholeType(c.type) && <span className="muted small">{t("clients.bh.note")}</span>}
               </span>
             </button>
           ),
@@ -413,7 +417,7 @@ export function DownloadClients({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       {pick && (
         <TypePicker
           title={t(pick === "usenet" ? "conn.add.usenetClient" : "conn.add.torrentClient")}
-          types={TYPES.filter((x) => x.kind === "client" && x.protocol === pick)}
+          types={TYPES.filter((x) => x.kind === "client" && x.protocol === pick && !(wizard && isBlackholeType(x.id)))}
           configured={configured}
           onPick={(k) => (setPick(null), setEdit(k))}
           onPickType={(id) => (setPick(null), setExtra(newClient(id as ExtraType)))}

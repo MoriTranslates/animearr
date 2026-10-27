@@ -19,7 +19,8 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
   quality or better), with the reason in plain words. Torrent clients that can skip files (qBittorrent, Transmission,
   Deluge, rTorrent) download only the wanted episodes of a batch; the rest download it whole and the unneeded files are
   cleaned up after a confirmed import.
-- Download clients: SABnzbd, NZBGet, qBittorrent, Transmission, Deluge and rTorrent/ruTorrent.
+- Download clients: SABnzbd, NZBGet, qBittorrent, Transmission, Deluge and rTorrent/ruTorrent, plus Usenet and Torrent
+  Blackhole (folder drop) for anything else: off by default, with a plain list of what you lose on its card.
 
 ### Checking and importing
 - Every download is probed before import (full subtitles in your language, the right audio, not a sample); failures are

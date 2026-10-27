@@ -241,7 +241,7 @@ function ClientsStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   };
   return (
     <div className="stack">
-      <DownloadClients s={s} saveNow={saveNow} />
+      <DownloadClients s={s} saveNow={saveNow} wizard />
       <div className="row">
         {s.sabnzbd.url && <button onClick={() => void create("sabnzbd")}>{t("wiz.cat.sab", { cat: s.sabnzbd.category })}</button>}
         {s.qbittorrent.url && <button onClick={() => void create("qbittorrent")}>{t("wiz.cat.qbit", { cat: s.qbittorrent.category })}</button>}

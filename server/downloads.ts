@@ -25,6 +25,7 @@ import { ACTIVE, retryImport } from "./pipeline.js";
 import { libraryRoots } from "./mediafiles.js";
 import { getSettings } from "./settings.js";
 import { readBatch } from "./batch.js";
+import { findCompleted } from "./arr/blackhole.js";
 
 export interface FolderRule {
   id: string;
@@ -515,6 +516,16 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
         await deps.remove({ client: "qbittorrent", ref: t.hash });
         did = outcome === "rejected" ? "removed the rejected torrent and its data" : "removed the torrent (seeding done)";
       } else did = null; // still seeding: the sweep removes it when the seeding rules are met
+    } else if (getSettings().extraClients?.find((x) => x.id === g.client)?.type === "blackhole-usenet") {
+      // A Usenet blackhole: the finished folder in its completed folder goes after the import, by the same rules
+      // (inside a source root, deleting on; a batch's leftovers only when every wanted episode got its file).
+      // Torrent blackholes are never cleaned: the user's downloader may be seeding.
+      const c = getSettings().extraClients.find((x) => x.id === g.client)!;
+      const arr = findCompleted(c, g.client_ref, mappedPath);
+      const local = arr ? mappedPath(arr) : null;
+      if (!local || !fs.existsSync(local) || !fs.statSync(local).isDirectory()) return null;
+      const leftovers = batchLeftovers(g.id);
+      if ((leftovers || !listVideos(local).length) && removeDownloadPath(arr)) did = leftovers ? "deleted the download folder with the batch's unneeded files" : "deleted the download folder";
     } else if (g.client === "sabnzbd") {
       const h = (await deps.sab()).find((x) => x.nzoId === g.client_ref);
       if (!h?.storage) return null;

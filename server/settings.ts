@@ -69,10 +69,18 @@ export interface ClientCfg {
   removeCompleted: boolean;
   /** This client's path → AnimeArr's path. */
   pathMappings: PathMapping[];
+  /** Blackhole: where AnimeArr drops .nzb/.torrent files (AnimeArr's path view). */
+  watchFolder?: string;
+  /** Blackhole: where finished downloads appear (must be one of the importer's source roots). */
+  completedFolder?: string;
+  /** Blackhole (torrent): save magnet links as .magnet files; off = magnet-only releases are skipped for it. */
+  saveMagnets?: boolean;
+  /** Blackhole: a grab not seen in the completed folder after this many hours fails (blocklist + next). */
+  timeoutHours?: number;
 }
 
 /** The "+ Add" download client types. */
-export type ClientType = "nzbget" | "transmission" | "deluge" | "rtorrent";
+export type ClientType = "nzbget" | "transmission" | "deluge" | "rtorrent" | "blackhole-usenet" | "blackhole-torrent";
 
 /** An indexer AnimeArr searches directly (without Prowlarr). */
 export interface IndexerCfg {

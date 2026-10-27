@@ -1,6 +1,8 @@
 import { getSettings, type ClientCfg, type Settings } from "../settings.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
 import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
+import { blackholeDriver, isBlackhole } from "./blackhole.js";
+import { mappedPath } from "../paths.js";
 
 /**
  * Download clients. AnimeArr sends its grabs with its own category ("animearr" by default), so Sonarr's own
@@ -25,7 +27,9 @@ export interface AddTorrentOpts { seedRatio?: number | null; seedTimeMin?: numbe
 type ExtraType = ClientCfg["type"];
 export type ClientType = "sabnzbd" | "qbittorrent" | ExtraType;
 export interface ResolvedClient { id: string; type: ClientType; name: string; protocol: "usenet" | "torrent"; priority: number; enabled: boolean; configured: boolean; category: string; cfg: ClientCfg | null }
-export const PROTOCOL: Record<ClientType, "usenet" | "torrent"> = { sabnzbd: "usenet", nzbget: "usenet", qbittorrent: "torrent", transmission: "torrent", deluge: "torrent", rtorrent: "torrent" };
+export const PROTOCOL: Record<ClientType, "usenet" | "torrent"> = { sabnzbd: "usenet", nzbget: "usenet", qbittorrent: "torrent", transmission: "torrent", deluge: "torrent", rtorrent: "torrent", "blackhole-usenet": "usenet", "blackhole-torrent": "torrent" };
+/** A client is set up: an address, or a blackhole's two folders. */
+export const clientConfigured = (c: ClientCfg) => (isBlackhole(c.type) ? !!(c.watchFolder && c.completedFolder) : !!c.url);
 
 /** Every download client: the SABnzbd/qBittorrent slots and the added ones, with priority and enabled. */
 export function clientList(s: Settings = getSettings()): ResolvedClient[] {
@@ -33,15 +37,23 @@ export function clientList(s: Settings = getSettings()): ResolvedClient[] {
   return [
     { id: "sabnzbd", type: "sabnzbd" as const, name: "SABnzbd", protocol: "usenet" as const, ...pref("sabnzbd"), configured: !!(s.sabnzbd.url && s.sabnzbd.apiKey), category: s.sabnzbd.category, cfg: null },
     { id: "qbittorrent", type: "qbittorrent" as const, name: "qBittorrent", protocol: "torrent" as const, ...pref("qbittorrent"), configured: !!s.qbittorrent.url, category: s.qbittorrent.category, cfg: null },
-    ...(s.extraClients ?? []).map((c) => ({ id: c.id, type: c.type, name: c.name, protocol: PROTOCOL[c.type], priority: c.priority, enabled: c.enabled, configured: !!c.url, category: c.category, cfg: c })),
+    ...(s.extraClients ?? []).map((c) => ({ id: c.id, type: c.type, name: c.name, protocol: PROTOCOL[c.type], priority: c.priority, enabled: c.enabled, configured: clientConfigured(c), category: c.category, cfg: c })),
   ];
 }
 
-/** The clients a grab of this protocol goes to, best first (priority, then the order they were added). */
+/**
+ * The clients a grab of this protocol goes to, best first (priority, then the order they were added). A blackhole is
+ * never picked while a real client of the protocol is enabled, unless it is the preferred one (a better priority than
+ * every real client).
+ */
 export function clientsFor(protocol: "usenet" | "torrent", s: Settings = getSettings()) {
-  return clientList(s)
+  const list = clientList(s)
     .filter((c) => c.protocol === protocol && c.enabled && c.configured)
     .sort((a, b) => a.priority - b.priority);
+  const real = list.filter((c) => !isBlackhole(c.type));
+  if (!real.length) return list;
+  const best = Math.min(...real.map((c) => c.priority));
+  return list.filter((c) => !isBlackhole(c.type) || c.priority < best);
 }
 const byId = (id: string) => clientList().find((c) => c.id === id) ?? null;
 /** A torrent client's job (seeding: imports copy/hardlink instead of moving; archives may need unpacking). */
@@ -301,6 +313,8 @@ const fallBack = (e: unknown) => {
   return !/timeout|aborted|did not appear|returned no hash/i.test(m) && /unreachable|not configured|wrong username|login failed|refused|HTTP (4\d\d|5\d\d)|did not accept/i.test(m);
 };
 
+const bh = blackholeDriver({ local: mappedPath, sourceRoots: () => getSettings().importer.sourceRoots ?? [], now: Date.now });
+
 /** What an added ("+ Add") client's driver offers; the file-selection trio is the optional partial-download capability. */
 interface Driver {
   test(c: ClientCfg): Promise<{ version: string; categoryExists?: boolean; categories?: string[] }>;
@@ -317,6 +331,8 @@ const DRIVERS: Record<ExtraType, Driver> = {
   transmission: { ...transmissionDriver, addTorrent: (c, src, _n, o) => transmissionDriver.add(c, src, o) },
   deluge: { ...delugeDriver, remove: (c, ref) => delugeDriver.remove(c, ref, true), addTorrent: (c, src, _n, o) => delugeDriver.add(c, src, o) },
   rtorrent: { ...rtorrentDriver, remove: (c, ref) => rtorrentDriver.remove(c, ref, true), addTorrent: (c, src, _n, o) => rtorrentDriver.add(c, src, o) },
+  "blackhole-usenet": bh,
+  "blackhole-torrent": bh,
 };
 const driver = (c: ResolvedClient) => DRIVERS[c.type as ExtraType];
 

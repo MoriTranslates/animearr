@@ -53,10 +53,25 @@ What it doesn't do yet is listed in [PARITY.md](PARITY.md) (honestly) and [BACKL
 | Transmission | Torrent | ✅ | label + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
 | Deluge (2.x; 1.3 best effort) | Torrent | ✅ | Label plugin (optional) + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
 | rTorrent / ruTorrent | Torrent | ✅ | d.custom1 label + sub-folder | ratio shown, no limit set | ✅ (AnimeArr deletes the data inside its download folders) | ✅ | ✅ | ✅ / ✅ |
+| Usenet Blackhole¹ | Usenet | drop .nzb / watch folder, no progress | — | n/a | watch file only; finished folder cleaned after import | — (whole batch) | folders checked | — / — |
+| Torrent Blackhole¹ | Torrent | drop .torrent (.magnet optional) / watch folder, no progress | — | — | watch file only; never touches your files | — (whole batch) | folders checked | — / — |
 
 Clients without partial downloads (and all Usenet clients) download the whole batch; the import takes only the wanted
 files and the rest is cleaned up after a confirmed import. The download-folder clean-up and seeding rules (Settings →
 Downloads) read qBittorrent and SABnzbd only for now.
+
+¹ Blackhole is off by default, never offered by the setup wizard, and never picked while a real client of the same
+protocol is on unless its priority is better. It starts disabled until its folders pass Test (the completed folder
+must be one of the importer's source roots). What you lose with Blackhole:
+- no download progress, speed, ETA or seeders in the Queue (only "Waiting for download…");
+- no partial batch downloads: whole batches are downloaded (only the wanted files are imported);
+- stall and queue-health checks don't apply; only the timeout does (24 h by default), then the next release is tried;
+- AnimeArr can't pause or remove the download in your downloader, or see seeding and ratio; it never cleans up a
+  torrent's files (torrents are copied or hardlinked, never moved);
+- slower to notice finished downloads: a download counts as done when its size stays the same for about a minute;
+- downloads are matched by release name: one your downloader renames isn't found and needs a manual import;
+- Usenet: failed downloads and repair errors in your downloader aren't seen; AnimeArr only notices that nothing arrived;
+- Torrent: magnet-only releases are skipped unless "Save magnet links as .magnet files" is on.
 
 ## Quick start (Docker)
 
