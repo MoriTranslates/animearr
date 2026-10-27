@@ -436,7 +436,7 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
 
 function movieRequest(row: GrabRow): MovieGrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
-  return { movieId: row.movie_id!, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, replace: !!row.replace_file, purpose: row.purpose ?? null };
+  return { movieId: row.movie_id!, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, replace: !!row.replace_file, purpose: row.purpose === "dual-upgrade" ? "dual-upgrade" : null };
 }
 
 /** Tries the next candidate of a failed movie grab (skipping blocklisted ones). */
@@ -552,6 +552,7 @@ async function importParts(
     return attention(`AnimeArr's importer: ${(e as Error).message}`);
   }
   setState(row.id, "done");
+  void deps.cleanup?.(row.id, "imported");
   logDecision("import", { title: label, release: row.release, why: `Imported ✓ ${label}: a ${parts.length}-part release, imported as pt1…pt${parts.length} (Plex plays them as one movie)`, detail: { grabId: row.id, movieId: m.id, final: true } });
 }
 
@@ -656,6 +657,7 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     }
     setState(row.id, "done");
     logDecision("import", { title: label, release: row.release, why: `Imported ✓ ${label} (AnimeArr's importer)`, detail: { grabId: row.id, movieId: m.id, final: true } });
+    await deps.cleanup?.(row.id, "imported");
     return;
   }
   const started = Date.now();

@@ -67,6 +67,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
   const [tab, setTabState] = useState<ShowTab>(() => (["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes"));
+  const [replacing, setReplacing] = useState<number | null>(null);
   const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
   const [linking, setLinking] = useState(false);
   const toast = useToast();
@@ -332,6 +333,11 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               )}
               {!!attention.length && <span className="tag bad">{t("show.attentionCount", { n: attention.length })}</span>}
               <span className="season-right">
+                {season > 0 && have.length > 0 && !selecting && (
+                  <span onClick={(e) => e.preventDefault()}>
+                    <Menu label={t("replace.menuFor", { n: season })} items={[{ label: t("replace.menu"), onSelect: () => setReplacing(season) }]} />
+                  </span>
+                )}
                 {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
                 {selecting && (
                   <button className="small ghost" onClick={(e) => (e.preventDefault(), setSel((x) => new Set([...x, ...rows.map((r) => r.id)])))}>
@@ -446,6 +452,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
         </Modal>
       )}
+      {replacing !== null && <ReplaceSeason tvdbId={tvdbId} season={replacing} onClose={() => setReplacing(null)} />}
       {panel === "drop" && <DropShow tvdbId={tvdbId} title={h.title} sonarr={!h.native && !!h.monitoredInSonarr} onClose={() => setPanel(null)} onDone={() => void d.reload()} />}
       {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
     </section>
@@ -828,6 +835,42 @@ function DropShow({ tvdbId, title, sonarr, onClose, onDone }: { tvdbId: number; 
         <label className="check">
           <input type="checkbox" checked={unmonitor} onChange={(e) => setUnmonitor(e.target.checked)} /> {t("drop.unmonitor")}
         </label>
+      )}
+    </Confirm>
+  );
+}
+
+interface ReplacePreview { title: string; season: number; episodeIds: number[]; files: number; missing: number; why: Record<string, number>; groups: string[]; recycle: { path: string; days: number } }
+
+/** "Replace season…": what would be replaced and why, then the search for a season pack (grabbed as a replacement). */
+function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: number; onClose: () => void }) {
+  const p = useLoad(() => api<ReplacePreview>(`/series/${tvdbId}/replace-season?season=${season}`), [tvdbId, season]);
+  const reasons = p.data
+    ? Object.entries(p.data.why)
+        .filter(([k]) => k !== "ok")
+        .map(([k, n]) => t("replace.reason", { n, why: t(`replace.code.${k}` as I18nKey) || k }))
+        .join(", ")
+    : "";
+  return (
+    <Confirm
+      title={t("replace.title", { n: season })}
+      confirmLabel={t("replace.find")}
+      onClose={onClose}
+      onConfirm={() => navigate(`/search?tvdbId=${tvdbId}&eps=${p.data?.episodeIds.join(",") ?? ""}&replace=1`)}
+    >
+      {!p.data ? (
+        <Spinner label={t("app.loading")} />
+      ) : (
+        <>
+          <p>
+            {t("replace.summary", { n: p.data.files })}
+            {reasons ? ` (${reasons})` : ""}
+            {p.data.missing ? ` ${t("replace.plusMissing", { n: p.data.missing })}` : ""}
+          </p>
+          {p.data.groups.length > 1 && <p className="small">{t("replace.groups", { n: p.data.groups.length, groups: p.data.groups.join(", ") })}</p>}
+          <p className="small">{p.data.recycle.path ? t("replace.bin", { path: p.data.recycle.path, days: p.data.recycle.days || "∞" }) : t("replace.noBin")}</p>
+          <p className="small muted">{t("replace.how")}</p>
+        </>
       )}
     </Confirm>
   );

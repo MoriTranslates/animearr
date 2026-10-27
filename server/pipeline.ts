@@ -43,6 +43,8 @@ import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 export interface PipelineDeps {
   clients: DownloadClients;
   fetchRelease(r: ProwlarrRelease): Promise<{ data?: Buffer; magnet?: string; filename: string }>;
+  /** Clean-up right after an outcome is final (downloads.ts cleanupGrab); absent in tests = nothing deleted. */
+  cleanup?: (grabId: number, outcome: "imported" | "rejected") => Promise<string | null>;
   /** Radarr calls for movie grabs (optional: tests of episode grabs don't need them). */
   radarr?: {
     preview: typeof radarr.radarrImportPreview;
@@ -69,6 +71,7 @@ export interface PipelineDeps {
 export const realDeps: PipelineDeps = {
   clients: realClients,
   fetchRelease: realFetchRelease,
+  cleanup: (id, outcome) => import("./downloads.js").then((m) => m.cleanupGrab(id, outcome)),
   sonarr: { preview: sonarr.manualImportPreview, importFiles: sonarr.manualImport, command: sonarr.getCommand, episode: sonarr.getEpisode, episodeFile: sonarr.getEpisodeFile },
   radarr: { preview: radarr.radarrImportPreview, importFiles: radarr.radarrManualImport, command: radarr.getRadarrCommand, movie: radarr.getMovie },
   probe: (f) => ffprobe(f),
@@ -90,8 +93,12 @@ export interface GrabRequest {
   /** "manual" = Deep Search with confirmation (global dry-run applies); "managed" = scheduler (show dry-run applies too). */
   origin: "manual" | "managed";
   attempt?: number;
-  /** "dual-upgrade": replaces a sub-only placeholder, so the file must really have the dub (checked strictly). */
-  purpose?: "dual-upgrade" | null;
+  /**
+   * "dual-upgrade": replaces a sub-only placeholder, so the file must really have the dub (checked strictly).
+   * "replace": Replace season (the user's explicit choice): the pack replaces the selected episodes' files, each only
+   * after its new file passed the check; an episode whose new file fails (or is missing from the pack) keeps its file.
+   */
+  purpose?: "dual-upgrade" | "replace" | null;
   /** ⚡ automatic search: also honour the show's own dry-run (interactive grabs only follow the global switch). */
   automatic?: boolean;
 }
@@ -118,7 +125,7 @@ export interface GrabRow {
   movie_id?: number | null;
   /** The user asked to replace the file the movie already has. */
   replace_file?: number;
-  purpose?: "dual-upgrade" | null;
+  purpose?: "dual-upgrade" | "replace" | null;
   attempt?: number;
   progress?: number | null;
   progress_at?: number | null;
@@ -487,7 +494,9 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     }
     setState(row.id, "failed", why);
     blocklist(row, why);
-    logDecision("verify-fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `${row.release} failed verification: ${why}${imported ? " (already imported; it will be replaced if a better release is found)" : ""}. Blocklisted it.`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
+    // Rejected: its download goes with the next clean-up sweep, an hour from now, so "Keep anyway" still has its files.
+    const cleans = getSettings().downloads.cleanup === "auto" && getSettings().downloads.allowDelete;
+    logDecision("verify-fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `${row.release} failed verification: ${why}${imported ? " (already imported; it will be replaced if a better release is found)" : ""}. Blocklisted it${cleans ? "; its download is cleaned up in about an hour unless you choose Keep anyway" : ""}; looking for the next release.`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
     await tryNext(row.id, rowRequest(row), deps, why);
   };
   /** Problems that aren't the release's fault: no blocklist, no next candidate; the user can retry the import. */
@@ -552,6 +561,9 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   const mapped = plan.flatMap((p) => p.episodeIds);
   if (!plan.length) return attention("couldn't tell which file is which episode");
   if (new Set(mapped).size !== mapped.length) return attention("two files look like the same episode; import them by hand");
+  const replacing = row.purpose === "replace";
+  /** Replace season: episodes that keep their old file (new one failed its check, or isn't in the pack). */
+  const kept: { id: number; why: string }[] = replacing ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" })) : [];
 
   const prof = profileFor(row.tvdb_id);
   // A dual-audio upgrade replaces a placeholder: only a file with the original audio AND the dub counts.
@@ -580,6 +592,12 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const probe = await deps.probe(local);
     const v = strictUpgrade(judge(probe, prof, expectedMin, burned));
     learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
+    // Replace season: a new file that fails keeps that episode's old file; the rest of the pack goes ahead.
+    if (!v.ok && !row.keep && replacing) {
+      for (const id of p.episodeIds) kept.push({ id, why: v.why });
+      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Replace season: ${path.posix.basename(p.item.path)} failed its check (${v.why}); the old file stays for ${p.episodeIds.length > 1 ? "these episodes" : "this episode"}`, detail: { grabId: row.id } });
+      continue;
+    }
     if (!v.ok && !row.keep) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
     if (!v.ok) logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Kept ${path.posix.basename(p.item.path)} as you asked, although: ${v.why}`, detail: { grabId: row.id } });
     preVerified.add(p.item.path);
@@ -607,16 +625,47 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (native || imp.engine !== "sonarr") {
     if (!imp.allowReal) return attention("real imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
     if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
-    if (!plan.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
-    for (const p of plan) {
+    const keptIds = new Set(kept.map((k) => k.id));
+    const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)));
+    if (!toPlace.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
+    if (replacing && !toPlace.length) return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
+    if (replacing && !getSettings().media.recycleBin.trim()) return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
+    let swapped = 0;
+    for (const p of toPlace) {
       try {
         const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client, automatic: true, trusted: clientToSonarr(clientPath) });
         const res = await executeImport(ip, { grabId: row.id });
         const bad = res.find((r) => !r.done);
-        if (bad || !res.length) return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
+        if (bad || !res.length) {
+          // Replace season: one episode that can't be placed keeps its old file; the others carry on.
+          if (replacing) {
+            for (const id of p.episodeIds) kept.push({ id, why: bad?.why ?? "nothing to import" });
+            continue;
+          }
+          return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
+        }
+        swapped++;
+        if (replacing) db.prepare("UPDATE grabs SET progress_at = ?, error = ? WHERE id = ?").run(Date.now(), `swapped ${swapped}/${toPlace.length}`, row.id);
       } catch (e) {
+        if (replacing) {
+          for (const id of p.episodeIds) kept.push({ id, why: (e as Error).message });
+          continue;
+        }
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
+    }
+    if (replacing && !swapped) return attention(`Replace season: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}); every old file stays`);
+    if (replacing) {
+      db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
+      if (kept.length) {
+        const label = (id: number) => {
+          const e = eps.find((x) => x.id === id);
+          return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
+        };
+        logDecision("fail", { tvdbId: row.tvdb_id, title: series.title, episodeIds: kept.map((k) => k.id), release: row.release, why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`, detail: { grabId: row.id } });
+      }
+      const keptNow = new Set(kept.map((k) => k.id));
+      return finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps);
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
   }
@@ -670,6 +719,8 @@ async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof 
   } catch {
     /* the next sync catches up */
   }
+  // Confirmed import (files placed, the show refreshed): the download can go (or once seeding is done).
+  await deps.cleanup?.(row.id, "imported");
 }
 
 /** "Retry import" for a grab that downloaded fine but couldn't be imported. */

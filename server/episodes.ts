@@ -454,3 +454,27 @@ export const seriesAdvanced = (tvdbId: number) => {
   const idx = aliasIndex();
   return { anidb: idx.anidbIdsFor(tvdbId).map((x) => ({ ...x, title: idx.anidbTitle(x.aid) })) };
 };
+
+/** Replace season: the season's episodes and files, with what's wrong with them now (for the confirm). */
+export function replaceSeasonPreview(tvdbId: number, season: number) {
+  const s = cache.prepare("SELECT id, title FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number; title: string } | undefined;
+  if (!s) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
+  const rows = episodeRows(s.id).filter((e) => e.season === season && e.status !== "unaired");
+  const withFile = rows.filter((e) => e.file);
+  const why: Record<string, number> = {};
+  for (const e of withFile) {
+    const code = e.file!.lang?.state === "ok" ? "ok" : (e.file!.lang?.code ?? "unknown");
+    why[code] = (why[code] ?? 0) + 1;
+  }
+  const m = getSettings().media;
+  return {
+    title: s.title,
+    season,
+    episodeIds: rows.map((e) => e.id),
+    files: withFile.length,
+    missing: rows.length - withFile.length,
+    why,
+    groups: [...new Set(withFile.map((e) => e.file!.group ?? "unknown"))],
+    recycle: { path: m.recycleBin, days: m.recycleBinCleanupDays ?? 0 },
+  };
+}

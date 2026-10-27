@@ -35,6 +35,9 @@ function DeepSearch() {
   const [partial, setPartial] = useState<{ searched: number; total: number; tier: number; found: number; results: SearchResult[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [grab, setGrab] = useState<SearchResult | null>(null);
+  // Replace season (from the season's ⋯ menu): a pack replaces every selected episode, old files go to the bin.
+  const replaceMode = qp.get("replace") === "1";
+  const [replace, setReplace] = useState(replaceMode);
 
   useEffect(() => {
     const id = Number(qp.get("tvdbId"));
@@ -150,7 +153,7 @@ function DeepSearch() {
           onClose={() => setGrab(null)}
           onConfirm={async () => {
             try {
-              const r = await api<{ message: string }>("/grab", { body: { tvdbId: res.series.tvdbId, episodeIds: res.targets.map((x) => x.id), guid: grab.guid, confirm: true } });
+              const r = await api<{ message: string }>("/grab", { body: { tvdbId: res.series.tvdbId, episodeIds: res.targets.map((x) => x.id), guid: grab.guid, confirm: true, replace: replace && grab.episodeIds.length > 1 } });
               toast(t("search.grabDone", { message: r.message }));
               setGrab(null);
             } catch (e) {
@@ -161,6 +164,12 @@ function DeepSearch() {
           <p className="mono">{grab.title}</p>
           <FlagChips flags={grab.rank.flags} />
           <p>{res.dryRun ? t("search.grabDry") : t("search.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent", label: grab.label })}</p>
+          {grab.episodeIds.length > 1 && res.targets.some((x) => x.hasFile) && (
+            <label className="check">
+              <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> {t("replace.check")}
+            </label>
+          )}
+          {replace && grab.episodeIds.length > 1 && <p className="small muted">{t("replace.how")}</p>}
         </Confirm>
       )}
     </div>

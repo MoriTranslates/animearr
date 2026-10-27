@@ -1,4 +1,5 @@
 import os from "node:os";
+import { replaceSeasonPreview } from "./episodes.js";
 import crypto from "node:crypto";
 import { setIndexerUse } from "./indexerPick.js";
 import { droppedList, dropShow, refuseDropped, undropShow } from "./dropped.js";
@@ -683,7 +684,7 @@ app.get<{ Params: { id: string } }>("/api/search/job/:id", async (req) => {
   return { done: job.done, progress: job.progress, results: job.done ? undefined : job.partial, result: job.result, error: job.error };
 });
 
-app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confirm?: boolean } }>("/api/grab", async (req) => {
+app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confirm?: boolean; replace?: boolean } }>("/api/grab", async (req) => {
   writable();
   if (req.body?.confirm !== true) throw fail("Confirm the grab first");
   const tvdbId = id(req.body?.tvdbId);
@@ -694,8 +695,12 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; guid?: string; confir
   if (!pick) throw fail("That release isn't in the last search results", 404);
   const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });
   const fallbacks = cached.results.filter((r) => r !== pick && r.rank.accept && r.coversTarget).map(toCand);
+  // Replace season: only season packs as fallbacks (a single episode can't replace a season).
+  if (req.body?.replace === true) return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks: fallbacks.filter((f) => f.episodeIds.length > 1), origin: "manual", purpose: "replace" });
   return startGrab({ tvdbId, episodeIds: eps, candidate: toCand(pick), fallbacks, origin: "manual" });
 });
+/** Replace season: what would be replaced, and why (for the confirm). */
+app.get<{ Params: { tvdbId: string }; Querystring: { season?: string } }>("/api/series/:tvdbId/replace-season", async (req) => replaceSeasonPreview(id(req.params.tvdbId), Number(req.query.season ?? 1)));
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());

@@ -59,6 +59,8 @@ export interface Measure {
   disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number; label: string; share: { freeGb: number; totalGb: number } | null } | null;
   errors: string[];
   unreadable: Client[];
+  /** AnimeArr's torrents (its category) whose data lives outside its own download folders (e.g. qBittorrent's default path). */
+  outside?: { t: OwnTorrent; grab: Grab | null }[];
 }
 
 /** Where /proc/mounts says a path lives: its mount point and filesystem type. */
@@ -178,6 +180,8 @@ export async function measure(opts: { fresh?: boolean } = {}, deps: MeasureDeps 
       items.push({ name: n, local, arr, client: r.client, size, mtime, kind: g ? (g.movie_id ? "movie" : "show") : "unknown", grab: g, seeding: !!t && done && /UP$|uploading/i.test(t.state) && !seedingDone(t), torrent: t });
     }
   }
+  const seen = new Set(items.map((i) => i.torrent?.hash).filter(Boolean));
+  const outside = torrents.filter((t) => !seen.has(t.hash)).map((t) => ({ t, grab: byRef.get(t.hash.toLowerCase()) ?? null }));
   const excl = getSettings().downloads.excludeSeeding;
   const counted = items.filter((i) => !(excl && i.seeding));
   const sum = (f: (i: Item) => boolean) => ({ sizeGb: counted.filter(f).reduce((a, i) => a + i.size, 0) / GB, items: counted.filter(f).length });
@@ -208,7 +212,7 @@ export async function measure(opts: { fresh?: boolean } = {}, deps: MeasureDeps 
       errors.push(`free space: ${(e as Error).message}`);
     }
   }
-  last = { at: Date.now(), items, byScope: { shows: sum((i) => i.kind !== "movie"), movies: sum((i) => i.kind === "movie"), both: sum(() => true) }, disk, errors, unreadable };
+  last = { at: Date.now(), items, outside, byScope: { shows: sum((i) => i.kind !== "movie"), movies: sum((i) => i.kind === "movie"), both: sum(() => true) }, disk, errors, unreadable };
   return last;
 }
 
@@ -291,6 +295,8 @@ function seedingDone(t: OwnTorrent, now = Date.now()) {
 const NOT_RETRYABLE = /paused for a review|restarted|outside the allowed|several large|couldn't tell|two files|can't reach|archive|not from AnimeArr|only a manual import/i;
 const retried = new Set<number>();
 
+const failedAt = (grabId: number) => (db.prepare("SELECT updated_at FROM grabs WHERE id = ?").get(grabId) as { updated_at: number } | undefined)?.updated_at ?? null;
+
 /** The clean-up plan for AnimeArr's own download folders. Nothing is changed. */
 export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now(), opts: { includeRetry?: boolean } = { includeRetry: true }): Promise<{ actions: CleanupAction[]; measure: Measure }> {
   const m = await measure({ fresh: true }, deps);
@@ -308,6 +314,17 @@ export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now()
   const pending = db.prepare(`SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND state IN (${[...ACTIVE, "needs-attention"].map(() => "?").join(",")})`).get(...ACTIVE, "needs-attention") as { n: number };
   for (const i of m.items) {
     if (m.unreadable.includes(i.client)) continue; // can't tell what's whose: hands off
+    // A failed or rejected download (failed its check, wrong match): nothing in it is wanted. Torrents go once they
+    // stopped (or seeded enough); Usenet folders right away.
+    if (i.grab?.state === "failed" && now - (failedAt(i.grab.id) ?? now) > 3_600_000) {
+      if (i.client === "qbittorrent") {
+        if (i.torrent && (seedingDone(i.torrent, now) || /^(pausedDL|stoppedDL|error|missingFiles)$/.test(i.torrent.state)))
+          actions.push({ step: "leftover", target: i.arr, why: "a failed/rejected download (nothing in it was imported); removed with its data through qBittorrent", bytes: i.size, grabId: i.grab.id, client: "qbittorrent", ref: i.torrent.hash, destructive: true });
+        continue;
+      }
+      actions.push({ step: "leftover", target: i.arr, why: "a failed/rejected download (nothing in it was imported)", bytes: i.size, grabId: i.grab.id, client: "sabnzbd", ref: i.grab.client_ref, destructive: true });
+      continue;
+    }
     if (i.grab?.state === "done") {
       if (i.client === "qbittorrent") {
         if (i.torrent && seedingDone(i.torrent, now))
@@ -328,6 +345,15 @@ export async function cleanupPlan(deps: MeasureDeps = realDeps, now = Date.now()
     if (/^_(UNPACK|FAILED)_/i.test(i.name) || now - i.mtime < 86_400_000 || pending.n > 0) continue;
     actions.push({ step: "quarantine", target: i.arr, why: "neither SABnzbd nor AnimeArr knows this folder; moved aside (not deleted) for you to look at", bytes: i.size, grabId: null, client: i.client, ref: null, destructive: false });
   }
+  // AnimeArr's own torrents whose data sits outside its folders (sent before the category had its own path): removed
+  // through qBittorrent (which deletes its own data) on the same rules; torrents no grab knows are left alone.
+  if (!m.unreadable.includes("qbittorrent"))
+    for (const o of m.outside ?? []) {
+      if (!o.grab) continue;
+      const stopped = /^(pausedUP|stoppedUP)$/.test(o.t.state) || seedingDone(o.t, now);
+      if (o.grab.state === "done" && stopped) actions.push({ step: "leftover", target: clientToSonarr(o.t.contentPath), why: `imported, and seeding is done (ratio ${o.t.ratio.toFixed(2)}); removed through qBittorrent`, bytes: o.t.size, grabId: o.grab.id, client: "qbittorrent", ref: o.t.hash, destructive: true });
+      else if (o.grab.state === "failed" && now - (failedAt(o.grab.id) ?? now) > 3_600_000 && (stopped || /^(pausedDL|stoppedDL|error|missingFiles)$/.test(o.t.state))) actions.push({ step: "leftover", target: clientToSonarr(o.t.contentPath), why: "a failed/rejected download; removed with its data through qBittorrent", bytes: o.t.size, grabId: o.grab.id, client: "qbittorrent", ref: o.t.hash, destructive: true });
+    }
   return { actions, measure: m };
 }
 
@@ -362,10 +388,12 @@ export async function runCleanup(opts: { only?: CleanupAction["step"][]; userAsk
     }
     try {
       const local = mappedPath(a.target);
-      if (a.step !== "retry" && !inside(local)) throw new Error("outside AnimeArr's own download folders");
+      // A torrent is removed through qBittorrent (its own data, its category checked there); folders only inside ours.
+      const viaClient = a.step === "leftover" && a.client === "qbittorrent" && !!a.ref;
+      if (a.step !== "retry" && !viaClient && !inside(local)) throw new Error("outside AnimeArr's own download folders");
       if (a.grabId && a.step !== "retry") {
         const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(a.grabId) as { state: string } | undefined;
-        if (g?.state !== "done") throw new Error("its grab isn't finished any more; left alone");
+        if (g?.state !== "done" && g?.state !== "failed") throw new Error("its grab isn't finished any more; left alone");
       }
       if (a.step === "retry") {
         retried.add(a.grabId!);
@@ -391,6 +419,7 @@ export async function runCleanup(opts: { only?: CleanupAction["step"][]; userAsk
   return done;
 }
 
+let lastSweep = 0;
 /** Every few minutes: measure, evaluate; a pause-and-clean rule that fires runs the clean-up (as far as allowed). */
 export async function downloadsTick() {
   if (dbState.corrupt) return;
@@ -398,6 +427,11 @@ export async function downloadsTick() {
   const states = evaluate(m);
   const s = getSettings().downloads;
   if (s.cleanup === "auto" && states.some((x) => x.paused && x.rule?.action === "pauseAndClean")) await runCleanup().catch(() => undefined);
+  // The safety net: leftovers (imported and seeded, or rejected an hour ago) go hourly when clean-up is automatic.
+  else if (s.cleanup === "auto" && s.allowDelete && Date.now() - lastSweep > 3_600_000) {
+    lastSweep = Date.now();
+    await runCleanup({ only: ["leftover"] }).catch(() => undefined);
+  }
 }
 
 export function downloadsStatus() {
@@ -405,4 +439,44 @@ export function downloadsStatus() {
   const gm = grabGate("movie", false);
   const why = g.paused ? g.why : gm.paused ? gm.why : null;
   return { measure: last ? { byScope: last.byScope, disk: last.disk, errors: last.errors } : null, rules: [...ruleState.entries()].map(([id, st]) => ({ id, ...st })), paused: !!why, why };
+}
+
+/**
+ * Cleans one grab's download right after its outcome is final (the user's rule): after a confirmed import, or after it
+ * failed its check. Usenet: the folder goes now. Torrent: a rejected one goes now (with its data); an imported one
+ * goes once qBittorrent stopped it or the seeding rules are met (otherwise the periodic sweep takes it later). Only
+ * when automatic clean-up and deleting are switched on; only AnimeArr's own jobs. Never throws.
+ */
+export async function cleanupGrab(grabId: number, outcome: "imported" | "rejected", deps: { torrents: typeof ownTorrents; sab: typeof ownSabHistory; remove: typeof realClients.remove } = { torrents: ownTorrents, sab: ownSabHistory, remove: realClients.remove }): Promise<string | null> {
+  const s = getSettings().downloads;
+  if (s.cleanup !== "auto" || !s.allowDelete || dbState.corrupt) return null;
+  const g = db.prepare("SELECT id, client, client_ref, release, tvdb_id, movie_id FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as { id: number; client: string | null; client_ref: string | null; release: string; tvdb_id: number | null; movie_id: number | null } | undefined;
+  if (!g?.client || !g.client_ref) return null;
+  let did: string | null = null;
+  try {
+    if (g.client === "qbittorrent") {
+      const t = (await deps.torrents()).find((x) => x.hash.toLowerCase() === g.client_ref!.toLowerCase());
+      if (!t) return null;
+      if (outcome === "rejected" || seedingDone(t)) {
+        await deps.remove({ client: "qbittorrent", ref: t.hash });
+        did = outcome === "rejected" ? "removed the rejected torrent and its data" : "removed the torrent (seeding done)";
+      } else did = null; // still seeding: the sweep removes it when the seeding rules are met
+    } else if (g.client === "sabnzbd") {
+      const h = (await deps.sab()).find((x) => x.nzoId === g.client_ref);
+      if (!h?.storage) return null;
+      const local = mappedPath(clientToSonarr(h.storage));
+      const rootsLocal = roots().map((r) => r.local);
+      if (!rootsLocal.some((r) => path.resolve(local).startsWith(path.resolve(r) + path.sep))) return null;
+      if (fs.existsSync(local)) {
+        fs.rmSync(local, { recursive: true, force: true });
+        did = "deleted the download folder";
+      }
+    }
+  } catch (e) {
+    logDecision("info", { tvdbId: g.tvdb_id, release: g.release, why: `Couldn't clean up ${g.release} yet (${(e as Error).message}); the periodic clean-up tries again`, detail: { grabId: g.id, ...(g.movie_id ? { movieId: g.movie_id } : {}) } });
+    return null;
+  }
+  if (did) logDecision("info", { tvdbId: g.tvdb_id, release: g.release, why: `Cleaned up after ${outcome === "imported" ? "the import" : "the rejection"}: ${did}`, detail: { grabId: g.id, ...(g.movie_id ? { movieId: g.movie_id } : {}) } });
+  last = null;
+  return did;
 }
