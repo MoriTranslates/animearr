@@ -1390,3 +1390,6 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .browse-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .browse-meta { flex: none; display: inline-flex; gap: var(--space-2, 8px); align-items: center; white-space: nowrap; }
 @media (max-width: 560px) { .browse-item { flex-wrap: wrap; } .browse-meta { width: 100%; padding-left: 24px; } }
+
+/* fix/playtest-view-b: calendar, home, library, movies, find & add */
+.movie-kicker { text-transform: none; letter-spacing: 0.02em; font-size: var(--text-sm); }
