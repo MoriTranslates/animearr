@@ -20,10 +20,10 @@ export function seasonOf(ms = Date.now()): Season {
 
 /** Accent sets per season: [accent, accent-2 (lighter, for text on dark), ink on accent, deep (gradient end)]. */
 const PALETTE: Record<SeasonKey, { dark: [string, string, string, string]; light: [string, string, string, string] }> = {
-  fall: { dark: ["#ef8354", "#f6a77f", "#200c03", "#c9a227"], light: ["#c4562a", "#a8461f", "#ffffff", "#9b7a12"] },
-  winter: { dark: ["#8fb8ff", "#b9d2ff", "#06101f", "#c8b6ff"], light: ["#3c6fd1", "#2f5bb0", "#ffffff", "#6a55c9"] },
-  spring: { dark: ["#f49ac1", "#f8bdd7", "#2a0716", "#b8e0d2"], light: ["#c2477e", "#a63a6a", "#ffffff", "#3f9b80"] },
-  summer: { dark: ["#39c5cf", "#7fdde3", "#03191b", "#ffe08a"], light: ["#14858d", "#0f6f76", "#ffffff", "#b38a14"] },
+  fall: { dark: ["#ef8354", "#f6a77f", "#200c03", "#c9a227"], light: ["#b44d24", "#a8461f", "#ffffff", "#9b7a12"] },
+  winter: { dark: ["#8fb8ff", "#b9d2ff", "#06101f", "#c8b6ff"], light: ["#3566c4", "#2f5bb0", "#ffffff", "#6a55c9"] },
+  spring: { dark: ["#f49ac1", "#f8bdd7", "#2a0716", "#b8e0d2"], light: ["#b33f73", "#a63a6a", "#ffffff", "#3f9b80"] },
+  summer: { dark: ["#39c5cf", "#7fdde3", "#03191b", "#ffe08a"], light: ["#117880", "#0f6f76", "#ffffff", "#b38a14"] },
 };
 
 /** Sets the season accent on the page (the light theme gets darker variants for contrast). */

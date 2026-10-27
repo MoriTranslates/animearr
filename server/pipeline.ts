@@ -665,7 +665,8 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         logDecision("fail", { tvdbId: row.tvdb_id, title: series.title, episodeIds: kept.map((k) => k.id), release: row.release, why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`, detail: { grabId: row.id } });
       }
       const keptNow = new Set(kept.map((k) => k.id));
-      return finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps);
+      // Episodes that kept their old file may still need this download (fix the cause, then Retry import): keep it.
+      return finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
   }
@@ -701,7 +702,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
 }
 
-async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof seriesByTvdb>>, mapped: number[], eps: ReturnType<typeof episodesFor>, verdicts: string[], unpacked: string | null, deps: PipelineDeps) {
+async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof seriesByTvdb>>, mapped: number[], eps: ReturnType<typeof episodesFor>, verdicts: string[], unpacked: string | null, deps: PipelineDeps, cleanup = true) {
   setState(row.id, "done");
   if (unpacked) {
     try {
@@ -720,7 +721,7 @@ async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof 
     /* the next sync catches up */
   }
   // Confirmed import (files placed, the show refreshed): the download can go (or once seeding is done).
-  await deps.cleanup?.(row.id, "imported");
+  if (cleanup) await deps.cleanup?.(row.id, "imported");
 }
 
 /** "Retry import" for a grab that downloaded fine but couldn't be imported. */

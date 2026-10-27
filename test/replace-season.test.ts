@@ -57,6 +57,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
       .run(now, now, TVDB, JSON.stringify([701, 702, 703]), "[Judas] Absolute Duo (Season 01) [BD 1080p][Dual-Audio][Eng-Subs] (Batch)").lastInsertRowid,
   );
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
+  let cleanups = 0;
   const probe = async (p: string) => ({
     durationSec: 1440,
     audio: ["ja", "en"],
@@ -79,6 +80,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
     localPath: (p: string) => p.replace("/data", DL).replace("/media/Anime", LIB),
     sleep: async () => undefined,
     refreshSeries: async () => undefined,
+    cleanup: async () => (cleanups++, null),
   } as unknown as Deps;
   await importAndVerify(row, pack, deps);
   const after = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null };
@@ -95,6 +97,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
   const kept = db.prepare("SELECT why FROM decisions WHERE why LIKE 'Replace season: kept the old file%'").get() as { why: string };
   assert.match(kept.why, /S01E02 \(.*no .*subtitles.*\)/);
   assert.match(kept.why, /S01E03 \(not in the pack\)/);
+  assert.equal(cleanups, 0, "episodes kept their old file: the download stays for a retry");
 });
 
 test("clean-up right after the outcome: an imported torrent goes once seeding is done; nothing when switched off", async () => {
@@ -110,3 +113,4 @@ test("clean-up right after the outcome: an imported torrent goes once seeding is
   assert.match((await cleanupGrab(gid, "imported", deps("stoppedUP") as never)) ?? "", /removed the torrent/);
   assert.deepEqual(removed, ["abc"]);
 });
+

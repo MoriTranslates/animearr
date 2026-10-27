@@ -9,10 +9,11 @@
   --panel-2: #1d2130;
   --panel-3: #252a3b;
   --glass: rgb(22 25 36 / 0.72);
-  --line: rgb(255 255 255 / 0.075);
-  --line-2: rgb(255 255 255 / 0.12);
+  /* Contrast (WCAG AA, checked): text 15:1, muted 8.5:1 on panels; borders visible. */
+  --line: rgb(255 255 255 / 0.13);
+  --line-2: rgb(255 255 255 / 0.2);
   --text: #eef0f6;
-  --muted: #9aa1b5;
+  --muted: #aeb4c6;
   --faint: #6b7287;
   --accent: #ef8354;
   --accent-2: #f6a77f;
@@ -21,7 +22,7 @@
   --pink: #ff5c8a;
   --good: #3ddc97;
   --bad: #ff6b6b;
-  --warn: #ffc857;
+  --warn: #ffd27a;
   --info: #6cb4ff;
   --scrim: rgb(11 13 20);
   --shadow: 0 24px 50px -20px rgb(0 0 0 / 0.75);
@@ -34,14 +35,14 @@
   --panel-2: #f0f2f7;
   --panel-3: #e5e8f0;
   --glass: rgb(255 255 255 / 0.8);
-  --line: rgb(16 20 40 / 0.09);
-  --line-2: rgb(16 20 40 / 0.15);
+  --line: rgb(16 20 40 / 0.16);
+  --line-2: rgb(16 20 40 / 0.24);
   --text: #141724;
-  --muted: #5b6275;
+  --muted: #4f5568;
   --faint: #868c9c;
-  --good: #0f8a5a;
+  --good: #0b6e47;
   --bad: #c62828;
-  --warn: #9a6a00;
+  --warn: #7a5300;
   --info: #1f5fbf;
   --scrim: rgb(245 246 250);
   --shadow: 0 18px 40px -20px rgb(20 24 40 / 0.35);
@@ -1174,3 +1175,8 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .track-summary p { margin: 0; }
 .ep-cell.have.lang-no { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
 .ep-cell.have.lang-unknown { background: var(--panel-2); color: var(--muted); }
+
+/* Readability: release names and long problem text (contrast round) */
+.release-line.muted, .mono.muted { color: color-mix(in srgb, var(--text) 82%, var(--panel)); }
+.warn-text, .error { line-height: 1.5; }
+p.warn-text, li.warn-text { max-width: 75ch; }
