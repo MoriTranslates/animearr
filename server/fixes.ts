@@ -16,7 +16,8 @@ export type FixAction =
   | "tryNext" // the next candidate of this grab
   | "interactiveSearch" // the interactive search for the episode/movie
   | "testConnection" // test a download client / service
-  | "indexerHealth"; // where indexer failures are shown
+  | "indexerHealth" // where indexer failures are shown
+  | "openSettings"; // a Settings section (params.tab)
 
 export interface Fix { action: FixAction; label: string; params?: Record<string, unknown> }
 

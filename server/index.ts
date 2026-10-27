@@ -16,6 +16,7 @@ import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
 import { humanizeError } from "./errors.js";
 import { checkForUpdates } from "./releases.js";
+import { setupProblems, withSetupProblems } from "./setupHealth.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -818,11 +819,12 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
 
 // ---------------------------------------------------------------- notifications (bell + test)
 
-app.get("/api/notifications", async () => bell());
+// Setup problems (a download client that fails, a metadata download that failed) count as "Needs action" too.
+app.get("/api/notifications", async () => withSetupProblems(bell(), await setupProblems()));
 app.post<{ Body: { upToId?: number } }>("/api/notifications/read", async (req) => {
   writable();
   markRead(Number(req.body?.upToId) || 0);
-  return bell();
+  return withSetupProblems(bell(), await setupProblems());
 });
 app.post("/api/notifications/test", async () => {
   const s = getSettings().notify;
