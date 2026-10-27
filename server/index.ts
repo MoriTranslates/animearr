@@ -31,7 +31,7 @@ import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, lis
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, testProwlarr } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
-import { sonarrOptions, testSonarr } from "./arr/sonarr.js";
+import { getTags, sonarrConfigured, sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
 import { gaps, listFacts, missingLanguage, specials, coverFor } from "./audit.js";
@@ -797,6 +797,15 @@ app.post("/api/notifications/test", async () => {
   const out = await send("imported", "Test", "AnimeArr can reach this channel.");
   if (!out.length) throw fail("The 'imported' event is switched off, or too many notifications this minute", 400);
   return { results: out };
+});
+/** Library tag filter: Sonarr's tag names (read-only; empty when Sonarr isn't set up or doesn't answer). */
+app.get("/api/library/tags", async () => {
+  if (!sonarrConfigured()) return { tags: [] };
+  try {
+    return { tags: (await getTags()).map((x) => ({ id: x.id, label: x.label })) };
+  } catch {
+    return { tags: [] };
+  }
 });
 
 // ---------------------------------------------------------------- cutover (Sonarr/Radarr → AnimeArr)
