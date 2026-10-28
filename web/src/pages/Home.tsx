@@ -1,9 +1,10 @@
 import { ArrowRight, CaptionsOff, ChevronRight, CircleAlert, Download, FileX, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, store, sxe, type Status } from "../api";
 import { Link, navigate } from "../App";
 import { EpisodeSheet, type EpisodeStatus } from "../episodes";
 import { t } from "../i18n";
+import { languageName } from "../lang";
 import { PosterCard } from "../posters";
 import { Pill, SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
@@ -106,7 +107,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 <div className="needs">
                   <NeedRow icon={<CircleAlert className="lucide" />} tone="bad" n={h.needs.missing.n} label={t("home.need.missing")} sample={h.needs.missing.sample} to="/audit?tab=gaps" />
                   <NeedRow icon={<FileX className="lucide" />} tone="warn" n={h.needs.failed.n} label={t("home.need.failed")} sample={h.needs.failed.sample} to="/queue" />
-                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLang", { lang: h.needs.noLang.lang.toUpperCase() })} sample={t("home.need.noLangSample")} to="/audit?tab=language" />
+                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })} sample={t("home.need.noLangSee")} to="/audit?tab=language" />
                 </div>
               )}
             </section>
@@ -136,10 +137,10 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                       progress={e.progress}
                       onClick={() => setOpen(e.episodeId)}
                       meta={
-                        <>
+                        <span className="meta-stack airing-meta">
                           <b>{countdown(e.airUtc) ?? time(e.airUtc)}</b>
                           <span className="tnum">{sxe(e.season, e.episode)}</span>
-                        </>
+                        </span>
                       }
                     />
                   ))}
@@ -186,7 +187,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
               <section aria-labelledby="binge">
                 <div className="sec-hd">
                   <h2 id="binge">{t("home.binge")}</h2>
-                  <span className="muted small">{t("home.bingeSub", { lang: h.needs.noLang.lang.toUpperCase() })}</span>
+                  <span className="muted small">{t("home.bingeSubtitles", { lang: languageName(h.needs.noLang.lang) })}</span>
                 </div>
                 <div className="binge-grid">
                   {h.readyToBinge.map((b) => (
@@ -219,7 +220,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 <div className="needs">
                   <NeedRow icon={<CircleAlert className="lucide" />} tone="bad" n={h.needs.missing.n} label={t("home.need.missing")} sample={h.needs.missing.sample} to="/audit?tab=gaps" />
                   <NeedRow icon={<FileX className="lucide" />} tone="warn" n={h.needs.failed.n} label={t("home.need.failed")} sample={h.needs.failed.sample} to="/queue" />
-                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLang", { lang: h.needs.noLang.lang.toUpperCase() })} sample={t("home.need.noLangSample")} to="/audit?tab=language" />
+                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })} sample={t("home.need.noLangSee")} to="/audit?tab=language" />
                 </div>
               )}
             </section>
@@ -262,15 +263,43 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 </Link>
               </div>
               {!h.thisWeek.length && <Empty>{t("cal.empty")}</Empty>}
-              <div className="this-week-scroll">
+              <ScrollHint>
                 <ThisWeek list={h.thisWeek} onOpen={setOpen} />
-              </div>
+              </ScrollHint>
             </section>
           </aside>
         </div>
       )}
       {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.dryRun ?? true} />}
     </section>
+  );
+}
+
+/** "This week" scrolls inside its card: a fade and a "More ↓" button say so, until the end is reached. */
+function ScrollHint({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const check = () => {
+    const el = ref.current;
+    if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  };
+  useEffect(() => {
+    check();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(check) : null;
+    if (ref.current) ro?.observe(ref.current);
+    return () => ro?.disconnect();
+  });
+  return (
+    <div className={`scroll-hint${more ? " has-more" : ""}`}>
+      <div className="this-week-scroll" ref={ref} onScroll={check}>
+        {children}
+      </div>
+      {more && (
+        <button className="small scroll-more" onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.8, behavior: "smooth" })}>
+          {t("home.moreBelow")}
+        </button>
+      )}
+    </div>
   );
 }
 

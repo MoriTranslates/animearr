@@ -156,11 +156,32 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
       )}
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
       {!current && !d.error && <Spinner label={t("app.loading")} />}
+      {current && view !== "agenda" && <Legend />}
       {current && view === "agenda" && <Agenda byDay={byDay} compact={compact} onOpen={openEntry} />}
       {current && view === "week" && <Week from={from} byDay={byDay} onOpen={openEntry} />}
       {current && view === "month" && <Month key={from} from={from} anchor={anchor} byDay={byDay} onOpen={openEntry} />}
       {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.data?.dryRun ?? true} />}
     </section>
+  );
+}
+
+/** What the colours, borders and marks mean (week and month views). */
+function Legend() {
+  const items: [string, I18nKey][] = [
+    ["have", "cal.legend.have"],
+    ["missing", "cal.legend.missing"],
+    ["downloading", "cal.legend.downloading"],
+    ["unaired", "cal.legend.unaired"],
+    ["movie", "cal.legend.movie"],
+  ];
+  return (
+    <ul className="plain cal-legend small muted" aria-label={t("cal.legend")}>
+      {items.map(([k, label]) => (
+        <li key={k} className={`cal-key ${k}`}>
+          <span className="cal-swatch" aria-hidden="true">{k === "movie" ? "🎬" : GLYPH[k]}</span> {t(label)}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -284,6 +305,14 @@ function Month({ from, anchor, byDay, onOpen }: { from: number; anchor: number; 
   const today = startOfDay(Date.now());
   const month = new Date(anchor).getMonth();
   const [picked, setPicked] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // The picked day's list sits below the grid: bring it into view (and focus it for keyboard users).
+  useEffect(() => {
+    if (picked === null || !listRef.current) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    listRef.current.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    listRef.current.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
+  }, [picked]);
   const days = Array.from({ length: 42 }, (_, i) => addDays(from, i));
   const pickedList = picked !== null ? (byDay.get(picked) ?? []) : [];
   return (
@@ -314,7 +343,7 @@ function Month({ from, anchor, byDay, onOpen }: { from: number; anchor: number; 
                     {e.type === "episode" ? `${e.series} ${sxe(e.season, e.episode)}` : e.title}
                   </span>
                 ))}
-                {list.length > 3 && <span className="month-more muted small">+{list.length - 3}</span>}
+                {list.length > 3 && <span className="month-more small">{t("cal.moreN", { n: list.length - 3 })}</span>}
               </span>
               {!!list.length && (
                 <span className="month-dots" aria-hidden="true">
@@ -326,8 +355,13 @@ function Month({ from, anchor, byDay, onOpen }: { from: number; anchor: number; 
         })}
       </div>
       {picked !== null && (
-        <div className="agenda-day">
-          <h2 className="agenda-date">{dayTitle(picked)}</h2>
+        <div className="agenda-day month-picked" ref={listRef}>
+          <div className="row between">
+            <h2 className="agenda-date" tabIndex={-1}>{dayTitle(picked)}</h2>
+            <button className="small" onClick={() => setPicked(null)}>
+              {t("common.close")}
+            </button>
+          </div>
           {!pickedList.length && <p className="muted small">{t("cal.empty")}</p>}
           <ul className="plain">
             {pickedList.map((e) => (
