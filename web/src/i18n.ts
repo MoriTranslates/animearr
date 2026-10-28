@@ -1251,7 +1251,7 @@ const en = {
   "home.queue": "{n} downloading",
   "ep.tba": "TBA",
   "ep.audioLang": "{lang} audio",
-  "ep.sonarrLabel": "(Sonarr says {label})",
+  "ep.sonarrLabel": "(Sonarr labels it {label}, which is also in the file name; the release itself says otherwise)",
   "ep.minutes": "{n} min",
   "ep.multiFile": "this file holds {eps}; all of them become missing",
   "ep.regrabUnknown": "AnimeArr can't tell which release you have now (the file was renamed and Sonarr didn't keep its release name), so it might pick the same release again. It searches and grabs the best one it finds.",

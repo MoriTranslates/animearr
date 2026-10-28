@@ -248,6 +248,15 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
 
 const langName = (l: string | null) => (l ? languageName(l) : null);
 const kindWord = (k: string) => kindLabel(k);
+/**
+ * Sonarr's quality label ("HDTV-1080p", also in the file name) against the source the release name says ("WEB"):
+ * Sonarr sometimes guesses HDTV for a web release. The release name is the better witness; the label is noted.
+ */
+const sourceDiffers = (quality: string, source: string | null) => {
+  if (!source) return false;
+  const q = /hdtv|television/i.test(quality) ? "hdtv" : /web/i.test(quality) ? "web" : /blu/i.test(quality) ? "bluray" : /dvd/i.test(quality) ? "dvd" : null;
+  return !!q && q !== source.toLowerCase().replace("-", "");
+};
 /** "[SubsPlease] Show - 01 (1080p)" → "SubsPlease"; "Show.S01E01.1080p.WEB-ToonsHub" → "ToonsHub". */
 const groupOf = (release: string | null | undefined) => (release ? (/^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:\.\w{2,4})?$/.exec(release)?.[1] ?? null) : null);
 /** "ToonsHub · WEB · 1080p" from a release name (the name itself is a detail). */
@@ -489,7 +498,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                       <dd>
                         {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
                         {/* Sonarr's quality label only when it disagrees with the file itself. */}
-                        {d.file.quality && resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, "")) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
+                        {d.file.quality && ((resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, ""))) || sourceDiffers(d.file.quality, d.file.source)) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
                       </dd>
                     </div>
                     <div>
