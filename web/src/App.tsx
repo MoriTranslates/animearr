@@ -342,7 +342,9 @@ function Brand({ listen = false }: { listen?: boolean }) {
           }
         }}
       >
-        <b>A</b>
+        <svg viewBox="0 0 100 100">
+          <path d="M15.6 87.5L63.1 24.2V45.03L31.23 87.5ZM62.5 9.4H75V87.5H62.5ZM34.66 62.5H75V75H25.28Z" />
+        </svg>
       </span>
       <span className="brand-name">{t("app.name")}</span>
     </Link>

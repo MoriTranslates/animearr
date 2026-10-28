@@ -625,8 +625,8 @@ button.conn-card:hover { border-color: var(--accent-2); }
 .shell { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
 .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; padding: 18px 14px; background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 70%, var(--panel)), var(--bg)); border-right: 1px solid var(--line); overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; padding: 4px 8px 12px; }
-.mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: conic-gradient(from 210deg, var(--accent), var(--pink), var(--accent-deep), var(--accent)); box-shadow: 0 6px 18px -6px var(--accent); flex: none; cursor: pointer; }
-.mark b { font-family: var(--display); font-weight: 800; color: #1b0b05; font-size: var(--text-lg); }
+.mark { width: 32px; height: 32px; border-radius: 22%; display: grid; place-items: center; background: linear-gradient(160deg, #2b334b, #141926); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 6px 18px -8px var(--accent); flex: none; cursor: pointer; }
+.mark svg { width: 100%; height: 100%; fill: #fbf7ee; }
 .brand-name { font-family: var(--display); font-weight: 700; font-size: var(--text-lg); letter-spacing: -0.02em; }
 .side-nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-grp { display: block; margin: 14px 10px 6px; }
@@ -675,7 +675,7 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
   .phone-only { display: inline-flex; }
   .topbar { height: 60px; padding: 0 16px; gap: 10px; }
   .topbar .brand { padding: 0; }
-  .topbar .mark { width: 28px; height: 28px; border-radius: 9px; }
+  .topbar .mark { width: 28px; height: 28px; }
   .global-search { display: none; }
   main { padding: 8px 16px calc(96px + env(safe-area-inset-bottom)); }
   .tabbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(20px) saturate(1.3); border-top: 1px solid var(--line); }

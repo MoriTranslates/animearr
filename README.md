@@ -1,4 +1,9 @@
-# AnimeArr
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animearr-wordmark-on-dark.svg" />
+    <img src="docs/brand/animearr-wordmark-on-light.svg" alt="AnimeArr" height="64" />
+  </picture>
+</h1>
 
 <p>
   <a href="https://ko-fi.com/moritranslates"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi"></a>
