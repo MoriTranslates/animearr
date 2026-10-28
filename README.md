@@ -92,15 +92,17 @@ services:
       - 8484:8484
 ```
 
-Then open `http://<server>:8484`, create your account, and follow the setup wizard ("I'm new" or "I already use
+Then open `http://<server>:8484`, log in with **captain / morebooty**, and follow the setup wizard ("I'm new" or "I already use
 Sonarr/Radarr"). The full example is [docker-compose.yml](docker-compose.yml).
 
 **The paths matter.** AnimeArr checks and imports files itself, so it needs to see the downloads and the library at the
 same paths your download clients (and Sonarr/Radarr) use. One `/data` folder holding both downloads and media
 ([TRaSH-guides style](https://trash-guides.info/File-and-Folder-Structure/)) lets imports be instant hardlinks.
 
-**First start.** There is no default password. Create the account in the browser from your home network; if you're
-not on the same network, the log prints a one-time setup code.
+**First login.** The default login is **captain / morebooty**. It works only on your home network until you change it:
+logins with the default password from anywhere else (the internet, a reverse proxy, a tunnel) are refused. The wizard's
+first step offers to change it ("Later" is fine), and a banner reminds you until you do (Settings → Security). Installs
+that already have an account keep it. Details in [SECURITY.md](SECURITY.md).
 
 ### Platform notes
 

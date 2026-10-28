@@ -45,7 +45,7 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Calendar | iCal feed | Sonarr/Radarr | ❌ | |
 | Lists | Import lists (AniList/MAL/Plex watchlist) | Sonarr/Radarr | ❌ | |
 | Media servers | Jellyfin, Emby, Kodi; NFO / .plexmatch | Sonarr/Radarr | ❌ | Plex only |
-| Auth | First-run account | Sonarr | ✅ | Created in the browser (home network or one-time setup code); no default password |
+| Auth | First-run account | Sonarr | ✅ | Default login captain / morebooty, works only on your home network until you change it (wizard prompt + banner); existing accounts untouched |
 
 ## Anime-specific
 

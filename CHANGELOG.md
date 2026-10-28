@@ -38,7 +38,8 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 
 ### Running it
 - Multi-arch Docker image (amd64 + arm64), PUID/PGID/UMASK/TZ, URL base for sub-path proxies, Unraid template.
-- No default password: the account is created on first start. Encrypted secrets, CSRF protection, no framing.
+- Default login captain / morebooty, which works only on your home network until you change it (the wizard and a
+  banner ask you to). Existing accounts are never touched. Encrypted secrets, CSRF protection, no framing.
 
 ### Known limitations
 See the README's "Known limitations" and PARITY.md.

@@ -8,7 +8,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/MoriTranslates/animearr/issues</Support>
   <Project>https://github.com/MoriTranslates/animearr</Project>
-  <Overview>BETA. AnimeArr is an anime-first library manager that works alongside (and can take over from) Sonarr, Radarr and Prowlarr: AniList/AniDB-aware identification, release ranking with subtitle-language checks, verified imports, a seasonal calendar and a phone-friendly UI.[br][br]Give it the same download and media paths as Sonarr/Radarr. Keep /config on the cache/a local disk (appdata), never on /mnt/user directly for SQLite safety.</Overview>
+  <Overview>BETA. AnimeArr is an anime-first library manager that works alongside (and can take over from) Sonarr, Radarr and Prowlarr: AniList/AniDB-aware identification, release ranking with subtitle-language checks, verified imports, a seasonal calendar and a phone-friendly UI.[br][br]Give it the same download and media paths as Sonarr/Radarr. Keep /config on the cache/a local disk (appdata), never on /mnt/user directly for SQLite safety.[br][br]Default login: captain / morebooty. It works only on your home network until you change it (Settings, Security).</Overview>
   <Category>MediaApp:Video Downloaders:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Icon>https://raw.githubusercontent.com/MoriTranslates/animearr/main/web/public/favicon.svg</Icon>
