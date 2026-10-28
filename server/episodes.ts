@@ -27,6 +27,7 @@ import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./sear
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
+import { summarize } from "./summary.js";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -271,13 +272,17 @@ export function seriesHeader(tvdbId: number) {
 
 /** One episode in detail: file facts, grab history with the "why", and its activity entries. */
 export function episodeDetail(episodeId: number) {
-  const e = cache.prepare("SELECT e.*, s.tvdb_id, s.title AS series_title FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id = ?").get(episodeId) as { series_id: number; tvdb_id: number; series_title: string } | undefined;
+  const e = cache.prepare("SELECT e.*, s.tvdb_id, s.title AS series_title FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id = ?").get(episodeId) as { series_id: number; tvdb_id: number; series_title: string; season: number; episode: number } | undefined;
   if (!e) return null;
   const row = episodeRows(e.series_id).find((x) => x.id === episodeId)!;
   const grabs = db
     .prepare("SELECT id, at, updated_at, release, protocol, state, dry_run, why, error, progress FROM grabs WHERE EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 20")
     .all(episodeId);
-  const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 }).filter((d) => d.episodeIds.includes(episodeId)).slice(0, 30);
+  // Plain summaries for the sheet (the raw message stays alongside).
+  const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 })
+    .filter((d) => d.episodeIds.includes(episodeId))
+    .slice(0, 30)
+    .map((d) => ({ ...d, summary: summarize({ kind: d.kind, why: d.why, title: d.title || e.series_title, label: `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` }) }));
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
   const own = row.file?.scanned ? recordFor(row.file.path) : null;
   return { ...row, own, art: artFor(e.tvdb_id), tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
@@ -380,7 +385,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const ids = episodeIds.filter((e) => own.has(e));
   if (!ids.length) throw Object.assign(new Error("Those aren't episodes of this show"), { statusCode: 400 });
   refuseMovieSpecials(s.id, ids);
-  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode(s) now` });
+  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode${ids.length === 1 ? "" : "s"} now` });
   const now = Date.now();
   // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
   const state = opts.replace ? "replace" : "waiting";

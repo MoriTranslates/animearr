@@ -10,6 +10,7 @@ import type { ClientJob } from "./arr/clients.js";
 import * as sonarr from "./arr/sonarr.js";
 import { logDecision } from "./activity.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
+import { queueSummary } from "./summary.js";
 
 const label = (id: number) => {
   const e = cache.prepare("SELECT season, episode, title FROM episodes WHERE id = ?").get(id) as { season: number; episode: number; title: string | null } | undefined;
@@ -31,8 +32,9 @@ function art(g: GrabRow): { cover: string | null; color: string | null } {
 
 function view(g: GrabRow) {
   const eps = JSON.parse(g.episode_ids) as number[];
-  const fixes = g.error && (g.state === "needs-attention" || g.state === "failed") ? liveFixesFor(g.error, { grabId: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, episodeIds: eps, kind: verifyFailed(g) ? "verify-fail" : g.state === "failed" ? "fail" : "attention" }) : [];
-  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin, fixes, ...art(g), clientName: clientName(g.client), batch: batchLine(readBatch(g.batch)) };
+  const rejected = verifyFailed(g);
+  const fixes = g.error && (g.state === "needs-attention" || g.state === "failed") ? liveFixesFor(g.error, { grabId: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, episodeIds: eps, kind: rejected ? "verify-fail" : g.state === "failed" ? "fail" : "attention" }) : [];
+  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, summary: queueSummary(g.state, g.error, rejected), progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin, fixes, ...art(g), clientName: clientName(g.client), batch: batchLine(readBatch(g.batch)) };
 }
 
 /** A grab that failed the language check (its error is the blocklist reason the check wrote). */

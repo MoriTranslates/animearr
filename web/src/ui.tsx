@@ -532,8 +532,15 @@ export function relTime(ms: number) {
   const d = Math.round((Date.now() - ms) / 60_000);
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
   if (Math.abs(d) < 60) return rtf.format(-d, "minute");
-  if (Math.abs(d) < 1440) return rtf.format(-Math.round(d / 60), "hour");
-  return rtf.format(-Math.round(d / 1440), "day");
+  if (Math.abs(d) < 720) return rtf.format(-Math.round(d / 60), "hour");
+  // Calendar days ("yesterday" means the day before today, not "about 36 hours ago").
+  const day = (x: number) => {
+    const t = new Date(x);
+    return Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()) / 86_400_000;
+  };
+  const days = day(Date.now()) - day(ms);
+  if (!days) return rtf.format(-Math.round(d / 60), "hour");
+  return rtf.format(-days, "day");
 }
 
 export function dateTime(ms: number) {

@@ -14,6 +14,7 @@ export type FixAction =
   | "resumeRule" // switch the pausing rule off
   | "resumeImports" // AnimeArr's importer on, no review pause
   | "tryNext" // the next candidate of this grab
+  | "retryImport" // import the kept download again, once the cause is fixed
   | "interactiveSearch" // the interactive search for the episode/movie
   | "testConnection" // test a download client / service
   | "indexerHealth" // where indexer failures are shown
@@ -46,9 +47,11 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
   if (/several large video files|import the right (?:one|file) by hand/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId ?? null } });
   // The import itself broke off (a restart, a leftover file, a disk error): import it by hand from the same download.
   if (ctx.grabId && /restarted during the import|AnimeArr's importer: /i.test(why) && !/switched off|paused for a review/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId } });
+  // The message tells the user to press "Retry import": the button is right there (the grab kept its download).
+  if (ctx.grabId && /Retry import/.test(why)) add({ action: "retryImport", label: "Retry import", params: { grabId: ctx.grabId } });
   if (/couldn't tell which (?:file is which )?episode|couldn't map the episode|two files look like the same episode|import (?:it|them|this one) by hand/i.test(why)) add({ action: "pickEpisode", label: "Pick episode…", params: { ...target, grabId: ctx.grabId ?? null } });
   if ((ctx.kind === "verify-fail" || /failed verification/i.test(why)) && /sub|English|dialogue|audio|dub/i.test(why)) {
-    add({ action: "regrab", label: "Re-grab", params: target });
+    add({ action: "regrab", label: "Download again", params: target });
     // Already imported (checked after the import): there's nothing left to keep; the file stays until a better one.
     if (ctx.grabId && !/already imported/i.test(why)) add({ action: "keepAnyway", label: "Keep anyway", params: { grabId: ctx.grabId } });
   }
@@ -59,8 +62,8 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
   }
   if (/importer is paused|real (?:movie )?imports by AnimeArr's importer are switched off|aren't switched on yet/i.test(why)) add({ action: "resumeImports", label: "Resume imports", params: { movies: !!ctx.movieId || /\bmovie/i.test(why) } });
   // "No more candidates" means the automatic next already ran out: only the interactive search helps then.
-  if (ctx.grabId && /fail|couldn't send|SABnzbd:|download (?:failed|error)|stalled|missing from/i.test(why) && !/verification|no more candidates/i.test(why)) add({ action: "tryNext", label: "Try next release", params: { grabId: ctx.grabId } });
-  if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Choose release…", params: target });
+  if (ctx.grabId && /fail|couldn't send|SABnzbd:|download (?:failed|error)|stalled|missing from/i.test(why) && !/verification|no more candidates/i.test(why)) add({ action: "tryNext", label: "Try another version", params: { grabId: ctx.grabId } });
+  if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Pick a version…", params: target });
   if (/unreachable|ECONNREFUSED|ETIMEDOUT|timed out|not configured|refused the (?:token|key)|HTTP 401/i.test(why))
     for (const [re, service, name] of SERVICES) if (re.test(why)) {
       add({ action: "testConnection", label: `Test ${name}`, params: { service } });
@@ -86,10 +89,11 @@ export function supersededBy(grabId: number): number | null {
 /** fixesFor, minus the grab actions that no longer apply (the grab moved on, or something newer replaced it). */
 export function liveFixesFor(why: string, ctx: FixContext = {}): Fix[] {
   const fixes = fixesFor(why, ctx);
-  if (!ctx.grabId || !fixes.some((f) => f.action === "keepAnyway" || f.action === "tryNext")) return fixes;
+  if (!ctx.grabId || !fixes.some((f) => f.action === "keepAnyway" || f.action === "tryNext" || f.action === "retryImport")) return fixes;
   const st = (db.prepare("SELECT state FROM grabs WHERE id = ?").get(ctx.grabId) as { state: string } | undefined)?.state;
   const stale = !st || !["failed", "needs-attention"].includes(st) || supersededBy(ctx.grabId) !== null;
-  return stale ? fixes.filter((f) => f.action !== "keepAnyway" && f.action !== "tryNext") : fixes;
+  // Retry import only works while the grab still waits for it (needs attention).
+  return fixes.filter((f) => !((stale && (f.action === "keepAnyway" || f.action === "tryNext")) || (f.action === "retryImport" && st !== "needs-attention")));
 }
 
 /** Where an item lives in the UI (for Discord/ntfy links). */

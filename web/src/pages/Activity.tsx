@@ -66,24 +66,27 @@ function releaseLine(release: string | null) {
   if (!release) return "";
   const group = /^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:-xpost)?$/.exec(release)?.[1] ?? null;
   const res = /\b(2160|1080|720|480)p\b/i.exec(release)?.[1];
-  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "BD" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : null;
+  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "Blu-ray" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : null;
   return [group, src, res ? `${res}p` : null].filter(Boolean).join(" · ");
 }
 /** The card's headline, in plain words: "Imported Trinity Seven S01E03", "Couldn't import Quintuplets∽". */
 function headline(lead: Decision, k: string) {
   const what = [lead.title || (lead.tvdbId ? t("activity.show") : ""), lead.label].filter(Boolean).join(" ");
   const verb: Record<string, I18nKey> = { import: "activity.h.import", grab: "activity.h.grab", "would-grab": "activity.h.wouldGrab", "verify-ok": "activity.h.checked", "verify-fail": "activity.h.rejected", skip: "activity.h.skip", search: "activity.h.search", plex: "activity.h.plex" };
+  // A problem's plain summary says what happened and why in one line: it is the headline.
+  if (PROBLEM.has(lead.kind) && lead.summary && !lead.resolved) return lead.summary;
   if (k === "fail") return /couldn't import/i.test(lead.why) ? t("activity.h.failImport", { what }) : t("activity.h.fail", { what });
   if (verb[k] && what) return t(verb[k], { what });
-  return short(lead.why, 90);
+  return lead.summary ?? short(lead.why, 90);
 }
-/** The one muted line under the headline: the key reason for problems, group · quality otherwise. */
+/** The one muted line under the headline: the plain reason for problems, group · quality otherwise. */
 function subline(lead: Decision, release: string | null) {
   if (PROBLEM.has(lead.kind)) {
+    if (lead.summary) return lead.resolved ? lead.summary : "";
     const m = /couldn't import it: (.*?)(?:\. The download is kept.*)?$/i.exec(lead.why);
     return short(m ? m[1] : lead.why.replace(/^.*?failed verification: /i, ""));
   }
-  return releaseLine(release) || (lead.title ? short(lead.why) : "");
+  return releaseLine(release) || (lead.title ? (lead.summary ?? short(lead.why)) : "");
 }
 /** Routine background entries (searches that found nothing): hidden from "All" unless asked for. */
 export const isBackground = (d: Decision) => d.kind === "search" || (d.kind === "skip" && /nothing (acceptable|found)|0 acceptable|no results?/i.test(d.why));
@@ -92,7 +95,7 @@ export const isBackground = (d: Decision) => d.kind === "search" || (d.kind === 
  * One event as a compact card (the Home "Just arrived" style): poster | plain headline | status | time, one muted line,
  * fix buttons for problems; the full release, the long reasons and the steps are under "Details".
  */
-function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () => void; showDate?: boolean }) {
+function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; onUndone?: () => void; showDate?: boolean; clock?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [undoing, setUndoing] = useState<Decision | null>(null);
@@ -104,16 +107,18 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
   const k = kindOf(lead);
   const release = ev.items.find((x) => x.release)?.release ?? null;
   // Fix buttons only while the problem is the latest word (a later successful import settles it).
-  const fixes = PROBLEM.has(lead.kind) ? ev.items.find((x) => x.fixes?.length)?.fixes : undefined;
-  const undoable = ev.items.filter((x) => x.undo && !x.undoneAt);
+  const resolved = PROBLEM.has(lead.kind) && !!lead.resolved;
+  const fixes = PROBLEM.has(lead.kind) && !resolved ? ev.items.find((x) => x.fixes?.length)?.fixes : undefined;
+  // Un-blocklisting a release that was turned down only makes sense while the episode is still open.
+  const undoable = ev.items.filter((x) => x.undo && !x.undoneAt && !(resolved && x.undo.action === "unblock"));
   const track = steps.length > 1 ? [...new Map(steps.map((x) => [kindOf(x), x])).values()] : [];
   const cover = ev.items.find((x) => x.cover)?.cover ?? null;
   const link = lead.tvdbId ? `/show/${lead.tvdbId}` : lead.movieId ? `/movie/${lead.movieId}` : null;
-  const tone = KIND_TONE[k] ?? "info";
+  const tone = resolved ? "info" : (KIND_TONE[k] ?? "info");
   const sub = subline(lead, release);
   return (
     <article
-      className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) ? " problem" : ""}${link ? "" : " no-thumb"}${open ? " open" : ""}`}
+      className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) && !resolved ? " problem" : ""}${resolved ? " resolved" : ""}${link ? "" : " no-thumb"}${open ? " open" : ""}`}
       // The whole card opens its details (links and buttons inside keep doing their own thing).
       onClick={(e) => !(e.target as HTMLElement).closest("a, button, input, select, summary, .event-details") && !window.getSelection()?.toString() && setOpen(!open)}
     >
@@ -134,10 +139,15 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
           </span>
           <h3 className="event-title">{link ? <Link to={link}>{headline(lead, k)}</Link> : headline(lead, k)}</h3>
           <time className="muted small event-time" dateTime={new Date(ev.at).toISOString()} title={new Date(ev.at).toLocaleString()}>
-            {showDate ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : relTime(ev.at)}
+            {showDate ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : clock ? time(ev.at) : relTime(ev.at)}
           </time>
         </div>
-        {sub && <p className="event-sub" title={lead.why}>{sub}</p>}
+        {sub && <p className="event-sub">{sub}</p>}
+        {resolved && (
+          <p className="small">
+            <Chip tone="good">{t("activity.resolved")}</Chip> <span className="muted">{t("activity.resolvedHelp")}</span>
+          </p>
+        )}
         {!!track.length && (
           <ol className="stage-track" aria-label={t("activity.steps")}>
             {track.map((x) => (
@@ -153,16 +163,16 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
             {open ? "▾" : "▸"} {t("activity.detailsShort")}
           </button>
           {undoable.map((x) => (
-            <button key={x.id} className="small" onClick={() => setUndoing(x)}>
-              {t("common.undo")}
-              {undoable.length > 1 ? `: ${kindLabel(kindOf(x))}` : ""}
+            <button key={x.id} className="small" title={x.undo?.action === "unblock" ? t("activity.undo.unblockHelp") : undefined} onClick={() => setUndoing(x)}>
+              {x.undo?.action === "unblock" ? t("activity.undo.unblock") : t("common.undo")}
+              {undoable.length > 1 && x.undo?.action !== "unblock" ? `: ${kindLabel(kindOf(x))}` : ""}
             </button>
           ))}
           {/* Undo says what it will undo and asks first (it used to un-manage a show in one tap). */}
           {undoing && (
             <Confirm
               title={t("undo.confirmTitle")}
-              confirmLabel={t("common.undo")}
+              confirmLabel={undoing.undo?.action === "unblock" ? t("activity.undo.unblock") : t("common.undo")}
               onClose={() => setUndoing(null)}
               onConfirm={async () => {
                 try {
@@ -187,7 +197,8 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
             <ol className="event-steps small">
               {steps.map((x) => (
                 <li key={x.id}>
-                  <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong> <span className="why-text">{x.why}</span>
+                  <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong> {x.summary && <span className="why-text">{x.summary} </span>}
+                  <span className={`why-text${x.summary ? " muted" : ""}`}>{x.why}</span>
                 </li>
               ))}
             </ol>
@@ -313,17 +324,16 @@ export function Activity() {
       )}
       {days.map(([day, evs]) => (
         <div key={day} className="day-group">
-          <h2 className="agenda-date">
-            {dayTitle(day)}
-            {!!hiddenByDay.get(day) && (
-              <button className="linklike small day-hidden" onClick={toggleBg}>
-                {t("activity.hiddenSearches", { n: hiddenByDay.get(day)! })}
-              </button>
-            )}
-          </h2>
+          <h2 className="agenda-date">{dayTitle(day)}</h2>
+          {!!hiddenByDay.get(day) && (
+            <button className="linklike small day-hidden" onClick={toggleBg}>
+              {t("activity.hiddenSearches", { n: hiddenByDay.get(day)! })}
+            </button>
+          )}
           <div className="list">
+            {/* Under a day heading, older days show the clock time (never "2 days ago" under "Yesterday"). */}
             {evs.map((ev) => (
-              <EventCard key={ev.key} ev={ev} onUndone={list.reload} />
+              <EventCard key={ev.key} ev={ev} onUndone={list.reload} clock={day !== dayKey(Date.now())} />
             ))}
           </div>
         </div>

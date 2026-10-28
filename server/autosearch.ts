@@ -79,7 +79,7 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
     if (movies.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: `a movie (${movies.get(id)!.title}): handled by Radarr` });
     else if (inFlight(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already downloading" });
     else if (searching.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already being searched" });
-    else if (e.hasFile) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already has a file (use Re-grab to replace it)" });
+    else if (e.hasFile) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already has a file (use Download again to replace it)" });
     else targets.push(id);
   }
   for (const id of targets) searching.add(id);

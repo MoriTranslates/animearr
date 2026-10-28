@@ -23,6 +23,8 @@ interface Item {
   dryRun: boolean;
   why: string;
   error: string | null; fixes?: import("../api").Fix[];
+  /** The problem in one plain line ("Failed: a download source is offline."). */
+  summary?: string | null;
   cover?: string | null;
   color?: string | null;
   clientName?: string;
@@ -127,13 +129,13 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
             <ReleaseLine release={g.release} />
             {g.state === "needs-attention" && g.error && (
               <p className="warn-text small qerr">
-                <FileX className="lucide" aria-hidden="true" /> {g.error}
+                <FileX className="lucide" aria-hidden="true" /> {g.summary ?? g.error}
               </p>
             )}
-            <Why lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error && g.state !== "needs-attention" ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
+            <Why summary={t("activity.detailsShort")} lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
               <FixButtons fixes={g.fixes} />
-              {g.state === "needs-attention" && (
+              {g.state === "needs-attention" && !g.fixes?.some((f) => f.action === "retryImport") && (
                 <button
                   className="small"
                   onClick={async () => {
@@ -222,9 +224,10 @@ function History() {
               <StateChip state={g.state} />
               <span className="muted small">{dateTime(g.at)}</span>
             </div>
-            <ReleaseLine release={g.release} />
-            {g.state === "failed" && g.error && <p className="small warn-text clamp2">{g.error}</p>}
-            <Why lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error && g.state !== "failed" ? [g.error] : [])]} />
+            {/* The plain reason leads; the release name and the raw messages are the details. */}
+            {g.summary && <p className={`small ${g.state === "failed" ? "warn-text" : "muted"}`}>{g.summary}</p>}
+            {g.state === "failed" && g.error && !g.summary && <p className="small warn-text clamp2">{g.error}</p>}
+            <Why summary={t("activity.detailsShort")} lines={[g.release, ...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : [])]} />
             <FixButtons fixes={g.fixes} />
           </article>
         ))}

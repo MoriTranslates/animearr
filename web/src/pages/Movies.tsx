@@ -10,6 +10,15 @@ import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal
 import { PosterCard } from "../posters";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
+import { languageList, languageName } from "../lang";
+
+/** "has full en subtitles" → "has full English subtitles"; "en/vi audio only" → "English and Vietnamese audio only". */
+export function plainLangs(why: string) {
+  return why.replace(/\b([a-z]{2,3}(?:-[A-Za-z]{2})?(?:\/[a-z]{2,3}(?:-[A-Za-z]{2})?)*)(?= (?:audio|subtitles|subs|dub|track)\b)/g, (m) => {
+    const codes = m.split("/");
+    return codes.every((c) => languageName(c) !== c) ? languageList(codes) : m;
+  });
+}
 
 interface MovieItem { id: number; tmdbId: number | null; title: string; year: number | null; cover: string | null; monitored: boolean; status: "have" | "missing" | "downloading" | "attention" | "unreleased"; releaseAt: number | null; allowed: boolean; verdict: { ok: boolean | null; why: string } | null; quality: string | null }
 
@@ -61,7 +70,7 @@ export function Movies() {
       {d.data && !!d.data.length && !shown.length && <Empty>{t("shows.empty")}</Empty>}
       {d.data && !!shown.length && (
         <div className="row between">
-          <span className="muted small">{t("shows.count", { shown: shown.length, total: d.data.length })}</span>
+          <span className="muted small">{t("movies.count", { shown: shown.length, total: d.data.length })}</span>
           <button className={`small${selecting ? " on" : ""}`} aria-pressed={selecting} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
             {selecting ? t("ep.selectDone") : t("ep.select")}
           </button>
@@ -220,9 +229,9 @@ export function MoviePage({ id }: { id: number }) {
         </div>
         <div className="hero-info">
           <div className="hero-top">
-            <span className="eyebrow show-eyebrow">
+            <span className="eyebrow show-eyebrow movie-kicker">
               <Link to="/movies" className="crumb-link">
-                {t("lib.movies")}
+                {t("movies.kicker")}
               </Link>
               {m.year ? ` · ${m.year}` : ""}
               {m.runtime ? ` · ${t("movies.runtime", { min: m.runtime })}` : ""}
@@ -231,7 +240,7 @@ export function MoviePage({ id }: { id: number }) {
               className="hero-menu"
               items={[
                 { label: t("import.manual"), onSelect: () => setImporting(true), hidden: !m.allowed },
-                { label: t("files.refreshScan"), onSelect: () => void rescan() },
+                { label: t("movies.recheck"), onSelect: () => void rescan() },
                 { label: m.monitored ? t("movies.unwantThis") : t("movies.wantThis"), onSelect: () => void toggleWanted() },
                 { label: t("add.remove"), onSelect: () => setRemoving(true), hidden: id < 900_000_000, danger: true },
               ]}
@@ -267,14 +276,14 @@ export function MoviePage({ id }: { id: number }) {
           <div className="hero-actions">
             {m.allowed ? (
               <SplitButton
-                label={`⚡ ${autoBusy ? t("common.working") : t("auto.find")}`}
+                label={autoBusy ? t("common.working") : t("movies.autoFind")}
                 disabled={autoBusy}
                 onClick={() => (m.file ? setConfirmAuto(true) : void auto())}
-                items={[{ label: searching ? t("common.working") : t("auto.chooseRelease"), onSelect: () => void search(), disabled: searching }]}
+                items={[{ label: searching ? t("common.working") : t("movies.pickVersion"), onSelect: () => void search(), disabled: searching }]}
               />
             ) : (
               <button disabled={searching} onClick={() => void search()}>
-                {searching ? t("common.working") : t("auto.chooseRelease")}
+                {searching ? t("common.working") : t("movies.pickVersion")}
               </button>
             )}
             <button className="glass-btn" onClick={() => setWatchOpen(true)} aria-haspopup="dialog">
@@ -288,12 +297,17 @@ export function MoviePage({ id }: { id: number }) {
         <h2>{t("movies.file")}</h2>
         {m.file ? (
           <>
-            <p className="mono small">{m.file.path}</p>
             <div className="chips">
               {m.file.quality && <Chip>{m.file.quality}</Chip>}
-              {m.verdict && <Chip tone={m.verdict.ok === false ? "bad" : m.verdict.ok ? "good" : "info"}>{m.verdict.ok === false ? "✕ " : m.verdict.ok ? "✓ " : ""}{m.verdict.why}</Chip>}
+              {m.verdict && <Chip tone={m.verdict.ok === false ? "bad" : m.verdict.ok ? "good" : "info"}>{m.verdict.ok === false ? "✕ " : m.verdict.ok ? "✓ " : ""}{plainLangs(m.verdict.why)}</Chip>}
             </div>
-            <p className="small muted">{t("movies.tracks", { audio: m.file.audio.join(", ") || "?", subs: m.file.subs.join(", ") || "—" })}</p>
+            <p className="small muted">{t("movies.tracks", { audio: languageList(m.file.audio) || "?", subs: languageList(m.file.subs) || t("movies.noSubs") })}</p>
+            {m.file.path && (
+              <details className="small">
+                <summary>{t("movies.fileDetails")}</summary>
+                <p className="mono small muted">{m.file.path}</p>
+              </details>
+            )}
             {m.file.path && (
               <div className="file-tools stack">
                 <div className="row">
@@ -309,7 +323,7 @@ export function MoviePage({ id }: { id: number }) {
         )}
         {m.search && m.search.state !== "done" && (
           <p className="small muted">
-            {t("movies.autoSearch", { state: t(`movies.search.${m.search.state}` as never), why: m.search.why })}
+            {m.search.state === "grabbed" ? t("movies.autoSearchGrabbed") : t("movies.autoSearch", { state: t(`movies.search.${m.search.state}` as never), why: plainLangs(m.search.why) })}
             {m.search.state !== "grabbed" && m.search.nextAt > Date.now() ? ` · ${t("movies.nextSearch", { when: dateTime(m.search.nextAt) })}` : ""}
           </p>
         )}
@@ -340,7 +354,7 @@ export function MoviePage({ id }: { id: number }) {
           {m.grabs.map((g) => (
             <p key={g.id} className="small">
               <ReleaseName name={g.release} /> · {t(`grab.${g.state}` as never)} · {dateTime(g.at)}
-              {g.error ? ` · ${g.error}` : ""}
+              {g.error ? ` · ${plainLangs(g.error)}` : ""}
             </p>
           ))}
         </div>
@@ -352,8 +366,14 @@ export function MoviePage({ id }: { id: number }) {
       )}
       {removing && <RemoveNative movieId={id} title={m.title} asked onClose={() => setRemoving(false)} />}
       {confirmAuto && (
-        <Confirm title={t("auto.button")} confirmLabel={t("auto.button")} onClose={() => setConfirmAuto(false)} onConfirm={async () => (setConfirmAuto(false), await auto())}>
-          <p className="warn-text">⚠ {t("movies.replaceWarn", { file: m.file?.path ?? "" })}</p>
+        <Confirm title={t("movies.autoFind")} confirmLabel={t("movies.autoFind")} onClose={() => setConfirmAuto(false)} onConfirm={async () => (setConfirmAuto(false), await auto())}>
+          <p className="warn-text">⚠ {t("movies.replaceWarn")}</p>
+          {m.file?.path && (
+            <details className="small">
+              <summary>{t("movies.fileDetails")}</summary>
+              <p className="mono small muted">{m.file.path}</p>
+            </details>
+          )}
         </Confirm>
       )}
       {grab && res && (
@@ -376,7 +396,7 @@ export function MoviePage({ id }: { id: number }) {
           <FlagChips flags={grab.rank.flags} />
           <p className="small">{fmtSize(grab.size)} · {grab.indexer}</p>
           <p>{res.dryRun ? t("search.grabDry") : t("movies.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent" })}</p>
-          {m.file && <p className="warn-text">⚠ {t("movies.replaceWarn", { file: m.file.path ?? "" })}</p>}
+          {m.file && <p className="warn-text">⚠ {t("movies.replaceWarn")}</p>}
         </Confirm>
       )}
     </section>

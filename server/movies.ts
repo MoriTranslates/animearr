@@ -427,9 +427,9 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   );
   const label = m.year ? `${m.title} (${m.year})` : m.title;
   if (dryRun) {
-    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${label}: ${c.why}. Would import into Radarr.`;
+    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${label}: ${c.why}. Would import it.`;
     logDecision("would-grab", { title: label, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, movieId: m.id } });
-    return { id, dryRun: true, message: msg };
+    return { id, dryRun: true, message: `Practice mode: would download ${label}. Nothing was downloaded (details in Activity).` };
   }
   try {
     const file = await fetchOrNote(deps, c);

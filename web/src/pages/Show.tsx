@@ -15,6 +15,7 @@ import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
 import { AnidbEntries } from "../anidb";
 import { query } from "../App";
+import { languageName } from "../lang";
 
 interface Header {
   seriesId: number;
@@ -63,6 +64,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
   usePageTitle(d.data?.header.title ?? "…");
   const [open, setOpen] = useState<number | null>(null);
+  // ⋯ → Fix detection opens the sheet on that section.
+  const [openFocus, setOpenFocus] = useState<"fix" | undefined>(undefined);
+  const openEp = (id: number, focus?: "fix") => (setOpenFocus(focus), setOpen(id));
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
@@ -208,13 +212,13 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             {h.overview && <Synopsis text={h.overview} />}
             <div className="hero-actions">
               <span className="ring-wrap hide-phone">
-                <Ring value={h.counts.aired ? h.counts.have / h.counts.aired : 0} label={t("series.have", { have: h.counts.have, aired: h.counts.aired })} />
+                <Ring value={h.counts.aired ? Math.min(h.counts.have, h.language.withLang) / h.counts.aired : 0} label={t("show.ringLabel", { n: Math.min(h.counts.have, h.language.withLang), aired: h.counts.aired, lang: languageName(h.language.lang) })} />
                 <span className="ringlbl">
                   <b className="tnum">
                     {h.counts.have} / {h.counts.aired}
                   </b>
-                  {t("show.inLibraryLang", { n: h.language.withLang, lang: h.language.lang.toUpperCase() })}
-                  {!!h.language.noLang && <span className="lang-count warn-text">{t("show.noLangCount", { n: h.language.noLang, lang: h.language.lang.toUpperCase() })}</span>}
+                  {t("show.inLibraryLang", { n: h.language.withLang, lang: languageName(h.language.lang) })}
+                  {!!h.language.noLang && <span className="lang-count warn-text">{t("show.noLangCount", { n: h.language.noLang, lang: languageName(h.language.lang) })}</span>}
                   {!!h.language.untagged && <span className="lang-count">{t("show.untaggedCount", { n: h.language.untagged })}</span>}
                   {!!h.language.unknown && (
                     <span className="lang-count">
@@ -344,7 +348,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               {unmonitored && <span className="tag neutral">{t("show.notMonitored")}</span>}
               {!!noLang.length && (
                 <span className="tag warn">
-                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.noLangCount", { n: noLang.length, lang: lang.toUpperCase() })}
+                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.noLangCount", { n: noLang.length, lang: languageName(lang) })}
                 </span>
               )}
               {!!untaggedLang.length && <span className="tag neutral">{t("show.untaggedCount", { n: untaggedLang.length })}</span>}
@@ -359,7 +363,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             {grid ? (
               <div className="ep-grid">
                 {[...rows].reverse().map((r) => (
-                  <button key={r.id} className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`} onClick={() => (selecting ? toggle(r.id) : setOpen(r.id))} aria-pressed={selecting ? sel.has(r.id) : undefined} title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}`}>
+                  <button key={r.id} className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`} onClick={() => (selecting ? toggle(r.id) : openEp(r.id))} aria-pressed={selecting ? sel.has(r.id) : undefined} title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}`}>
                     {r.episode}
                     <span className="sr-only"> {t(`ep.status.${r.status}`)}</span>
                   </button>
@@ -371,7 +375,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             ) : (
               <ul className="ep-list">
                 {ordered_.main.map((r) => (
-                  <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} quietLang={quietLang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
+                  <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} quietLang={quietLang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={(f) => openEp(r.id, f)} />
                 ))}
               </ul>
             )}
@@ -388,7 +392,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 )}
                 <ul className="ep-list">
                   {openings.map((r) => (
-                    <EpRow key={r.id} r={{ ...r, title: `${opLabel(r.title)} ${r.title ?? ""}`.trim() }} lang={lang} showTitle={h.title} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={() => setOpen(r.id)} />
+                    <EpRow key={r.id} r={{ ...r, title: `${opLabel(r.title)} ${r.title ?? ""}`.trim() }} lang={lang} showTitle={h.title} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={(f) => openEp(r.id, f)} />
                   ))}
                 </ul>
               </details>
@@ -400,7 +404,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   {rows
                     .filter((r) => r.special?.cls === "junk")
                     .map((r) => (
-                      <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={() => setOpen(r.id)} />
+                      <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={(f) => openEp(r.id, f)} />
                     ))}
                 </ul>
               </details>
@@ -410,7 +414,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 <summary className="muted small">{t("ep.upcoming", { n: ordered_.later.length })}</summary>
                 <ul className="ep-list">
                   {ordered_.later.map((r) => (
-                    <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={() => setOpen(r.id)} />
+                    <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={(f) => openEp(r.id, f)} />
                   ))}
                 </ul>
               </details>
@@ -427,7 +431,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <span>{t("ep.selected", { n: sel.size })}</span>
           <SplitButton
             up
-            label={`⚡ ${t("auto.button")}`}
+            label={t("auto.button")}
             onClick={bulk.auto}
             disabled={bulk.autoBusy}
             items={[
@@ -439,7 +443,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </div>
       )}
       {bulk.ui}
-      {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => (void d.reload(), void act.reload())} managedLive={managedLive} dryRun={dryRun} lang={lang} />}
+      {open !== null && <EpisodeSheet key={`${open}-${openFocus ?? ""}`} episodeId={open} focus={openFocus} onClose={() => setOpen(null)} onChanged={() => (void d.reload(), void act.reload())} managedLive={managedLive} dryRun={dryRun} lang={lang} />}
 
       {/* ---------------- the ⋯ tools, each in its own dialog */}
       {panel === "scope" && (
@@ -490,12 +494,12 @@ function Synopsis({ text }: { text: string }) {
  * One episode row: a status dot in the number column, title + date · group, then quality and size as columns on
  * desktop; a chip only when something needs you (no subs, downloading, missing, attention).
  */
-function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; showTitle?: string; quietLang?: boolean; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: () => void }) {
+function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; showTitle?: string; quietLang?: boolean; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: (focus?: "fix") => void }) {
   const toast = useToast();
   const ls = r.status === "have" && r.file ? langOf(r.file, lang) : "ok";
   const noLang = ls !== "ok";
   const dot = r.status === "have" ? (ls === "no" ? "warn" : ls === "unknown" ? "off" : "good") : r.status === "downloading" ? "info" : r.status === "missing" ? "bad" : r.status === "attention" ? "warn" : "off";
-  const quality = r.file ? [r.file.source, r.file.resolution ? resLabel(r.file.resolution) : null].filter(Boolean).join(" ") : "";
+  const quality = r.file ? (r.file.resolution ? resLabel(r.file.resolution) : r.file.quality) ?? "" : "";
   return (
     <li className={`ep-row${next ? " next" : ""}${selected ? " selected" : ""}`}>
       {selecting && <input type="checkbox" checked={selected} onChange={onToggle} aria-label={sxe(r.season, r.episode)} />}
@@ -512,8 +516,7 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
             {r.special && !r.movie && <span className="tag neutral inline">{t(`special.${r.special.type}` as I18nKey)}</span>}
           </span>
           <span className="ep-meta muted small">
-            {airLabel(r.airUtc)}
-            {r.file?.group ? ` · ${r.file.group}` : ""}
+            {r.file && r.airUtc && r.airUtc > Date.now() ? <span title={t("ep.outEarlyHelp")}>{t("ep.outEarlyShort")}</span> : airLabel(r.airUtc)}
             {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
             {r.status === "missing" && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
             <span className="phone-meta">
@@ -535,7 +538,7 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
           label={t("ep.moreFor", { ep: sxe(r.season, r.episode) })}
           items={[
             { label: `▶ ${t("watch.in", { server: "Plex" })}`, onSelect: () => void openInMediaServer(r.file!.path, showTitle, "episode", toast) },
-            { label: t("fix.title"), onSelect: onOpen },
+            { label: t("fix.title"), onSelect: () => onOpen("fix") },
           ]}
         />
       )}
@@ -776,7 +779,7 @@ function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false, big = 
   const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
   return (
     <span className="season-search" onClick={(e) => e.preventDefault()}>
-      <SplitButton small={!big} primary={primary} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
+      <SplitButton small={!big} primary={primary} label={list.length < missing.length ? t("ep.findFirst", { n: list.length, total: missing.length }) : t("ep.findMissing", { n: list.length })} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
       {a.ui}
     </span>
   );
@@ -880,8 +883,10 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
             {reasons ? ` (${reasons})` : ""}
             {p.data.missing ? ` ${t("replace.plusMissing", { n: p.data.missing })}` : ""}
           </p>
-          {p.data.groups.length > 1 && <p className="small">{t("replace.groups", { n: p.data.groups.length, groups: p.data.groups.join(", ") })}</p>}
-          <p className="small">{p.data.recycle.path ? t("replace.bin", { path: p.data.recycle.path, days: p.data.recycle.days || "∞" }) : t("replace.noBin")}</p>
+          {p.data.groups.length > 1 && <p className="small">{t("replace.groups", { n: p.data.groups.length })}</p>}
+          <p className="small" title={p.data.recycle.path ?? undefined}>
+            {p.data.recycle.path ? (p.data.recycle.days ? t("replace.bin", { days: p.data.recycle.days }) : t("replace.binForever")) : t("replace.noBin")}
+          </p>
           <p className="small muted">{t("replace.how")}</p>
         </>
       )}

@@ -101,6 +101,10 @@ export interface Decision {
   undoneAt: number | null;
   fixes?: Fix[];
   detail?: Record<string, unknown>;
+  /** A plain one-line summary of `why` (the raw message stays the detail). */
+  summary?: string | null;
+  /** A problem that a later import settled. */
+  resolved?: boolean;
 }
 
 export interface LibraryShow {

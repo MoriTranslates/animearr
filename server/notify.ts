@@ -6,6 +6,7 @@
 import { liveFixesFor, linkFor, type FixContext } from "./fixes.js";
 import { cache, db, dbState } from "./db.js";
 import { getSettings } from "./settings.js";
+import { summarize } from "./summary.js";
 
 export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
 export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused", "indexer"];
@@ -139,7 +140,10 @@ export function bell(limit = 40) {
     const problem = r.event === "failed" || r.event === "paused" || (r.event === "indexer" && /is off/.test(r.body));
     const fixes = problem ? liveFixesFor(r.body, ctx) : [];
     const action = problem && Date.now() - r.at < 14 * 86_400_000 && !settled(ctx, r.event, r.at, r.title, r.body) && (fixes.length > 0 || r.event !== "failed");
-    return { id: r.id, at: r.at, event: r.event, title: r.title, body: r.body, read: !!r.read, fixes, action, tvdbId: ctx.tvdbId ?? null, movieId: ctx.movieId ?? null };
+    // A settled problem counts as read (nothing left to look at); the plain summary leads, the raw body is the detail.
+    const isSettled = problem && !action && r.event !== "indexer" ? settled(ctx, r.event, r.at, r.title, r.body) : false;
+    const summary = summarize({ kind: ctx.kind ?? (r.event === "grabbed" ? "grab" : r.event === "imported" ? "import" : r.event === "failed" ? "fail" : null), why: r.body, title: r.title });
+    return { id: r.id, at: r.at, event: r.event, title: r.title, body: r.body, summary, read: !!r.read || isSettled, resolved: isSettled, fixes, action, tvdbId: ctx.tvdbId ?? null, movieId: ctx.movieId ?? null };
   });
   const items = all;
   // One entry per thing to do (the same show/movie problem repeated counts once).
@@ -156,7 +160,8 @@ export function bell(limit = 40) {
   return { unread, needs: needs.length, items: shown.map((i) => ({ ...i, action: needs.includes(i) })) };
 }
 
-/** Marks what the user has seen (up to the newest shown) as read; anything newer stays unread. */
-export function markRead(upToId: number) {
-  db.prepare("UPDATE notifications SET read = 1 WHERE read = 0 AND id <= ?").run(upToId);
+/** Marks notifications read: everything up to an id ("Mark all read"), or just the ones given (dismissed one by one). */
+export function markRead(upToId: number, ids: number[] = []) {
+  if (upToId) db.prepare("UPDATE notifications SET read = 1 WHERE read = 0 AND id <= ?").run(upToId);
+  for (const id of ids) db.prepare("UPDATE notifications SET read = 1 WHERE id = ?").run(id);
 }

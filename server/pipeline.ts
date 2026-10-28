@@ -265,9 +265,10 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const id = Number(ins.lastInsertRowid);
   const line = batchLine(batch);
   if (dryRun) {
-    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import into Sonarr as ${target}.`;
+    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import it as ${target}.`;
     logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: req.fallbacks.length } });
-    return { id, dryRun: true, message: msg };
+    // The toast says it plainly; the release, indexer and episode ids stay in the activity log.
+    return { id, dryRun: true, message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).` };
   }
   try {
     const file = await fetchOrNote(deps, c);
@@ -610,7 +611,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     if (x.kind === "extracted") {
       unpacked = x.dest;
       unpackRel = `${folder}/${UNPACK_DIR}/${row.id}/`;
-      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: wanted, release: row.release, why: `Unpacked ${row.release}: ${x.files.length} video file(s)`, detail: { grabId: row.id } });
+      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: wanted, release: row.release, why: `Unpacked ${row.release}: ${x.files.length} video file${x.files.length === 1 ? "" : "s"}`, detail: { grabId: row.id } });
     }
   } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Automation & safety, or unpack it by hand`);
   // Folder only: given a seriesId, Sonarr's preview ignores the folder and lists the series' library files instead.
@@ -750,14 +751,14 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       // Episodes that kept their old file may still need this download: it stays, and the grab waits in "needs
       // attention" so Retry import can finish them once the cause is fixed.
       await finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
-      if (kept.length) setState(row.id, "needs-attention", `Replace season: ${kept.length} episode(s) kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}); fix the cause, then Retry import`);
+      if (kept.length) setState(row.id, "needs-attention", `Replace season: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}); fix the cause, then Retry import`);
       return;
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
   }
   if (replacing) return attention("Replace season needs AnimeArr's own importer (Settings → Media management → Importer)");
   const cmd = await deps.sonarr.importFiles(files, unpacked ? "move" : importModeFor(row.client));
-  logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file(s) as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
+  logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file${files.length === 1 ? "" : "s"} as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
   let status = "queued";
   for (let i = 0; i < 120 && !["completed", "failed", "aborted"].includes(status); i++) {
     await deps.sleep(5000);

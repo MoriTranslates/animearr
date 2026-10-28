@@ -372,7 +372,7 @@ function GlobalSearch() {
     >
       <SearchIcon aria-hidden="true" className="lucide" />
       <input ref={ref} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.global")} aria-label={t("find.title")} />
-      <kbd aria-hidden="true">Ctrl K</kbd>
+      <kbd aria-hidden="true" className={q.trim() ? "kbd-enter" : undefined}>{q.trim() ? t("find.pressEnter") : "Ctrl K"}</kbd>
     </form>
   );
 }

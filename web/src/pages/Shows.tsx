@@ -23,7 +23,14 @@ export function Shows({ status }: { status: Status }) {
   const [busy, setBusy] = useState(false);
   const [selecting, setSelecting] = useState(false);
 
-  const tags = useMemo(() => [...new Set((data.data?.series ?? []).flatMap((s) => s.tags.map(String)))].sort(), [data.data]);
+  const tagNames = useLoad(() => api<{ tags: { id: number; label: string }[] }>("/library/tags").catch(() => ({ tags: [] })), []);
+  // Tag names (Sonarr's labels), sorted by name; a tag Sonarr didn't name keeps its number.
+  const tags = useMemo(() => {
+    const names = new Map((tagNames.data?.tags ?? []).map((x) => [String(x.id), x.label]));
+    return [...new Set((data.data?.series ?? []).flatMap((s) => s.tags.map(String)))]
+      .map((id) => ({ id, label: names.get(id) ?? id }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+  }, [data.data, tagNames.data]);
   const shown = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return (data.data?.series ?? []).filter(
@@ -99,8 +106,8 @@ export function Shows({ status }: { status: Status }) {
             <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label={t("shows.filter.tag")} className="auto">
               <option value="">{t("shows.filter.tag")}: {t("shows.filter.all")}</option>
               {tags.map((x) => (
-                <option key={x} value={x}>
-                  {x}
+                <option key={x.id} value={x.id}>
+                  {x.label}
                 </option>
               ))}
             </select>
