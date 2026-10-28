@@ -474,6 +474,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 </ul>
               </>
             )}
+            {(d.file || d.verify || !!d.activity.length) && (
             <details className="tech-details">
               <summary>{t("ep.technical")}</summary>
               <div className="stack">
@@ -569,6 +570,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 )}
               </div>
             </details>
+            )}
             <Link to={`/activity`} className="small">
               {t("nav.activity")} →
             </Link>

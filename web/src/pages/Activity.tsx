@@ -59,13 +59,15 @@ function releaseLine(release: string | null) {
   if (!release) return "";
   const group = /^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:-xpost)?$/.exec(release)?.[1] ?? null;
   const res = /\b(2160|1080|720|480)p\b/i.exec(release)?.[1];
-  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "BD" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : null;
+  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "Blu-ray" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : null;
   return [group, src, res ? `${res}p` : null].filter(Boolean).join(" · ");
 }
 /** The card's headline, in plain words: "Imported Trinity Seven S01E03", "Couldn't import Quintuplets∽". */
 function headline(lead: Decision, k: string) {
   const what = [lead.title || (lead.tvdbId ? t("activity.show") : ""), lead.label].filter(Boolean).join(" ");
   const verb: Record<string, I18nKey> = { import: "activity.h.import", grab: "activity.h.grab", "would-grab": "activity.h.wouldGrab", "verify-ok": "activity.h.checked", "verify-fail": "activity.h.rejected", skip: "activity.h.skip", search: "activity.h.search", plex: "activity.h.plex" };
+  // A problem's plain summary says what happened and why in one line: it is the headline.
+  if (PROBLEM.has(lead.kind) && lead.summary && !lead.resolved) return lead.summary;
   if (k === "fail") return /couldn't import/i.test(lead.why) ? t("activity.h.failImport", { what }) : t("activity.h.fail", { what });
   if (verb[k] && what) return t(verb[k], { what });
   return lead.summary ?? short(lead.why, 90);
@@ -73,7 +75,7 @@ function headline(lead: Decision, k: string) {
 /** The one muted line under the headline: the plain reason for problems, group · quality otherwise. */
 function subline(lead: Decision, release: string | null) {
   if (PROBLEM.has(lead.kind)) {
-    if (lead.summary) return lead.summary;
+    if (lead.summary) return lead.resolved ? lead.summary : "";
     const m = /couldn't import it: (.*?)(?:\. The download is kept.*)?$/i.exec(lead.why);
     return short(m ? m[1] : lead.why.replace(/^.*?failed verification: /i, ""));
   }

@@ -23,7 +23,14 @@ export function friendlyPath(p: string | null, roots: Root[], grabPath?: string 
   const root = [...roots].sort((a, b) => b.path.length - a.path.length).find((r) => p === r.path || p.startsWith(`${r.path}/`));
   if (!root) return base(p);
   const rest = p.slice(root.path.length).split("/").filter(Boolean);
-  const name = root.label === "download" ? t("import.thisDownload") : roots.filter((r) => r.label !== "download").length > 1 ? t("import.ownFolderNamed", { name: base(root.path) }) : t("import.ownFolder");
+  const own = roots.filter((r) => r.label !== "download");
+  // Two download folders: told apart by the first folder where their paths differ ("qbittorrent" / "sabnzbd").
+  const tell = () => {
+    const parts = root.path.split("/");
+    const others = own.filter((r) => r !== root).map((r) => r.path.split("/"));
+    return parts.find((seg, i) => seg && others.every((o) => o[i] !== seg)) ?? base(root.path);
+  };
+  const name = root.label === "download" ? t("import.thisDownload") : own.length > 1 ? t("import.ownFolderNamed", { name: tell() }) : t("import.ownFolder");
   return [name, ...rest].join(" › ");
 }
 

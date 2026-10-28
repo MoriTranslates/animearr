@@ -5,6 +5,9 @@ import { t, type I18nKey } from "./i18n";
 import { ImportBrowser } from "./importBrowser";
 import { Chip, Modal, Spinner, useToast } from "./ui";
 
+/** The UI's words for the fix actions (the server's label is the fallback). */
+const FIX_LABEL: Partial<Record<string, I18nKey>> = { regrab: "ep.regrab", tryNext: "fix.tryNext", interactiveSearch: "auto.chooseRelease", retryImport: "managed.retryImport" };
+
 /** The fix buttons for a problem (Queue, Activity, the bell, sheets). */
 export function FixButtons({ fixes, small = true }: { fixes?: Fix[] | null; small?: boolean }) {
   if (!fixes?.length) return null;
@@ -12,7 +15,7 @@ export function FixButtons({ fixes, small = true }: { fixes?: Fix[] | null; smal
     <span className="row fix-buttons">
       {fixes.map((f) => (
         <button key={f.action} className={small ? "small" : ""} onClick={(e) => (e.preventDefault(), e.stopPropagation(), runFix(f))}>
-          {f.label}
+          {FIX_LABEL[f.action] ? t(FIX_LABEL[f.action]!) : f.label}
         </button>
       ))}
     </span>

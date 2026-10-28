@@ -27,7 +27,7 @@ function BellRow({ n, onRead }: { n: BellItem; onRead: (id: number) => void }) {
           </button>
         )}
       </span>
-      <span className="clamp2">{plain}</span>
+      <span className={n.summary ? undefined : "clamp2"}>{plain}</span>
       {n.resolved && <span className="muted small">{t("bell.resolved")}</span>}
       <FixButtons fixes={n.fixes} />
       {n.summary && n.summary !== n.body && (
