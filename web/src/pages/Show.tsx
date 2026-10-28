@@ -779,7 +779,7 @@ function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false, big = 
   const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
   return (
     <span className="season-search" onClick={(e) => e.preventDefault()}>
-      <SplitButton small={!big} primary={primary} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
+      <SplitButton small={!big} primary={primary} label={list.length < missing.length ? t("ep.findFirst", { n: list.length, total: missing.length }) : t("ep.findMissing", { n: list.length })} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
       {a.ui}
     </span>
   );

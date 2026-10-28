@@ -265,9 +265,10 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const id = Number(ins.lastInsertRowid);
   const line = batchLine(batch);
   if (dryRun) {
-    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import into Sonarr as ${target}.`;
+    const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import it as ${target}.`;
     logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: req.fallbacks.length } });
-    return { id, dryRun: true, message: msg };
+    // The toast says it plainly; the release, indexer and episode ids stay in the activity log.
+    return { id, dryRun: true, message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).` };
   }
   try {
     const file = await fetchOrNote(deps, c);
