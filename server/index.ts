@@ -29,7 +29,7 @@ import path from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
-import { authState, COOKIE, csrfOk, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, SETUP_TOKEN, trustProxyOption } from "./auth.js";
+import { authState, COOKIE, csrfOk, defaultLoginRefusal, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, testProwlarr } from "./arr/prowlarr.js";
@@ -82,7 +82,7 @@ import { applyRenameRouted, browseImport, executeImport, executeMovieImport, pla
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
-import { checkPassword, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
+import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
 
 // UMASK (like the *arr images): files and folders AnimeArr's importer creates get the usual 775/664 with UMASK=002.
@@ -192,7 +192,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
   const s = getSettings();
   const a = authState(req);
   const base = { version: VERSION, build: webBuild(), setupRequired: a.setupRequired, loggedIn: a.ok };
-  if (!a.ok) return base;
+  // The login screen tells home-network visitors the default login while it's still in use (it only works from home).
+  if (!a.ok) return (await usingDefaultPassword()) && !defaultLoginRefusal(req, true) ? { ...base, defaultLogin: DEFAULT_LOGIN.username } : base;
   return {
     ...base,
     via: a.via,
@@ -212,8 +213,8 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
     warnings: [...startupWarnings, ...(dbState.corrupt ? [`The database failed its integrity check (${dbState.detail}). AnimeArr is read-only until you restore a backup (System → Backups).`] : [])],
     uiLanguage: s.ui.language,
     textScale: s.ui.textScale ?? null,
-    // LAN sessions without a login (bypassLocal) don't need the nag; the default password only matters off the LAN.
-    defaultPassword: a.via === "local" ? false : await usingDefaultPassword(),
+    // Still the default login (captain/morebooty): the banner and the wizard's account step ask to change it.
+    defaultPassword: await usingDefaultPassword(),
     // Shows in dry-run (the global switch, or their own), so the UI only mentions dry-run when something is in it.
     dryRunShows: listManaged().filter((m) => m.dryRun).map((m) => ({ tvdbId: m.tvdbId, title: m.title })),
     bypassLocal: s.auth.bypassLocal,
@@ -226,27 +227,6 @@ app.get("/api/status", { config: { setup: true } }, async (req) => {
   };
 });
 
-let settingUp = false;
-app.post<{ Body: { username?: string; password?: string; bypassLocal?: boolean; setupToken?: string } }>("/api/auth/setup", { config: { setup: true } }, async (req, reply) => {
-  writable();
-  if (getSettings().auth.passwordHash || settingUp) throw fail("Account already exists", 409);
-  if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
-  const local = isLocalRequest(req) && hostAllowed(req);
-  if (!local && !safeEqual(String(req.body?.setupToken ?? ""), SETUP_TOKEN)) throw fail("Open AnimeArr from your home network to create the account, or enter the setup code from the log", 403);
-  const username = String(req.body?.username ?? "").trim();
-  const password = String(req.body?.password ?? "");
-  if (!username || password.length < 8) throw fail("Choose a username and a password of at least 8 characters");
-  settingUp = true;
-  try {
-    await setAccount(username, password);
-    patchSettings((s) => ({ ...s, auth: { ...s.auth, bypassLocal: req.body?.bypassLocal === true } }));
-  } finally {
-    settingUp = false;
-  }
-  sessionCookie(req, reply, username);
-  return { ok: true };
-});
-
 app.post<{ Body: { username?: string; password?: string } }>("/api/auth/login", { config: { setup: true } }, async (req, reply) => {
   if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
   if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
@@ -254,6 +234,9 @@ app.post<{ Body: { username?: string; password?: string } }>("/api/auth/login", 
   const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
   const okPass = await checkPassword(String(req.body?.password ?? ""), a.passwordHash || "00:00");
   if (!okUser || !okPass) throw fail("Wrong username or password", 401);
+  // Safety rule: the default password only works from the home network, until it's changed.
+  const refused = defaultLoginRefusal(req, await usingDefaultPassword());
+  if (refused) throw fail(refused, 403);
   loginSucceeded(req.ip, a.username);
   sessionCookie(req, reply, a.username);
   return { ok: true };
@@ -273,6 +256,7 @@ app.put<{ Body: { currentPassword?: string; username?: string; password?: string
   const username = String(req.body?.username ?? a.username).trim() || a.username;
   const password = String(req.body?.password ?? "");
   if (password && password.length < 8) throw fail("New password must be at least 8 characters");
+  if (password === DEFAULT_LOGIN.password) throw fail("Pick a password other than the default one");
   if (password) await setAccount(username, password);
   else patchSettings((s) => ({ ...s, auth: { ...s.auth, username } }));
   sessionCookie(req, reply, username);
@@ -1437,8 +1421,9 @@ every(60_000, async () => {
   }
 }, "rss");
 
-// First start: no default login (a known password would be open to anyone who port-forwards). The account is created
-// in the browser, from the home network or with this one-time setup code.
-if (!getSettings().auth.passwordHash) app.log.warn(`First start: open AnimeArr in your browser to create your account. Setup code (needed when you're not on the same network): ${SETUP_TOKEN}`);
+// First start: the default login. It only works from the home network until it's changed (see defaultLoginRefusal),
+// so a port forward doesn't open a known password to the internet. Installs that already have an account are untouched.
+// (This replaces the old one-time setup code: with a home-network-only default there is nothing left to claim remotely.)
+if (await ensureDefaultAccount()) app.log.warn(`First start: log in with ${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password} from your home network, then change the password (Settings → Security).`);
 await app.listen({ host: "0.0.0.0", port: PORT });
-if (await usingDefaultPassword()) app.log.warn("The login is still the old default password. Change it in Settings → Security.");
+if (await usingDefaultPassword()) app.log.warn(`The login is still the default password (${DEFAULT_LOGIN.password}). It only works from your home network until you change it in Settings → Security.`);

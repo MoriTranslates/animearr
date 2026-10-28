@@ -15,7 +15,7 @@ import { FillIn } from "./pages/FillIn";
 import { MoviePage, Movies } from "./pages/Movies";
 import { Queue } from "./pages/Queue";
 import { Home } from "./pages/Home";
-import { Login, Setup } from "./pages/Login";
+import { Login } from "./pages/Login";
 import { Managed } from "./pages/Managed";
 import { Search } from "./pages/Search";
 import { Settings } from "./pages/Settings";
@@ -97,9 +97,23 @@ export function App() {
   const [, setSearch] = useState(location.search);
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Dismissed for a day, then it comes back while the default password is still in use.
+  // Dismissed for this browser session only: it comes back while the default password is still in use.
   const [moreOpen, setMoreOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(() => Date.now() - store.get("dismissDefaultPw", 0) < 86_400_000);
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem("animearr.dismissDefaultPw") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissDefault = () => {
+    setDismissed(true);
+    try {
+      sessionStorage.setItem("animearr.dismissDefaultPw", "1");
+    } catch {
+      /* private window: dismissed until reload */
+    }
+  };
 
   // A fresh install (nothing connected at all, setup not finished) opens the setup wizard.
   useEffect(() => {
@@ -152,8 +166,7 @@ export function App() {
       </div>
     );
   if (!status) return <div className="center-msg">{t("app.loading")}</div>;
-  if (status.setupRequired) return <Setup onDone={refreshStatus} />;
-  if (!status.loggedIn) return <Login onDone={refreshStatus} />;
+  if (!status.loggedIn) return <Login onDone={refreshStatus} defaultLogin={status.defaultLogin} />;
 
 
   const section = "/" + (path.split("/")[1] ?? "");
@@ -232,7 +245,7 @@ export function App() {
                 <span>
                   {t("security.defaultBanner")} · <Link to="/settings?tab=security">{t("security.defaultBannerLink")}</Link>
                 </span>
-                <button className="small ghost" onClick={() => (setDismissed(true), store.set("dismissDefaultPw", Date.now()))}>
+                <button className="small ghost" onClick={dismissDefault}>
                   {t("security.dismiss")}
                 </button>
               </div>

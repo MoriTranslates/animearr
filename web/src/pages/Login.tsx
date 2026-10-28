@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { api, ApiError } from "../api";
+import { api, DEFAULT_LOGIN } from "../api";
 import { t } from "../i18n";
 import { usePageTitle } from "../ui";
 
-export function Login({ onDone }: { onDone: () => void }) {
+export function Login({ onDone, defaultLogin }: { onDone: () => void; defaultLogin?: string }) {
   usePageTitle(t("login.title"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -28,6 +28,7 @@ export function Login({ onDone }: { onDone: () => void }) {
     <form className="login card" onSubmit={submit}>
       <img src="/favicon.svg" alt="" width={48} height={48} />
       <h1>{t("app.name")}</h1>
+      {defaultLogin && <p className="muted small">{t("login.defaultHint")}</p>}
       <label>
         {t("login.username")}
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
@@ -48,28 +49,26 @@ export function Login({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** First run: create the account (like Sonarr's "Authentication Required" screen, in plain words). */
-export function Setup({ onDone }: { onDone: () => void }) {
-  usePageTitle(t("setup.title"));
-  const [username, setUsername] = useState("");
+/**
+ * "Your login is captain / morebooty. Change it now?" — the first-run prompt (wizard account step). Changing it lifts
+ * the home-network-only rule and the banner; "Later" leaves it (the banner keeps asking).
+ */
+export function ChangeDefaultLogin({ onDone, onLater }: { onDone: () => void; onLater?: () => void }) {
+  const [username, setUsername] = useState<string>(DEFAULT_LOGIN.username);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [mode, setMode] = useState<"enabled" | "local">("enabled");
-  const [code, setCode] = useState("");
-  const [needCode, setNeedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (password !== confirm) return setError(t("setup.mismatch"));
+    if (password !== confirm) return setError(t("security.mismatch"));
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/setup", { body: { username, password, bypassLocal: mode === "local", setupToken: code || undefined } });
+      await api("/auth/account", { method: "PUT", body: { currentPassword: DEFAULT_LOGIN.password, username, password } });
       onDone();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setNeedCode(true);
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -77,44 +76,40 @@ export function Setup({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form className="login card" onSubmit={submit}>
-      <img src="/favicon.svg" alt="" width={48} height={48} />
-      <h1>{t("setup.title")}</h1>
-      <p className="muted small">{t("setup.intro")}</p>
-      <label>
-        {t("login.username")}
-        <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
-      </label>
-      <label>
-        {t("setup.password")}
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
-      </label>
-      <label>
-        {t("setup.confirm")}
-        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
-      </label>
-      <label>
-        {t("setup.mode")}
-        <select value={mode} onChange={(e) => setMode(e.target.value as "enabled" | "local")}>
-          <option value="enabled">{t("setup.always")}</option>
-          <option value="local">{t("setup.local")}</option>
-        </select>
-      </label>
-      {mode === "local" && <p className="muted small left">{t("setup.localHelp")}</p>}
-      {needCode && (
+    <form className="card pad stack" onSubmit={submit}>
+      <p>
+        <strong>{t("wiz.account.default")}</strong>
+      </p>
+      <p className="muted small">{t("wiz.account.defaultHelp")}</p>
+      <div className="form">
         <label>
-          {t("setup.code")}
-          <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" />
+          {t("security.username")}
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
         </label>
-      )}
+        <label>
+          {t("security.new")}
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
+        </label>
+        <label>
+          {t("security.confirm")}
+          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" minLength={8} required />
+        </label>
+      </div>
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      <button className="primary" disabled={busy}>
-        {t("setup.submit")}
-      </button>
+      <div className="row">
+        <button className="primary" disabled={busy}>
+          {t("wiz.account.change")}
+        </button>
+        {onLater && (
+          <button type="button" className="ghost" onClick={onLater}>
+            {t("wiz.account.later")}
+          </button>
+        )}
+      </div>
     </form>
   );
 }

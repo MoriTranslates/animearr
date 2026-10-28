@@ -72,7 +72,10 @@ export interface Status {
   uiLanguage?: string;
   /** The saved default text size (a device's own choice wins). */
   textScale?: string | null;
+  /** Still the default login (captain/morebooty): banner + wizard prompt. */
   defaultPassword?: boolean;
+  /** Logged out, on the home network, default login still in use: the login screen shows it. */
+  defaultLogin?: string;
   bypassLocal?: boolean;
   queue?: { active: number; attention: number };
   airingShows?: number;
@@ -237,6 +240,9 @@ export interface Settings {
   ui: { language: string };
   auth: { username: string; hasPassword: boolean; bypassLocal: boolean };
 }
+
+/** The login a fresh install starts with (only works from the home network until it's changed). */
+export const DEFAULT_LOGIN = { username: "captain", password: "morebooty" } as const;
 
 /** localStorage that never throws (private windows, blocked storage). */
 export const store = {

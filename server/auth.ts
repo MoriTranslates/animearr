@@ -174,5 +174,15 @@ export function loginSucceeded(ip: string, user: string) {
   attempts.delete(`${ip}|${user.toLowerCase()}`);
 }
 
-/** One-time token for claiming a fresh install from outside the local network; printed to the container log. */
-export const SETUP_TOKEN = crypto.randomBytes(6).toString("hex");
+export const DEFAULT_REMOTE_REFUSED = "The default password only works from your home network. Log in from home and change it first.";
+
+/**
+ * The safety rule for the default login (captain/morebooty): while the password is still the default, a login is only
+ * accepted from the home network (the same check as "No password on my local network": ANIMEARR_LOCAL_NETWORKS or
+ * 10/8 + 192.168/16 + IPv6 ULA/link-local, never through an untrusted proxy, addressed by IP or a LAN name).
+ * Returns the refusal message, or null when the login may go ahead.
+ */
+export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) {
+  if (!usingDefault) return null;
+  return isLocalRequest(req) && hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
+}

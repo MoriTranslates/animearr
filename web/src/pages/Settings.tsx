@@ -4,7 +4,7 @@ import { useUnsaved } from "../unsaved";
 import { rememberDetail } from "../errors";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
-import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
+import { api, DEFAULT_LOGIN, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
@@ -1045,7 +1045,8 @@ function System({ status }: { status: Status }) {
 
 function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: () => void }) {
   const toast = useToast();
-  const [cur, setCur] = useState("");
+  // Still the default login: the current password is known, so it's filled in (one less thing to type).
+  const [cur, setCur] = useState<string>(status.defaultPassword ? DEFAULT_LOGIN.password : "");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [user, setUser] = useState(s.auth.username);
@@ -1078,6 +1079,7 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
     <div className="stack">
       <form className="card pad stack" onSubmit={change}>
         <h2>{t("security.password")}</h2>
+        {status.defaultPassword && <p className="warn-text small">{t("security.defaultNote")}</p>}
         <div className="form">
           <label>
             {t("security.username")}

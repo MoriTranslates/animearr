@@ -677,8 +677,18 @@ export async function checkPassword(pw: string, stored: string) {
   return want.length === got.length && crypto.timingSafeEqual(got, want);
 }
 
-/** The login earlier dev builds created on first start. Still flagged (and nagged about) if an install kept it. */
-export const DEFAULT_LOGIN = { username: "admin", password: "animearr" } as const;
+/**
+ * The login a fresh install starts with. Until it's changed it only works from the home network (auth.ts refuses it
+ * from anywhere else), and the UI nags about it. Only the hash is stored; "still the default" is a hash comparison.
+ */
+export const DEFAULT_LOGIN = { username: "captain", password: "morebooty" } as const;
+
+/** Fresh install (no account yet): create the default login. An install that already has an account is never touched. */
+export async function ensureDefaultAccount() {
+  if (getSettings().auth.passwordHash) return false;
+  await setAccount(DEFAULT_LOGIN.username, DEFAULT_LOGIN.password);
+  return true;
+}
 
 let defaultCheck: { hash: string; result: boolean } | null = null;
 /** True while the account password is still the default one (cached per stored hash, so it costs one scrypt). */

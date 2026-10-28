@@ -13,6 +13,7 @@ import { Settings, type SettingsTab } from "./Settings";
 import { ErrorBox, ErrorText, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
 import { rememberDetail } from "../errors";
 import { saveAllUnsaved } from "../unsaved";
+import { ChangeDefaultLogin } from "./Login";
 
 interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null; errorDetail?: string | null }
 interface Overview { clients: ConnState[]; indexers: { name: string }[]; mediaServers: ConnState[]; migration: ConnState[] }
@@ -81,7 +82,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
             <b>{t("wiz.pathNew")}</b>
             <span className="muted small">{t("wiz.pathNewHelp")}</span>
           </button>
-          <button className="wiz-path card" onClick={() => void save({ path: "migrate", step: "connect" })}>
+          <button className="wiz-path card" onClick={() => void save({ path: "migrate", step: status.defaultPassword ? "account" : "connect" })}>
             <span className="wiz-path-icon" aria-hidden="true">
               ⇄
             </span>
@@ -101,7 +102,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
   const steps: Step[] =
     w.path === "new"
       ? [
-          { id: "account", title: "wiz.s.account", intro: "wiz.i.account", body: <AccountStep status={status} /> },
+          { id: "account", title: "wiz.s.account", intro: "wiz.i.account", body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "folders" })} /> },
           { id: "folders", title: "wiz.s.folders", intro: "wiz.i.folders", body: <FoldersStep s={s} saveNow={saver.saveNow} /> },
           { id: "clients", title: "wiz.s.clients", intro: "wiz.i.clients", body: <ClientsStep s={s} saveNow={saver.saveNow} /> },
           { id: "indexers", title: "wiz.s.indexers", intro: "wiz.i.indexers", body: <IndexersStep s={s} saveNow={saver.saveNow} /> },
@@ -112,6 +113,8 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
           { id: "done", title: "wiz.s.done", intro: "wiz.i.done", body: <DoneStep path="new" /> },
         ]
       : [
+          // A migrating fresh install still has the default login: offer to change it first.
+          ...(status.defaultPassword ? [{ id: "account", title: "wiz.s.account", intro: "wiz.i.account", body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "connect" })} /> } satisfies Step] : []),
           { id: "connect", title: "wiz.s.connect", intro: "wiz.i.connect", body: <Migration s={s} saveNow={saver.saveNow} /> },
           { id: "preview", title: "wiz.s.preview", intro: "wiz.i.preview", body: <PreviewStep onApplied={() => (onChanged(), void saver.reload())} /> },
           { id: "review", title: "wiz.s.review", intro: "wiz.i.review", body: <ReviewStep status={status} /> },
@@ -217,7 +220,18 @@ async function preferWhatIsSetUp(toast: ReturnType<typeof useToast>) {
   }
 }
 
-function AccountStep({ status }: { status: Status }) {
+function AccountStep({ status, onChanged, onLater }: { status: Status; onChanged: () => void | Promise<void>; onLater: () => void }) {
+  const toast = useToast();
+  if (status.defaultPassword)
+    return (
+      <ChangeDefaultLogin
+        onDone={() => {
+          toast(t("security.changed"));
+          void onChanged();
+        }}
+        onLater={onLater}
+      />
+    );
   return (
     <div className="card pad stack">
       <p>{status.defaultPassword ? t("wiz.account.default") : t("wiz.account.ok")}</p>
