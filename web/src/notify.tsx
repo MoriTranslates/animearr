@@ -6,9 +6,9 @@ import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface BellItem { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; summary?: string | null; read: boolean; resolved?: boolean; action?: boolean; fixes?: import("./api").Fix[] }
+interface BellItem { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer" | "setup"; title: string; body: string; summary?: string | null; read: boolean; resolved?: boolean; action?: boolean; fixes?: import("./api").Fix[] }
 interface Bell { unread: number; needs?: number; items: BellItem[] }
-const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" } as const;
+const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌", setup: "🛠️" } as const;
 
 /** One notification: the plain summary first; the raw message (release names, hosts, paths) under Details. */
 function BellRow({ n, onRead }: { n: BellItem; onRead: (id: number) => void }) {
@@ -21,7 +21,7 @@ function BellRow({ n, onRead }: { n: BellItem; onRead: (id: number) => void }) {
         <span className="grow">
           <span aria-hidden="true">{ICON[n.event]}</span> <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>
         </span>
-        {!n.read && (
+        {!n.read && n.id > 0 && (
           <button className="icon bell-dismiss" aria-label={t("bell.markRead")} title={t("bell.markRead")} onClick={() => onRead(n.id)}>
             ✓
           </button>
@@ -111,7 +111,8 @@ export function BellButton() {
             <div className="row bell-head">
               <h2 className="grow">{t("bell.title")}</h2>
               {unreadShown && (
-                <button className="small" onClick={() => b?.items[0] && void read({ upToId: b.items[0].id })}>
+                // Setup problems (negative ids) aren't stored notifications: the newest stored one is the read point.
+                <button className="small" onClick={() => { const newest = b?.items.find((i) => i.id > 0); if (newest) void read({ upToId: newest.id }); }}>
                   {t("bell.markAll")}
                 </button>
               )}
