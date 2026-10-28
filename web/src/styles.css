@@ -1229,34 +1229,6 @@ p.warn-text, li.warn-text { max-width: 75ch; }
 .event2.resolved { opacity: 0.8; }
 .import-state { margin: 0; }
 .import-selected strong { overflow-wrap: anywhere; }
-/* fix/playtest-view: phone layout, Comic mode + large text, touch targets */
-.sh-title { min-width: 0; padding-right: 52px; }
-.sh-title .eyebrow, .sh-title h2 { overflow-wrap: anywhere; }
-.tech-details > summary { cursor: pointer; font-weight: 600; }
-.tech-details .facts { margin-top: var(--space-2, 8px); }
-.more-sheet { padding: 6px var(--space-4, 16px) calc(var(--space-4, 16px) + env(safe-area-inset-bottom)) !important; }
-.more-sheet .more-list a { padding-inline: var(--space-1, 4px); }
-/* Show page: the main button keeps its words on one line; the tabs never sit under the view toggle. */
-.hero-actions .split { flex: 1 1 auto; min-width: 0; }
-.hero-actions .split > button { white-space: nowrap; height: auto !important; min-height: 40px; }
-.hero-actions .split .menu-trigger { height: auto !important; min-height: 40px; }
-.show-tabs { flex-wrap: wrap; row-gap: 0; }
-.show-tabs .tabs { flex: 1 0 auto; min-width: 0; flex-wrap: wrap; column-gap: 18px; }
-.show-tabs .tab-tools { margin-left: auto; }
-/* Phone tab bar: long labels wrap inside their own column instead of running into the next one. */
-.tabbar a, .tabbar .tab-more { white-space: normal !important; text-align: center; line-height: 1.1; overflow-wrap: anywhere; padding-inline: 2px !important; font-size: min(var(--text-xs), 13px) !important; }
-@media (pointer: coarse) {
-  button, select, .chip, a.button { min-height: 44px; }
-  button.icon, .icon-btn, .bell > button, .sh-close { min-width: 44px; min-height: 44px; }
-  .icon-seg button { width: 44px !important; height: 44px !important; }
-  .seg button, .segmented button, .text-size .seg button { min-height: 44px; }
-  button.linklike, .linklike { min-height: 44px; display: inline-flex; align-items: center; }
-  details > summary.small, .why > summary, .fix-detection > summary, .tech-details > summary, details.later > summary, details.small > summary { padding-block: 12px; }
-  input[type="checkbox"], input[type="radio"] { width: 22px; height: 22px; }
-  label.check { min-height: 44px; display: flex; align-items: center; gap: 10px; }
-  .more-sheet p a, .app-footer a { display: inline-flex; align-items: center; min-height: 44px; }
-  .event-chev, .bell-dismiss { min-width: 44px; }
-}
 
 .activity-bg { margin: 6px 0 4px; }
 @media (max-width: 600px) { .event2 { grid-template-columns: 40px minmax(0, 1fr); } .event-thumb { width: 40px; } }
@@ -1462,3 +1434,32 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .find-hit { flex-wrap: wrap; }
 .find-hit-actions { flex: none; gap: var(--space-2); margin-left: auto; }
 .global-search kbd.kbd-enter { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 50%, var(--line-2)); }
+
+/* fix/playtest-view: phone layout, Comic mode + large text, touch targets */
+.sh-title { min-width: 0; padding-right: 52px; }
+.sh-title .eyebrow, .sh-title h2 { overflow-wrap: anywhere; }
+.tech-details > summary { cursor: pointer; font-weight: 600; }
+.tech-details .facts { margin-top: var(--space-2, 8px); }
+.more-sheet { padding: 6px var(--space-4, 16px) calc(var(--space-4, 16px) + env(safe-area-inset-bottom)) !important; }
+.more-sheet .more-list a { padding-inline: var(--space-1, 4px); }
+/* Show page: the main button keeps its words on one line; the tabs never sit under the view toggle. */
+.hero-actions .split { flex: 1 1 auto; min-width: 0; }
+.hero-actions .split > button { white-space: nowrap; height: auto !important; min-height: 40px; }
+.hero-actions .split .menu-trigger { height: auto !important; min-height: 40px; }
+.show-tabs { flex-wrap: wrap; row-gap: 0; }
+.show-tabs .tabs { flex: 1 0 auto; min-width: 0; flex-wrap: wrap; column-gap: 18px; }
+.show-tabs .tab-tools { margin-left: auto; }
+/* Phone tab bar: long labels wrap inside their own column instead of running into the next one. */
+.tabbar a, .tabbar .tab-more { white-space: normal !important; text-align: center; line-height: 1.1; overflow-wrap: anywhere; padding-inline: 2px !important; font-size: min(var(--text-xs), 13px) !important; }
+@media (pointer: coarse) {
+  button, select, .chip, a.button { min-height: 44px; }
+  button.icon, .icon-btn, .bell > button, .sh-close { min-width: 44px; min-height: 44px; }
+  .icon-seg button { width: 44px !important; height: 44px !important; }
+  .seg button, .segmented button, .text-size .seg button { min-height: 44px; }
+  button.linklike, .linklike { min-height: 44px; display: inline-flex; align-items: center; }
+  details > summary.small, .why > summary, .fix-detection > summary, .tech-details > summary, details.later > summary, details.small > summary { padding-block: 12px; }
+  input[type="checkbox"], input[type="radio"] { width: 22px; height: 22px; }
+  label.check { min-height: 44px; display: flex; align-items: center; gap: 10px; }
+  .more-sheet p a, .app-footer a { display: inline-flex; align-items: center; min-height: 44px; }
+  .event-chev, .bell-dismiss { min-width: 44px; }
+}
