@@ -26,6 +26,7 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 - Every download is probed before import (full subtitles in your language, the right audio, not a sample); failures are
   blocklisted and the next release is tried; successes are imported and renamed by AnimeArr itself.
 - Replace season: a whole season swapped for a better pack, one verified episode at a time.
+- Replace season lists season packs first (whole season, then upgrades over what you have), single episodes on their own tab.
 - Multi-part movies imported as Plex-stacked parts. Creditless openings and endings treated as real extras.
 - Fix detection for wrongly tagged tracks, Watch in Plex, Peek (three frames from the middle).
 - Clean-up after imports, stalled-download handling, a recycling bin with retention.

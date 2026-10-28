@@ -477,6 +477,14 @@ export function replaceSeasonPreview(tvdbId: number, season: number) {
     const code = e.file!.lang?.state === "ok" ? "ok" : (e.file!.lang?.code ?? "unknown");
     why[code] = (why[code] ?? 0) + 1;
   }
+  // What the season has now (source × resolution), for "better than what you have" on the pack list.
+  const quality = new Map<string, { source: string | null; resolution: string | null; remux: boolean; n: number }>();
+  for (const e of withFile) {
+    const f = e.file!;
+    const q = { source: f.source, resolution: f.resolution ?? f.quality, remux: /remux/i.test(`${f.sceneName ?? ""} ${f.quality ?? ""}`) };
+    const k = `${q.source}|${q.resolution}|${q.remux}`;
+    quality.set(k, { ...q, n: (quality.get(k)?.n ?? 0) + 1 });
+  }
   const m = getSettings().media;
   return {
     title: s.title,
@@ -486,6 +494,7 @@ export function replaceSeasonPreview(tvdbId: number, season: number) {
     missing: rows.length - withFile.length,
     why,
     groups: [...new Set(withFile.map((e) => e.file!.group ?? "unknown"))],
+    quality: [...quality.values()],
     recycle: { path: m.recycleBin, days: m.recycleBinCleanupDays ?? 0 },
   };
 }

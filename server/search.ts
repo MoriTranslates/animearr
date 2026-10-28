@@ -15,7 +15,7 @@ import { cache, db } from "./db.js";
 import { learnedFor, sourceKey } from "./library.js";
 import { aliasIndex } from "./metadata.js";
 import { profileFor } from "./profiles.js";
-import { parseRelease } from "./core/parser.js";
+import { parseRelease, type Source } from "./core/parser.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
   const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
@@ -62,6 +62,8 @@ export interface SearchResult {
   coversTarget: boolean;
   /** More episodes than asked for (a pack or batch). */
   extra: number;
+  /** Source and resolution from the name (for "better than what you have"). */
+  quality?: { source: Source; resolution: number | null; remux: boolean };
   rank: Ranked;
   mappingWhy: string[];
   group: string | null;
@@ -205,7 +207,7 @@ export interface SearchProgress {
   results: SearchResult[];
 }
 
-export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; onProgress?: (p: SearchProgress) => void } = {}) {
+export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; packs?: boolean; onProgress?: (p: SearchProgress) => void } = {}) {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("That series isn't in the synced library; run Sync first"), { statusCode: 404 });
   const all = episodesFor(tvdbId);
@@ -273,6 +275,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
       confidence: id.resolution.confidence,
       coversTarget: covers === targets.length,
       extra: eps.length - covers,
+      quality: { source: id.parsed.source, resolution: id.parsed.resolution, remux: /remux/i.test(r.title) },
       rank,
       mappingWhy: id.resolution.why,
       group: id.parsed.group,
@@ -309,7 +312,8 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   report();
   await run(tier1);
   // Tier 2 only when tier 1 left a target episode without a usable candidate (or when asked for the full search).
-  const usable = (eid: number) => results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid));
+  // Replace season wants packs: single episodes don't count as covering it.
+  const usable = (eid: number) => results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid) && (!opts.packs || r.episodeIds.length > 1));
   const uncovered = targets.filter((t) => !usable(t.id));
   if (opts.full || uncovered.length) {
     tier = 2;

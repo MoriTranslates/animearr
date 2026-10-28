@@ -703,15 +703,15 @@ const searchKey = (tvdbId: number, eps: number[]) => `${tvdbId}:${[...eps].sort(
 const publicResults = (rs: SearchResult[]) => rs.map(({ downloadUrl: _d, magnetUrl: _m, ...x }) => x);
 
 /** Runs a Deep Search, keeps its results for grabbing, and logs it. */
-async function runSearch(tvdbId: number, eps: number[], full: boolean, onProgress?: (p: SearchProgress) => void) {
-  const r = await deepSearch(tvdbId, eps, { full, onProgress });
+async function runSearch(tvdbId: number, eps: number[], full: boolean, onProgress?: (p: SearchProgress) => void, packs = false) {
+  const r = await deepSearch(tvdbId, eps, { full, packs, onProgress });
   for (const [k, v] of lastResults) if (Date.now() - v.at > 30 * 60_000) lastResults.delete(k);
   lastResults.set(searchKey(tvdbId, eps), { at: Date.now(), tvdbId, episodeIds: eps, results: r.results });
   logDecision("search", { tvdbId, title: r.series.title, episodeIds: eps, why: `Deep Search: ${r.queries.length} queries (${r.tier === 1 ? "quick" : "wide"} search, ${Math.round(r.tookMs / 100) / 10} s), ${r.found} releases, ${r.matched} for these episodes, ${r.results.filter((x) => x.rank.accept).length} acceptable` });
   return { ...r, results: publicResults(r.results), dryRun: getSettings().managed.dryRun };
 }
 
-const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, 50), full: b?.full === true });
+const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean; packs?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, 50), full: b?.full === true, packs: b?.packs === true });
 
 /** Blocking search (scripts, acceptance tests). */
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("/api/search", async (req) => {
@@ -722,8 +722,8 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("
 /** Search as a job the UI polls: progress ("searched X of Y") and partial results while it runs. */
 interface SearchJob { at: number; done: boolean; progress: { searched: number; total: number; tier: number; found: number }; partial: ReturnType<typeof publicResults>; result: Awaited<ReturnType<typeof runSearch>> | null; error: string | null }
 const searchJobs = new Map<string, SearchJob>();
-app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("/api/search/start", async (req) => {
-  const { tvdbId, eps, full } = searchBody(req.body);
+app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean; packs?: boolean } }>("/api/search/start", async (req) => {
+  const { tvdbId, eps, full, packs } = searchBody(req.body);
   if (!seriesByTvdb(tvdbId)) throw fail("That series isn't in the synced library; run Sync first", 404);
   for (const [k, v] of searchJobs) if (Date.now() - v.at > 15 * 60_000) searchJobs.delete(k);
   const jobId = crypto.randomUUID();
@@ -732,7 +732,7 @@ app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("
   void runSearch(tvdbId, eps, full, (p) => {
     job.progress = { searched: p.searched, total: p.total, tier: p.tier, found: p.found };
     job.partial = publicResults(p.results);
-  })
+  }, packs)
     .then((r) => (job.result = r))
     .catch((e) => (job.error = (e as Error).message))
     .finally(() => (job.done = true));

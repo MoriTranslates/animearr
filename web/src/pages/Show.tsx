@@ -874,7 +874,7 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
       title={t("replace.title", { n: season })}
       confirmLabel={t("replace.find")}
       onClose={onClose}
-      onConfirm={() => (p.data?.episodeIds.length ? navigate(`/search?tvdbId=${tvdbId}&eps=${p.data.episodeIds.join(",")}&replace=1`) : undefined)}
+      onConfirm={() => (p.data?.episodeIds.length ? navigate(`/search?tvdbId=${tvdbId}&eps=${p.data.episodeIds.join(",")}&replace=1&season=${season}`) : undefined)}
     >
       {p.error && <p className="error">{String(p.error)}</p>}
       {!p.data ? (

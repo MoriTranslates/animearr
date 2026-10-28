@@ -150,6 +150,7 @@ export interface SearchResult {
   confidence: number;
   coversTarget: boolean;
   extra: number;
+  quality?: { source: string | null; resolution: number | null; remux: boolean };
   rank: { accept: boolean; score: number; langProb: number; flags: Flag[]; why: string; reject: string | null };
   mappingWhy: string[];
   group: string | null;
