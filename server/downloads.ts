@@ -424,7 +424,7 @@ export async function runCleanup(opts: { only?: CleanupAction["step"][]; userAsk
     }
   }
   const ok = done.filter((d) => d.ok);
-  if (ok.length) logDecision("info", { why: `Download clean-up: ${ok.length} step(s) — ${ok.slice(0, 5).map((d) => `${d.action.step} ${path.posix.basename(d.action.target)}`).join(", ")}${ok.length > 5 ? "…" : ""} (${(ok.reduce((x, d) => x + d.action.bytes, 0) / GB).toFixed(1)} GB)` });
+  if (ok.length) logDecision("info", { why: `Download clean-up: ${ok.length} step${ok.length === 1 ? "" : "s"} — ${ok.slice(0, 5).map((d) => `${d.action.step} ${path.posix.basename(d.action.target)}`).join(", ")}${ok.length > 5 ? "…" : ""} (${(ok.reduce((x, d) => x + d.action.bytes, 0) / GB).toFixed(1)} GB)` });
   last = null;
   return done;
 }

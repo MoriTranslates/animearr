@@ -159,25 +159,25 @@ export function decideSeason(x: SeasonInput): SeasonDecision {
   const good = x.existing.filter((f) => !f.failed && inBatch.includes(f.episodeId));
   const seasonGroup = majorityGroup(x.existing.filter((f) => !f.failed));
   const s = `season ${x.season}`;
-  const failedNote = failed.length ? `; ${failed.length} episode(s) whose file failed its check count as missing` : "";
+  const failedNote = failed.length ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} whose file failed its check count as missing` : "";
   const missingOnly = (why: string, preferSingles = false): SeasonDecision => {
     // Failed files are replaced through the Replace-season path (old file to the bin only after the new one passed); without a bin they stay.
     const repl = x.recycleBin ? failed : [];
-    const binNote = failed.length && !x.recycleBin ? `; ${failed.length} episode(s) with a failed file stay as they are (Replace season needs the recycling bin)` : "";
+    const binNote = failed.length && !x.recycleBin ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} with a failed file stay as they are (Replace season needs the recycling bin)` : "";
     return { mode: "missing", want: [...missing, ...repl], replaces: repl, preferSingles, seasonGroup, why: `${why}${repl.length ? failedNote : ""}${binNote}` };
   };
   if (!good.length) return { mode: "missing", want: [...missing, ...(x.recycleBin ? failed : [])], replaces: x.recycleBin ? failed : [], preferSingles: false, seasonGroup, why: `Taking ${s}: you have none of its episodes${failed.length ? ` with a good file${x.recycleBin ? failedNote : ""}` : ""}` };
-  if (x.consistency === "off") return missingOnly(`Only the ${missing.length} missing episode(s) of ${s}: keeping one group per season is off`);
+  if (x.consistency === "off") return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: keeping one group per season is off`);
   const batchGroup = x.batch.group;
-  if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) return missingOnly(`Only the ${missing.length} missing episode(s) of ${s}: same group as your files (${seasonGroup})`);
+  if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: same group as your files (${seasonGroup})`);
   const existingQ = typicalQuality(good, seasonGroup);
   const cmp = compareQuality(x.batch, existingQ, x.profileResolution);
   const groupWords = seasonGroup ? `${seasonGroup} → ${batchGroup ?? "no group"}` : `your files are a mix of groups`;
   if (cmp === null || cmp < 0) {
     const worse = cmp === null ? "can't tell its quality" : "lower quality than your files";
-    return missingOnly(`Only the ${missing.length} missing episode(s) of ${s}: the batch is another group (${groupWords}) and ${worse}; the season stays mixed`, cmp !== null && !!seasonGroup);
+    return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: the batch is another group (${groupWords}) and ${worse}; the season stays mixed`, cmp !== null && !!seasonGroup);
   }
-  if (!x.recycleBin) return missingOnly(`Only the ${missing.length} missing episode(s) of ${s}: replacing the season would keep one group (${batchGroup ?? "?"}) but needs the recycling bin (Settings → Media management)`);
+  if (!x.recycleBin) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the season would keep one group (${batchGroup ?? "?"}) but needs the recycling bin (Settings → Media management)`);
   return {
     mode: "replace",
     want: [...inBatch],
@@ -363,7 +363,7 @@ export function planFiles(files: BatchFile[], o: FileMapOpts): FilePlan {
       }
     }
     const uncovered = o.wantedIds.filter((e) => !covered.has(e));
-    if (uncovered.length) return whole(`couldn't match ${uncovered.length} wanted episode(s) to a file`);
+    if (uncovered.length) return whole(`couldn't match ${uncovered.length} wanted episode${uncovered.length === 1 ? "" : "s"} to a file`);
   }
   // Sidecars: a subtitle goes with the video whose name it starts with; one that names no video is kept (tiny).
   for (const f of files) {
@@ -381,7 +381,7 @@ export function planFiles(files: BatchFile[], o: FileMapOpts): FilePlan {
   }
   if (!skip.size) return whole("every file is wanted");
   if (!keep.size) return whole("no file is wanted");
-  return { whole: false, wanted: files.filter((f) => keep.has(f.index)).map((f) => f.index), skipped: [...skip], skippedEpisodes: [...skippedEps], extraEpisodes: [...extraEps], reason: `${skip.size} file(s) skipped` };
+  return { whole: false, wanted: files.filter((f) => keep.has(f.index)).map((f) => f.index), skipped: [...skip], skippedEpisodes: [...skippedEps], extraEpisodes: [...extraEps], reason: `${skip.size} file${skip.size === 1 ? "" : "s"} skipped` };
 }
 
 // ---------------------------------------------------------------- applying it through the client capability
@@ -440,7 +440,7 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   const skippedEpisodes = [...new Set([...b.skippedEpisodes, ...plan.skippedEpisodes])];
   const next: BatchInfo = { ...b, mode: "partial", skippedFiles: plan.skipped.length, skippedEpisodes, leftovers: false, note: null };
   writeBatch(c.grabId, next);
-  logDecision("info", { tvdbId: c.log.tvdbId, title: c.log.title, episodeIds: c.log.episodeIds, release: c.log.release, why: `${batchLine(next) ?? "Downloading only the wanted files"}: skipped ${plan.skipped.length} file(s) of ${c.log.release} in the download client`, detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) } });
+  logDecision("info", { tvdbId: c.log.tvdbId, title: c.log.title, episodeIds: c.log.episodeIds, release: c.log.release, why: `${batchLine(next) ?? "Downloading only the wanted files"}: skipped ${plan.skipped.length} file${plan.skipped.length === 1 ? "" : "s"} of ${c.log.release} in the download client`, detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) } });
   return "partial";
 }
 

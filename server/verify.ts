@@ -121,7 +121,7 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
   const noSubWhy = forcedOnly.length
     ? `only a forced/signs ${forcedOnly.join("/")} track (not full dialogue subtitles)`
     : p.untagged
-      ? `${p.untagged} subtitle track(s) without a language tag and none tagged ${subWanted.join("/")}`
+      ? `${p.untagged} subtitle track${p.untagged === 1 ? "" : "s"} without a language tag and none tagged ${subWanted.join("/")}`
       : subs.length
         ? `subtitles ${subs.join("/")} only`
         : "no subtitles at all";

@@ -86,7 +86,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
   const after = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null };
   // Episodes kept their old file: the grab waits in "needs attention" (Retry import finishes them once fixed).
   assert.equal(after.state, "needs-attention", after.error ?? "");
-  assert.match(after.error ?? "", /2 episode\(s\) kept their old file/);
+  assert.match(after.error ?? "", /2 episodes kept their old file/);
   // E01 swapped: the new file is in the library, the old one is in the recycle bin.
   const season = fs.readdirSync(path.join(LIB, "Absolute Duo", "Season 01"));
   assert.ok(season.includes("Absolute Duo - S01E01.mkv"), season.join(", "));

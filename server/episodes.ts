@@ -385,7 +385,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const ids = episodeIds.filter((e) => own.has(e));
   if (!ids.length) throw Object.assign(new Error("Those aren't episodes of this show"), { statusCode: 400 });
   refuseMovieSpecials(s.id, ids);
-  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode(s) now` });
+  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode${ids.length === 1 ? "" : "s"} now` });
   const now = Date.now();
   // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
   const state = opts.replace ? "replace" : "waiting";

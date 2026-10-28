@@ -623,7 +623,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
     alt = [];
   }
   const named = bySize.length > 1 ? fileForMovie(bySize, movieSubtitles([mv.title, mv.original_title ?? "", ...alt], seriesForMovie(mv.id).map((x) => x.title))) : null;
-  if (named) notes.push(`picked ${path.basename(named.f)} (its name matches the movie); the other ${bySize.length - 1} video file(s) are left alone`);
+  if (named) notes.push(`picked ${path.basename(named.f)} (its name matches the movie); the other ${bySize.length - 1} video file${bySize.length - 1 === 1 ? "" : "s"} are left alone`);
   const main = named ?? bySize[0];
   const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
   if (!named && bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand, or as parts` }], notes };
@@ -786,7 +786,7 @@ export async function applyRenameRouted(tvdbId: number, fileIds: number[], deps 
   const still = new Set((await renamePlan(tvdbId, deps)).items.map((i) => i.fileId));
   const results = before.map((i) => ({ from: i.from, to: i.to, done: status === "completed" && !still.has(i.fileId), why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}` }));
   const n = results.filter((r) => r.done).length;
-  if (n) logDecision("info", { tvdbId, title: s.title, why: `Sonarr renamed ${n} file(s) of ${s.title} (asked by AnimeArr; Sonarr keeps its file records). ${results.filter((r) => r.done).slice(0, 3).map((r) => path.posix.basename(r.to)).join(", ")}${n > 3 ? "…" : ""}` });
+  if (n) logDecision("info", { tvdbId, title: s.title, why: `Sonarr renamed ${n} file${n === 1 ? "" : "s"} of ${s.title} (asked by AnimeArr; Sonarr keeps its file records). ${results.filter((r) => r.done).slice(0, 3).map((r) => path.posix.basename(r.to)).join(", ")}${n > 3 ? "…" : ""}` });
   void scanFolder(s.path).catch(() => undefined);
   return { route, results };
 }
