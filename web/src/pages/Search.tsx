@@ -133,7 +133,7 @@ function DeepSearch() {
             <button className="link small self-end" onClick={() => (setSeries(null), setRes(null))}>
               {t("picker.change")}
             </button>
-            <EpisodePicker key={series.tvdbId} show={series} initial={series.tvdbId === Number(qp.get("tvdbId")) ? initial : []} dryRun={status.data?.dryRun ?? true} onChange={() => undefined} onInteractive={(ids) => void run(ids)} />
+            <EpisodePicker key={series.tvdbId} show={series} initial={series.tvdbId === Number(qp.get("tvdbId")) ? initial : []} dryRun={status.data?.dryRun ?? true} onChange={() => undefined} onInteractive={(ids) => void run(ids)} noAuto={replaceMode} />
           </>
         )}
       </div>

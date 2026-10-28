@@ -68,7 +68,7 @@ type View = { kind: "missing" } | { kind: "season"; n: number } | { kind: "abs";
  * Pick episodes of a show: a season (with counts) or "all missing", missing-only by default, checkboxes with
  * shift-click ranges and a quick range box, then ⚡ automatic or 🔍 interactive from a sticky bar.
  */
-export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive }: { show: PickedShow; initial?: number[]; dryRun: boolean; onChange: () => void; onInteractive: (ids: number[]) => void }) {
+export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, noAuto = false }: { show: PickedShow; initial?: number[]; dryRun: boolean; onChange: () => void; onInteractive: (ids: number[]) => void; noAuto?: boolean }) {
   const d = useLoad(() => api<ShowData>(`/series/${show.tvdbId}`), [show.tvdbId]);
   const [sel, setSel] = useState<Set<number>>(new Set(initial ?? []));
   const [missingOnly, setMissingOnly] = useState(true);
@@ -249,9 +249,12 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive }
         <div className="bulkbar card picker-bar">
           <span>{t("ep.selected", { n: picked.length })}{picked.length > 26 ? ` · ${t("auto.first26")}` : ""}</span>
           <div className="row">
-            <button className="primary" onClick={actions.auto} disabled={actions.autoBusy}>
-              ⚡ {actions.autoBusy ? t("common.working") : t("picker.auto")}
-            </button>
+            {/* Replace season: an automatic search would grab per episode, not replace the season. */}
+            {!noAuto && (
+              <button className="primary" onClick={actions.auto} disabled={actions.autoBusy}>
+                ⚡ {actions.autoBusy ? t("common.working") : t("picker.auto")}
+              </button>
+            )}
             <button onClick={() => onInteractive(picked.slice(0, 26).map((r) => r.id))}>🔍 {t("auto.interactive")}</button>
           </div>
         </div>
