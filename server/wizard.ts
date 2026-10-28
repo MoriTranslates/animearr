@@ -8,7 +8,8 @@ import path from "node:path";
 import { getSettings, patchSettings, type ClientCfg } from "./settings.js";
 import { jsonCall } from "./arr/http.js";
 import { logDecision } from "./activity.js";
-import { cache } from "./db.js";
+import { cache, CONFIG_DIR } from "./db.js";
+import { hiddenInBrowser, rootRefusal } from "./roots.js";
 
 export interface WizardState { done: boolean; path: "new" | "migrate" | null; step: string; completed: string[]; updatedAt: number }
 const EMPTY: WizardState = { done: false, path: null, step: "welcome", completed: [], updatedAt: 0 };
@@ -46,10 +47,9 @@ export function listFolders(p: string) {
       return false;
     }
   };
-  const skip = /^(proc|sys|dev|run|etc|usr|bin|sbin|lib|lib64|boot|var|tmp|opt|srv|root|home|app)$/;
   const dirs = entries
     .filter((e) => {
-      if (e.name.startsWith(".") || (dir === "/" && skip.test(e.name))) return false;
+      if (e.name.startsWith(".") || hiddenInBrowser(dir, e.name)) return false;
       if (e.isDirectory()) return true;
       // Symlinked mounts (common on Unraid/Docker) are folders too.
       try {
@@ -58,10 +58,11 @@ export function listFolders(p: string) {
         return false;
       }
     })
-    .map((e) => ({ name: e.name, path: path.posix.join(dir, e.name), writable: writable(path.posix.join(dir, e.name)) }))
+    .map((e) => ({ name: e.name, path: path.posix.join(dir, e.name), writable: writable(path.posix.join(dir, e.name)), refused: rootRefusal(path.posix.join(dir, e.name), CONFIG_DIR) }))
     .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 500);
-  return { path: dir, parent: dir === "/" ? null : path.posix.dirname(dir), writable: writable(dir), dirs };
+  // `refused`: why this folder can't be a library folder (the "Use this folder" button explains instead).
+  return { path: dir, parent: dir === "/" ? null : path.posix.dirname(dir), writable: writable(dir), refused: rootRefusal(dir, CONFIG_DIR), dirs };
 }
 
 /** Creates AnimeArr's category in SABnzbd or qBittorrent (so its downloads stay apart from Sonarr's/Radarr's). */
@@ -136,7 +137,7 @@ export async function arrPreview() {
     if (reach) return { ...out, radarrError: reach };
     const call = <T>(p: string) => jsonCall<T>("Radarr", s.radarr, "/api/v3", "GET", p).catch(() => null);
     const roots = await call<{ path: string }[]>("/rootfolder");
-    const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies").get() as { n: number }).n;
+    const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies WHERE is_anime = 1").get() as { n: number }).n;
     out.radarr = { animeMovies, roots: (roots ?? []).map((r) => r.path) };
   }
   return out;
@@ -158,7 +159,7 @@ export function applyArrPreview(input: { roots?: string[]; sab?: { url: string; 
         .filter((o) => !(s.extraClients ?? []).some((x) => x.type === o.type && x.url === o.url))
         .map((o, i) => ({ id: `${o.type}-${Date.now().toString(36)}${i}`, type: o.type, name: o.name || o.type, url: o.type === "transmission" ? o.url.replace(/\/transmission\/?(rpc)?$/i, "") : o.url, username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] })),
     ],
-    allowedRoots: [...new Set([...s.allowedRoots, ...(input.roots ?? []).map((r) => String(r).replace(/\/+$/, "")).filter((r) => r.startsWith("/"))])],
+    allowedRoots: [...new Set([...s.allowedRoots, ...(input.roots ?? []).map((r) => String(r).replace(/\/+$/, "")).filter((r) => r.startsWith("/") && !rootRefusal(r, CONFIG_DIR))])],
     sabnzbd: input.sab && !s.sabnzbd.url ? { ...s.sabnzbd, url: String(input.sab.url).replace(/\/+$/, ""), category: s.sabnzbd.category } : s.sabnzbd,
     qbittorrent: input.qbit && !s.qbittorrent.url ? { ...s.qbittorrent, url: String(input.qbit.url).replace(/\/+$/, ""), category: s.qbittorrent.category } : s.qbittorrent,
   }));

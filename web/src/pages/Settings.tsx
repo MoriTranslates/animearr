@@ -1,5 +1,7 @@
 import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useUnsaved } from "../unsaved";
+import { rememberDetail } from "../errors";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
@@ -9,10 +11,11 @@ import { Cutover } from "../cutover";
 import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type SaveNow } from "../connections";
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
+import { LibraryFolders } from "../folders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
-import { Chip, Confirm, ErrorBox, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
 type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
@@ -76,26 +79,22 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
     setS((x) => (x ? fn(structuredClone(x)) : x));
     setDirty(true);
   };
-  // In the wizard (only mode), leaving the step saves what was changed (Next/Back never drop edits).
-  const latest = useRef<{ s: S | null; dirty: boolean }>({ s: null, dirty: false });
-  latest.current = { s, dirty };
-  useEffect(
-    () => () => {
-      if (only && latest.current.dirty && latest.current.s) void api("/settings", { method: "PUT", body: latest.current.s }).catch(() => undefined);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  // Unsaved edits: leaving the page asks first; in the wizard (only mode) Next/Back save them, and a failed save
+  // (its error shown) keeps the wizard on this step.
+  useUnsaved(dirty, save);
   async function save() {
-    if (!s) return;
+    if (!s) return false;
     try {
       const next = await api<S>("/settings", { method: "PUT", body: s });
       setS(next);
+      loaded.setData(next);
       setDirty(false);
       toast(t("common.saved"));
       onSaved();
+      return true;
     } catch (e) {
       toast((e as Error).message, true);
+      return false;
     }
   }
   /** Connection dialogs save straight away (only their own change, on top of what's saved). */
@@ -104,7 +103,9 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
       const base = loaded.data ?? s!;
       const next = await api<S>("/settings", { method: "PUT", body: fn(structuredClone(base)) });
       loaded.setData(next);
+      // Unsaved edits elsewhere on the page stay; the saved change is applied to them too (a later Save keeps it).
       if (!dirty) setS(next);
+      else setS((x) => (x ? fn(structuredClone(x)) : x));
       toast(t("common.saved"));
       onSaved();
       return true;
@@ -137,7 +138,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {x === "profile" && <ProfilesEditor />}
           {x === "media" && <MediaManagement s={s} upd={upd} />}
           {x === "downloads" && <DownloadRules s={s} upd={upd} />}
-          {x === "safety" && <Safety s={s} upd={upd} />}
+          {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}
           {x === "paths" && <Paths s={s} upd={upd} />}
           {x === "metadata" && <Metadata s={s} upd={upd} />}
           {x === "appearance" && <Appearance />}
@@ -146,7 +147,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {/* The save bar appears only with unsaved changes (a disabled Save was just a muddy block). */}
           {FORM_TABS.includes(x) && dirty && (
             <div className="sticky-actions row">
-              <button className="primary" disabled={!dirty} onClick={save}>
+              <button className="primary" disabled={!dirty} onClick={() => void save()}>
                 {t("common.save")}
               </button>
               {dirty && (
@@ -311,7 +312,7 @@ function Appearance() {
 type Upd = (fn: (x: S) => S) => void;
 
 /** Per-show dry-run overrides (managed shows). */
-function ShowDryRuns() {
+function ShowDryRuns({ globalOn }: { globalOn: boolean }) {
   const toast = useToast();
   const [q, setQ] = useState("");
   const d = useLoad(() => api<{ shows: { tvdbId: number; title: string; dryRun: boolean }[] }>("/managed"), []);
@@ -331,11 +332,12 @@ function ShowDryRuns() {
     <div className="stack">
       {/* Only the shows IN dry run are listed (not hundreds of switches); add one by searching. */}
       <h3 className="small-h">{t("dry.inDryRun", { n: on.length })}</h3>
+      {globalOn && <p className="muted small">{t("dry.showsGlobalOn")}</p>}
       {on.length ? (
         <ul className="plain stack">
           {on.map((x) => (
             <li key={x.tvdbId}>
-              <Toggle checked onChange={(v) => void set(x.tvdbId, v)} label={x.title} />
+              <Toggle checked onChange={(v) => void set(x.tvdbId, v)} label={t("dry.showToggleOn", { title: x.title })} />
             </li>
           ))}
         </ul>
@@ -362,39 +364,47 @@ function ShowDryRuns() {
   );
 }
 
-function Safety({ s, upd }: { s: S; upd: Upd }) {
-  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null }>("/sonarr/rootfolders"), []);
+function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow: SaveNow }) {
+  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null; refused?: Record<string, string> }>("/sonarr/rootfolders"), []);
   const m = s.managed;
+  // Library folders and practice mode save at once (a switch that only looked switched was the playtest's trap).
+  const setRoots = async (fn: (r: string[]) => string[]) => {
+    if (await saveNow((x) => ({ ...x, allowedRoots: fn(x.allowedRoots) }))) void roots.reload();
+  };
+  const arrRoots = (roots.data?.roots ?? []).filter((r) => !s.allowedRoots.includes(r.path));
   const setM = (fn: (x: S["managed"]) => S["managed"]) => upd((x) => ({ ...x, managed: fn(x.managed) }));
   return (
     <div className="stack">
       <div className="card pad stack">
         <div className="row between">
           <h2>{t("dry.section")}</h2>
-          <span className={`state-pill ${m.dryRun ? "warn" : "good"}`}>{m.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
+          <span className={`state-pill ${saved.managed.dryRun ? "warn" : "good"}`}>{saved.managed.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
         </div>
         <p className="muted small">{t("dry.sectionHelp")}</p>
-        <Toggle checked={m.dryRun} onChange={(v) => setM((x) => ({ ...x, dryRun: v }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
-        <ShowDryRuns />
+        <Toggle checked={saved.managed.dryRun} onChange={(v) => void saveNow((x) => ({ ...x, managed: { ...x.managed, dryRun: v } }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
+        <ShowDryRuns globalOn={saved.managed.dryRun} />
       </div>
-      <div className="card pad stack">
+      <div className="card pad stack" id="library-folders">
         <h2>{t("settings.safety.roots")}</h2>
         <p className="muted small">{t("settings.safety.rootsHelp")}</p>
-        {roots.error && <p className="warn-text">{roots.error}</p>}
-        <div className="stack">
-          {(roots.data?.roots ?? []).map((r) => (
-            <label key={r.path} className="check">
-              <input
-                type="checkbox"
-                checked={s.allowedRoots.includes(r.path)}
-                onChange={(e) => upd((x) => ({ ...x, allowedRoots: e.target.checked ? [...x.allowedRoots, r.path] : x.allowedRoots.filter((y) => y !== r.path) }))}
-              />
-              <span className="mono">{r.path}</span>
-              {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>}
-              {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
-            </label>
-          ))}
-        </div>
+        <LibraryFolders roots={saved.allowedRoots} refused={roots.data?.refused} onAdd={(r) => setRoots((x) => [...new Set([...x, r])])} onRemove={(r) => setRoots((x) => x.filter((y) => y !== r))} />
+        {!!arrRoots.length && (
+          <div className="stack">
+            <h3>{t("folders.fromArr")}</h3>
+            <ul className="plain stack">
+              {arrRoots.map((r) => (
+                <li key={r.path} className="row between">
+                  <span>
+                    <span className="mono">{r.path}</span> {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>} {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
+                  </span>
+                  <button className="small" onClick={() => void setRoots((x) => [...new Set([...x, r.path])])}>
+                    {t("common.add")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <div className="card pad stack">
         <h2>{t("scope.defaults")}</h2>
@@ -532,7 +542,7 @@ function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
 
 /** Missing-episode search: off by default, rate-limited, with what it would do. */
 function Backlog({ s, upd }: { s: S; upd: Upd }) {
-  const sum = useLoad(() => api<{ missing: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
+  const sum = useLoad(() => api<{ missing: number; missingAll?: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
   const [confirm, setConfirm] = useState(false);
   const b = s.backlog;
   const setB = (fn: (x: S["backlog"]) => S["backlog"]) => upd((x) => ({ ...x, backlog: fn(x.backlog) }));
@@ -550,7 +560,7 @@ function Backlog({ s, upd }: { s: S; upd: Upd }) {
       )}
       {sum.data && (
         <p className="small">
-          {t("backlog.summary", { missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
+          {t("backlog.summary", { all: sum.data.missingAll ?? sum.data.missing, missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
         </p>
       )}
       <div className="form">
@@ -606,8 +616,8 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
               const r = await api<{ version: string; name: string; sections: { title: string; locations: string[] }[] }>("/test/plex", { body: { url: p.url, apiKey: p.token } });
               setRes({ ok: true, text: t("plex.testOk", { name: r.name, version: r.version, libs: r.sections.map((x) => `${x.title} (${x.locations.join(", ")})`).join("; ") }) });
             } catch (e) {
+              // Shown under the form (a toast on top covered its buttons).
               setRes({ ok: false, text: (e as Error).message });
-              toast((e as Error).message, true);
             }
           }}
         >
@@ -623,11 +633,14 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
         <label className="field">
           {t("plex.token")}
           <SecretInput value={p.token} onChange={(v) => set({ token: v })} label={t("plex.token")} />
+          <a className="small" href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noreferrer">
+            {t("plex.tokenLink")} ↗
+          </a>
         </label>
         <Toggle checked={p.enabled} onChange={(v) => set({ enabled: v })} label={t("plex.enabled")} />
       </div>
       <MappingList value={p.pathMappings} onChange={(v) => set({ pathMappings: v })} title={t("plex.paths")} help={t("plex.pathsHelp")} />
-      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>}
     </div>
   );
 }
@@ -635,6 +648,7 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
 function Paths({ s, upd }: { s: S; upd: Upd }) {
   return (
     <div className="stack">
+      <p className="banner slim small">{t("paths.containerHint")}</p>
       <MappingList value={s.localPathMappings} onChange={(v) => upd((x) => ({ ...x, localPathMappings: v }))} title={t("settings.paths.local")} help={t("settings.paths.localHelp")} />
       <MappingList value={s.remotePathMappings} onChange={(v) => upd((x) => ({ ...x, remotePathMappings: v }))} title={t("settings.paths.remote")} help={t("settings.paths.remoteHelp")} />
     </div>
@@ -643,13 +657,61 @@ function Paths({ s, upd }: { s: S; upd: Upd }) {
 
 interface SystemInfo {
   version: string;
-  jobs: { name: string; state: string; detail: string; finishedAt: number | null }[];
+  jobs: { name: string; state: string; detail: string; detailRaw?: string | null; finishedAt: number | null }[];
   metadata: { anidb: { count: number }; animeLists: { count: number } };
   aliasKeys: number;
   db: { corrupt: boolean; detail: string };
   backups: { name: string; kind: string; size: number; at: number }[];
   backupDir: string;
   memoryMb: number;
+}
+
+/** Background jobs by their plain names (the raw name stays as the key). */
+const JOB_NAMES: Record<string, I18nKey> = {
+  anidb: "job.anidb",
+  catalog: "job.catalog",
+  covers: "job.covers",
+  rss: "job.rss",
+  sync: "job.sync",
+  managed: "job.managed",
+  "movie-match": "job.movieMatch",
+  "movie search": "job.movieSearch",
+  metadata: "job.metadata",
+  "file scan": "job.fileScan",
+  "fill-in": "job.fillIn",
+  "dual upgrades": "job.dual",
+  "after-import check": "job.afterImport",
+};
+const jobName = (n: string) => (JOB_NAMES[n] ? t(JOB_NAMES[n]) : n);
+/** "the nightly backup from Oct 27, 9:29 AM" (local time), not the file name. */
+const backupLabel = (b: { kind: string; at: number }) => t("backup.label", { kind: t(`backup.kind.${b.kind}` as I18nKey), when: dateTime(b.at) });
+const fmtKb = (b: number) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
+
+/** "Check for updates": asks GitHub which release is newest (read-only; being offline is said, not an error). */
+function UpdatesCheck() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className="self-start"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const r = await api<{ current: string; latest: string | null; newer: boolean; url: string | null; offline: boolean }>("/system/updates");
+          if (r.offline) toast(t("update.offline"));
+          else if (r.newer) toast(t("update.newer", { version: r.latest ?? "" }), false, r.url ? { label: t("update.see"), run: () => void window.open(r.url!, "_blank", "noopener") } : undefined);
+          else toast(t("update.current", { version: r.current }));
+        } catch (e) {
+          toast((e as Error).message, true);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? t("common.working") : t("update.check")}
+    </button>
+  );
 }
 
 /** Own metadata: what the catalog knows, optional provider keys. */
@@ -665,7 +727,11 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
         <p className="muted small">{t("meta.help")}</p>
         {d.data && (
           <>
-            <p className="small">{t("meta.counts", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}</p>
+            <p className="small">{t("meta.counts", { entries: d.data.entries, episodes: d.data.episodes })}</p>
+            <details className="small muted">
+              <summary>{t("common.details")}</summary>
+              {t("meta.countsDetail", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}
+            </details>
             {d.data.lastJob && <p className="small muted">{d.data.lastJob.detail}</p>}
             <div className="chips">
               {Object.entries(d.data.providers).map(([k, on]) => (
@@ -717,11 +783,17 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
             </button>
           </span>
           <span className="muted small">{t("meta.tmdbHelp")}</span>
+          <a className="small" href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">
+            {t("meta.tmdbLink")} ↗
+          </a>
         </label>
         <label>
           {t("meta.anidb")}
           <input value={m.anidbClient} onChange={(e) => setM((x) => ({ ...x, anidbClient: e.target.value }))} placeholder="animearr" />
           <span className="muted small">{t("meta.anidbHelp")}</span>
+          <a className="small" href="https://anidb.net/software/add" target="_blank" rel="noreferrer">
+            {t("meta.anidbLink")} ↗
+          </a>
         </label>
         <label>
           {t("meta.anidbVer")}
@@ -775,7 +847,18 @@ function LibraryFiles() {
       {x.errors > 0 && (
         <details>
           <summary className="small">{t("files.errors", { n: x.errors })}</summary>
-          <ul className="plain small">{x.errorSamples.map((e) => <li key={e.path}><span className="mono">{e.path}</span> · {e.error}</li>)}</ul>
+          <ul className="plain small">
+            {x.errorSamples.map((e) => {
+              // "ffprobe failed: Command failed: ffprobe -v error …" in plain words; the raw text behind Details.
+              const plain = /ffprobe/i.test(e.error) ? t("files.unreadable") : e.error;
+              if (plain !== e.error) rememberDetail(plain, e.error);
+              return (
+                <li key={e.path}>
+                  <span className="mono">{e.path}</span> · {plain === e.error ? e.error : <details className="error-details"><summary>{plain}</summary><code>{e.error}</code></details>}
+                </li>
+              );
+            })}
+          </ul>
         </details>
       )}
       <div className="row">
@@ -803,6 +886,7 @@ function System({ status }: { status: Status }) {
   const toast = useToast();
   const d = useLoad(() => api<SystemInfo>("/system"), []);
   const [restore, setRestore] = useState<string | null>(null);
+  const [rebuild, setRebuild] = useState(false);
   const [pw, setPw] = useState("");
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
@@ -816,6 +900,8 @@ function System({ status }: { status: Status }) {
       toast((e as Error).message, true);
     }
   };
+  for (const j of x.jobs) if (j.state === "error") rememberDetail(j.detail, j.detailRaw);
+  const restoring = x.backups.find((b) => b.name === restore);
   return (
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
@@ -837,68 +923,83 @@ function System({ status }: { status: Status }) {
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.jobs")}</h2>
-        <ul className="plain">
+        <ul className="plain stack">
           {x.jobs.map((j) => (
             <li key={j.name}>
-              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{j.name}</Chip> <span className="small">{j.detail}</span> {j.finishedAt && <span className="muted small">· {relTime(j.finishedAt)}</span>}
+              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{jobName(j.name)}</Chip> <span className="small">{j.state === "error" ? <ErrorText msg={j.detail} /> : j.detail}</span>{" "}
+              {j.finishedAt && <span className="muted small">· {relTime(j.finishedAt)}</span>}
             </li>
           ))}
         </ul>
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.metadata")}</h2>
-        <p className="small">
+        <p className="small">{t("settings.system.metaPlain")}</p>
+        <details className="small muted">
+          <summary>{t("common.details")}</summary>
           AniDB {x.metadata.anidb.count} · Anime-Lists {x.metadata.animeLists.count} · {x.aliasKeys} alias keys · {x.memoryMb} MB
-        </p>
-        <button className="small self-start" onClick={() => act(() => api("/system/metadata", { body: {} }), t("common.saved"))}>
+        </details>
+        <button className="small self-start" onClick={() => act(() => api("/system/metadata", { body: {} }), t("settings.system.refreshing"))}>
           {t("settings.system.refreshMeta")}
         </button>
       </div>
       <div className="card pad stack">
         <h2>{t("settings.system.backups")}</h2>
         <p className="muted small">{t("settings.system.backupHelp", { dir: x.backupDir })}</p>
-        <button className="small self-start" onClick={() => act(() => api("/system/backup", { body: {} }), t("common.saved"))}>
+        <button className="small self-start" onClick={() => act(() => api("/system/backup", { body: {} }), t("settings.system.backedUp"))}>
           {t("settings.system.backupNow")}
         </button>
-        <ul className="plain">
+        <ul className="plain stack">
           {x.backups.map((b) => (
             <li key={b.name} className="row between">
-              <span className="small">
-                <Chip>{b.kind}</Chip> {new Date(b.at).toLocaleString()} · {Math.round(b.size / 1024)} KB
+              <span className="small" title={b.name}>
+                {backupLabel(b)} · {fmtKb(b.size)}
               </span>
-              <button className="small ghost" onClick={() => setRestore(b.name)}>
+              <button className="small ghost" onClick={() => (setPw(""), setRestore(b.name))}>
                 {t("settings.system.restore")}
               </button>
             </li>
           ))}
         </ul>
         <p className="muted small">{t("settings.system.rebuildHelp")}</p>
-        <button className="small self-start" onClick={() => act(() => api("/system/cache/reset", { body: {} }), t("common.saved"))}>
+        <button className="small self-start" onClick={() => setRebuild(true)}>
           {t("settings.system.rebuildCache")}
         </button>
       </div>
       <div className="card pad stack">
-        <p className="muted small">
-          AnimeArr v{x.version} · {status.via}
-        </p>
+        <p className="muted small">AnimeArr v{x.version}</p>
+        <UpdatesCheck />
         <button
           className="self-start"
           onClick={async () => {
-            await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
-            location.href = withBase("/welcome");
+            try {
+              await api("/wizard", { method: "PUT", body: { done: false, step: "welcome", path: null } });
+              location.href = withBase("/welcome");
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
           }}
         >
           {t("wiz.runAgain")}
         </button>
-        <button
-          className="self-start"
-          onClick={async () => {
-            await api("/auth/logout", { body: {} });
-            location.href = withBase("/");
-          }}
-        >
-          {t("settings.system.logout")}
-        </button>
+        {status.via === "local" ? (
+          // Signed in by "no password at home": Log out would sign straight back in, so it explains that instead.
+          <p className="muted small">{t("settings.system.logoutHome")}</p>
+        ) : (
+          <button
+            className="self-start"
+            onClick={async () => {
+              try {
+                await api("/auth/logout", { body: {} });
+                location.href = withBase("/");
+              } catch (e) {
+                toast((e as Error).message, true);
+              }
+            }}
+          >
+            {t("settings.system.logout")}
+          </button>
+        )}
       </div>
       {restore && (
         <Confirm
@@ -916,8 +1017,25 @@ function System({ status }: { status: Status }) {
             }
           }}
         >
-          <p>{t("settings.system.restoreConfirm", { name: restore })}</p>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} aria-label={t("login.password")} autoComplete="current-password" />
+          <p>{t("settings.system.restoreConfirm", { name: restoring ? backupLabel(restoring) : restore })}</p>
+          <label className="field">
+            {t("settings.system.restorePw")}
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
+            <span className="muted small">{t("settings.system.restorePwHelp")}</span>
+          </label>
+        </Confirm>
+      )}
+      {rebuild && (
+        <Confirm
+          title={t("settings.system.rebuildCache")}
+          confirmLabel={t("settings.system.rebuildCache")}
+          onClose={() => setRebuild(false)}
+          onConfirm={async () => {
+            await act(() => api("/system/cache/reset", { body: {} }), t("settings.system.rebuilding"));
+            setRebuild(false);
+          }}
+        >
+          <p>{t("settings.system.rebuildConfirm")}</p>
         </Confirm>
       )}
     </div>

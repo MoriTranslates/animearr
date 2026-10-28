@@ -14,6 +14,9 @@ import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview, invalidateConnections } from "./connections.js";
 import { fixesFor } from "./fixes.js";
+import { humanizeError } from "./errors.js";
+import { checkForUpdates } from "./releases.js";
+import { setupProblems, withSetupProblems } from "./setupHealth.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
@@ -53,7 +56,8 @@ import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
 import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
-import { scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
+import { rootRefusal } from "./roots.js";
+import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
 
@@ -134,7 +138,11 @@ app.addHook("onResponse", async (req, reply) => {
 });
 app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   app.log.warn(redactUrl(err.message));
-  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(err.message), fixes: fixesFor(err.message) });
+  // Plain words for connection errors ("SABnzbd unreachable (fetch failed)" → which address, what to check); the raw
+  // text rides along as `detail` (the UI shows it behind "Details"). Fixes still match the raw text.
+  const ctx = err as Error & { service?: string; url?: string };
+  const h = humanizeError(err.message, { service: ctx.service, url: ctx.url });
+  reply.code(err.statusCode && err.statusCode >= 400 ? err.statusCode : 500).send({ error: redactUrl(h.message), ...(h.detail ? { detail: redactUrl(h.detail) } : {}), fixes: fixesFor(err.message) });
 });
 
 const fail = (msg: string, code = 400) => Object.assign(new Error(msg), { statusCode: code });
@@ -150,10 +158,11 @@ const writable = () => {
 /** Outbound service URLs: http(s) only, never link-local / cloud metadata addresses. */
 function checkOutbound(url: string) {
   let u: URL;
+  if (!url.trim()) throw fail("Enter the address first, e.g. http://192.168.1.10:8080");
   try {
     u = new URL(url);
   } catch {
-    throw fail("That address isn't a valid URL (it should start with http://)");
+    throw fail(`"${url}" isn't a full address. It should look like http://192.168.1.10:8080 (with http:// and the port).`);
   }
   if (!/^https?:$/.test(u.protocol)) throw fail("Address must start with http:// or https://");
   if (/^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw fail("That address isn't allowed");
@@ -407,22 +416,45 @@ app.get("/api/indexers", async () => ({ indexers: listIndexers() }));
 app.post<{ Body: Record<string, unknown> }>("/api/indexers", async (req) => (writable(), invalidateConnections(), saveIndexer(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), saveIndexer(req.params.id, req.body ?? {})));
 app.delete<{ Params: { id: string } }>("/api/indexers/:id", async (req) => (writable(), invalidateConnections(), deleteIndexer(req.params.id), { ok: true }));
-app.post<{ Body: Record<string, unknown> }>("/api/indexers/test", async (req) => testIndexer(req.body ?? {}));
-app.post<{ Body: Record<string, unknown> }>("/api/jackett/trackers", async (req) => ({ trackers: await jackettTrackers(req.body ?? {}) }));
+/** Runs a connection test; its error carries the service and address tested (for humanizeError). */
+async function tested<T>(service: string, url: unknown, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    throw Object.assign(e as Error, { service, url: String(url ?? "").trim() });
+  }
+}
+app.post<{ Body: Record<string, unknown> }>("/api/indexers/test", async (req) => tested(String(req.body?.name || "The indexer"), req.body?.url, () => testIndexer(req.body ?? {})));
+app.post<{ Body: Record<string, unknown> }>("/api/jackett/trackers", async (req) => {
+  // Empty fields: say which (the button used to do nothing).
+  if (!String(req.body?.url ?? "").trim()) throw fail("Enter Jackett's address first, e.g. http://192.168.1.10:9117");
+  if (!String(req.body?.apiKey ?? "").trim()) throw fail("Enter Jackett's API key first (top right of Jackett's page).");
+  return tested("Jackett", req.body?.url, async () => ({ trackers: await jackettTrackers(req.body ?? {}) }));
+});
 app.post<{ Body: Record<string, unknown> }>("/api/jackett/add", async (req) => (writable(), invalidateConnections(), addJackettTracker(req.body ?? {})));
 app.get("/api/clients", async () => ({ clients: listClients() }));
 app.post<{ Body: Record<string, unknown> }>("/api/clients", async (req) => (writable(), invalidateConnections(), saveClient(null, req.body ?? {})));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), saveClient(req.params.id, req.body ?? {})));
 app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => (writable(), invalidateConnections(), deleteClient(req.params.id), { ok: true }));
 app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/clients/:id/prefs", async (req) => (writable(), invalidateConnections(), setClientPrefs(req.params.id, req.body ?? {})));
-app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => testExtraClient(req.body ?? {}));
+app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => tested(String(req.body?.name || req.body?.type || "The download client"), req.body?.url, () => testExtraClient(req.body ?? {})));
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 
+const SERVICE_NAMES: Record<string, string> = { sonarr: "Sonarr", radarr: "Radarr", prowlarr: "Prowlarr", sabnzbd: "SABnzbd", plex: "Plex", qbittorrent: "qBittorrent" };
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
+  const svc = req.params.service;
+  try {
+    return await testService(svc, req.body ?? {});
+  } catch (e) {
+    // The error names the service and the address tested (humanizeError, in the error handler).
+    const stored = (getSettings() as unknown as Record<string, { url?: string }>)[svc]?.url ?? "";
+    throw Object.assign(e as Error, { service: SERVICE_NAMES[svc], url: String(req.body?.url ?? stored).trim() });
+  }
+});
+async function testService(service: string, b: TestBody) {
   const s = getSettings();
-  const b = req.body ?? {};
-  switch (req.params.service) {
+  switch (service) {
     case "sonarr": {
       const c = withSecret(b.url, b.apiKey, s.sonarr.url, s.sonarr.apiKey);
       const conn = { url: c.url, apiKey: c.secret };
@@ -451,7 +483,7 @@ app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", 
     }
   }
   throw fail("Unknown service", 404);
-});
+}
 
 /** Sonarr root folders, for the "allowed root folders" picker (suggests /media/AnimeArr when present; never auto-enabled). */
 app.get("/api/sonarr/rootfolders", async () => {
@@ -459,7 +491,9 @@ app.get("/api/sonarr/rootfolders", async () => {
   // Radarr's root folders too (movies), when Radarr is set up.
   const movieRoots = radarrConfigured() ? await radarrRootFolders().catch(() => []) : [];
   const roots = [...o.roots.map((r) => ({ ...r, app: "sonarr" })), ...movieRoots.filter((r) => !o.roots.some((x) => x.path === r.path)).map((r) => ({ id: r.id, path: r.path, freeSpace: r.freeSpace, app: "radarr" }))];
-  return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots };
+  // `refused`: saved folders that can't be a library (e.g. /config from before that was checked), with why.
+  const refused = Object.fromEntries(getSettings().allowedRoots.map((r) => [r, rootRefusal(r, CONFIG_DIR)]).filter(([, why]) => why));
+  return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots, refused };
 });
 
 // ---------------------------------------------------------------- library import / sync, managed shows
@@ -575,7 +609,7 @@ app.post<{ Body: { tvdbIds?: number[]; on?: boolean; live?: boolean } }>("/api/m
   return setManaged(ids, req.body?.on !== false, { live: req.body?.live === true });
 });
 app.post<{ Body: { tvdbIds?: number[] } }>("/api/managed/preview", async (req) => managePreview((req.body?.tvdbIds ?? []).map(id).slice(0, 500)));
-app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6) })), grabs: listGrabs(30, { episodesOnly: true }) }));
+app.get("/api/managed", async () => ({ dryRun: getSettings().managed.dryRun, backlogOn: getSettings().backlog.enabled, shows: listManaged().map((m) => ({ ...m, cover: seriesByTvdb(m.tvdbId)?.cover ?? null, schedule: scheduleFor(m.tvdbId, 6), missing: missingScoped(m.tvdbId, m.seriesId).length })), grabs: listGrabs(30, { episodesOnly: true }) }));
 app.put<{ Params: { tvdbId: string }; Body: { dryRun?: boolean } }>("/api/managed/:tvdbId", async (req) => {
   writable();
   if (typeof req.body?.dryRun !== "boolean") throw fail("dryRun must be true or false");
@@ -770,7 +804,7 @@ app.post("/api/downloads/cleanup/plan", async () => {
 });
 app.post<{ Body: { only?: string[] } }>("/api/downloads/cleanup/run", async (req) => {
   writable();
-  if (getSettings().downloads.cleanup === "off") throw fail("The clean-up is switched off (Settings → Downloads)", 409);
+  if (getSettings().downloads.cleanup === "off") throw fail("The clean-up is switched off (Settings → Download folders)", 409);
   const steps = ["retry", "leftover", "quarantine"] as const;
   const only = req.body?.only?.filter((x): x is (typeof steps)[number] => (steps as readonly string[]).includes(x));
   return { results: await runCleanup({ only, userAsked: true }) };
@@ -785,11 +819,12 @@ app.put<{ Body: { allowDelete?: boolean } }>("/api/downloads/allow-delete", asyn
 
 // ---------------------------------------------------------------- notifications (bell + test)
 
-app.get("/api/notifications", async () => bell());
+// Setup problems (a download client that fails, a metadata download that failed) count as "Needs action" too.
+app.get("/api/notifications", async () => withSetupProblems(bell(), await setupProblems()));
 app.post<{ Body: { upToId?: number } }>("/api/notifications/read", async (req) => {
   writable();
   markRead(Number(req.body?.upToId) || 0);
-  return bell();
+  return withSetupProblems(bell(), await setupProblems());
 });
 app.post("/api/notifications/test", async () => {
   const s = getSettings().notify;
@@ -1023,7 +1058,7 @@ app.put<{ Params: { tvdbId: string }; Body: { action?: string } }>("/api/fillin/
 });
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
   writable();
-  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
   return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
 });
 app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wanted", async (req) => {
@@ -1034,7 +1069,8 @@ app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wante
 });
 app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:id/autosearch", async (req) => {
   writable();
-  if (!prowlarrConfigured()) throw fail("Prowlarr isn't set up");
+  // The same indexers as "Pick a version…" (Prowlarr or AnimeArr's own), not Prowlarr only.
+  if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
   return autoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
 });
 app.get("/api/files/summary", async () => fileSummary());
@@ -1230,7 +1266,11 @@ app.get("/api/system", async () => ({
   uptime: Date.now() - STARTED,
   node: process.version,
   configDir: CONFIG_DIR,
-  jobs: listJobs(),
+  // Job errors in plain words ("AniDB titles download failed (HTTP 403)" → "AniDB refused…"), raw text as detailRaw.
+  jobs: listJobs().map((j) => {
+    const h = j.state === "error" ? humanizeError(String(j.detail ?? "")) : { message: j.detail, detail: null };
+    return { ...j, detail: h.message, detailRaw: h.detail };
+  }),
   metadata: metadataStatus(),
   aliasKeys: aliasIndex().size,
   db: { corrupt: dbState.corrupt, detail: dbState.detail },
@@ -1239,6 +1279,8 @@ app.get("/api/system", async () => ({
   memoryMb: Math.round(process.memoryUsage().rss / 1e6),
 }));
 app.post("/api/system/metadata", async () => refreshMetadata(false));
+// Read-only: which release is newest on GitHub (offline → { offline: true }).
+app.get("/api/system/updates", async () => checkForUpdates());
 app.post("/api/system/backup", async () => {
   writable();
   return { name: backupNow("manual") };

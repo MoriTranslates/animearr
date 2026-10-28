@@ -3,7 +3,7 @@ import { api } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import type { LanguageProfile } from "./profiles";
-import { Confirm, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";
+import { Confirm, ErrorText, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";
 
 /** Dialogs and controls for Settings → Indexers / Download clients: added clients, direct indexers, the catalogue. */
 
@@ -210,7 +210,7 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
           {t("common.add")}
         </button>
       </details>
-      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.text}</p>}
+      {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>}
       <div className="row between">
         {c.id ? (
           <button className="danger" disabled={busy} onClick={() => setDel(true)}>
@@ -359,12 +359,6 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
           {ix.kind === "rss" && <span className="muted small">{t("ix.rssHelp")}</span>}
         </label>
         {api2 && (
-          <label>
-            {t("ix.apiPath")}
-            <input value={ix.apiPath} onChange={(e) => set({ apiPath: e.target.value })} placeholder="/api" />
-          </label>
-        )}
-        {api2 && (
           <label className="field">
             {t(ix.protocol === "torrent" ? "ix.passkey" : "settings.apiKey")}
             <SecretInput value={ix.apiKey} onChange={(v) => set({ apiKey: v })} label={t("settings.apiKey")} />
@@ -372,11 +366,30 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
           </label>
         )}
         {api2 && (
-          <label>
-            {t("ix.categories")}
-            <ListInput value={ix.categories} onChange={(v) => set({ categories: v.map(Number).filter((n) => n > 0) })} label={t("ix.categories")} placeholder="5070, 5000, 2000" />
-            <span className="muted small">{t("ix.categoriesHelp")}</span>
-          </label>
+          // Tick-boxes for the usual kinds (the numbers are Newznab/Torznab's); other numbers stay under Advanced.
+          <fieldset className="field cat-boxes">
+            <legend>{t("ix.categories")}</legend>
+            {CATS.map(([n, key]) => (
+              <label key={n} className="check">
+                <input type="checkbox" checked={ix.categories.includes(n)} onChange={(e) => set({ categories: e.target.checked ? [...new Set([...ix.categories, n])] : ix.categories.filter((x) => x !== n) })} /> {t(key)}
+              </label>
+            ))}
+          </fieldset>
+        )}
+        {api2 && (
+          <details className="field">
+            <summary className="small">{t("ix.advanced")}</summary>
+            <label className="field">
+              {t("ix.apiPath")}
+              <input value={ix.apiPath} onChange={(e) => set({ apiPath: e.target.value })} placeholder="/api" />
+              <span className="muted small">{t("ix.apiPathHelp")}</span>
+            </label>
+            <label className="field">
+              {t("ix.categoryNumbers")}
+              <ListInput value={ix.categories} onChange={(v) => set({ categories: v.map(Number).filter((n) => n > 0) })} label={t("ix.categoryNumbers")} placeholder="5070, 5000, 2000" />
+              <span className="muted small">{t("ix.categoriesHelp")}</span>
+            </label>
+          </details>
         )}
         <label>
           {t("clients.priority")}
@@ -403,7 +416,7 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
       <Toggle checked={ix.enabled} onChange={(v) => set({ enabled: v })} label={t("clients.enabled")} />
       {res && (
         <div className={`small ${res.ok ? "good-text" : "warn-text"}`}>
-          <p>{res.text}</p>
+          <p>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>
           {res.sample && (
             <ul className="plain mono muted">
               {res.sample.map((x) => (
@@ -478,6 +491,13 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
     </Modal>
   );
 }
+
+/** The usual Newznab/Torznab categories, as tick-boxes. */
+const CATS: [number, I18nKey][] = [
+  [5070, "ix.cat.anime"],
+  [5000, "ix.cat.tv"],
+  [2000, "ix.cat.movies"],
+];
 
 export const fromEntry = (e: CatalogEntry): DirectIndexer => ({ kind: e.kind, protocol: e.protocol, name: e.name, url: e.url, apiPath: e.apiPath, apiKey: "", categories: e.categories, priority: e.recommended ? 10 : 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [], catalogId: e.id });
 export const customIndexer = (kind: "newznab" | "torznab" | "rss"): DirectIndexer => ({ kind, protocol: kind === "newznab" ? "usenet" : "torrent", name: "", url: "", apiPath: kind === "rss" ? "" : "/api", apiKey: "", categories: kind === "rss" ? [] : [5070, 5000, 2000], priority: 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [], catalogId: null });
@@ -559,12 +579,17 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
   const [key, setKey] = useState("");
   const [list, setList] = useState<{ id: string; name: string; type: string; language: string; feed: string; added: boolean }[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // Shown in the dialog (a toast could hide behind it); empty fields are said, not silently ignored.
+  const [err, setErr] = useState<string | null>(null);
   const load = async () => {
+    setErr(null);
+    if (!url.trim()) return setErr(t("jackett.needUrl"));
+    if (!key.trim()) return setErr(t("jackett.needKey"));
     setBusy(true);
     try {
       setList((await api<{ trackers: NonNullable<typeof list> }>("/jackett/trackers", { body: { url, apiKey: key } })).trackers);
     } catch (e) {
-      toast((e as Error).message, true);
+      setErr((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -582,9 +607,14 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
           <SecretInput value={key} onChange={setKey} label={t("settings.apiKey")} />
         </label>
       </div>
-      <button className="self-start" disabled={busy || !url || !key} onClick={() => void load()}>
-        {t("jackett.load")}
+      <button className="self-start" disabled={busy} onClick={() => void load()}>
+        {busy ? t("common.working") : t("jackett.load")}
       </button>
+      {err && (
+        <p className="warn-text small" role="alert">
+          <ErrorText msg={err} />
+        </p>
+      )}
       {list && !list.length && <p className="muted small">{t("jackett.none")}</p>}
       {list && !!list.length && (
         <ul className="plain stack">

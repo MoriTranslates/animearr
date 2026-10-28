@@ -70,6 +70,8 @@ export function FixHost() {
           })();
         case "indexerHealth":
           return navigate("/settings?tab=indexers");
+        case "openSettings":
+          return navigate(`/settings?tab=${(p as { tab?: string }).tab ?? ""}`);
       }
     };
     window.addEventListener("animearr:fix", on);

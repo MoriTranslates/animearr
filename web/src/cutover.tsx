@@ -24,6 +24,8 @@ export function Cutover() {
   const [msel, setMsel] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<"all" | "ready" | "blocked" | "adopted">("all");
   const [specials, setSpecials] = useState(false);
+  // Hundreds of rows: a search box (title, case-insensitive) narrows shows and movies alike.
+  const [q, setQ] = useState("");
   const [ask, setAsk] = useState<null | { shows: ShowCut[]; movies: MovieCut[] }>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | { kind: "show" | "movie"; id: number; title: string }>(null);
@@ -39,7 +41,10 @@ export function Cutover() {
       </div>
     );
   const p = d.data as Plan;
-  const shown = p.shows.filter((s) => (filter === "ready" ? !s.blockers.length && !s.adopted : filter === "blocked" ? s.blockers.length > 0 : filter === "adopted" ? s.adopted : true));
+  const ql = q.trim().toLowerCase();
+  const hit = (title: string) => !ql || title.toLowerCase().includes(ql);
+  const shownMovies = p.movies.filter((m) => hit(m.title));
+  const shown = p.shows.filter((s) => hit(s.title)).filter((s) => (filter === "ready" ? !s.blockers.length && !s.adopted : filter === "blocked" ? s.blockers.length > 0 : filter === "adopted" ? s.adopted : true));
   const selShows = p.shows.filter((s) => sel.has(s.tvdbId));
   const selMovies = p.movies.filter((m) => msel.has(m.movieId));
   const toggle = (set: Set<number>, fn: (s: Set<number>) => void, id: number) => {
@@ -88,6 +93,11 @@ export function Cutover() {
         <Toggle checked={specials} onChange={setSpecials} label={t("cut.acceptSpecials")} />
       </div>
 
+      <label className="field">
+        {t("cut.searchShows")}
+        <input type="search" value={q} onChange={(e) => (setQ(e.target.value), setSel(new Set()), setMsel(new Set()))} placeholder="Frieren" />
+      </label>
+      {ql && !shown.length && !shownMovies.length && <p className="muted small">{t("cut.searchNone", { q })}</p>}
       <div className="card pad stack">
         <div className="row between">
           <h2>{t("cut.shows")}</h2>
@@ -172,10 +182,10 @@ export function Cutover() {
           <button className="small" disabled={busy} onClick={() => void run("/cutover/match-movies", {}, () => t("cut.matching"))}>
             {t("cut.matchMovies")}
           </button>
-          <button className="small" disabled={busy} onClick={() => setMsel(new Set(p.movies.filter((m) => !m.blockers.length && !m.adopted).map((m) => m.movieId)))}>
+          <button className="small" disabled={busy} onClick={() => setMsel(new Set(shownMovies.filter((m) => !m.blockers.length && !m.adopted).map((m) => m.movieId)))}>
             {t("cut.selectReady")}
           </button>
-          <button className="small" disabled={busy} onClick={() => setMsel(new Set(p.movies.filter((m) => m.adopted).map((m) => m.movieId)))}>
+          <button className="small" disabled={busy} onClick={() => setMsel(new Set(shownMovies.filter((m) => m.adopted).map((m) => m.movieId)))}>
             {t("cut.selectAdopted")}
           </button>
           <button className="primary small" disabled={busy || !selMovies.length || selMovies.some((m) => m.adopted)} onClick={() => run("/cutover/adopt", { movieIds: [...msel] }, (r) => t("cut.adopted", { n: (r as { movies: { ok: boolean }[] }).movies.filter((x) => x.ok).length }))}>
@@ -186,7 +196,7 @@ export function Cutover() {
           </button>
         </div>
         <ul className="rename-list small">
-          {p.movies.map((m) => (
+          {shownMovies.map((m) => (
             <li key={m.movieId}>
               <label className="row">
                 <input type="checkbox" checked={msel.has(m.movieId)} disabled={!m.adopted && m.blockers.length > 0} onChange={() => toggle(msel, setMsel, m.movieId)} />

@@ -70,21 +70,25 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
         {d.rules.map((r) => {
           const live = st.data?.rules.find((x) => x.id === r.id);
           return (
-            <div key={r.id} className="card pad form">
+            <div key={r.id} className="card pad form dl-rule">
               <div className="row between">
-                <input value={r.name} onChange={(e) => setRule(r.id, { name: e.target.value })} aria-label={t("dl.name")} />
+                <label className="field grow">
+                  {t("dl.name")}
+                  <input value={r.name} onChange={(e) => setRule(r.id, { name: e.target.value })} />
+                </label>
                 {live?.paused && <Chip tone="warn">{t("dl.pausing")}</Chip>}
                 <Toggle checked={r.enabled} onChange={(v) => setRule(r.id, { enabled: v })} label={t("dl.enabled")} />
               </div>
               <label>
                 {t("dl.when")}
-                <span className="row">
-                  <select value={r.metric} onChange={(e) => setRule(r.id, { metric: e.target.value as FolderRule["metric"] })}>
-                    <option value="sizeGb">{t("dl.metric.sizeGb")}</option>
-                    <option value="items">{t("dl.metric.items")}</option>
-                  </select>
-                  <NumberInput value={r.threshold} min={0} max={1000000} onChange={(v) => setRule(r.id, { threshold: v })} label={t("dl.threshold")} />
-                </span>
+                <select value={r.metric} onChange={(e) => setRule(r.id, { metric: e.target.value as FolderRule["metric"] })}>
+                  <option value="sizeGb">{t("dl.metric.sizeGb")}</option>
+                  <option value="items">{t("dl.metric.items")}</option>
+                </select>
+              </label>
+              <label>
+                {t(r.metric === "items" ? "dl.thresholdItems" : "dl.thresholdGb")}
+                <NumberInput value={r.threshold} min={0} max={1000000} onChange={(v) => setRule(r.id, { threshold: v })} label={t(r.metric === "items" ? "dl.thresholdItems" : "dl.thresholdGb")} />
               </label>
               <label>
                 {t("dl.then")}
@@ -162,7 +166,8 @@ function Cleanup({ s, set, onRan }: { s: S; set: (p: Partial<S["downloads"]>) =>
           ))}
         </select>
       </label>
-      <Chip tone={d.allowDelete ? "good" : "warn"}>{d.allowDelete ? t("dl.deleteOn") : t("dl.deleteOff")}</Chip>
+      {/* A sentence, not a chip: chips don't wrap, and this one pushed the page sideways on a phone. */}
+      <p className={`small ${d.allowDelete ? "good-text" : "warn-text"}`}>{d.allowDelete ? t("dl.deleteOn") : t("dl.deleteOff")}</p>
       <button
         className="small self-start"
         disabled={busy}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
-import { navigate } from "../App";
+import { Link, navigate } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, relTime, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
@@ -11,7 +11,7 @@ const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = 
 export function Managed({ status }: { status: Status }) {
   usePageTitle(t("managed.title"));
   const toast = useToast();
-  const data = useLoad(() => api<{ dryRun: boolean; shows: ManagedShow[]; grabs: Grab[] }>("/managed"), []);
+  const data = useLoad(() => api<{ dryRun: boolean; backlogOn?: boolean; shows: ManagedShow[]; grabs: Grab[] }>("/managed"), []);
   // Refresh while the page is open, so grabs and imports move on by themselves.
   useEffect(() => {
     const id = setInterval(() => void data.reload(), 15_000);
@@ -24,7 +24,10 @@ export function Managed({ status }: { status: Status }) {
   const attention = shows.filter((m) => m.schedule.some((x) => x.state === "retry" || x.state === "gave-up"));
   const pending = (m: ManagedShow) => m.schedule.some((x) => x.state !== "done");
   const scheduled = shows.filter((m) => !attention.includes(m) && pending(m));
-  const quiet = shows.filter((m) => !attention.includes(m) && !pending(m));
+  const idle = shows.filter((m) => !attention.includes(m) && !pending(m));
+  // Nothing on the 30-day schedule but older episodes missing: they're the missing-episode search's (not "nothing to do").
+  const older = idle.filter((m) => (m.missing ?? 0) > 0);
+  const quiet = idle.filter((m) => !older.includes(m));
   const sonarrToo = shows.filter((m) => !m.unmonitoredInSonarr);
   const card = (m: ManagedShow) => (
     <article key={m.tvdbId} className="card show-card">
@@ -97,6 +100,25 @@ export function Managed({ status }: { status: Status }) {
         <>
           <h2 className="section-title">{t("managed.group.scheduled", { n: scheduled.length })}</h2>
           <div className="list">{scheduled.map(card)}</div>
+        </>
+      )}
+      {!!older.length && (
+        <>
+          <h2 className="section-title">{t("managed.group.older", { n: older.length })}</h2>
+          <p className="muted small">
+            {t(data.data?.backlogOn ? "managed.olderOn" : "managed.olderOff")}{" "}
+            {!data.data?.backlogOn && <Link to="/settings?tab=safety">{t("managed.olderOpen")}</Link>}
+          </p>
+          <ul className="plain stack">
+            {older.map((m) => (
+              <li key={m.tvdbId} className="row">
+                <ShowLink tvdbId={m.tvdbId} title={m.title}>
+                  {m.title}
+                </ShowLink>
+                <span className="muted small">{t("managed.olderN", { n: m.missing ?? 0 })}</span>
+              </li>
+            ))}
+          </ul>
         </>
       )}
       {!!quiet.length && (

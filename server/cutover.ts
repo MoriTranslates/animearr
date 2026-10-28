@@ -68,7 +68,7 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   const specials = withFile.filter((e) => e.season === 0); // refined below: specials AniDB places on S0 are tracked
   const base = { tvdbId: s.tvdb_id, sonarrId: s.id, title: s.title, path: s.path, sonarrEpisodes: sonarrEps.length, files: fileRows.length, filesScanned: scanned, specialsWithFiles: specials.length, adopted };
   if (!first) {
-    blockers.push("AnimeArr's catalog has no AniList entry for this TVDB series yet (Settings → Metadata refresh, or it isn't on AniList)");
+    blockers.push("Couldn't find this show on AniList (no AniList entry for it yet): pick it by hand, or refresh the anime lists (Settings → Metadata)");
     return { ...base, entries: 0, animearrEpisodes: 0, filesCovered: 0, blockers, warnings };
   }
   const built = buildEpisodes({ id: 0, tvdb_id: s.tvdb_id, anilist_id: first.anilist_id, synthetic: 0 });
@@ -76,9 +76,9 @@ export function showCut(s: { id: number; tvdb_id: number; title: string; path: s
   // Specials AniDB places on TVDB season 0 are tracked like any episode; only the rest need a confirmation.
   const untracked = specials.filter((e) => !built.byKey.has(`0x${e.episode}`));
   const coveredFiles = new Set(withFile.filter((e) => built.byKey.has(`${e.season}x${e.episode}`)).map((e) => e.file_id)).size;
-  if (missing.length) blockers.push(`${missing.length} episode(s) with files don't exist in AnimeArr's numbering (${missing.slice(0, 4).map((e) => label(e.season, e.episode)).join(", ")}${missing.length > 4 ? "…" : ""}); they would be left untracked`);
+  if (missing.length) blockers.push(`${missing.length} ${missing.length === 1 ? "episode" : "episodes"} with files don't exist in AnimeArr's numbering (${missing.slice(0, 4).map((e) => label(e.season, e.episode)).join(", ")}${missing.length > 4 ? "…" : ""}); they would be left untracked`);
   if (scanned < fileRows.length) blockers.push(`${fileRows.length - scanned} of Sonarr's ${fileRows.length} files aren't in AnimeArr's own file records yet (Library files scan); without them AnimeArr would search those episodes again`);
-  if (untracked.length && !opts.acceptSpecials) blockers.push(`${untracked.length} special(s) with files (season 0) wouldn't be tracked by AnimeArr (${untracked.slice(0, 4).map((e) => label(0, e.episode)).join(", ")}${untracked.length > 4 ? "…" : ""}; AniDB doesn't place them yet); the files stay — confirm to go ahead anyway`);
+  if (untracked.length && !opts.acceptSpecials) blockers.push(`${untracked.length} ${untracked.length === 1 ? "special" : "specials"} with files (season 0) wouldn't be tracked by AnimeArr (${untracked.slice(0, 4).map((e) => label(0, e.episode)).join(", ")}${untracked.length > 4 ? "…" : ""}; its anime lists don't know where they belong yet); the files stay — confirm to go ahead anyway`);
   // Numbering differences, season by season (both ways).
   const seasons = new Set([...sonarrEps.filter((e) => e.season > 0).map((e) => e.season), ...built.eps.map((e) => e.season)]);
   const diffs: string[] = [];
@@ -184,8 +184,8 @@ export async function cutoverPlan(deps = { sonarrLists: sonarr.getImportLists, s
   const checklist: { item: string; ok: boolean; detail: string }[] = [];
   checklist.push({ item: "AnimeArr imports by itself", ok: s.importer.engine === "animearr" && s.importer.allowReal && s.importer.movies, detail: "required for the switch: Settings → Media management → Importer (own importer, real imports, movie imports)" });
   checklist.push({ item: "No review pause on imports", ok: s.importer.realBudget < 0, detail: `real-import budget is ${s.importer.realBudget < 0 ? "unlimited" : s.importer.realBudget}; shows only AnimeArr has wait in "needs attention" while it's paused` });
-  checklist.push({ item: "AnimeArr scans its library files", ok: s.library.scan, detail: "Settings → Safety → Library files: needed so AnimeArr knows every file" });
-  checklist.push({ item: "Plex scans after AnimeArr's imports", ok: s.plex.enabled && !!s.plex.url, detail: "Settings → Connections → Plex (Sonarr's/Radarr's Plex connection won't see AnimeArr's imports)" });
+  checklist.push({ item: "AnimeArr scans its library files", ok: s.library.scan, detail: "Settings → System → Library files: needed so AnimeArr knows every file" });
+  checklist.push({ item: "Plex scans after AnimeArr's imports", ok: s.plex.enabled && !!s.plex.url, detail: "Settings → Media servers (Sonarr's/Radarr's Plex connection won't see AnimeArr's imports)" });
   try {
     const lists = (await deps.sonarrLists()).filter((l) => l.enabled !== false && l.enableAutomaticAdd !== false);
     checklist.push({ item: "Sonarr import lists", ok: !lists.length, detail: lists.length ? `${lists.map((l) => l.name).join(", ")} could add anime back (removed shows get an import-list exclusion)` : "none adding automatically" });

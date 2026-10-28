@@ -8,6 +8,7 @@ import { db } from "./db.js";
 import { getSettings } from "./settings.js";
 import { testProwlarr } from "./arr/prowlarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
+import { humanizeError } from "./errors.js";
 import { testSonarr } from "./arr/sonarr.js";
 import { testRadarr } from "./arr/radarr.js";
 import { testPlex } from "./plex.js";
@@ -16,7 +17,7 @@ import { getSettings as settingsNow } from "./settings.js";
 import { clientConfigured, testClient } from "./arr/clients.js";
 import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
-export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
+export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; errorDetail: string | null; grabs: number; lastGrabAt: number | null }
 export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null; breaker?: ReturnType<typeof breakerList>[number] | null; pick?: { use: boolean; fit: AnimeFit | null; animeCategories: boolean; isNew: boolean } | null }
 
 const TIMEOUT = 6000;
@@ -36,6 +37,14 @@ let cache: { at: number; v: Promise<Awaited<ReturnType<typeof build>>> } | null 
 /** After a change in Settings: the next overview is fresh. */
 export const invalidateConnections = () => void (cache = null);
 /** Cached for 20 s (the page polls; the services shouldn't be hammered). */
+const NAMES = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr" } as const;
+/** A status card's error in plain words, naming the service and its address; the raw text as `errorDetail`. */
+function plain(service: string, url: string, error: string | null) {
+  if (!error) return { error: null, errorDetail: null };
+  const h = humanizeError(error, { service, url });
+  return { error: h.message, errorDetail: h.detail };
+}
+
 export function connectionsOverview(fresh = false) {
   if (!fresh && cache && Date.now() - cache.at < 20_000) return cache.v;
   cache = { at: Date.now(), v: build() };
@@ -65,7 +74,7 @@ async function build() {
     configured: conf[key],
     ok: p ? p.ok : null,
     version: p?.v && typeof p.v === "object" && "version" in (p.v as object) ? String((p.v as { version: unknown }).version ?? "") || null : null,
-    error: p?.error ?? null,
+    ...plain(NAMES[key], s[key].url, p?.error ?? null),
     grabs: use.n,
     lastGrabAt: use.last,
   });
@@ -83,7 +92,7 @@ async function build() {
     (settingsNow().extraClients ?? []).map(async (c) => {
       const p = clientConfigured(c) ? await probe(() => testClient(c)) : null;
       const u = usage("client = ?", c.id);
-      return { key: c.id, type: c.type, name: c.name, configured: clientConfigured(c), ok: p ? p.ok : null, version: p?.v?.version ?? null, error: p?.error ?? null, grabs: u.n, lastGrabAt: u.last, priority: c.priority, enabled: c.enabled };
+      return { key: c.id, type: c.type, name: c.name, configured: clientConfigured(c), ok: p ? p.ok : null, version: p?.v?.version ?? null, ...plain(c.name, (c as { url?: string }).url ?? "", p?.error ?? null), grabs: u.n, lastGrabAt: u.last, priority: c.priority, enabled: c.enabled };
     }),
   );
   for (const ix of listIndexers())

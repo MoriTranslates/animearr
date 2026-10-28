@@ -4,7 +4,14 @@ import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
 import { Link } from "../App";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast, ReleaseName } from "../ui";
+import { Chip, Confirm, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast, ReleaseName } from "../ui";
+
+/** What an Undo will do, in words ("Frieren stops being managed by AnimeArr"). */
+function undoText(x: Decision) {
+  const key = `undo.what.${x.undo?.action ?? ""}` as I18nKey;
+  const s = t(key, { title: x.title });
+  return s === key ? t("undo.what.generic", { title: x.title }) : s;
+}
 
 type Tone = "good" | "bad" | "warn" | "info" | "accent";
 const KIND_TONE: Record<string, Tone> = {
@@ -88,6 +95,7 @@ export const isBackground = (d: Decision) => d.kind === "search" || (d.kind === 
 function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () => void; showDate?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [undoing, setUndoing] = useState<Decision | null>(null);
   const steps = [...ev.items].sort((a, b) => a.at - b.at || a.id - b.id);
   // The headline is the newest meaningful step: a problem, the final import, or the grab (not a clean-up note).
   const newest = [...ev.items].sort((a, b) => b.at - a.at || b.id - a.id);
@@ -145,23 +153,32 @@ function EventCard({ ev, onUndone, showDate = false }: { ev: Ev; onUndone?: () =
             {open ? "▾" : "▸"} {t("activity.detailsShort")}
           </button>
           {undoable.map((x) => (
-            <button
-              key={x.id}
-              className="small"
-              onClick={async () => {
+            <button key={x.id} className="small" onClick={() => setUndoing(x)}>
+              {t("common.undo")}
+              {undoable.length > 1 ? `: ${kindLabel(kindOf(x))}` : ""}
+            </button>
+          ))}
+          {/* Undo says what it will undo and asks first (it used to un-manage a show in one tap). */}
+          {undoing && (
+            <Confirm
+              title={t("undo.confirmTitle")}
+              confirmLabel={t("common.undo")}
+              onClose={() => setUndoing(null)}
+              onConfirm={async () => {
                 try {
-                  await api(`/activity/${x.id}/undo`, { body: {} });
+                  await api(`/activity/${undoing.id}/undo`, { body: {} });
                   toast(t("common.undone"));
+                  setUndoing(null);
                   onUndone?.();
                 } catch (e) {
                   toast((e as Error).message, true);
                 }
               }}
             >
-              {t("common.undo")}
-              {undoable.length > 1 ? `: ${kindLabel(kindOf(x))}` : ""}
-            </button>
-          ))}
+              <p>{undoText(undoing)}</p>
+              <p className="muted small">{undoing.why}</p>
+            </Confirm>
+          )}
           {ev.items.some((x) => x.undoneAt) && <Chip tone="info">{t("common.undone")}</Chip>}
         </div>
         {open && (

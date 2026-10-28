@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { api, type Settings as S, withBase } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Confirm, dateTime, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
+import { Confirm, dateTime, ErrorText, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
+import { rememberDetail } from "./errors";
 import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, CLIENT_INFO, isBlackholeType, type CatalogEntry, type DirectIndexer, type ExtraClient, type ExtraType } from "./connectionsEdit";
 
 /**
@@ -11,7 +12,7 @@ import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newCl
  * with Test / Save / Delete. Usenet on the left, torrents on the right.
  */
 
-export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; grabs: number; lastGrabAt: number | null }
+export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; errorDetail?: string | null; grabs: number; lastGrabAt: number | null }
 export interface Breaker { indexerId: number; name: string; state: "on" | "off" | "kept-off"; streak: number; offSince: number | null; nextCheck: number | null; lastError: string | null; lastKind: "download" | "search" | null }
 export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null; breaker?: Breaker | null; pick?: { use: boolean; fit: "great" | "general" | "not" | null; animeCategories: boolean; isNew: boolean } | null }
 
@@ -158,7 +159,10 @@ export function HowItFits({ here }: { here: "indexers" | "clients" | "media" }) 
 export function StatusLine({ st, loading }: { st?: ConnStatus; loading?: boolean }) {
   if (loading && !st) return <span className="quiet-status"><span className="dot off" aria-hidden="true" />{t("conn.checking")}</span>;
   if (!st || !st.configured) return <span className="quiet-status"><span className="dot off" aria-hidden="true" />{t("conn.notSetUp")}</span>;
-  if (st.ok === false) return <span className="quiet-status bad-text"><span className="dot bad" aria-hidden="true" />{t("conn.cantReach", { why: st.error ?? "" })}</span>;
+  if (st.ok === false) {
+    rememberDetail(st.error ?? "", st.errorDetail);
+    return <span className="quiet-status bad-text"><span className="dot bad" aria-hidden="true" /><ErrorText msg={t("conn.cantReach", { why: st.error ?? "" })} /></span>;
+  }
   return <span className="quiet-status"><span className="dot good" aria-hidden="true" />{st.version ? t("conn.connectedV", { version: st.version.replace(/^v/i, "") }) : t("conn.connected")}</span>;
 }
 
@@ -298,7 +302,7 @@ function PrimaryFields({ k, draft, set }: { k: Key; draft: S; set: (fn: (x: S) =
     <div className="form">
       <label>
             {t("settings.url")}
-            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : "http://192.168.1.10:8989"} />
+            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : k === "radarr" ? "http://192.168.1.10:7878" : k === "plex" ? "http://192.168.1.10:32400" : "http://192.168.1.10:8989"} />
           </label>
           {k === "qbittorrent" ? (
             <>
@@ -452,6 +456,7 @@ function ClientFlags({ priority, enabled }: { priority: number; enabled: boolean
 
 export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   const o = useOverview();
+  const toast = useToast();
   const [edit, setEdit] = useState<Key | null>(null);
   const [pick, setPick] = useState<Protocol | null>(null);
   const [ixEdit, setIxEdit] = useState<{ ix: DirectIndexer; entry: CatalogEntry | null } | null>(null);
@@ -531,7 +536,7 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
             <ConnCard k="prowlarr" st={prow} loading={o.loading} onEdit={() => setEdit("prowlarr")} extra={prow?.configured ? <span className="muted small">{t("conn.prowlarrSync")}</span> : null} />
             {prow?.configured && (
               <div className="row small">
-                <button className="small" onClick={() => void o.fresh()}>
+                <button className="small" onClick={() => void o.fresh().then(() => toast(t("conn.synced")))}>
                   ↻ {t("conn.syncNow")}
                 </button>
                 {s.prowlarr.url && (

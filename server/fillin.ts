@@ -8,7 +8,7 @@ import { isDropped } from "./dropped.js";
 import { logDecision } from "./activity.js";
 import { cache, db, dbState, setJob } from "./db.js";
 import { listManaged, setManaged } from "./managed.js";
-import { inScope, scopeFor, setScope, type ScopeEp } from "./scope.js";
+import { missingScoped, scopeFor, setScope } from "./scope.js";
 import { getSettings } from "./settings.js";
 
 const DAY = 86_400_000;
@@ -19,8 +19,7 @@ interface Row { tvdb_id: number; position: number; state: "queued" | "active" | 
 export function missingInScope(tvdbId: number, now = Date.now()) {
   const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
   if (!s) return null;
-  const eps = cache.prepare("SELECT id, season, air_utc, has_file, monitored FROM episodes WHERE series_id = ?").all(s.id) as unknown as ScopeEp[];
-  return inScope(scopeFor(tvdbId), eps, now).filter((e) => !e.has_file && e.air_utc !== null && e.air_utc <= now).length;
+  return missingScoped(tvdbId, s.id, now).length;
 }
 
 export function addToQueue(tvdbIds: number[], now = Date.now()) {

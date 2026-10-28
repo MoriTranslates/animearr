@@ -2,7 +2,8 @@
  * "Open on your phone": a QR code of AnimeArr's address (generated in the browser, no outside service), the address
  * as text with Copy, and how to add it to the home screen (AnimeArr is a PWA).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { copyText, selectText } from "./errors";
 import { Smartphone } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { api } from "./api";
@@ -42,31 +43,22 @@ export function PhonePanel() {
   const [info, setInfo] = useState<PhoneInfo | null>(null);
   useEffect(() => void api<PhoneInfo>("/phone").then(setInfo, () => setInfo({ externalUrl: "", lan: [], bypassLocal: false })), []);
   const { url, sameWifi } = phoneUrl(info);
+  const codeRef = useRef<HTMLElement>(null);
   return (
     <div className="phone-panel">
       <QrSvg text={url} />
       <div className="stack">
         <div className="row phone-url">
-          <code className="mono">{url}</code>
+          <code className="mono" ref={codeRef}>{url}</code>
           <button
             type="button"
             className="small"
-            onClick={() => {
-              // navigator.clipboard only exists on HTTPS/localhost; a plain-HTTP LAN address needs the old way.
-              const fallback = () => {
-                const ta = document.createElement("textarea");
-                ta.value = url;
-                ta.setAttribute("readonly", "");
-                ta.style.position = "fixed";
-                ta.style.opacity = "0";
-                document.body.appendChild(ta);
-                ta.select();
-                const ok = document.execCommand("copy");
-                ta.remove();
-                toast(ok ? t("phone.copied") : t("phone.copyFailed"), !ok);
-              };
-              if (navigator.clipboard) void navigator.clipboard.writeText(url).then(() => toast(t("phone.copied")), fallback);
-              else fallback();
+            onClick={async () => {
+              // The Clipboard API is missing on a plain-http LAN address; copyText falls back to the old way. If both
+              // fail, the address is selected so Ctrl+C (or a long press) copies it.
+              if (await copyText(url)) return toast(t("phone.copied"));
+              selectText(codeRef.current);
+              toast(t("phone.copyFailed"), true);
             }}
           >
             {t("phone.copy")}

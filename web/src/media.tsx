@@ -48,6 +48,8 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
     <div className="stack">
       <ImporterCard s={s} />
       <div className="row">
+        {/* Only with Sonarr or Radarr set up (without them it could only fail). */}
+        {!!((s.sonarr.url && s.sonarr.apiKey) || (s.radarr.url && s.radarr.apiKey)) && (
         <button
           className="small"
           onClick={async () => {
@@ -62,6 +64,7 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
         >
           ⇣ {t("media.copyFromArr")}
         </button>
+        )}
         <Toggle checked={adv} onChange={setAdv} label={t("media.showAdvanced")} />
       </div>
 
@@ -115,7 +118,7 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="card pad form">
         <h2>{t("media.importing")}</h2>
         {sel("episodeTitleRequired", "media.titleRequired", ["always", "bulkSeasonReleases", "never"])}
-        {adv && <Toggle checked={m.skipFreeSpaceCheck} onChange={(v) => set({ skipFreeSpaceCheck: v })} label={t("media.skipFreeSpace")} />}
+        {adv && <Toggle checked={m.skipFreeSpaceCheck} onChange={(v) => set({ skipFreeSpaceCheck: v })} label={t("media.skipFreeSpace")} help={t("media.freeSpaceHelp")} />}
         {adv && (
           <label>
             {t("media.minFreeSpace")}
@@ -136,8 +139,8 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
 
       <div className="card pad form">
         <h2>{t("media.fileManagement")}</h2>
-        <Toggle checked={m.unmonitorDeleted} onChange={(v) => set({ unmonitorDeleted: v })} label={t("media.unmonitorDeleted")} />
-        {adv && sel("fileDate", "media.fileDate", ["none", "localAirDate", "utcAirDate"])}
+        {/* Sonarr's "unmonitor deleted episodes", "change file date", "rescan after refresh" and "analyse video files"
+            are kept in the settings (Copy from Sonarr fills them) but hidden: AnimeArr doesn't use them. */}
         <label>
           {t("media.recycleBin")}
           <input value={m.recycleBin} onChange={(e) => set({ recycleBin: e.target.value })} placeholder="/media/Recycle/animearr/" />
@@ -146,22 +149,27 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
           {t("media.recycleDays")}
           <NumberInput value={m.recycleBinCleanupDays} min={0} max={365} onChange={(v) => set({ recycleBinCleanupDays: v })} label={t("media.recycleDays")} />
         </label>
-        {adv && sel("rescanAfterRefresh", "media.rescan", ["always", "afterManual", "never"])}
-        {adv && <Toggle checked={m.analyseVideoFiles} onChange={(v) => set({ analyseVideoFiles: v })} label={t("media.analyse")} />}
       </div>
 
       {adv && (
         <div className="card pad form">
           <h2>{t("media.permissions")}</h2>
+          <p className="muted small">{t("media.permissionsHelp")}</p>
           <Toggle checked={m.setPermissions} onChange={(v) => set({ setPermissions: v })} label={t("media.setPermissions")} />
-          <label>
-            {t("media.chmod")}
-            <input value={m.chmodFolder} onChange={(e) => set({ chmodFolder: e.target.value.replace(/[^0-7]/g, "").slice(0, 4) })} inputMode="numeric" />
-          </label>
-          <label>
-            {t("media.chown")}
-            <input value={m.chownGroup} onChange={(e) => set({ chownGroup: e.target.value })} />
-          </label>
+          {m.setPermissions && (
+            <>
+              <label>
+                {t("media.chmod")}
+                <input value={m.chmodFolder} onChange={(e) => set({ chmodFolder: e.target.value.replace(/[^0-7]/g, "").slice(0, 4) })} inputMode="numeric" />
+                <span className="muted small">{t("media.chmodHelp")}</span>
+              </label>
+              <label>
+                {t("media.chown")}
+                <input value={m.chownGroup} onChange={(e) => set({ chownGroup: e.target.value })} />
+                <span className="muted small">{t("media.chownHelp")}</span>
+              </label>
+            </>
+          )}
         </div>
       )}
       <RenameAll />
@@ -203,7 +211,9 @@ function ImporterCard({ s }: { s: S }) {
           );
         })}
       </div>
-      <p className="muted small">{t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}.help` as I18nKey)}</p>
+      <p className="small">
+        <b>{t("media.mode.now", { mode: t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}` as I18nKey) })}</b> {t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}.help` as I18nKey)}
+      </p>
       {imp.allowReal && imp.realBudget >= 0 && <Chip tone="warn">{t("media.budget", { n: imp.realBudget })}</Chip>}
       <p className="muted small">{t("media.importerHelp")}</p>
       {ask && (

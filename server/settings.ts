@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { promisify } from "node:util";
-import { db, dbState } from "./db.js";
+import { CONFIG_DIR, db, dbState } from "./db.js";
+import { rootRefusal } from "./roots.js";
 import { open, seal } from "./secretbox.js";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -626,7 +627,13 @@ export function updateSettings(patch: unknown) {
   for (const p of ["remotePathMappings", "localPathMappings", "allowedRoots"] as const) if (allowed[p]) (next as unknown as Record<string, unknown>)[p] = allowed[p];
   for (const p of SECRET_PATHS) if (isMasked(getPath(next, p))) setPath(next as unknown as Record<string, unknown>, p, getPath(cur, p));
   for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex"] as const) next[k].url = trimUrl(next[k].url);
-  next.allowedRoots = next.allowedRoots.map((r) => r.replace(/\/+$/, "")).filter(Boolean);
+  next.allowedRoots = [...new Set(next.allowedRoots.map((r) => r.trim().replace(/\/+$/, "")).filter(Boolean))];
+  // A newly added library folder must be a real one (never /config, AnimeArr's own data, or a system folder).
+  // Ones saved before this check stay (a save elsewhere mustn't fail over them); Settings flags them.
+  for (const r of next.allowedRoots) {
+    const why = cur.allowedRoots.includes(r) ? null : rootRefusal(r, CONFIG_DIR);
+    if (why) throw Object.assign(new Error(why), { statusCode: 400 });
+  }
   if (!next.managed.backoffMin.length) next.managed.backoffMin = DEFAULTS.managed.backoffMin;
   for (const [u, k] of SECRET_FOR_URL) {
     const [svc, field] = k.split(".");

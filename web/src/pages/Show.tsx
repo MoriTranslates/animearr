@@ -172,7 +172,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                     hidden: !h.managed,
                     onSelect: () =>
                       void api(`/managed/${tvdbId}`, { method: "PUT", body: { dryRun: !h.managed?.dryRun } }).then(
-                        () => (toast(h.managed?.dryRun ? t("dry.showOffDone") : t("dry.showOnDone")), void d.reload()),
+                        () => (toast(h.managed?.dryRun ? t(dryRun ? "dry.showOffDoneGlobal" : "dry.showOffDone") : t("dry.showOnDone")), void d.reload()),
                         (e: Error) => toast(e.message, true),
                       ),
                   },

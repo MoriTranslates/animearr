@@ -24,7 +24,7 @@ import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type Searc
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { profileFor } from "./profiles.js";
-import { scopedEpisodeIds } from "./scope.js";
+import { missingScoped, scopedEpisodeIds } from "./scope.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -114,7 +114,7 @@ export function setManaged(tvdbIds: number[], on: boolean, opts: { live?: boolea
       const r = db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO NOTHING").run(tvdbId, s.id, s.title, live ? 0 : 1, Date.now());
       if (r.changes) {
         changed++;
-        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr${live ? "" : " (in dry run: it only logs what it would grab; Settings → Safety → Dry run)"}`, undo: { action: "unmanage", args: { tvdbId } } });
+        logDecision("managed", { tvdbId, title: s.title, why: `${s.title} is now managed by AnimeArr${live ? "" : " (in dry run: it only logs what it would grab; Settings → Automation & safety → Practice mode)"}`, undo: { action: "unmanage", args: { tvdbId } } });
       }
     } else {
       const r = db.prepare("DELETE FROM managed WHERE tvdb_id = ?").run(tvdbId);
@@ -420,19 +420,18 @@ export async function backlogPass(now = Date.now(), opts: { plan?: boolean } = {
 /** What the missing-episode search has to do (for Settings). */
 export function backlogSummary(now = Date.now()) {
   const b = getSettings().backlog;
-  // Older missing episodes inside each show's monitoring scope (what the backlog would actually search).
-  const old = cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?");
-  const count = (m: ManagedRow) => {
-    const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
-    return (old.all(m.seriesId, now - 30 * DAY) as { id: number }[]).filter((e) => scoped.has(e.id)).length;
-  };
+  // Missing episodes (the shared definition, scope.ts) of managed shows; `missing` is the older part this search
+  // covers (aired more than 30 days ago), `missingAll` every one (newer ones are the normal schedule's).
   const all = listManaged();
+  const per = new Map(all.map((m) => [m.tvdbId, missingScoped(m.tvdbId, m.seriesId, now)]));
+  const count = (m: ManagedRow) => (per.get(m.tvdbId) ?? []).filter((e) => e.air_utc! < now - 30 * DAY).length;
   const missing = all.reduce((n, m) => n + count(m), 0);
+  const missingAll = all.reduce((n, m) => n + (per.get(m.tvdbId)?.length ?? 0), 0);
   const liveRows = all.filter((m) => !isDryRun(m.dryRun));
   const live = liveRows.map((m) => m.seriesId);
   const missingLive = liveRows.reduce((n, m) => n + count(m), 0);
   const rows = db.prepare("SELECT state, COUNT(*) AS n FROM search_state WHERE kind = 'backlog' GROUP BY state").all() as { state: string; n: number }[];
-  return { ...b, missing, missingLive, liveShows: live.length, states: Object.fromEntries(rows.map((r) => [r.state, r.n])), searchedLastHour: searchesLastHour(now) };
+  return { ...b, missing, missingAll, missingLive, liveShows: live.length, states: Object.fromEntries(rows.map((r) => [r.state, r.n])), searchedLastHour: searchesLastHour(now) };
 }
 
 let ticking = false;

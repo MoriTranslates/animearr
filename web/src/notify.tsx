@@ -5,8 +5,8 @@ import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, useToast } from "./ui";
 
-interface Bell { unread: number; needs?: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer"; title: string; body: string; read: boolean; action?: boolean; fixes?: import("./api").Fix[] }[] }
-const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌" } as const;
+interface Bell { unread: number; needs?: number; items: { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer" | "setup"; title: string; body: string; read: boolean; action?: boolean; fixes?: import("./api").Fix[] }[] }
+const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌", setup: "🛠️" } as const;
 
 /** The in-app bell: grabbed / imported / failed / paused, newest first; opening it marks them read. */
 export function BellButton() {
@@ -41,7 +41,9 @@ export function BellButton() {
           const fresh = await api<Bell>("/notifications").catch(() => b);
           setB(fresh);
           setTab(fresh?.needs ? "needs" : "recent");
-          if (fresh?.unread && fresh.items[0]) setB(await api<Bell>("/notifications/read", { body: { upToId: fresh.items[0].id } }).catch(() => fresh));
+          // Setup problems (negative ids) aren't stored notifications: the newest stored one marks the read point.
+          const newest = fresh?.items.find((i) => i.id > 0);
+          if (fresh?.unread && newest) setB(await api<Bell>("/notifications/read", { body: { upToId: newest.id } }).catch(() => fresh));
         }}
       >
         <BellIcon className="lucide" aria-hidden="true" />

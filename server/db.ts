@@ -127,7 +127,7 @@ function openUser(): DatabaseSync {
       d.close();
       dbState.corrupt = true;
       dbState.detail = r;
-      console.error(`animearr.db failed its integrity check (${r}). AnimeArr will not write to it. Restore a backup in Settings → Backups, or from ${BACKUP_DIR}.`);
+      console.error(`animearr.db failed its integrity check (${r}). AnimeArr will not write to it. Restore a backup in Settings → System → Backups, or from ${BACKUP_DIR}.`);
       try {
         return new DatabaseSync(USER_DB, { readOnly: true });
       } catch {

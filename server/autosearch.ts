@@ -65,7 +65,7 @@ async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: Search
 export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps): Promise<{ results: AutoOutcome[] }> {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
-  if (!underAllowedRoot(series.path)) throw Object.assign(new Error(`${series.title} isn't in an allowed root folder (Settings → Safety)`), { statusCode: 403 });
+  if (!underAllowedRoot(series.path)) throw Object.assign(new Error(`${series.title} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
   if (episodeIds.length > 26) throw Object.assign(new Error("Search at most 26 episodes at a time"), { statusCode: 400 });
   const all = new Map(episodesFor(tvdbId).map((e) => [e.id, e]));
   const movies = radarrMovieSpecials(series.id);
@@ -151,7 +151,7 @@ export async function autoSearchMovie(movieId: number, opts: { replace?: boolean
   if (!m) throw Object.assign(new Error("Unknown movie"), { statusCode: 404 });
   const label = m.year ? `${m.title} (${m.year})` : m.title;
   const row = cache.prepare("SELECT has_file, path FROM movies WHERE id = ?").get(movieId) as { has_file: number; path: string };
-  if (!underAllowedRoot(row.path)) throw Object.assign(new Error(`${label} isn't in an allowed root folder (Settings → Safety)`), { statusCode: 403 });
+  if (!underAllowedRoot(row.path)) throw Object.assign(new Error(`${label} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
   if (row.has_file && !opts.replace) throw Object.assign(new Error(`${label} already has a file; confirm replacing it`), { statusCode: 409 });
   const minConf = getSettings().managed.minConfidence;
   const res = await deps.search(movieId);
