@@ -34,7 +34,7 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 ### Living with it
 - Home with Airing today (countdowns), Just arrived, Ready to binge; a seasonal calendar; Activity with plain-language
   cards and undo; a bell that only counts what needs you.
-- Installable on phones (QR code in Settings), text size, light/dark, Comic mode, and manga speech-bubble toasts.
+- Installable on phones (QR code in Settings, an "Add to home screen" card on the phone itself), text size, light/dark, Comic mode, and manga speech-bubble toasts.
 - Setup wizard for new users and for people coming from Sonarr/Radarr, with a guided migration.
 - ▶ Trailer on Find & add, the Add dialog and the show page, to see a show's art style first: plays the official
   trailer from YouTube (or Dailymotion); nothing is downloaded or stored but the video's id.

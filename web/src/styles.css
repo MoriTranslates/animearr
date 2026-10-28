@@ -1194,6 +1194,10 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .phone-btn .lucide { width: 20px; height: 20px; }
 @media (max-width: 560px) { .phone-panel { grid-template-columns: 1fr; justify-items: center; } }
 @media (max-width: 760px) { .phone-btn { display: none; } }
+.install-card { display: flex; gap: var(--space-3); align-items: flex-start; }
+.install-icon { width: 28px; height: 28px; flex: none; color: var(--accent-2); }
+.install-card .inline-icon { width: 16px; height: 16px; vertical-align: -3px; }
+.install-card button { min-height: 44px; }
 .track-summary { padding: 8px 10px; border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); border-radius: 4px; }
 .track-summary p { margin: 0; }
 .ep-cell.have.lang-no { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }

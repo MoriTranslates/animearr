@@ -4,9 +4,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyText, selectText } from "./errors";
-import { Smartphone } from "lucide-react";
+import { EllipsisVertical, Share, Smartphone } from "lucide-react";
 import qrcode from "qrcode-generator";
-import { api } from "./api";
+import { api, store } from "./api";
 import { t } from "./i18n";
 import { Modal, useToast } from "./ui";
 
@@ -94,5 +94,87 @@ export function PhoneButton() {
         </Modal>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------- "Add to home screen" on the phone itself
+
+interface InstallPrompt extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }
+let deferred: InstallPrompt | null = null;
+const listeners = new Set<() => void>();
+
+/** Called early (main.tsx): Chrome fires beforeinstallprompt once, often before the card mounts. */
+export function captureInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferred = e as InstallPrompt;
+    listeners.forEach((f) => f());
+  });
+  window.addEventListener("appinstalled", () => {
+    deferred = null;
+    listeners.forEach((f) => f());
+  });
+}
+
+const installed = () => window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const isAndroid = () => /Android/.test(navigator.userAgent);
+
+/** Phones only, until it's installed or dismissed: Install (when the browser offers it) or the two taps to do it. */
+export function InstallCard() {
+  const [, bump] = useState(0);
+  const [hidden, setHidden] = useState(() => store.get("installCardDismissed", false) || installed() || !window.matchMedia?.("(max-width: 760px)").matches);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    listeners.add(f);
+    return () => void listeners.delete(f);
+  }, []);
+  if (hidden || installed()) return null;
+  const dismiss = () => (store.set("installCardDismissed", true), setHidden(true));
+  const ios = isIos();
+  const android = !ios && isAndroid();
+  return (
+    <div className="card pad install-card">
+      <Smartphone className="lucide install-icon" aria-hidden="true" />
+      <div className="stack">
+        <p className="strong">{t("phone.install.title")}</p>
+        {deferred ? (
+          <p className="small muted">{t("phone.install.body")}</p>
+        ) : ios ? (
+          <p className="small">
+            <Share className="lucide inline-icon" aria-hidden="true" /> {t("phone.install.ios")}
+          </p>
+        ) : android ? (
+          <p className="small">
+            <EllipsisVertical className="lucide inline-icon" aria-hidden="true" /> {t("phone.install.android")}
+          </p>
+        ) : (
+          <ul className="small phone-steps">
+            <li><b>iPhone:</b> {t("phone.step.ios")}</li>
+            <li><b>Android:</b> {t("phone.step.android")}</li>
+          </ul>
+        )}
+        <div className="row">
+          {deferred && (
+            <button
+              className="primary"
+              onClick={async () => {
+                const p = deferred;
+                if (!p) return;
+                await p.prompt();
+                if ((await p.userChoice).outcome === "accepted") setHidden(true);
+                deferred = null;
+                bump((n) => n + 1);
+              }}
+            >
+              {t("phone.install.button")}
+            </button>
+          )}
+          <button className="small" onClick={dismiss}>
+            {t("phone.install.dismiss")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
