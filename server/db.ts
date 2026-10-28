@@ -359,6 +359,8 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE recycle_log (path TEXT PRIMARY KEY, at INTEGER NOT NULL, size INTEGER NOT NULL DEFAULT 0);`,
   // 30: smart batch grabs: what a batch grab downloads/imports and what it skips (JSON, see batch.ts)
   `ALTER TABLE grabs ADD COLUMN batch TEXT;`,
+  // 31: AniList trailer per entry ({"site","id"} JSON: YouTube/Dailymotion, played from the site, never downloaded)
+  `ALTER TABLE entries ADD COLUMN trailer TEXT;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

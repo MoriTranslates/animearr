@@ -35,6 +35,8 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
   cards and undo; a bell that only counts what needs you.
 - Installable on phones (QR code in Settings), text size, light/dark, Comic mode, and manga speech-bubble toasts.
 - Setup wizard for new users and for people coming from Sonarr/Radarr, with a guided migration.
+- ▶ Trailer on Find & add, the Add dialog and the show page, to see a show's art style first: plays the official
+  trailer from YouTube (or Dailymotion); nothing is downloaded or stored but the video's id.
 
 ### Running it
 - Multi-arch Docker image (amd64 + arm64), PUID/PGID/UMASK/TZ, URL base for sub-path proxies, Unraid template.

@@ -16,6 +16,8 @@ import { RemoveNative } from "./Add";
 import { AnidbEntries } from "../anidb";
 import { query } from "../App";
 import { languageName } from "../lang";
+import { TrailerButton } from "../trailer";
+import type { Trailer } from "../trailerLinks";
 
 interface Header {
   seriesId: number;
@@ -30,7 +32,7 @@ interface Header {
   cover: string | null;
   banner: string | null;
   color?: string | null;
-  catalog?: { titleNative: string | null; kind: string | null; from: number | null; to: number | null } | null;
+  catalog?: { titleNative: string | null; kind: string | null; from: number | null; to: number | null; trailer?: Trailer | null } | null;
   nextEpisode: { id: number; season: number; episode: number; title: string | null; airUtc: number | null } | null;
   counts: { have: number; aired: number; missing: number; downloading: number; total: number };
   language: { lang: string; withLang: number; noLang?: number; unknown?: number; untagged?: number; have: number };
@@ -241,6 +243,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 <span className="hide-phone"> · {h.profile.name}</span>
                 <ChevronDown className="lucide" aria-hidden="true" />
               </button>
+              <TrailerButton trailer={h.catalog?.trailer} title={h.title} className="glass-btn" />
             </div>
           </div>
         </div>

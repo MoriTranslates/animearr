@@ -10,7 +10,7 @@
  * registered client; at most 1 request per 2 s), TVDB v4 (needs a key; not used yet).
  */
 import { logDecision } from "./activity.js";
-import { mediaByIds, type AniMedia } from "./anilist.js";
+import { mediaByIds, normTrailer, type AniMedia, type Trailer } from "./anilist.js";
 import { fribb } from "./covers.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { animeListEntries, USER_AGENT } from "./metadata.js";
@@ -49,6 +49,7 @@ export interface Entry {
   nextEpisode: number | null;
   nextAt: number | null;
   franchiseId: number | null;
+  trailer: Trailer | null;
 }
 
 const date = (d: { year: number | null; month: number | null; day: number | null }) => (d.year ? `${d.year}-${String(d.month ?? 1).padStart(2, "0")}-${String(d.day ?? 1).padStart(2, "0")}` : null);
@@ -59,23 +60,38 @@ export function parseStreamingTitle(t: string | null): [number, string] | null {
   return m && Number.isInteger(Number(m[1])) ? [Number(m[1]), m[2].trim()] : null;
 }
 
+/** Only the site and the video id are kept (no thumbnail, no video): the page plays it from the site. */
+const storedTrailer = (raw: unknown) => {
+  const tr = normTrailer(raw);
+  return tr ? JSON.stringify({ site: tr.site, id: tr.id }) : null;
+};
+/** A stored trailer column → Trailer (or null). */
+export function trailerOf(col: string | null | undefined): Trailer | null {
+  if (!col) return null;
+  try {
+    return normTrailer(JSON.parse(col));
+  } catch {
+    return null;
+  }
+}
+
 /** Stores one AniList media (and its schedule, titles, relations) with its Anime-Lists mapping. */
 export function upsertMedia(m: AniMedia, anidbId: number | null, now = Date.now()) {
   const al = anidbId ? animeListEntries().get(anidbId) : undefined;
   db.prepare(
     `INSERT INTO entries (anilist_id, anidb_id, mal_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_tv, tmdb_season, tmdb_offset, tmdb_movie, kind, title_romaji, title_english, title_native, synonyms, status,
-       season_year, start_date, end_date, episodes, duration, country, cover, banner, color, description, genres, adult, next_ep, next_at, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       season_year, start_date, end_date, episodes, duration, country, cover, banner, color, description, genres, adult, next_ep, next_at, fetched_at, trailer)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(anilist_id) DO UPDATE SET anidb_id = excluded.anidb_id, mal_id = excluded.mal_id, tvdb_id = excluded.tvdb_id, tvdb_season = excluded.tvdb_season, tvdb_offset = excluded.tvdb_offset,
        tmdb_tv = excluded.tmdb_tv, tmdb_season = excluded.tmdb_season, tmdb_offset = excluded.tmdb_offset, tmdb_movie = excluded.tmdb_movie, kind = excluded.kind, title_romaji = excluded.title_romaji, title_english = excluded.title_english,
        title_native = excluded.title_native, synonyms = excluded.synonyms, status = excluded.status, season_year = excluded.season_year, start_date = excluded.start_date, end_date = excluded.end_date,
        episodes = excluded.episodes, duration = excluded.duration, country = excluded.country, cover = excluded.cover, banner = excluded.banner, color = excluded.color, description = excluded.description,
-       genres = excluded.genres, adult = excluded.adult, next_ep = excluded.next_ep, next_at = excluded.next_at, fetched_at = excluded.fetched_at`,
+       genres = excluded.genres, adult = excluded.adult, next_ep = excluded.next_ep, next_at = excluded.next_at, fetched_at = excluded.fetched_at, trailer = excluded.trailer`,
   ).run(
     m.id, anidbId, m.idMal, al?.tvdbId ?? null, al?.defaultSeason === null || al?.defaultSeason === undefined ? null : String(al.defaultSeason), al?.offset ?? 0, al?.tmdbTv ?? null, al?.tmdbSeason ?? null, al?.tmdbOffset ?? 0, al?.tmdbMovie ?? null,
     m.format, m.title.romaji, m.title.english, m.title.native, JSON.stringify(m.synonyms ?? []), m.status, m.seasonYear ?? m.startDate?.year ?? null, date(m.startDate), date(m.endDate), m.episodes, m.duration,
     m.countryOfOrigin, m.coverImage?.large ?? null, m.bannerImage, m.coverImage?.color ?? null, (m.description ?? "").replace(/<[^>]+>/g, "").slice(0, 4000), JSON.stringify(m.genres ?? []), m.isAdult ? 1 : 0,
-    m.nextAiringEpisode?.episode ?? null, m.nextAiringEpisode ? m.nextAiringEpisode.airingAt * 1000 : null, now,
+    m.nextAiringEpisode?.episode ?? null, m.nextAiringEpisode ? m.nextAiringEpisode.airingAt * 1000 : null, now, storedTrailer(m.trailer),
   );
   // Episodes: air times from the schedule, titles from the streaming list; TMDB/AniDB titles (source) are kept.
   const titles = new Map<number, string>();
@@ -232,12 +248,12 @@ export async function remapNow() {
 
 // ---------------------------------------------------------------- reading
 
-interface Row { anilist_id: number; anidb_id: number | null; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_tv: number | null; tmdb_season: number | null; tmdb_movie: number | null; kind: string | null; title_romaji: string | null; title_english: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; banner: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null; franchise_id: number | null }
+interface Row { anilist_id: number; anidb_id: number | null; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_tv: number | null; tmdb_season: number | null; tmdb_movie: number | null; kind: string | null; title_romaji: string | null; title_english: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; banner: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null; franchise_id: number | null; trailer?: string | null }
 export const toEntry = (r: Row): Entry => ({
   anilistId: r.anilist_id, anidbId: r.anidb_id, tvdbId: r.tvdb_id, tvdbSeason: r.tvdb_season, tvdbOffset: r.tvdb_offset, tmdbTv: r.tmdb_tv, tmdbSeason: r.tmdb_season, tmdbMovie: r.tmdb_movie,
   kind: r.kind, title: r.title_english ?? r.title_romaji ?? r.title_native ?? String(r.anilist_id), titleRomaji: r.title_romaji, titleEnglish: r.title_english, titleNative: r.title_native,
   synonyms: JSON.parse(r.synonyms) as string[], status: r.status, year: r.season_year, startDate: r.start_date, endDate: r.end_date, episodes: r.episodes, duration: r.duration, country: r.country,
-  cover: r.cover, banner: r.banner, description: r.description, genres: JSON.parse(r.genres) as string[], nextEpisode: r.next_ep, nextAt: r.next_at, franchiseId: r.franchise_id,
+  cover: r.cover, banner: r.banner, description: r.description, genres: JSON.parse(r.genres) as string[], nextEpisode: r.next_ep, nextAt: r.next_at, franchiseId: r.franchise_id, trailer: trailerOf(r.trailer),
 });
 
 /** The entries mapped to a TVDB series, in TVDB season order, plus the rest of their franchise. */

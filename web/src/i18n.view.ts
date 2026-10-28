@@ -76,4 +76,10 @@ export const viewStrings = {
   "activity.undo.unblock": "Allow this version again",
   "activity.undo.unblockHelp": "Takes it off the blocklist, so AnimeArr may download it again.",
   "import.state.none": "Nothing here can be imported. Pick another file or episode.",
+  // Trailers play from YouTube/Dailymotion (to see a show's art style); nothing is downloaded.
+  "trailer.button": "▶ Trailer",
+  "trailer.watch": "Watch the trailer for {title}",
+  "trailer.title": "Trailer: {title}",
+  "trailer.note": "Playing from {site}. Nothing is downloaded.",
+  "trailer.open": "Open in {site} ↗",
 };

@@ -7,6 +7,8 @@ import { ScopeFields, type Scope } from "../scope";
 import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { seasonOf } from "../season";
+import { TrailerButton } from "../trailer";
+import type { Trailer } from "../trailerLinks";
 
 interface AddResult {
   anilistId: number;
@@ -22,6 +24,7 @@ interface AddResult {
   tvdbId: number | null;
   inLibrary: { kind: "series" | "movie"; tvdbId?: number; movieId?: number; native: boolean } | null;
   matchedBy: string;
+  trailer?: Trailer | null;
 }
 
 /** AniList formats in plain words. */
@@ -173,6 +176,7 @@ export function Add() {
               <button className="small" onClick={() => setPick(r)}>
                 + {t("add.add")}
               </button>
+              <TrailerButton trailer={r.trailer} title={clean(r.title)} />
             </div>
           </article>
         ))}
@@ -239,6 +243,9 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                 {r.episodes && !movie ? ` · ${t("add.eps", { n: r.episodes })}` : ""}
               </span>
               {!movie && <span className="muted">{r.tvdbId ? t("add.numberedPlex") : t("add.noTvdb")}</span>}
+              <span>
+                <TrailerButton trailer={r.trailer} title={clean(r.title)} />
+              </span>
             </div>
           </div>
           <div className="form">

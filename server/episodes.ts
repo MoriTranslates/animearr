@@ -241,6 +241,8 @@ export function seriesHeader(tvdbId: number) {
         from: yearOf(ents[0].startDate),
         to: ents.some((e) => e.status === "RELEASING" || e.status === "NOT_YET_RELEASED") ? null : yearOf(ents[ents.length - 1].endDate),
         banner: [...ents].reverse().find((e) => e.banner)?.banner ?? null,
+        // From the stored catalog (refreshed with it): no AniList request per page view.
+        trailer: [...ents].reverse().find((e) => e.trailer)?.trailer ?? null,
       }
     : null;
   return {

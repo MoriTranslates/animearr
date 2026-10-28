@@ -14,8 +14,8 @@ import { anidbForTvdb } from "./anidb.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
-import { mediaByIds, searchMedia, type AniMedia, anilistQuery } from "./anilist.js";
-import { rebuildFranchises, upsertMedia } from "./catalog.js";
+import { mediaByIds, normTrailer, searchMedia, type AniMedia, type Trailer, anilistQuery } from "./anilist.js";
+import { rebuildFranchises, trailerOf, upsertMedia } from "./catalog.js";
 import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { fribb } from "./covers.js";
@@ -34,7 +34,7 @@ const episodeId = (row: number, season: number, episode: number) => NATIVE_BASE 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 
 interface NativeRow { id: number; tvdb_id: number; anilist_id: number; synthetic: number; title: string; year: number | null; path: string; root_folder: string; added_at: number }
-interface EntryRow { anilist_id: number; anidb_id: number | null; tvdb_season: string | null; tvdb_offset: number; kind: string | null; title_english: string | null; title_romaji: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date?: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null }
+interface EntryRow { anilist_id: number; anidb_id: number | null; tvdb_season: string | null; tvdb_offset: number; kind: string | null; title_english: string | null; title_romaji: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date?: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null; trailer?: string | null }
 
 export const nativeShows = () => db.prepare("SELECT * FROM native_series ORDER BY id").all() as unknown as NativeRow[];
 export const isNativeTvdb = (tvdbId: number) => !!db.prepare("SELECT 1 FROM native_series WHERE tvdb_id = ?").get(tvdbId);
@@ -257,6 +257,8 @@ export interface AddResult {
   tmdbMovie: number | null;
   inLibrary: { kind: "series" | "movie"; tvdbId?: number; movieId?: number; native: boolean } | null;
   matchedBy: string;
+  /** AniList's trailer (YouTube/Dailymotion id), played from the site: nothing is downloaded. */
+  trailer: Trailer | null;
 }
 
 /** Initials of a title ("Sword Art Online" → "sao", "One Punch Man" → "opm"). */
@@ -339,7 +341,7 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
   for (const { e, by } of local) {
     out.set(e.anilist_id, {
       anilistId: e.anilist_id, title: e.title_english ?? e.title_romaji ?? e.title_native ?? String(e.anilist_id), romaji: e.title_romaji, native: e.title_native, kind: e.kind, year: e.season_year,
-      episodes: e.episodes, status: e.status, cover: e.cover, country: e.country, tvdbId: e.tvdb_id, tmdbMovie: e.tmdb_movie, inLibrary: inLib(e.tvdb_id, e.tmdb_movie, e.anilist_id), matchedBy: by,
+      episodes: e.episodes, status: e.status, cover: e.cover, country: e.country, tvdbId: e.tvdb_id, tmdbMovie: e.tmdb_movie, inLibrary: inLib(e.tvdb_id, e.tmdb_movie, e.anilist_id), matchedBy: by, trailer: trailerOf(e.trailer),
     });
   }
   for (const m of remote) {
@@ -349,7 +351,7 @@ export async function searchAdd(q: string, deps = { search: searchMedia, fribb, 
     const tmdbMovie = map?.tmdbMovie ?? f.anilistToTmdb?.get(m.id) ?? null;
     out.set(m.id, {
       anilistId: m.id, title: m.title.english ?? m.title.romaji ?? m.title.native ?? String(m.id), romaji: m.title.romaji, native: m.title.native, kind: m.format, year: m.seasonYear ?? m.startDate?.year ?? null,
-      episodes: m.episodes, status: m.status, cover: m.coverImage?.large ?? null, country: m.countryOfOrigin, tvdbId: map?.tvdbId ?? null, tmdbMovie, inLibrary: inLib(map?.tvdbId ?? null, tmdbMovie, m.id), matchedBy: "AniList",
+      episodes: m.episodes, status: m.status, cover: m.coverImage?.large ?? null, country: m.countryOfOrigin, tvdbId: map?.tvdbId ?? null, tmdbMovie, inLibrary: inLib(map?.tvdbId ?? null, tmdbMovie, m.id), matchedBy: "AniList", trailer: normTrailer(m.trailer),
     });
   }
   const results = [...out.values()];

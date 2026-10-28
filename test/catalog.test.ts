@@ -43,7 +43,7 @@ test("refresh: library entries via Anime-Lists + Fribb, one hop of relations, fr
   const fribb = async () => ({ at: 0, anidbToAnilist: new Map([[100, 1001], [101, 1002], [102, 1003]]), anilistToAnidb: new Map([[1001, 100], [1002, 101], [1003, 102]]), anilistToTmdb: new Map<number, number>() });
   const all: Record<number, M> = {
     1001: media(1001, "Show", "TV", [[1002, "SEQUEL"]]),
-    1002: media(1002, "Show Season 2", "TV", [[1001, "PREQUEL"], [1003, "SEQUEL"], [4444, "CHARACTER"]], { streamingEpisodes: [{ title: "Episode 3 - The Third One" }], airingSchedule: { nodes: [{ episode: 3, airingAt: 1_700_000_000 }] } }),
+    1002: media(1002, "Show Season 2", "TV", [[1001, "PREQUEL"], [1003, "SEQUEL"], [4444, "CHARACTER"]], { streamingEpisodes: [{ title: "Episode 3 - The Third One" }], airingSchedule: { nodes: [{ episode: 3, airingAt: 1_700_000_000 }] }, trailer: { id: "abc_D-1", site: "youtube", thumbnail: "https://i.ytimg.com/vi/abc_D-1/hqdefault.jpg" } }),
     1003: media(1003, "Show: The Movie", "MOVIE", [[1002, "PREQUEL"]]),
   };
   const asked: number[][] = [];
@@ -54,6 +54,7 @@ test("refresh: library entries via Anime-Lists + Fribb, one hop of relations, fr
   assert.deepEqual(c.entries.map((e) => [e.anilistId, e.tvdbSeason]), [[1001, "1"], [1002, "2"]]);
   assert.deepEqual(c.related.map((e) => e.kind), ["MOVIE"], "the movie joined the franchise (one hop out)");
   assert.equal(c.franchise?.title, "Show");
+  assert.deepEqual(c.entries.map((e) => e.trailer), [null, { site: "youtube", id: "abc_D-1", thumbnail: null }], "trailer kept as site + id only (no thumbnail stored)");
   assert.ok(!db.prepare("SELECT 1 FROM entries WHERE anilist_id = 4444").get(), "character relations aren't followed");
   assert.equal(catalogEpisode(5000, 2, 3, null)?.title, "The Third One");
   const rows = episodeRows(1);

@@ -131,7 +131,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ---------------------------------------------------------------- dialogs
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, className }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -139,6 +139,9 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>("button, select, input")?.focus();
     const onKey = (e: KeyboardEvent) => {
+      // A dialog opened from a dialog (a trailer from the Add sheet): Esc and Tab belong to the top one only.
+      const open = document.querySelectorAll(".modal");
+      if (open[open.length - 1] !== ref.current) return;
       if (e.key === "Escape") close.current();
       if (e.key !== "Tab" || !ref.current) return;
       const items = [...ref.current.querySelectorAll<HTMLElement>("button:not([disabled]), select, input:not([disabled]), a[href]")];
@@ -157,7 +160,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   // would otherwise be centred on the bar and pushed off the top of the screen.
   return createPortal(
     <div className="modal-back" onClick={onClose}>
-      <div className="modal card" role="dialog" aria-modal="true" aria-label={title} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal card${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="card-head">
           <h2>{title}</h2>
           <button className="icon" aria-label={t("common.close")} onClick={onClose}>

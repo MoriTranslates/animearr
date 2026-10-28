@@ -27,6 +27,20 @@ export interface AniMedia {
   airingSchedule: { nodes: { episode: number; airingAt: number }[] };
   nextAiringEpisode: { episode: number; airingAt: number } | null;
   streamingEpisodes: { title: string | null }[];
+  trailer?: { id: string | null; site: string | null; thumbnail: string | null } | null;
+}
+
+/** A show's trailer: only YouTube or Dailymotion, only a plain video id (it goes into an embed URL). */
+export interface Trailer { site: "youtube" | "dailymotion"; id: string; thumbnail: string | null }
+const TRAILER_ID = /^[A-Za-z0-9_-]+$/;
+
+/** AniList's `trailer` → a Trailer, or null when there is none (or it's another site, or the id looks odd). */
+export function normTrailer(raw: unknown): Trailer | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { site, id, thumbnail } = raw as { site?: unknown; id?: unknown; thumbnail?: unknown };
+  const s = typeof site === "string" ? site.toLowerCase() : "";
+  if ((s !== "youtube" && s !== "dailymotion") || typeof id !== "string" || id.length > 64 || !TRAILER_ID.test(id)) return null;
+  return { site: s, id, thumbnail: typeof thumbnail === "string" && /^https:\/\/[^\s"'<>]+$/.test(thumbnail) ? thumbnail : null };
 }
 
 const FIELDS = `id idMal title { romaji english native } synonyms format status episodes duration season seasonYear
@@ -35,7 +49,8 @@ const FIELDS = `id idMal title { romaji english native } synonyms format status 
   relations { edges { relationType node { id type format } } }
   airingSchedule(perPage: 50) { nodes { episode airingAt } }
   nextAiringEpisode { episode airingAt }
-  streamingEpisodes { title }`;
+  streamingEpisodes { title }
+  trailer { id site thumbnail }`;
 
 let last = 0;
 interface Job { priority: boolean; supersede: boolean; run: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }
@@ -113,7 +128,7 @@ export async function mediaByIds(ids: number[], fetcher?: typeof fetch, opts: { 
 /** Title search (English, romaji, native, synonyms), anime only. */
 export async function searchMedia(q: string, perPage = 15, fetcher?: typeof fetch, opts: { interactive?: boolean } = { interactive: true }): Promise<AniMedia[]> {
   // Only what a search result shows (the full entry is fetched when something is added); first in the queue.
-  const slim = "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color }";
+  const slim = "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color } trailer { id site thumbnail }";
   const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`, { q, n: perPage }, fetcher, opts.interactive === false ? {} : { priority: true, supersede: true });
   return d.Page?.media ?? [];
 }

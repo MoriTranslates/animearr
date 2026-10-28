@@ -1318,17 +1318,19 @@ function webBuild(): string | null {
     return null;
   }
 }
+/** Where trailers play from (the ▶ Trailer dialog): nothing else may be framed. Dailymotion's embed redirects to geo.dailymotion.com. */
+const TRAILER_FRAMES = "https://www.youtube-nocookie.com https://www.dailymotion.com https://geo.dailymotion.com";
 /** The page itself, with <base href> set to the URL base (so relative asset URLs work on any path). */
 const sendIndex = (reply: import("fastify").FastifyReply) => {
   const file = path.join(WEB_DIR, "index.html");
   if (!fs.existsSync(file)) return reply.code(503).send("Web UI not built yet: run npm run build");
   const html = fs.readFileSync(file, "utf8").replace("<head>", `<head>\n    <base href="${URL_BASE.replace(/[^A-Za-z0-9._~/-]/g, "")}/" />`);
-  // No framing (clickjacking), no referrer leaks; scripts only from ourselves.
+  // No framing (clickjacking), no referrer leaks; scripts only from ourselves. The only frames: trailer players.
   return reply
     .type("text/html; charset=utf-8")
     .header("Cache-Control", "no-cache")
     .header("X-Frame-Options", "DENY")
-    .header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; script-src 'self'")
+    .header("Content-Security-Policy", `frame-ancestors 'none'; base-uri 'self'; object-src 'none'; script-src 'self'; frame-src ${TRAILER_FRAMES}`)
     .header("Referrer-Policy", "no-referrer")
     .send(html);
 };
