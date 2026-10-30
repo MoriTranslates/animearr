@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "./db.js";
+import { CONFIG_DIR, db } from "./db.js";
 import { logDecision } from "./activity.js";
 import { getSettings } from "./settings.js";
 import { mappedPath } from "./paths.js";
@@ -27,6 +27,8 @@ export function binFolder(): { local: string } | { error: string } {
   if (bin === "" || bin === "/" || depth < 2) return { error: `the recycling bin "${bin}" is too close to the root of the disk` };
   const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
   if (roots.some((r) => r === local || r.startsWith(local + path.sep))) return { error: `the recycling bin "${bin}" is (or contains) a library folder` };
+  const conf = path.resolve(CONFIG_DIR);
+  if (local === conf || conf.startsWith(local + path.sep) || local.startsWith(conf + path.sep)) return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
   return { local };
 }
 

@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:24-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY server ./server
 COPY web ./web
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24-alpine
+FROM node:24-alpine3.24
 LABEL org.opencontainers.image.title="AnimeArr" \
       org.opencontainers.image.description="Anime-first library manager (works with Sonarr, Radarr and Prowlarr)" \
       org.opencontainers.image.source="https://github.com/MoriTranslates/animearr" \
