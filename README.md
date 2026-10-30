@@ -1,84 +1,106 @@
-<h1>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/animearr-wordmark-on-dark.svg" />
-    <img src="docs/brand/animearr-wordmark-on-light.svg" alt="AnimeArr" height="64" />
+    <img src="docs/brand/animearr-wordmark-on-light.svg" alt="AnimeArr" height="72" />
   </picture>
-</h1>
-
-<p>
-  <a href="https://ko-fi.com/moritranslates"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support on Ko-fi"></a>
 </p>
 
-> **Beta (v0.9.0-beta).** It runs a real library every day, but it's young: expect rough edges, and keep backups. It
-> starts in **dry run** (it shows what it would grab without downloading anything) until you switch that off.
-
-**An anime-first library manager.** AnimeArr finds, checks and imports anime the way anime is actually released:
-fansub numbering, absolute episodes, BD batches, specials, creditless openings, dual audio and, above all, **subtitles
-in your language**. It works next to Sonarr, Radarr and Prowlarr, and can take over your anime from them when you're
-ready. Phone-friendly, seasonal, and a little bit extra.
-
-![Home](docs/screenshots/home.png)
-
-<p>
-  <img src="docs/screenshots/show.png" width="49%" alt="A show" />
-  <img src="docs/screenshots/calendar.png" width="49%" alt="Calendar" />
+<p align="center">
+  <b>The anime-first *arr.</b> Finds, checks and imports anime the way anime is actually released,<br />
+  and makes sure every file has full subtitles in your language before it reaches your library.
 </p>
 
-## What it does
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.9.0--beta-d2561f" alt="Version 0.9.0-beta" /></a>
+  <a href="https://github.com/MoriTranslates/animearr/pkgs/container/animearr"><img src="https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&amp;logoColor=white" alt="Docker image on ghcr.io" /></a>
+  <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-555" alt="amd64 and arm64" />
+  <a href="https://ko-fi.com/moritranslates"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&amp;logoColor=white" alt="Support on Ko-fi" /></a>
+</p>
 
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#why-animearr">Why AnimeArr</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="#known-limitations-in-this-beta">Known limitations</a> ·
+  <a href="#docs">Docs</a>
+</p>
+
+> [!NOTE]
+> **Public beta (v0.9.0-beta).** It runs a real library every day, but it's young: expect rough edges and keep
+> backups. It starts in **practice mode** (dry run: it shows what it would download, and downloads nothing) until you
+> switch that off.
+
+![The library](docs/screenshots/library.png)
+
+## Why AnimeArr
+
+Sonarr is great at TV. Anime keeps breaking its assumptions: fansub numbering like "S6 - 01", absolute episodes,
+split cours, season packs called "(01-12)", specials, creditless openings, dual audio, and releases that turn out to
+have no English subtitles at all (or only signs). AnimeArr is built around those cases. It works **next to** Sonarr,
+Radarr and Prowlarr, and can take your anime over from them when you're ready.
+
+### Finds the right release
 - **Knows anime numbering.** AniList + AniDB + Anime-Lists mapping: "S6 - 01", absolute episodes, split cours, season
-  packs called "Season 1" or "(01-12)", per-show aliases and rules. No TheXEM needed.
-- **Checks before it imports.** Every download is probed with ffprobe: full subtitles in your language (not just signs),
-  the right audio for your profile (Sub, Dub, Dual or Either), not a sample. A release that fails is blocklisted and the
-  next one is tried; one that passes is imported and renamed.
-- **Explains every choice.** Search results, grabs and skips come with a plain-language "why", and every action is in
-  Activity with an undo where possible.
-- **Fixes what's already there.** Audit your library for files without your subtitle language, gaps and specials;
-  "Fix detection" for wrongly tagged tracks; **Replace season** swaps a bad season for a good pack, episode by episode,
-  only after each new file passes its check (the old ones go to a recycling bin).
-- **Plays nicely with your stack.** Prowlarr or direct indexers (Newznab, Torznab, Nyaa, SubsPlease, RSS), with a
-  circuit breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see the
-  [download client support](#download-clients) table); Plex scans and "Watch in Plex"; Discord and ntfy notifications;
-  a migration path from Sonarr/Radarr.
-- **Smart batch grabs.** A 26-episode batch when you're missing 4: torrent clients that can skip files download only
-  those 4 (plus their subtitles and fonts); per season it decides between "only the missing episodes" and "replace the
-  whole season with one group" (same quality or better), and says why in plain words.
+  packs, per-show aliases and rules. No TheXEM needed.
+- **Ranks by what you watch.** Language profiles with Sub, Dub, Dual or Either; size presets; group consistency within
+  a season; burned-in and signs-only subtitles spotted.
+- **Smart batch grabs.** Missing 4 episodes of a 26-episode batch? Torrent clients that can skip files download only
+  those 4. Per season it decides between "just the missing ones" and "replace the whole season with one group".
+- **Explains itself.** Every result, grab and skip comes with a plain-language "why".
+- **▶ Trailer** <sup>new</sup>. Peek at a show's art style before adding it: the official trailer from AniList plays in
+  Find & add, the Add dialog and the show page, with an "Open in YouTube" link. Nothing is ever downloaded.
+
+### Checks before it imports
+- **Every download is probed with ffprobe**: full subtitles in your language (not just signs), the right audio for your
+  profile, not a sample. A release that fails is blocklisted and the next one is tried.
+- **Catches wrong files** <sup>new</sup>. A series batch posing as a movie, a release that fits a different movie better,
+  a dub without the original audio, subtitles in another language: refused before they replace anything. The
+  after-import check also looks at files Sonarr imports (report-only by default).
+- **Dual-audio upgrades** <sup>new</sup>. For shows you watch in Dual mode, sub-only episodes are upgraded when a proper
+  dual-audio release turns up (report-only by default; the import checks that both audio tracks are really there).
+
+### Fixes what's already there
+- **Replace season** <sup>new</sup>. Swap a messy season for one good pack. It opens on a **Season packs** tab (whole
+  season first, then upgrades over what you have), with **Single episodes** on their own tab, and labels each pack
+  against your current files: TV < WEB-DL < Blu-ray < remux, then resolution. Each new episode is checked before its
+  old file goes to the recycling bin.
+- **Audit and Fix detection.** Files without your subtitle language, gaps, specials, wrongly tagged tracks.
+- **Activity with undo.** Every action is logged in plain words, with an undo where possible.
+
+### Lives on your server (and your phone)
+- **Seasonal Home and calendar** with airing countdowns, Just arrived and Ready to binge.
+- **Phone app** <sup>new</sup>. Install it from the "Add to home screen" card on your phone (or the QR code in Settings);
+  it opens full screen, with the new mast-and-pennant icon.
+- **Plays nicely with your stack.** Prowlarr or direct indexers (Newznab, Torznab, Nyaa, SubsPlease, RSS) with a circuit
+  breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see
+  [download clients](#download-clients)); Plex scans and "Watch in Plex"; Discord and ntfy; a guided migration from
+  Sonarr/Radarr.
 - **Looks after itself.** Stalled-download handling, clean-up after imports, a recycling bin with retention, nightly
-  backups, a seasonal calendar with airing countdowns, an installable phone app (scan the QR code in Settings).
+  backups.
 
-What it doesn't do yet is listed in [PARITY.md](PARITY.md) (honestly) and [BACKLOG.md](BACKLOG.md).
+## Screenshots
 
-## Download clients
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/show.png" alt="A show page with the Trailer button" /><br /><sub>A show page: progress, watch mode and ▶ Trailer.</sub></td>
+    <td width="50%"><img src="docs/screenshots/find-trailer.png" alt="Find and add, with Trailer buttons" /><br /><sub>Find & add: AniList search with Add and ▶ Trailer.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/trailer.png" alt="A trailer playing in AnimeArr" /><br /><sub>The trailer plays in place. Nothing is downloaded.</sub></td>
+    <td width="50%"><img src="docs/screenshots/calendar.png" alt="The seasonal calendar" /><br /><sub>The seasonal calendar.</sub></td>
+  </tr>
+</table>
 
-| Client | Protocol | Add / status / progress | Category or label | Seeding & ratio | Remove (with data) | Partial batch downloads | Test | Wizard / Sonarr import |
-|---|---|---|---|---|---|---|---|---|
-| SABnzbd | Usenet | ✅ | category | n/a | ✅ (AnimeArr deletes the folder SABnzbd leaves behind) | — (whole batch; leftovers cleaned after import) | ✅ | ✅ / ✅ |
-| NZBGet | Usenet | ✅ | category | n/a | ✅ | — (whole batch) | ✅ | ✅ / ✅ |
-| qBittorrent | Torrent | ✅ | category | ✅ ratio + time | ✅ | ✅ | ✅ | ✅ / ✅ |
-| Transmission | Torrent | ✅ | label + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
-| Deluge (2.x; 1.3 best effort) | Torrent | ✅ | Label plugin (optional) + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
-| rTorrent / ruTorrent | Torrent | ✅ | d.custom1 label + sub-folder | ratio shown, no limit set | ✅ (AnimeArr deletes the data inside its download folders) | ✅ | ✅ | ✅ / ✅ |
-| Usenet Blackhole¹ | Usenet | drop .nzb / watch folder, no progress | — | n/a | watch file only; finished folder cleaned after import | — (whole batch) | folders checked | — / — |
-| Torrent Blackhole¹ | Torrent | drop .torrent (.magnet optional) / watch folder, no progress | — | — | watch file only; never touches your files | — (whole batch) | folders checked | — / — |
+<p align="center">
+  <img src="docs/screenshots/phone-home.png" width="300" alt="AnimeArr on a phone, with the Add to home screen card" /><br />
+  <sub>On a phone: the "Add to home screen" card.</sub>
+</p>
 
-Clients without partial downloads (and all Usenet clients) download the whole batch; the import takes only the wanted
-files and the rest is cleaned up after a confirmed import. The download-folder clean-up and seeding rules (Settings →
-Downloads) read qBittorrent and SABnzbd only for now.
+## Quick start
 
-¹ Blackhole is off by default, never offered by the setup wizard, and never picked while a real client of the same
-protocol is on unless its priority is better. It starts disabled until its folders pass Test (the completed folder
-must be one of the importer's source roots). What you lose with Blackhole:
-- no download progress, speed, ETA or seeders in the Queue (only "Waiting for download…");
-- no partial batch downloads: whole batches are downloaded (only the wanted files are imported);
-- stall and queue-health checks don't apply; only the timeout does (24 h by default), then the next release is tried;
-- AnimeArr can't pause or remove the download in your downloader, or see seeding and ratio; it never cleans up a
-  torrent's files (torrents are copied or hardlinked, never moved);
-- slower to notice finished downloads: a download counts as done when its size stays the same for about a minute;
-- downloads are matched by release name: one your downloader renames isn't found and needs a manual import;
-- Usenet: failed downloads and repair errors in your downloader aren't seen; AnimeArr only notices that nothing arrived;
-- Torrent: magnet-only releases are skipped unless "Save magnet links as .magnet files" is on.
-
-## Quick start (Docker)
+### Docker Compose
 
 ```yaml
 services:
@@ -97,23 +119,47 @@ services:
       - 8484:8484
 ```
 
-Then open `http://<server>:8484`, log in with **captain / morebooty**, and follow the setup wizard ("I'm new" or "I already use
-Sonarr/Radarr"). The full example is [docker-compose.yml](docker-compose.yml).
+The commented version is [docker-compose.yml](docker-compose.yml).
+
+### Docker run
+
+```bash
+docker run -d --name animearr -p 8484:8484 \
+  -e PUID=1000 -e PGID=1000 -e TZ=Etc/UTC \
+  -v /path/to/appdata/animearr:/config -v /path/to/data:/data \
+  ghcr.io/moritranslates/animearr:beta
+```
+
+### Unraid
+
+Use the template in [docker/unraid/animearr.xml](docker/unraid/animearr.xml) (PUID 99, PGID 100) and put `/config` on
+a cache-only appdata share.
+
+Then open `http://<server>:8484`, log in, and follow the setup wizard ("I'm new" or "I already use Sonarr/Radarr").
+
+> [!IMPORTANT]
+> **First login: captain / morebooty.** Every new install starts with this known default login. It works **only on your
+> home network until you change it**: logins with the default password from anywhere else (the internet, a reverse
+> proxy, a tunnel) are refused. The wizard's first step offers to change it ("Later" is fine), and a banner reminds you
+> until you do (Settings → Security). Installs that already have an account keep it.
+>
+> "Home network" is judged by the address a connection comes from (10.x, 192.168.x, private IPv6 including Tailscale,
+> so shared Tailscale nodes count too). Internet traffic that reaches AnimeArr *from* a LAN address looks local: a
+> router port-forward with NAT/masquerade, or a plain TCP forwarder (nginx `stream`, HAProxy tcp mode, frp, `ssh -R`,
+> socat). So **change the password on first run**, don't port-forward AnimeArr directly, and expose it only through an
+> HTTP reverse proxy (which adds `X-Forwarded-For`) or a VPN. Details in [SECURITY.md](SECURITY.md).
 
 **The paths matter.** AnimeArr checks and imports files itself, so it needs to see the downloads and the library at the
 same paths your download clients (and Sonarr/Radarr) use. One `/data` folder holding both downloads and media
-([TRaSH-guides style](https://trash-guides.info/File-and-Folder-Structure/)) lets imports be instant hardlinks.
+([TRaSH-guides style](https://trash-guides.info/File-and-Folder-Structure/)) lets imports be instant hardlinks. Keep
+`/config` on a local disk: SQLite databases can be damaged on SMB/NFS shares.
 
-**First login.** The default login is **captain / morebooty**. It works only on your home network until you change it:
-logins with the default password from anywhere else (the internet, a reverse proxy, a tunnel) are refused. The wizard's
-first step offers to change it ("Later" is fine), and a banner reminds you until you do (Settings → Security). Installs
-that already have an account keep it. Details in [SECURITY.md](SECURITY.md).
-
-### Platform notes
+<details>
+<summary><b>Platform notes and environment variables</b></summary>
 
 | | |
 |---|---|
-| **Unraid** | Use the template in [docker/unraid/animearr.xml](docker/unraid/animearr.xml) (PUID 99, PGID 100). Put `/config` on a cache-only appdata share. |
+| **Unraid** | Template in [docker/unraid/animearr.xml](docker/unraid/animearr.xml) (PUID 99, PGID 100). `/config` on a cache-only appdata share. |
 | **Synology** (Container Manager) | Create a project from the compose file. PUID is usually `1026`, PGID `100` (check with `id` over SSH). |
 | **TrueNAS SCALE** | Custom app or compose; the apps user is `568:568`. |
 | **Plain Docker / Linux** | The compose file as is; `id` shows your PUID/PGID. |
@@ -121,32 +167,118 @@ that already have an account keep it. Details in [SECURITY.md](SECURITY.md).
 | **Raspberry Pi / ARM** | The image is multi-arch (amd64 + arm64). |
 
 Environment: `PUID`, `PGID`, `UMASK` (default 002), `TZ`, `URL_BASE` (reverse proxy on a sub-path, e.g. `/animearr`),
-`TRUST_PROXY` (your proxy's IP/CIDR, so real client IPs are seen), `ANIMEARR_LOCAL_NETWORKS` (what counts as "home" for
-the optional no-password-at-home setting).
+`TRUST_PROXY` (your proxy's IP/CIDR, so real client IPs are seen), `ANIMEARR_LOCAL_NETWORKS` (what counts as "home"
+for the default login and the optional no-password-at-home setting).
 
-Keep `/config` on a local disk: SQLite databases can be damaged on SMB/NFS shares.
+</details>
 
-## Known limitations in the beta
+## Download clients
 
+| Client | Protocol | Add / status / progress | Category or label | Seeding & ratio | Remove (with data) | Partial batch downloads | Test | Wizard / Sonarr import |
+|---|---|---|---|---|---|---|---|---|
+| SABnzbd | Usenet | ✅ | category | n/a | ✅ (AnimeArr deletes the folder SABnzbd leaves behind) | — (whole batch; leftovers cleaned after import) | ✅ | ✅ / ✅ |
+| NZBGet | Usenet | ✅ | category | n/a | ✅ | — (whole batch) | ✅ | ✅ / ✅ |
+| qBittorrent | Torrent | ✅ | category | ✅ ratio + time | ✅ | ✅ | ✅ | ✅ / ✅ |
+| Transmission | Torrent | ✅ | label + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
+| Deluge (2.x; 1.3 best effort) | Torrent | ✅ | Label plugin (optional) + sub-folder | ratio only | ✅ | ✅ | ✅ | ✅ / ✅ |
+| rTorrent / ruTorrent | Torrent | ✅ | d.custom1 label + sub-folder | ratio shown, no limit set | ✅ (AnimeArr deletes the data inside its download folders) | ✅ | ✅ | ✅ / ✅ |
+| Usenet Blackhole¹ | Usenet | drop .nzb / watch folder, no progress | — | n/a | watch file only; finished folder cleaned after import | — (whole batch) | folders checked | — / — |
+| Torrent Blackhole¹ | Torrent | drop .torrent (.magnet optional) / watch folder, no progress | — | — | watch file only; never touches your files | — (whole batch) | folders checked | — / — |
+
+Clients without partial downloads (and all Usenet clients) download the whole batch; the import takes only the wanted
+files and the rest is cleaned up after a confirmed import. The download-folder clean-up and seeding rules (Settings →
+Downloads) read qBittorrent and SABnzbd only for now.
+
+<details>
+<summary>¹ <b>Blackhole: what you lose</b></summary>
+
+Blackhole is off by default, never offered by the setup wizard, and never picked while a real client of the same
+protocol is on unless its priority is better. It starts disabled until its folders pass Test (the completed folder
+must be one of the importer's source roots). What you lose with Blackhole:
+- no download progress, speed, ETA or seeders in the Queue (only "Waiting for download…");
+- no partial batch downloads: whole batches are downloaded (only the wanted files are imported);
+- stall and queue-health checks don't apply; only the timeout does (24 h by default), then the next release is tried;
+- AnimeArr can't pause or remove the download in your downloader, or see seeding and ratio; it never cleans up a
+  torrent's files (torrents are copied or hardlinked, never moved);
+- slower to notice finished downloads: a download counts as done when its size stays the same for about a minute;
+- downloads are matched by release name: one your downloader renames isn't found and needs a manual import;
+- Usenet: failed downloads and repair errors in your downloader aren't seen; AnimeArr only notices that nothing arrived;
+- Torrent: magnet-only releases are skipped unless "Save magnet links as .magnet files" is on.
+
+</details>
+
+## FAQ
+
+**Do I need Sonarr?**
+No. AnimeArr can run next to Sonarr/Radarr (reading your existing library), take your anime over from them with a
+guided migration, or run on its own with shows added from Find & add.
+
+**Will it start downloading as soon as I connect things?**
+No. It starts in practice mode (dry run) and only shows what it would grab. You switch real downloads on when you're
+happy, for everything or per show.
+
+**Does it change my Sonarr or Radarr?**
+Reading them is read-only. Anything that would change them (such as unmonitoring a migrated show in Sonarr) asks first.
+
+**Why a default login instead of creating one?**
+So you can log in straight away, with a password everyone knows only working where it's meant to: captain / morebooty
+works from your home network only, and only until you change it. It's a first-run convenience, not protection: change
+it right away. See [SECURITY.md](SECURITY.md).
+
+**Can I put it on the internet?**
+Change the default password first, then use an HTTP reverse proxy with authentication or a VPN, and set `TRUST_PROXY`.
+Don't port-forward it directly or through a plain TCP forwarder: that traffic can look like it comes from home.
+
+**Does ▶ Trailer download anything?**
+No. It embeds the official trailer from YouTube (no-cookie) or Dailymotion and links out to it; only the video's id is
+stored.
+
+**Jellyfin, Emby, Overseerr, Bazarr?**
+Not yet: see the limitations below and [PARITY.md](PARITY.md).
+
+**What's with the ships and the crew?**
+A nautical theme and a crew voice in the commit history, as a light-hearted tribute to adventure anime. AnimeArr isn't
+affiliated with any anime, studio or publisher.
+
+## Known limitations in this beta
+
+- **Files imported before AnimeArr took over a show aren't re-audited yet.** Wrong-file checks run on new imports, so
+  an old file that was imported for the wrong show (say, a live-action drama with the same name) stays until you spot
+  it. A library audit that re-checks existing files is planned for 0.9.1.
 - No quality profiles/cutoffs, custom formats or must/must-not-contain words yet: choices come from your language
   profile, size preset and resolution.
 - No Sonarr-compatible API, so Overseerr/Jellyseerr, Bazarr, LunaSea or nzb360 can't talk to AnimeArr directly.
 - Jellyfin/Emby/Kodi aren't supported yet (Plex is). Notifications are Discord and ntfy.
 - An existing anime folder can't yet be imported without Sonarr (new users add shows one by one).
 - RAR archives aren't unpacked (7z/ZIP are). No blocklist page, log viewer or downloadable backups yet.
+- No "forgot password" reset yet: keep your new password somewhere safe.
+
+The full, honest list is in [PARITY.md](PARITY.md); the plan is in [BACKLOG.md](BACKLOG.md).
+
+## Docs
+
+| | |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | What's in each release |
+| [SECURITY.md](SECURITY.md) | The default login, hardening tips, reporting a vulnerability |
+| [PARITY.md](PARITY.md) | Feature-by-feature comparison with Sonarr/Radarr (done, partial or missing) |
+| [BACKLOG.md](BACKLOG.md) | The road to 1.0 and beyond |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and guidelines |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | How we treat each other |
+| [docker-compose.yml](docker-compose.yml) · [Unraid template](docker/unraid/animearr.xml) | Install examples |
 
 ## How this was built
 
 AnimeArr was built with [Claude Code](https://claude.com/claude-code), directed and tested every day by an anime nerd
-with opinions about yellow subtitles. The AI wrote most of the code; the human decided
-what it should do, broke it on purpose, and said "make it pop" more often than strictly necessary.
+with opinions about yellow subtitles. The AI wrote most of the code; the human decided what it should do, broke it on
+purpose, and said "make it pop" more often than strictly necessary.
 
 The commit history is written in the voice of the overworked ship's crew. It's honest underneath: every commit message
 keeps the real technical description, and the project runs on boring safety rails:
 
-- ~280 automated tests (parser, numbering, ranking, the grab → download → verify → import pipeline, clean-up, auth);
+- 350+ automated tests (parser, numbering, ranking, the grab → download → verify → import pipeline, clean-up, auth);
 - independent code, security, accessibility and UX review rounds before the release;
-- a dry-run mode, confirmations for anything that deletes, an undo log, and a recycling bin;
+- a practice mode, confirmations for anything that deletes, an undo log, and a recycling bin;
 - a pre-commit scan for secrets and personal data.
 
 If you find something the robots and the human both missed, please open an issue.
@@ -163,13 +295,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Reporting bugs and security issues
 
-Bugs and ideas: GitHub issues (the templates ask for what helps). Security: see [SECURITY.md](SECURITY.md) and please
-don't open a public issue.
+Bugs and ideas: [GitHub issues](https://github.com/MoriTranslates/animearr/issues) (the templates ask for what helps).
+Security: see [SECURITY.md](SECURITY.md) and please don't open a public issue.
 
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Parts are ported from Sonarr (GPL-3.0); thank you to the
-Sonarr/Radarr/Prowlarr developers, whose work this stands on.
+Sonarr/Radarr/Prowlarr developers, whose work this stands on. AnimeArr is an independent project, not affiliated with
+Sonarr, Radarr or Prowlarr. Show artwork in the screenshots comes from AniList and belongs to its owners.
 
 ## Support
 
