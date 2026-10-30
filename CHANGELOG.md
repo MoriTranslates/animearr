@@ -26,7 +26,13 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 - Every download is probed before import (full subtitles in your language, the right audio, not a sample); failures are
   blocklisted and the next release is tried; successes are imported and renamed by AnimeArr itself.
 - Replace season: a whole season swapped for a better pack, one verified episode at a time.
-- Replace season lists season packs first (whole season, then upgrades over what you have), single episodes on their own tab.
+- Replace season opens on a "Season packs" tab (whole season first, then upgrades over what you have) with "Single
+  episodes" on their own tab; each pack says whether it beats your current files (TV < WEB-DL < Blu-ray < remux, then
+  resolution).
+- Wrong files caught before they land: a series batch posing as a movie, a release that fits another movie better, a
+  dub without the original audio, subtitles in another language. The after-import check also looks at Sonarr's imports.
+- Dual-audio upgrades for Dual-mode shows: sub-only episodes are upgraded when a real dual-audio release appears
+  (report-only by default; the import checks both audio tracks).
 - Multi-part movies imported as Plex-stacked parts. Creditless openings and endings treated as real extras.
 - Fix detection for wrongly tagged tracks, Watch in Plex, Peek (three frames from the middle).
 - Clean-up after imports, stalled-download handling, a recycling bin with retention.
@@ -34,7 +40,9 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 ### Living with it
 - Home with Airing today (countdowns), Just arrived, Ready to binge; a seasonal calendar; Activity with plain-language
   cards and undo; a bell that only counts what needs you.
-- Installable on phones (QR code in Settings, an "Add to home screen" card on the phone itself), text size, light/dark, Comic mode, and manga speech-bubble toasts.
+- Installable on phones (QR code in Settings, an "Add to home screen" card on the phone itself), text size,
+  light/dark, Comic mode, and manga speech-bubble toasts.
+- A new icon: the mast-and-pennant "A", in the favicon, phone app icons, sidebar, Unraid template and README.
 - Setup wizard for new users and for people coming from Sonarr/Radarr, with a guided migration.
 - ▶ Trailer on Find & add, the Add dialog and the show page, to see a show's art style first: plays the official
   trailer from YouTube (or Dailymotion); nothing is downloaded or stored but the video's id.
@@ -43,6 +51,8 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 - Multi-arch Docker image (amd64 + arm64), PUID/PGID/UMASK/TZ, URL base for sub-path proxies, Unraid template.
 - Default login captain / morebooty, which works only on your home network until you change it (the wizard and a
   banner ask you to). Existing accounts are never touched. Encrypted secrets, CSRF protection, no framing.
+  SECURITY.md explains the limits of the home-network check (port-forwards and TCP forwarders can look local).
 
 ### Known limitations
-See the README's "Known limitations" and PARITY.md.
+- Files imported before AnimeArr took over a show aren't re-audited yet; a library audit is planned for 0.9.1.
+- More in the README's "Known limitations" and PARITY.md.
