@@ -311,4 +311,5 @@ AnimeArr is free and open source. If it's useful to you, you can buy the crew a 
 
 ## More from MoriTranslates
 
+- **[Tastearr](https://github.com/MoriTranslates/tastearr)**: anime season picks that learn your taste, for Sonarr/Radarr/Plex users.
 - **[RPG Maker Translator](https://github.com/MoriTranslates/rpgmaker-translator)**: translate Japanese games with a local LLM.
