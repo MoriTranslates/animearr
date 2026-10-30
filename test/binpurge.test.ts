@@ -52,12 +52,15 @@ test("purges by the time a file went into the bin; keeps forever at 0 days; refu
   // Never AnimeArr's own data folder (settings, database, backups), inside it, or a folder holding it.
   const conf = process.env.ANIMEARR_CONFIG!;
   patchSettings((s) => ({ ...s, localPathMappings: [...s.localPathMappings, { from: "/media/Conf", to: conf }, { from: "/media/Above", to: path.dirname(conf) }] }));
-  for (const b of ["/media/Conf", "/media/Conf/bin", "/media/Above"]) {
+  for (const b of ["/media/Conf", "/media/Conf/bin"]) {
     patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: b } }));
     const r = binFolder();
-    // (The folder above also holds this test's library, so it may be refused for that first.)
-    assert.ok("error" in r && /data folder|library folder/.test(r.error), b);
+    assert.ok("error" in r && /data folder/.test(r.error), b);
   }
+  // The folder above it is refused too: as the data folder's parent, for holding the test library, or (on Linux,
+  // where it's /tmp) for being too close to the root, whichever check comes first.
+  patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: "/media/Above" } }));
+  assert.ok("error" in binFolder());
   // Empty now.
   patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: "/media/Recycle/animearr/" } }));
   assert.equal(purgeBin({ all: true }).deleted, 1);
