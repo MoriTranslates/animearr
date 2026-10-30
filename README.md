@@ -308,3 +308,7 @@ Sonarr, Radarr or Prowlarr. Show artwork in the screenshots comes from AniList a
 
 AnimeArr is free and open source. If it's useful to you, you can buy the crew a coffee on
 [Ko-fi](https://ko-fi.com/moritranslates).
+
+## More from MoriTranslates
+
+- **[RPG Maker Translator](https://github.com/MoriTranslates/rpgmaker-translator)**: translate Japanese games with a local LLM.
