@@ -52,6 +52,8 @@ Everything is new, so here are the highlights rather than a list of 100 commits.
 - Default login captain / morebooty, which works only on your home network until you change it (the wizard and a
   banner ask you to). Existing accounts are never touched. Encrypted secrets, CSRF protection, no framing.
   SECURITY.md explains the limits of the home-network check (port-forwards and TCP forwarders can look local).
+- Hardening from a pre-launch security review: indexer API paths can't redirect a saved key, the recycling bin can't
+  be AnimeArr's own data folder, and the Alpine 3.24 base image brings 7-Zip's fix for CVE-2025-55188.
 
 ### Known limitations
 - Files imported before AnimeArr took over a show aren't re-audited yet; a library audit is planned for 0.9.1.
