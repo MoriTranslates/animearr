@@ -66,6 +66,12 @@ test("indexer settings: validation, masked keys kept, key dropped when the addre
   assert.equal(getSettings().indexers.find((x) => x.id === a.id)!.apiKey, "SECRET");
   saveIndexer(a.id!, { url: "https://other.example", apiKey: MASK });
   assert.equal(getSettings().indexers.find((x) => x.id === a.id)!.apiKey, "", "a key isn't sent to another address");
+  // The API path is appended to the URL: it may only add a path, and changing it drops a saved key too.
+  const p = saveIndexer(null, { kind: "newznab", name: "Path", url: "https://p.example", apiKey: "PKEY" });
+  for (const bad of [":18999/api", ".evil.tld/api", "/../x", "api", "/api?x=1"]) assert.throws(() => saveIndexer(p.id!, { apiPath: bad, apiKey: MASK }), /API path/, bad);
+  assert.equal(getSettings().indexers.find((x) => x.id === p.id)!.apiKey, "PKEY");
+  saveIndexer(p.id!, { apiPath: "/newznab/api", apiKey: MASK });
+  assert.equal(getSettings().indexers.find((x) => x.id === p.id)!.apiKey, "", "a key isn't sent to another path");
   const t1 = saveIndexer(null, { kind: "torznab", name: "Tracker", url: "https://tr.example", seedRatio: 1.5, seedTimeMin: 4320 });
   assert.deepEqual(seedLimitsFor(indexerNumId(t1.id!)), { seedRatio: 1.5, seedTimeMin: 4320 });
   saveIndexer(null, { kind: "torznab", name: "Tracker again", url: "https://tr.example" });

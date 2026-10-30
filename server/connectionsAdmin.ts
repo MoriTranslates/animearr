@@ -68,15 +68,18 @@ function cleanIndexer(input: Record<string, unknown>, cur: IndexerCfg | null): I
   const key = input.apiKey === undefined || isMasked(input.apiKey) ? (cur?.apiKey ?? "") : String(input.apiKey).trim();
   const url = httpUrl(input.url ?? cur?.url, "URL", kind === "rss");
   if (kind === "rss" && !url.includes("{q}")) throw bad("An RSS search URL needs {q} where the search words go");
+  const apiPath = kind === "newznab" || kind === "torznab" ? String(input.apiPath ?? cur?.apiPath ?? "/api").trim() || "/api" : "";
+  // The path is appended to the URL, so it may only add a path (":port" or ".host" would send the key elsewhere).
+  if (apiPath && (!/^\/[A-Za-z0-9_./-]*$/.test(apiPath) || apiPath.includes(".."))) throw bad("The API path should be a path like /api");
   return {
     id: cur?.id ?? newId("ix"),
     kind,
     protocol,
     name,
     url,
-    apiPath: kind === "newznab" || kind === "torznab" ? String(input.apiPath ?? cur?.apiPath ?? "/api").trim() || "/api" : "",
+    apiPath,
     // A key saved for one address isn't sent to another.
-    apiKey: cur && cur.url !== url && (input.apiKey === undefined || isMasked(input.apiKey)) ? "" : key,
+    apiKey: cur && (cur.url !== url || cur.apiPath !== apiPath) && (input.apiKey === undefined || isMasked(input.apiKey)) ? "" : key,
     categories: Array.isArray(input.categories) ? [...new Set(input.categories.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 100_000))].slice(0, 20) : (cur?.categories ?? (kind === "newznab" || kind === "torznab" ? [5070, 5000, 2000] : [])),
     priority: int(input.priority, 1, 50, cur?.priority ?? 25),
     enabled: typeof input.enabled === "boolean" ? input.enabled : (cur?.enabled ?? true),
