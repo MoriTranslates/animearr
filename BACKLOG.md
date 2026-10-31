@@ -45,7 +45,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 
 ### Downloads
 - [x] Missing-episode search for managed shows (rate-limited) · [x] queue health (stalls, metadata, client errors, Sonarr queue report)
-- [ ] RAR unpacking: Alpine's 7-Zip has no RAR codec. Options: a RAR-capable unpacker in the image (unrar freeware binary, or a Debian base with 7zip-rar), or libarchive's bsdtar (RAR4/partial RAR5). Needs a user decision (licence/image size)
+- [x] RAR unpacking: decided against. Anime releases rarely use RAR, and a RAR-capable unpacker costs licence and image size; 7z/ZIP unpacking stays and RAR downloads are flagged
 - [ ] Unpacking needs the container's /data mount writable (read-only in some setups)
 - [ ] Missing-episode search for non-managed shows via Sonarr's search command (opt-in; Sonarr is read-only today)
 
