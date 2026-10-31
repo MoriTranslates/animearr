@@ -8,6 +8,7 @@ import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useTo
 import { showVars } from "./season";
 import { languageList, languageName } from "./lang";
 import { kindLabel } from "./pages/Activity";
+import { followAutoJob, outcomeMessage, queuedMessage, useAutoSearching, type AutoQueued } from "./autojobs";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -31,7 +32,15 @@ export function langOf(f: Pick<FileInfo, "subs" | "audio" | "lang"> | null | und
   return f.lang?.state ?? "unknown";
 }
 
-export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { stage?: string | null; ahead?: number | null }; lang?: string }) {
+export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { id?: number; stage?: string | null; ahead?: number | null }; lang?: string }) {
+  // ⚡ runs in the background: the row says so until its result is in.
+  const busy = useAutoSearching().episodes;
+  if (e.id !== undefined && busy.has(e.id))
+    return (
+      <Chip tone="accent" title={t("auto.searchingHelp")}>
+        <span className="spin small-spin" aria-hidden="true" /> {t("auto.searching")}
+      </Chip>
+    );
   let label: string = t(`ep.status.${e.status}`);
   if (e.status === "downloading" && e.stage === "importing") label = `⇢ ${t("ep.importing")}`;
   else if (e.status === "downloading" && e.stage === "waiting") label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
@@ -123,19 +132,17 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
   const [dialog, setDialog] = useState<"regrab" | "delete" | "searchAgain" | "autoMany" | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
   const interactive = () => openInteractive(tvdbId, ids);
-  /** ⚡ Automatic search: grabs the best release, or says it needs a look (then 🔍 is one tap away). */
+  /** ⚡ Automatic search: queued at once (results in Activity); when it's done, grabbed or "needs a look" (then 🔍 is one tap away). */
   const runAuto = async () => {
     setAutoBusy(true);
     try {
-      const r = await api<{ results: { episodeIds: number[]; label: string; outcome: string; release?: string; why: string }[]; queued?: { n: number; where: "soon" | "fillin" } }>("/autosearch", { body: { tvdbId, episodeIds: ids } });
-      const look = r.results.filter((x) => x.outcome === "needs-look");
-      const got = r.results.filter((x) => x.outcome === "grabbed" || x.outcome === "would-grab");
-      const msg =
-        r.results.length === 1
-          ? `${r.results[0].label}: ${t(`auto.${r.results[0].outcome}` as I18nKey)}${r.results[0].release ? ` · ${r.results[0].release}` : ""} · ${r.results[0].why}`
-          : t("auto.summary", { got: got.length, look: look.length, other: r.results.length - got.length - look.length }) + (r.queued ? ` · ${t(r.queued.where === "soon" ? "auto.queuedSoon" : "auto.queuedFillIn", { n: r.queued.n })}` : "");
-      toast(msg, r.results.every((x) => x.outcome === "failed"), look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, look.flatMap((x) => x.episodeIds)) } : undefined, { kind: got.length ? "grab" : "success" });
-      onDone();
+      const r = await api<AutoQueued>("/autosearch", { body: { tvdbId, episodeIds: ids } });
+      if (r.episodes) toast(queuedMessage(r));
+      followAutoJob(r.jobId, (job) => {
+        const o = outcomeMessage(job);
+        toast(o.msg, o.error, o.look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, o.look) } : undefined, { kind: o.got ? "grab" : "success" });
+        onDone();
+      });
     } catch (e) {
       toast((e as Error).message, true);
     } finally {

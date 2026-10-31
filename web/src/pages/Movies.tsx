@@ -12,6 +12,7 @@ import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
 import { TagPicker } from "../rules";
 import { languageList, languageName } from "../lang";
+import { followAutoJob, outcomeMessage, queuedMessage, useAutoSearching, type AutoQueued } from "../autojobs";
 
 /** "has full en subtitles" → "has full English subtitles"; "en/vi audio only" → "English and Vietnamese audio only". */
 export function plainLangs(why: string) {
@@ -169,6 +170,8 @@ export function MoviePage({ id }: { id: number }) {
   const [searching, setSearching] = useState(false);
   const [grab, setGrab] = useState<SearchResult | null>(null);
   const [autoBusy, setAutoBusy] = useState(false);
+  // ⚡ runs in the background: the button says "Searching…" until it's done.
+  const autoRunning = useAutoSearching().movies.has(id);
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -177,9 +180,13 @@ export function MoviePage({ id }: { id: number }) {
   const auto = async () => {
     setAutoBusy(true);
     try {
-      const r = await api<{ outcome: string; release?: string; why: string }>(`/movies/${id}/autosearch`, { body: { replace: !!d.data?.file } });
-      toast(`${t(`auto.${r.outcome}` as never)}${r.release ? ` · ${r.release}` : ""} · ${r.why}`, r.outcome === "failed", r.outcome === "needs-look" ? { label: t("auto.openList"), run: () => void search() } : undefined);
-      await d.reload();
+      const r = await api<AutoQueued>(`/movies/${id}/autosearch`, { body: { replace: !!d.data?.file } });
+      if (d.data) toast(queuedMessage(r, d.data.title));
+      followAutoJob(r.jobId, (job) => {
+        const o = outcomeMessage(job);
+        toast(o.msg, o.error, job.results[0]?.outcome === "needs-look" ? { label: t("auto.openList"), run: () => void search() } : undefined, { kind: o.got ? "grab" : "success" });
+        void d.reload();
+      });
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -279,8 +286,8 @@ export function MoviePage({ id }: { id: number }) {
           <div className="hero-actions">
             {m.allowed ? (
               <SplitButton
-                label={autoBusy ? t("common.working") : t("movies.autoFind")}
-                disabled={autoBusy}
+                label={autoBusy ? t("common.working") : autoRunning ? `⚡ ${t("auto.searching")}` : t("movies.autoFind")}
+                disabled={autoBusy || autoRunning}
                 onClick={() => (m.file ? setConfirmAuto(true) : void auto())}
                 items={[{ label: searching ? t("common.working") : t("movies.pickVersion"), onSelect: () => void search(), disabled: searching }]}
               />

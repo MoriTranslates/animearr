@@ -3,6 +3,7 @@ import { api, runFix, type Fix } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { ImportBrowser } from "./importBrowser";
+import { followAutoJob, outcomeMessage } from "./autojobs";
 import { Chip, Modal, Spinner, useToast } from "./ui";
 
 /** The UI's words for the fix actions (the server's label is the fallback). */
@@ -32,9 +33,16 @@ export function FixHost() {
   useEffect(() => {
     const call = async (path: string, body: unknown, ok: string, method = "POST") => {
       try {
-        await api(path, { method, body });
+        const r = await api<{ jobId?: string }>(path, { method, body });
         toast(ok);
         window.dispatchEvent(new Event("animearr:changed"));
+        // ⚡ answers at once; its outcome comes when the background search is done.
+        if (r?.jobId)
+          followAutoJob(r.jobId, (job) => {
+            const o = outcomeMessage(job);
+            toast(o.msg, o.error, undefined, { kind: o.got ? "grab" : "success" });
+            window.dispatchEvent(new Event("animearr:changed"));
+          });
       } catch (e) {
         toast((e as Error).message, true);
       }
