@@ -338,6 +338,8 @@ interface Detail extends EpisodeRow {
   activity: { id: number; at: number; kind: string; why: string; summary?: string | null; resolved?: boolean }[];
   verify: { at: number; ok: boolean; why: string } | null;
   currentRelease: string | null;
+  /** The file's original release is one of SeaDex's picks for the season. */
+  seadex?: "best" | "alt" | null;
 }
 
 export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = false, dryRun = true, lang = "en", focus }: { episodeId: number; onClose: () => void; onChanged?: () => void; managedLive?: boolean; dryRun?: boolean; lang?: string; focus?: "fix" }) {
@@ -540,6 +542,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                       <dd>
                         {group ?? "—"}
                         {d.file.platform ? ` · ${d.file.platform}` : ""}
+                        {d.seadex && <> <Chip tone={d.seadex === "best" ? "good" : "info"}>{t(d.seadex === "best" ? "seadex.chip.best" : "seadex.chip.alt")}</Chip></>}
                       </dd>
                     </div>
                     {d.file.changed && (

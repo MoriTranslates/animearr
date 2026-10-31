@@ -266,8 +266,18 @@ TRaSH's anime group tiers, then your size preset.
 
 **Upgrades are automatic.** Seasons below their goal are searched now and then and swapped one verified episode at a
 time; the old files go to the recycling bin. The first run only lists its plan (Audit → Maintenance → Quality
-upgrades) and starts a day later, unless you press **Start now**. There's a pause switch and a daily budget, and a file
-that's already the best of its category is never swapped for an equal one.
+upgrades) and starts a day later, unless you press **Start now**. There's a pause switch and daily budgets (seasons a
+day, and an estimated download size a day, 100 GB by default: a season that wouldn't fit waits for a later day, and a
+season bigger than the whole budget is grabbed alone, on a day nothing else was), and a file that's already the best of
+its category is never swapped for an equal one.
+
+**SeaDex on the show page.** Details compares each season's files with SeaDex's picks ("You have SeaDex's best",
+"the alt pick", or "You have X WEB; SeaDex's best is Y"), judged by each file's original release name so a Tdarr
+re-encode still counts as what it came from. The episode sheet shows a "SeaDex best" or "SeaDex alt" chip, and release
+lists mark SeaDex's picks. **Check SeaDex now** fetches the show's picks immediately (once per half hour), and
+**Upgrade now** runs the watcher's own pick for one season, showing what it would grab and its size first; it follows
+the same locks, goal, practice mode and no-churn rule. A SeaDex pick counts for a release only when its group AND
+source fit: a Blu-ray pick doesn't bless the same group's WEB or TV release.
 
 **Keep as is.** Lock a show or season on its page (or set a profile to keep original files) and it's never upgraded.
 Add `{Keep Tag}` to your episode naming format and those files get `[Keep]` in their names; Settings → Profiles shows a

@@ -12,6 +12,7 @@
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
 import { refuseDropped } from "./dropped.js";
+import { ownedElsewhere, ownedWhy, type Overlap } from "./duplicates.js";
 import { seedLimitsFor } from "./indexers.js";
 import { supersededBy } from "./fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
@@ -218,10 +219,19 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   // files the library already has (the user's rule: never delete library files).
   // S0 "episodes" that are really movies belong to Radarr: never grab them as episodes (double download).
   refuseMovieSpecials(series.id, req.episodeIds);
+  // Automatic grabs (the scheduler, fill-in, upgrades, ⚡) never buy an episode the library already holds under another
+  // series (a duplicate TVDB listing), not even as the extra episodes of a pack. A release the user picks by hand is
+  // allowed; the picker warns first.
+  const owned = req.origin === "managed" || req.automatic ? ownedElsewhere(req.tvdbId) : new Map<number, Overlap>();
+  const hit = req.episodeIds.every((id) => owned.has(id)) ? owned.get(req.episodeIds[0]) : undefined;
+  if (hit) {
+    logDecision("info", { tvdbId: req.tvdbId, title: series.title, episodeIds: req.episodeIds, release: req.candidate.title, why: `Not grabbed: ${ownedWhy(hit)}` });
+    throw Object.assign(new Error(`${series.title}: ${ownedWhy(hit)}`), { statusCode: 409 });
+  }
   const asMovie = radarrMovieSpecials(series.id);
   const all = episodesFor(req.tvdbId);
   // A pack that also contains a movie special: the special is left to Radarr (not imported as an episode).
-  let importIds = c.episodeIds.filter((id) => !asMovie.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
+  let importIds = c.episodeIds.filter((id) => !asMovie.has(id) && !owned.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
   // Smart batch: per season, only the missing episodes, or the whole season as a Replace season (batch.ts).
   let purpose = req.purpose ?? null;
   let seasonWhy: string | null = null;

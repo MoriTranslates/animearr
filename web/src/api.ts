@@ -169,6 +169,8 @@ export interface SearchResponse {
   dryRun: boolean;
   tier: 1 | 2;
   complete: boolean;
+  /** Episodes already filed with a file under another series (duplicate TVDB listing). */
+  ownedElsewhere?: { episodeId: number; why: string }[];
 }
 
 export interface PathMapping { from: string; to: string }

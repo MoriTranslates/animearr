@@ -5,11 +5,13 @@
 import { setupStrings } from "./i18n.setup";
 import { viewStrings } from "./i18n.view";
 import { mediaStrings } from "./i18n.media";
+import { dupStrings } from "./i18n.dup";
 import { qualityStrings } from "./i18n.quality";
 
 const en = {
   ...setupStrings,
   ...qualityStrings,
+  ...dupStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",

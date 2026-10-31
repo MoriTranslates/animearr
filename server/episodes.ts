@@ -21,6 +21,7 @@ import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
 import { refreshSeriesEpisodes } from "./library.js";
 import { listManaged } from "./managed.js";
+import { filePick } from "./seadexFiles.js";
 import { aliasIndex } from "./metadata.js";
 import { startGrab, type Candidate } from "./pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
@@ -288,7 +289,7 @@ export function episodeDetail(episodeId: number) {
     .map((d) => ({ ...d, summary: summarize({ kind: d.kind, why: d.why, title: d.title || e.series_title, label: `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` }) }));
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
   const own = row.file?.scanned ? recordFor(row.file.path) : null;
-  return { ...row, own, art: artFor(e.tvdb_id), tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
+  return { ...row, own, seadex: row.file ? filePick(e.tvdb_id, e.season, row.file) : null, art: artFor(e.tvdb_id), tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
 }
 
 /**

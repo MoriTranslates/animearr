@@ -39,6 +39,29 @@ All notable changes, newest first. The commit history has the crew's version of 
   in Settings → Profiles) skips them. Files named `[Remaster]` count the same.
 - Request apps see each profile with its goal (e.g. "English subs: Aim high (Bluray 1080p)") and AnimeArr's quality
   categories as the profile's qualities.
+- **Duplicate-listing guard.** TVDB sometimes lists an OVA or sequel twice: as specials or a season of a parent show
+  and as its own show. AnimeArr's catalog knows where each AniList entry is filed, so an episode the library already
+  holds under another show ("owned elsewhere, filed as Slayers S00E03") is no longer counted as missing and is never
+  searched or grabbed automatically: not by the scheduler, the missing-episode search, fill-in, ⚡ search or the
+  quality upgrade watcher (the grab itself refuses it as a last line). Shows are matched by AniDB/AniList ids; a title
+  is used only when no id resolves and the episode counts agree. Picking a release by hand is still allowed, with a
+  warning. Audit → Maintenance → Duplicate listings shows each pair with the overlapping episodes and file counts on
+  both sides, and "Stop managing this show" (AnimeArr only; for Sonarr's shows it explains how to retire the copy in
+  Sonarr, which AnimeArr never changes). A duplicate whose other listing has no files yet is listed but not blocked.
+- **SeaDex on the show page.** Details compares each season's files with SeaDex's picks (best, alt, or "you have X WEB;
+  SeaDex's best is Y"), using each file's original release name so Tdarr re-encodes still count as their source. The
+  episode sheet gets a "SeaDex best" / "SeaDex alt" chip, and release lists (including Replace season's packs) mark
+  SeaDex's picks. "Check SeaDex now" fetches a show's picks immediately (once per 30 minutes per show). "Upgrade now"
+  per season runs the upgrade watcher's own pick right away, after showing what it would grab and its size; locks,
+  the goal, practice mode and the no-churn rule apply, and the grab counts towards the daily budgets.
+- The upgrade watcher has a daily download-size budget (100 GB by default, Audit → Maintenance → Quality upgrades)
+  next to the seasons-a-day budget. A season whose estimated size doesn't fit the rest of the day waits and is tried
+  again later; one bigger than the whole budget is grabbed alone, only on a day nothing else was, and is logged.
+
+### Changed
+- A SeaDex pick now counts for a release only when its source fits: a Blu-ray pick no longer blesses the same group's
+  HDTV, TV raw or WEB release. Picks are taken as Blu-ray unless SeaDex tags them otherwise; a release that names no
+  source still matches by group.
 
 ### Notes
 - Removing a show through the API removes it from AnimeArr only: files are never deleted, whatever the request app

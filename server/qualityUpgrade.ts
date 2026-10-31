@@ -20,12 +20,14 @@
 import { logDecision } from "./activity.js";
 import { CATEGORY_NAME, beatsCurrent, goalCategory, goalLabel, ladderRank, LOCK_TAG, meetsGoal, qualityScore, type Category, type GoalId, type QualityScore, type SeadexEntry } from "./core/quality.js";
 import { cache, db, dbState, setJob } from "./db.js";
+import { ownedElsewhere } from "./duplicates.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged, toCandidate } from "./managed.js";
 import { startGrab } from "./pipeline.js";
 import { profileFor } from "./profiles.js";
 import { isLocked } from "./qualityLocks.js";
 import { animeTiers, seadexForSeason } from "./seadex.js";
+import { releaseOf } from "./seadexFiles.js";
 import { deepSearch, type SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
@@ -89,12 +91,6 @@ export function capOf(st: Pick<StateRow, "best_seen" | "no_bd"> | undefined, yea
   return null;
 }
 
-/** The original release name of a library file: its recorded scene name, else the file name. */
-const releaseOf = (f: { path: string; scene_name: string | null }) => {
-  if (f.scene_name?.trim()) return f.scene_name.trim();
-  const meta = db.prepare("SELECT scene_name FROM file_meta WHERE path = ?").get(f.path) as { scene_name: string | null } | undefined;
-  return meta?.scene_name?.trim() || f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
-};
 const heightOf = (res: string | null) => {
   const m = /(\d{3,4})\s*p?\s*$/i.exec(res ?? "") ?? /x(\d{3,4})/.exec(res ?? "");
   return m ? Number(m[1]) : null;
@@ -110,9 +106,11 @@ export function upgradeUnits(now = Date.now()): Unit[] {
     const series = cache.prepare("SELECT path, year FROM series WHERE tvdb_id = ?").get(m.tvdbId) as { path: string; year: number | null } | undefined;
     if (!series || !underAllowedRoot(series.path)) continue;
     const goal = prof.qualityGoal ?? "high";
-    const rows = cache
+    const owned = ownedElsewhere(m.tvdbId); // a duplicate listing's copy: the real files are upgraded under the show that holds them
+    let rows = cache
       .prepare("SELECT e.id, e.season, e.episode, e.air_utc, f.path, f.scene_name, f.resolution FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season > 0 AND e.monitored = 1 AND e.has_file = 1 ORDER BY e.season, e.episode")
       .all(m.seriesId) as { id: number; season: number; episode: number; air_utc: number | null; path: string; scene_name: string | null; resolution: string | null }[];
+    rows = rows.filter((r) => !owned.has(r.id));
     const seasons = [...new Set(rows.map((r) => r.season))];
     for (const season of seasons) {
       if (isLocked(m.tvdbId, season)) continue;
@@ -147,7 +145,25 @@ export function recheckMs(u: Pick<Unit, "endedAt">, capped: boolean, now = Date.
 }
 
 const count = (kind: "search" | "grab", since: number) => (db.prepare("SELECT COUNT(*) AS n FROM quality_upgrade_log WHERE kind = ? AND at > ?").get(kind, since) as { n: number }).n;
-const note = (kind: "search" | "grab", now: number) => db.prepare("INSERT INTO quality_upgrade_log (at, kind) VALUES (?, ?)").run(now, kind);
+const note = (kind: "search" | "grab", now: number, bytes = 0) => db.prepare("INSERT INTO quality_upgrade_log (at, kind, bytes) VALUES (?, ?, ?)").run(now, kind, bytes);
+
+const GB = 1e9;
+/** The daily size budget in bytes (the setting is in GB; an older settings object may not have it). */
+export const budgetBytes = (s: { gbPerDay?: number } = getSettings().qualityUpgrade) => (s.gbPerDay ?? 100) * GB;
+/** Estimated download size of the upgrade grabs started in the last 24 hours. */
+export const usedBytes = (now = Date.now()) => (db.prepare("SELECT COALESCE(SUM(bytes), 0) AS n FROM quality_upgrade_log WHERE kind = 'grab' AND at > ?").get(now - DAY) as { n: number }).n;
+
+/**
+ * Does a season of this estimated size fit today's size budget? "fits": within what is left. "oversize": bigger than the
+ * whole budget, allowed only while the day's budget is untouched (so it still gets done, alone). "waits": try again later.
+ */
+export function fitsBudget(used: number, budget: number, need: number): "fits" | "oversize" | "waits" {
+  if (used + need <= budget) return "fits";
+  if (need > budget && used === 0) return "oversize";
+  return "waits";
+}
+/** A season that waited for the size budget is looked at again after this long (the 24 h window frees up as grabs age). */
+const BUDGET_RETRY_MS = 6 * HOUR;
 
 export interface UpgradePick {
   result: SearchResult;
@@ -175,6 +191,40 @@ export function pickUpgrade(results: SearchResult[], unit: Pick<Unit, "files" | 
   }
   picks.sort((a, b) => b.covered.length - a.covered.length || ladderRank(b.q.info.category) - ladderRank(a.q.info.category) || b.q.points - a.q.points || b.result.rank.score - a.result.rank.score);
   return picks[0] ?? null;
+}
+
+const gb = (bytes: number) => (Math.round(bytes / 1e8) / 10).toString();
+
+/** Starts the Replace-season grab for a pick and records the season's state; shared by the watcher and "Upgrade now". */
+async function grabUpgrade(deps: QualityDeps, u: Unit, pick: UpgradePick, results: SearchResult[], c: { seadex: SeadexEntry | null; prof: ReturnType<typeof profileFor>; minConfidence: number; bestSeen: Category | null; noBd: number; now: number }) {
+  const { now } = c;
+  const label = `${u.title} S${String(u.season).padStart(2, "0")}`;
+  const from = CATEGORY_NAME[u.files[0].q.info.category];
+  const why = `Quality upgrade for ${label}: ${pick.result.title} (${CATEGORY_NAME[pick.q.info.category]}${pick.q.why.length ? `, ${pick.q.why.join(", ")}` : ""}) for ${pick.covered.length} episode${pick.covered.length > 1 ? "s" : ""}: ${pick.why}`;
+  try {
+    const candidates = [pick.result, ...results.filter((r) => r !== pick.result && pickUpgrade([r], u, { seadex: c.seadex, mode: c.prof.watchMode, minConfidence: c.minConfidence })?.covered.length === pick.covered.length)];
+    const out = await deps.grab({ tvdbId: u.tvdbId, episodeIds: pick.covered, candidate: toCandidate(pick.result), fallbacks: candidates.slice(1, 4).map(toCandidate), origin: "managed", purpose: "replace" });
+    if (!out.dryRun && !out.failed) note("grab", now, pick.result.size);
+    const state = out.dryRun ? "found" : out.failed ? "waiting" : "grabbed";
+    save(u.tvdbId, u.season, { state, why: `${out.dryRun ? "dry-run: " : ""}${out.message}`, now, searched: true, release: pick.result.title, grabId: out.dryRun || out.failed ? null : out.id, bestSeen: c.bestSeen, noBd: c.noBd });
+    logDecision("info", { tvdbId: u.tvdbId, title: u.title, episodeIds: pick.covered, release: pick.result.title, why: `${why}. ${out.dryRun ? "Dry-run: nothing grabbed" : out.failed ? `Couldn't grab: ${out.message}` : `Grabbed; each new file replaces your ${from} file only after it passes the checks, and the old one goes to the recycling bin`}` });
+    return { grabbed: !out.dryRun && !out.failed, dryRun: out.dryRun, failed: !!out.failed, message: out.message };
+  } catch (e) {
+    save(u.tvdbId, u.season, { state: "waiting", why: `grab failed: ${(e as Error).message}`, now, searched: true, bestSeen: c.bestSeen, noBd: c.noBd, release: null });
+    return { grabbed: false, dryRun: false, failed: true, message: (e as Error).message };
+  }
+}
+
+/** What a search found for a season: the best category seen, whether any Blu-ray exists (the "no BD" cap) and the pick. */
+function analyse(results: SearchResult[], u: Unit, st: StateRow | undefined, minConfidence: number) {
+  const cats = results.filter((r) => r.rank.accept).map((r) => qualityScore(r.title, {}).info.category);
+  const bestSeen = cats.reduce<Category | null>((a, c) => (!a || ladderRank(c) > ladderRank(a) ? c : a), (st?.best_seen as Category | null) ?? null);
+  const sawBd = cats.some((c) => c.startsWith("bluray"));
+  const noBd = sawBd ? 0 : (st?.no_bd ?? 0) + 1;
+  const prof = profileFor(u.tvdbId);
+  const seadex = seadexForSeason(u.tvdbId, u.season);
+  const pick = pickUpgrade(results, u, { seadex, mode: prof.watchMode, minConfidence });
+  return { bestSeen, noBd, prof, seadex, pick };
 }
 
 /** Plan state: when the first run listed its plan, and whether the user said "Start now". */
@@ -226,7 +276,7 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
   const minConfidence = getSettings().managed.minConfidence;
   const due = units
     .map((u) => ({ u, st: stateOf(u.tvdbId, u.season) }))
-    .filter(({ u, st }) => st?.state !== "grabbed" && (!st?.last_at || now - st.last_at >= recheckMs(u, u.target !== goalCategory(u.goal, profileFor(u.tvdbId).resolution), now)))
+    .filter(({ u, st }) => st?.state !== "grabbed" && (!st?.last_at || now - st.last_at >= (st.state === "budget" ? BUDGET_RETRY_MS : recheckMs(u, u.target !== goalCategory(u.goal, profileFor(u.tvdbId).resolution), now))))
     .sort((a, b) => (a.st?.last_at ?? 0) - (b.st?.last_at ?? 0));
   for (const { u, st } of due) {
     if (count("grab", now - DAY) >= s.seasonsPerDay) break;
@@ -242,35 +292,84 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
       save(u.tvdbId, u.season, { state: "waiting", why: `search failed: ${(e as Error).message}`, now, searched: true });
       continue;
     }
-    // What exists: the best accepted category seen, and whether any Blu-ray turned up (for the "no BD" cap).
-    const cats = results.filter((r) => r.rank.accept).map((r) => qualityScore(r.title, {}).info.category);
-    const bestSeen = cats.reduce<Category | null>((a, c) => (!a || ladderRank(c) > ladderRank(a) ? c : a), (st?.best_seen as Category | null) ?? null);
-    const sawBd = cats.some((c) => c.startsWith("bluray"));
-    const noBd = sawBd ? 0 : (st?.no_bd ?? 0) + 1;
-    const prof = profileFor(u.tvdbId);
-    const pick = pickUpgrade(results, u, { seadex: seadexForSeason(u.tvdbId, u.season), mode: prof.watchMode, minConfidence });
+    const { bestSeen, noBd, prof, seadex, pick } = analyse(results, u, st, minConfidence);
     const label = `${u.title} S${String(u.season).padStart(2, "0")}`;
     if (!pick) {
       save(u.tvdbId, u.season, { state: "waiting", why: `nothing better yet (${results.length} releases seen; goal ${goalLabel(u.goal)})`, now, searched: true, bestSeen, noBd, release: null });
       continue;
     }
-    const from = CATEGORY_NAME[u.files[0].q.info.category];
-    const why = `Quality upgrade for ${label}: ${pick.result.title} (${CATEGORY_NAME[pick.q.info.category]}${pick.q.why.length ? `, ${pick.q.why.join(", ")}` : ""}) for ${pick.covered.length} episode${pick.covered.length > 1 ? "s" : ""}: ${pick.why}`;
-    try {
-      const candidates = [pick.result, ...results.filter((r) => r !== pick.result && pickUpgrade([r], u, { seadex: seadexForSeason(u.tvdbId, u.season), mode: prof.watchMode, minConfidence })?.covered.length === pick.covered.length)];
-      const out = await deps.grab({ tvdbId: u.tvdbId, episodeIds: pick.covered, candidate: toCandidate(pick.result), fallbacks: candidates.slice(1, 4).map(toCandidate), origin: "managed", purpose: "replace" });
-      if (!out.dryRun && !out.failed) {
-        note("grab", now);
-        res.grabbed++;
-      }
-      const state = out.dryRun ? "found" : out.failed ? "waiting" : "grabbed";
-      save(u.tvdbId, u.season, { state, why: `${out.dryRun ? "dry-run: " : ""}${out.message}`, now, searched: true, release: pick.result.title, grabId: out.dryRun || out.failed ? null : out.id, bestSeen, noBd });
-      logDecision("info", { tvdbId: u.tvdbId, title: u.title, episodeIds: pick.covered, release: pick.result.title, why: `${why}. ${out.dryRun ? "Dry-run: nothing grabbed" : out.failed ? `Couldn't grab: ${out.message}` : `Grabbed; each new file replaces your ${from} file only after it passes the checks, and the old one goes to the recycling bin`}` });
-    } catch (e) {
-      save(u.tvdbId, u.season, { state: "waiting", why: `grab failed: ${(e as Error).message}`, now, searched: true, bestSeen, noBd, release: null });
+    const need = pick.result.size;
+    const fit = fitsBudget(usedBytes(now), budgetBytes(s), need);
+    if (fit === "waits") {
+      save(u.tvdbId, u.season, { state: "budget", why: `${label}: ${pick.result.title} is about ${gb(need)} GB; today's budget has ${gb(Math.max(0, budgetBytes(s) - usedBytes(now)))} GB left of ${gb(budgetBytes(s))} GB, so it waits`, now, searched: true, release: pick.result.title, bestSeen, noBd });
+      logDecision("info", { tvdbId: u.tvdbId, title: u.title, release: pick.result.title, why: `Quality upgrade for ${label} is waiting for the daily size budget: about ${gb(need)} GB needed, ${gb(Math.max(0, budgetBytes(s) - usedBytes(now)))} of ${gb(budgetBytes(s))} GB left` });
+      continue;
     }
+    if (fit === "oversize") logDecision("info", { tvdbId: u.tvdbId, title: u.title, release: pick.result.title, why: `Quality upgrade for ${label} is about ${gb(need)} GB, more than the whole daily budget of ${gb(budgetBytes(s))} GB: grabbed alone, while today's budget is untouched` });
+    const g = await grabUpgrade(deps, u, pick, results, { seadex, prof, minConfidence, bestSeen, noBd, now });
+    if (g.grabbed) res.grabbed++;
   }
   return res;
+}
+
+export interface SeasonUpgrade {
+  status: "preview" | "grabbed" | "dry-run" | "nothing" | "refused" | "failed";
+  why: string;
+  /** What it would grab (preview) or did. */
+  release?: string;
+  size?: number;
+  episodes?: number;
+  from?: string;
+  to?: string;
+  dryRun?: boolean;
+}
+/** The pick a preview found, kept ten minutes so the confirming call grabs exactly what the user saw. */
+const previews = new Map<string, { at: number; unit: Unit; pick: UpgradePick; results: SearchResult[]; bestSeen: Category | null; noBd: number }>();
+
+/**
+ * "Upgrade now" for one season of a show: the watcher's own pick (goal, locks, Keep tags, the no-churn rule, dry-run)
+ * right away. Without `confirm` it only searches and says what it would grab and how big it is; with `confirm` it
+ * grabs that pick. The daily budgets don't hold it back (the user asked), but the grab counts towards them.
+ */
+export async function upgradeSeasonNow(tvdbId: number, season: number, opts: { confirm?: boolean } = {}, deps: QualityDeps = realDeps, now = Date.now()): Promise<SeasonUpgrade> {
+  const refuse = (why: string): SeasonUpgrade => ({ status: "refused", why });
+  const s = getSettings().qualityUpgrade;
+  if (s.mode === "off") return refuse("Quality upgrades are switched off");
+  if (isLocked(tvdbId, season)) return refuse("This season is locked \"keep as is\"; unlock it first");
+  if (!listManaged().some((m) => m.tvdbId === tvdbId)) return refuse("Only managed shows are upgraded; manage this show first");
+  const key = `${tvdbId}|${season}`;
+  const hit = opts.confirm ? previews.get(key) : undefined;
+  for (const [k, v] of previews) if (now - v.at > 10 * 60_000) previews.delete(k);
+  let { unit, pick, results, bestSeen, noBd } = hit && now - hit.at <= 10 * 60_000 ? hit : ({} as Partial<NonNullable<typeof hit>>);
+  if (!unit || !pick || !results) {
+    unit = upgradeUnits(now).find((x) => x.tvdbId === tvdbId && x.season === season);
+    if (!unit) return refuse("Nothing in this season is below the quality goal, or its files are protected ([Keep] / [Remaster])");
+    const ids = unit.files.map((f) => f.episodeId);
+    if (db.prepare("SELECT 1 FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value IN (SELECT value FROM json_each(?)))").get(JSON.stringify(ids))) return refuse("These episodes are already downloading");
+    note("search", now);
+    try {
+      results = (await deps.search(tvdbId, ids, { budget: 8 })).results;
+    } catch (e) {
+      return { status: "failed", why: `Search failed: ${(e as Error).message}` };
+    }
+    const a = analyse(results, unit, stateOf(tvdbId, season), getSettings().managed.minConfidence);
+    ({ bestSeen, noBd } = a);
+    if (!a.pick) {
+      save(tvdbId, season, { state: "waiting", why: `nothing better yet (${results.length} releases seen; goal ${goalLabel(unit.goal)})`, now, searched: true, bestSeen: a.bestSeen, noBd: a.noBd, release: null });
+      return { status: "nothing", why: `Nothing better than your files yet (${results.length} releases seen, goal ${goalLabel(unit.goal)}). Nothing was grabbed.` };
+    }
+    pick = a.pick;
+  }
+  const base = { release: pick.result.title, size: pick.result.size, episodes: pick.covered.length, from: CATEGORY_NAME[unit.files[0].q.info.category], to: CATEGORY_NAME[pick.q.info.category] };
+  if (!opts.confirm) {
+    previews.set(key, { at: now, unit, pick, results, bestSeen: bestSeen ?? null, noBd: noBd ?? 0 });
+    return { status: "preview", why: pick.why, ...base };
+  }
+  previews.delete(key);
+  const prof = profileFor(tvdbId);
+  const g = await grabUpgrade(deps, unit, pick, results, { seadex: seadexForSeason(tvdbId, season), prof, minConfidence: getSettings().managed.minConfidence, bestSeen: bestSeen ?? null, noBd: noBd ?? 0, now });
+  if (g.failed) return { status: "failed", why: g.message, ...base };
+  return { status: g.dryRun ? "dry-run" : "grabbed", why: g.dryRun ? `Practice mode: nothing was grabbed (${g.message})` : g.message, dryRun: g.dryRun, ...base };
 }
 
 let running = false;
@@ -299,5 +398,5 @@ export function qualityUpgradeView(now = Date.now()) {
   const recent = (db.prepare("SELECT * FROM quality_upgrade WHERE state IN ('upgraded', 'grabbed') AND updated_at > ? ORDER BY updated_at DESC LIMIT 50").all(now - 30 * DAY) as unknown as StateRow[])
     .filter((r) => !shown.has(`${r.tvdb_id}|${r.season}`))
     .map((r) => ({ tvdbId: r.tvdb_id, title: (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(r.tvdb_id) as { title: string } | undefined)?.title ?? String(r.tvdb_id), season: r.season, state: r.state, why: r.why, at: r.updated_at }));
-  return { mode: s.mode, paused: s.paused, seasonsPerDay: s.seasonsPerDay, grabsToday: count("grab", now - DAY), plan: planState(now), items, recent };
+  return { mode: s.mode, paused: s.paused, seasonsPerDay: s.seasonsPerDay, gbPerDay: s.gbPerDay ?? 100, gbToday: Math.round(usedBytes(now) / 1e8) / 10, grabsToday: count("grab", now - DAY), plan: planState(now), items, recent };
 }

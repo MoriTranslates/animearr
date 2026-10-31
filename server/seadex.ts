@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { compileTiers, type CompiledTiers, type SeadexEntry, type SeadexTorrent, type TierTable } from "./core/quality.js";
+import { compileTiers, seadexSource, type CompiledTiers, type SeadexEntry, type SeadexTorrent, type TierTable } from "./core/quality.js";
 import { cache, db, setJob } from "./db.js";
 import { listManaged } from "./managed.js";
 
@@ -84,9 +84,9 @@ export function parseSeadex(json: unknown): SeadexEntry | null {
     .map((t) => t as { releaseGroup?: string; tracker?: string; isBest?: boolean; dualAudio?: boolean; tags?: unknown })
     .filter((t) => typeof t.releaseGroup === "string" && t.releaseGroup.trim())
     .map((t) => ({ group: t.releaseGroup!.trim(), tracker: String(t.tracker ?? ""), best: !!t.isBest, dualAudio: !!t.dualAudio, tags: Array.isArray(t.tags) ? t.tags.map(String).slice(0, 10) : [] }));
-  // The same group listed per tracker: keep one entry per group + best + dual flag.
+  // The same group listed per tracker: keep one entry per group + best + dual flag + source.
   const seen = new Map<string, SeadexTorrent>();
-  for (const t of torrents) seen.set(`${t.group.toLowerCase()}|${t.best}|${t.dualAudio}`, t);
+  for (const t of torrents) seen.set(`${t.group.toLowerCase()}|${t.best}|${t.dualAudio}|${seadexSource(t)}`, t);
   return { incomplete: !!item.incomplete, torrents: [...seen.values()].slice(0, 30) };
 }
 
@@ -146,4 +146,44 @@ export async function seadexTick() {
   } finally {
     running = false;
   }
+}
+
+// ---------------------------------------------------------------- "Check SeaDex now"
+
+/** A show's "Check SeaDex now" can run again after this long (SeaDex is a small volunteer site: be gentle). */
+export const CHECK_COOLDOWN_MS = 30 * 60_000;
+const checkKey = (tvdbId: number) => `seadex.check.${tvdbId}`;
+export const lastCheck = (tvdbId: number) => {
+  const v = (db.prepare("SELECT value FROM kv WHERE key = ?").get(checkKey(tvdbId)) as { value: string } | undefined)?.value;
+  return v ? Number(v) || null : null;
+};
+/** Milliseconds until a show may be checked again (0 = now). */
+export const cooldownLeft = (last: number | null, now = Date.now()) => (last === null ? 0 : Math.max(0, last + CHECK_COOLDOWN_MS - now));
+
+/** The AniList entries behind all of a show's seasons (specials included). */
+export function showEntries(tvdbId: number): number[] {
+  const series = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
+  if (!series) return [];
+  const seasons = (cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ?").all(series.id) as { season: number }[]).map((r) => r.season);
+  return [...new Set(seasons.flatMap((s) => anilistIdsFor(tvdbId, s)))];
+}
+
+/**
+ * Fetches and saves SeaDex's picks for a show's AniList entries right now (the weekly pass is the normal way).
+ * A show can be checked again after CHECK_COOLDOWN_MS; within it nothing is fetched.
+ */
+export async function checkSeadexNow(tvdbId: number, deps: { fetch: typeof fetch } = { fetch }, now = Date.now()): Promise<{ status: "checked" | "cooldown" | "none"; entries: number; found: number; retryInMs: number }> {
+  const left = cooldownLeft(lastCheck(tvdbId), now);
+  if (left > 0) return { status: "cooldown", entries: 0, found: 0, retryInMs: left };
+  const ids = showEntries(tvdbId);
+  if (!ids.length) return { status: "none", entries: 0, found: 0, retryInMs: 0 };
+  let found = 0;
+  for (const id of ids) {
+    const e = await fetchSeadex(id, deps.fetch);
+    saveSeadex(id, e, now);
+    wanted.delete(id);
+    if (e) found++;
+  }
+  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(checkKey(tvdbId), String(now));
+  return { status: "checked", entries: ids.length, found, retryInMs: CHECK_COOLDOWN_MS };
 }

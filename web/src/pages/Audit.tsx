@@ -8,14 +8,14 @@ import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitBu
 import { ReleaseLine } from "./Queue";
 
 type Tab = "gaps" | "language" | "specials" | "maintenance";
-type Maint = "checks" | "upgrades" | "quality" | "recycle";
+type Maint = "checks" | "upgrades" | "quality" | "duplicates" | "recycle";
 
 /** Audit: three read-only reports, plus Maintenance (after-import checks, dual-audio and quality upgrades, recycle bin). */
 export function Audit() {
   usePageTitle(t("audit.title"));
   const q = query().get("tab") ?? "gaps";
-  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "quality", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
-  const [maint, setMaint] = useState<Maint>(["upgrades", "quality", "recycle"].includes(q) ? (q as Maint) : "checks");
+  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "quality", "duplicates", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
+  const [maint, setMaint] = useState<Maint>(["upgrades", "quality", "duplicates", "recycle"].includes(q) ? (q as Maint) : "checks");
   const pick = (x: Tab, m: Maint = maint) => {
     setTab(x);
     setMaint(m);
@@ -34,7 +34,7 @@ export function Audit() {
       <p className="muted small">{t(tab === "maintenance" && maint !== "recycle" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       {tab === "maintenance" && (
         <div className="seg self-start" role="group" aria-label={t("audit.tab.maintenance")}>
-          {(["checks", "upgrades", "quality", "recycle"] as Maint[]).map((m) => (
+          {(["checks", "upgrades", "quality", "duplicates", "recycle"] as Maint[]).map((m) => (
             <button key={m} className={maint === m ? "on" : ""} aria-pressed={maint === m} onClick={() => pick("maintenance", m)}>
               {t(`audit.tab.${m}` as I18nKey)}
             </button>
@@ -53,6 +53,7 @@ export function Audit() {
       )}
       {tab === "maintenance" && maint === "upgrades" && <Upgrades />}
       {tab === "maintenance" && maint === "quality" && <QualityUpgradesPanel />}
+      {tab === "maintenance" && maint === "duplicates" && <Duplicates />}
     </section>
   );
 }
@@ -475,6 +476,61 @@ function Upgrades() {
               {u.why}
               {u.lastAt ? ` · ${dateTime(u.lastAt)}` : ""}
             </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface Dup { tvdbId: number; title: string; managed: boolean; sonarr: boolean; sonarrUrl: string; otherTvdbId: number; otherTitle: string; mine: string; there: string; mineFiles: { files: number; total: number }; thereFiles: { files: number; total: number }; blocking: boolean }
+
+/** Shows TVDB lists twice (found from catalog ids): which episodes overlap, file counts, and how to retire the copy. */
+function Duplicates() {
+  const toast = useToast();
+  const d = useLoad(() => api<{ items: Dup[] }>("/audit/duplicates"), []);
+  if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
+  if (!d.data) return <Spinner label={t("app.loading")} />;
+  const stop = async (x: Dup) => {
+    try {
+      await api("/managed", { body: { tvdbIds: [x.tvdbId], on: false } });
+      toast(t("dup.stopped", { title: x.title }));
+      d.reload();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+  return (
+    <div className="stack">
+      <p className="muted">{t("dup.intro")}</p>
+      {!d.data.items.length && <Empty>{t("dup.empty")}</Empty>}
+      <div className="list">
+        {d.data.items.map((x) => (
+          <article key={`${x.tvdbId}|${x.otherTvdbId}`} className="card pad stack">
+            <div className="row">
+              <ShowLink tvdbId={x.tvdbId} title={x.title}>
+                <strong className="clamp2">{x.title}</strong>
+              </ShowLink>
+              <span className="muted">≈</span>
+              <ShowLink tvdbId={x.otherTvdbId} title={x.otherTitle}>
+                <strong className="clamp2">{x.otherTitle}</strong>
+              </ShowLink>
+            </div>
+            <p className="small">{t("dup.overlap", { mine: x.mine, there: x.there, other: x.otherTitle })}</p>
+            <div className="row">
+              <Chip tone={x.blocking ? "good" : "warn"}>{t(x.blocking ? "dup.blocking" : "dup.notBlocking")}</Chip>
+              <span className="muted small">{t("dup.files", { a: x.mineFiles.files, b: x.mineFiles.total, c: x.thereFiles.files, d: x.thereFiles.total })}</span>
+            </div>
+            {x.managed && (
+              <div className="row">
+                <button className="small" onClick={() => void stop(x)}>{t("dup.stop")}</button>
+              </div>
+            )}
+            {x.sonarr && (
+              <p className="muted small">
+                {t("dup.sonarrHow", { title: x.title })} {x.sonarrUrl && <a href={x.sonarrUrl} target="_blank" rel="noreferrer">{t("dup.openSonarr")}</a>}
+              </p>
+            )}
           </article>
         ))}
       </div>
