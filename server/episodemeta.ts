@@ -3,7 +3,8 @@
  *
  * Where they come from, in order:
  *   1. TMDB: the season response of the entry's TMDB mapping (Anime-Lists' tmdb_tv / tmdb_season / tmdb_offset, the same
- *      mapping the catalog uses for episode titles). Needs the TMDB key from Settings → Metadata. A season is fetched
+ *      mapping the catalog uses for episode titles), or the user's own "episode info source" for that season
+ *      (server/metaoverride.ts) when the mapping is wrong for metadata. Needs the TMDB key from Settings → Metadata. A season is fetched
  *      once and kept a week in cache.db, so a library-wide run asks TMDB once per season, gently.
  *   2. Sonarr: the episode's overview and screenshot (only when Sonarr is connected and TMDB had nothing).
  *   3. A frame from the video itself (mediaout asks for it, and only when the user switched it on).
@@ -16,6 +17,7 @@ import { cache, db } from "./db.js";
 import { getSettings } from "./settings.js";
 import * as sonarr from "./arr/sonarr.js";
 import { NATIVE_BASE } from "./native.js";
+import { metaOverrides, type MetaOverride } from "./metaoverride.js";
 import type { EpisodeMeta } from "./mediaout.js";
 
 const WEEK = 7 * 24 * 3600_000;
@@ -75,7 +77,10 @@ async function tmdbSeason(tv: number, season: number, key: string, deps: MetaDep
 interface MapRow { tvdb_season: string; tvdb_offset: number; episodes: number | null; tmdb_tv: number | null; tmdb_season: number | null; tmdb_offset: number }
 
 /** The TMDB episode (show, season, number) for one AnimeArr episode, through the entry that covers it. Specials aren't guessed. */
-export function tmdbTarget(rows: MapRow[], season: number, episode: number, absolute: number | null) {
+export function tmdbTarget(rows: MapRow[], season: number, episode: number, absolute: number | null, overrides?: Map<number, MetaOverride>) {
+  // The user's choice for this season replaces the catalog mapping (and is the only way specials get a TMDB episode).
+  const o = overrides?.get(season);
+  if (o) return { tv: o.tmdbTv, season: o.tmdbSeason, episode: episode + o.tmdbOffset };
   if (season === 0) return null;
   for (const r of rows) {
     // AnimeArr/TVDB numbering → the entry's own episode number (as catalogLookup), then → TMDB numbering with tmdb_offset.
@@ -97,10 +102,11 @@ export async function enrichEpisodes(tvdbId: number | null, sonarrId: number | n
   const key = getSettings().metadata.tmdbKey;
   if (key && tvdbId) {
     const rows = db.prepare("SELECT tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC").all(tvdbId) as unknown as MapRow[];
+    const overrides = metaOverrides(tvdbId);
     const state = { stop: false };
     const seasons = new Map<string, Season | null>();
     for (const e of eps) {
-      const t = tmdbTarget(rows, e.season, e.episode, e.absolute ?? null);
+      const t = tmdbTarget(rows, e.season, e.episode, e.absolute ?? null, overrides);
       if (!t) continue;
       const k = `${t.tv}:${t.season}`;
       if (!seasons.has(k)) seasons.set(k, await tmdbSeason(t.tv, t.season, key, deps, state));

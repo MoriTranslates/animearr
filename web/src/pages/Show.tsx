@@ -16,6 +16,7 @@ import { ScopeEditor } from "../scope";
 import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
 import { AnidbEntries } from "../anidb";
+import { MetaSource } from "../metasource";
 import { query } from "../App";
 import { languageName } from "../lang";
 import { TrailerButton } from "../trailer";
@@ -79,6 +80,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [replacing, setReplacing] = useState<number | null>(null);
   const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "tags" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
   const [linking, setLinking] = useState(false);
+  const [metaSeason, setMetaSeason] = useState<number | null>(null);
   const toast = useToast();
 
   // Poll while something is downloading so status moves on by itself.
@@ -341,7 +343,15 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   {t("shows.selectAll")}
                 </button>
               )}
-              {season > 0 && have.length > 0 && !selecting && <Menu label={t("replace.menuFor", { n: season })} items={[{ label: t("replace.menu"), onSelect: () => setReplacing(season) }]} />}
+              {!selecting && (
+                <Menu
+                  label={t("replace.menuFor", { n: season })}
+                  items={[
+                    { label: t("replace.menu"), onSelect: () => setReplacing(season), hidden: !(season > 0 && have.length > 0) },
+                    { label: t("metasrc.menu"), onSelect: () => setMetaSeason(season) },
+                  ]}
+                />
+              )}
             </div>
           <details className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
             <summary className="season-head">
@@ -486,6 +496,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <TagPicker endpoint={`/series/${tvdbId}/tags`} value={d.data.tags} onChanged={() => void d.reload()} />
         </Modal>
       )}
+      {metaSeason !== null && <MetaSource tvdbId={tvdbId} season={metaSeason} episodes={(seasons.find(([n]) => n === metaSeason)?.[1] ?? []).map((r) => ({ episode: r.episode, title: r.title }))} onClose={() => setMetaSeason(null)} />}
       {replacing !== null && <ReplaceSeason tvdbId={tvdbId} season={replacing} onClose={() => setReplacing(null)} />}
       {panel === "drop" && <DropShow tvdbId={tvdbId} title={h.title} sonarr={!h.native && !!h.monitoredInSonarr} onClose={() => setPanel(null)} onDone={() => void d.reload()} />}
       {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}

@@ -6,6 +6,7 @@ import { setupStrings } from "./i18n.setup";
 import { viewStrings } from "./i18n.view";
 import { mediaStrings } from "./i18n.media";
 import { dupStrings } from "./i18n.dup";
+import { metaSrcStrings } from "./i18n.metasrc";
 import { qualityStrings } from "./i18n.quality";
 import { safetyStrings } from "./i18n.safety";
 import { rulesStrings } from "./i18n.rules";
@@ -16,6 +17,7 @@ const en = {
   ...setupStrings,
   ...qualityStrings,
   ...dupStrings,
+  ...metaSrcStrings,
   ...safetyStrings,
   ...rulesStrings,
   ...notifyStrings,
