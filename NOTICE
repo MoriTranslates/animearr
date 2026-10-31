@@ -11,5 +11,8 @@ Portions ported from Sonarr (github.com/Sonarr/Sonarr), (C) Sonarr team, GPL-3.0
 
 Based on Tastearr by MoriTranslates (github.com/MoriTranslates/tastearr), GPL-3.0.
 
+catalog/anime-tiers.json: release-group patterns from the TRaSH Guides anime custom formats
+(github.com/TRaSH-Guides/Guides, docs/json/sonarr/cf), (C) TRaSH-Guides contributors, MIT licence.
+
 Data sources (not bundled; downloaded at runtime and cached): AniDB anime titles dump (anidb.net), Anime-Lists
 (github.com/Anime-Lists/anime-lists), Fribb anime-lists (github.com/Fribb/anime-lists), AniList (anilist.co).

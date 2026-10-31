@@ -227,6 +227,28 @@ Good to know:
 - Only anime that Anime-Lists maps to a TVDB id can be requested. Movies need a Radarr-side API, which isn't there yet.
 - AnimeArr reports itself as Sonarr 4, so the request app won't ask for a language profile.
 
+## Quality goals, SeaDex and Tdarr
+
+Each profile has a **quality goal** (the setup wizard asks; change it in **Settings → Profiles**):
+
+- **Good enough · WEB 1080p:** what streaming services give you.
+- **Aim high · Blu-ray 1080p** (the default): upgrades to the Blu-ray when it comes out.
+- **Collector · SeaDex best:** whatever [SeaDex](https://releases.moe) rates best for the show.
+
+Qualities use Sonarr's names, grouped the way the TRaSH Guides anime profile does (WEB-DL and WEBRip together, HDTV
+ranked lower, 2160p counted as 1080p unless it's a real UHD Blu-ray). Inside a category, SeaDex's pick wins, then
+TRaSH's anime group tiers, then your size preset.
+
+**Upgrades are automatic.** Seasons below their goal are searched now and then and swapped one verified episode at a
+time; the old files go to the recycling bin. The first run only lists its plan (Audit → Maintenance → Quality
+upgrades) and starts a day later, unless you press **Start now**. There's a pause switch and a daily budget, and a file
+that's already the best of its category is never swapped for an equal one.
+
+**Keep as is.** Lock a show or season on its page (or set a profile to keep original files) and it's never upgraded.
+Add `{Keep Tag}` to your episode naming format and those files get `[Keep]` in their names; Settings → Profiles shows a
+one-step Tdarr guard ("I use Tdarr") that skips them, so you can let Tdarr re-encode everything else to AV1/HEVC. Files
+named `[Remaster]` are treated the same way.
+
 ## FAQ
 
 **Do I need Sonarr?**

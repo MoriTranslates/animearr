@@ -6,7 +6,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 ## Next, after the 0.9.0-beta launch (2026-10-30)
 
 - [ ] **"For you" tab in Find & add**: Tastearr's taste-based season picks built in, with Add and ▶ Trailer on each pick. Target: in time for the Winter 2027 season (early January). Tastearr also stays a standalone app for Sonarr/Radarr users
-- [ ] **Quality goal + upgrade watcher** ("always aim for the best"): a goal per profile on the TV < WEB-DL < Blu-ray < remux ladder; shows below their goal are rechecked on a budget (extra checks when Blu-ray batches usually land) and upgraded through the Replace-season machinery; report-only by default; a per-show "keep as is" lock for hand-made remasters
+- [x] **Quality goal + upgrade watcher** ("always aim for the best"): a goal per profile (Good enough / Aim high / Collector) on Sonarr's quality names in TRaSH-style anime categories, SeaDex + group tiers in ranking; seasons below their goal are rechecked on a budget (weekly in the Blu-ray window) and upgraded through the Replace-season machinery, automatically from day one with guard rails; "keep as is" locks and the {Keep Tag} for Tdarr. Follow-ups: quality upgrades for movies, per-quality allow toggles
 - [ ] **Library audit** (0.9.1): re-check files imported before AnimeArr took over (runtime far off, a different year or show in the release name, live action, wrong audio language) and list them with "Find the right release" / "Ignore"; never auto-delete
 
 ## Must-have before tagging 1.0
@@ -38,7 +38,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 
 ### Smarter picking and auto-repair
 - [x] Auto-fail and re-search without asking (with caps and two-signal rule) (after-import check, 0.x)
-- [ ] SeaDex "best release" input and SeaDex-first learned scoring
+- [x] SeaDex "best release" input (part of ranking; learned scoring on top of it is still open)
 - [ ] Burn-in frame check (and which language is burned in) after download
 - [ ] "Language coverage beats quality" upgrades
 - [ ] LLM fallback parser for names no rule parses
