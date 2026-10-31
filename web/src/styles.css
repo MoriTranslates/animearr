@@ -1496,3 +1496,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .term-chip { display: inline-flex; align-items: center; gap: 6px; white-space: normal; word-break: break-all; }
 .term-chip code { background: none; padding: 0; color: inherit; }
 .term-chip .linklike { color: inherit; padding: 0 2px; }
+
+/* Settings → System → Logs */
+.logbox { max-height: 24rem; overflow: auto; margin: 0; padding: .6rem .75rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.logbox .log-error { color: var(--bad); }
+.logbox .log-warn { color: var(--warn); }
+.logbox .log-debug { opacity: .7; }

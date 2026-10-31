@@ -4,6 +4,7 @@ import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
 import type { GoalId } from "./core/quality.js";
 import { open, seal } from "./secretbox.js";
+import type { NotifyChannel } from "./notifyChannels.js";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -268,7 +269,7 @@ export interface Settings {
     sourceRoots: string[];
   };
   /** Notifications (minimal): Discord webhook and/or ntfy, per event. Webhook URL and ntfy token are stored encrypted. */
-  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean } };
+  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean }; /** Webhook, Telegram, Pushover and email channels (edited through /api/notify/channels only). */ channels: NotifyChannel[] };
   /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
   cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
@@ -368,7 +369,7 @@ const DEFAULTS: Settings = {
   // Off for existing installs (they add files to every show folder); the new-user wizard turns them on.
   mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false },
   cutover: { allowArrWrites: false },
-  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true } },
+  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true }, channels: [] },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
   media: {
     renameEpisodes: true,
@@ -525,6 +526,7 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
       .slice(0, 20);
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
+  if (path === "notify.channels") return undefined; // edited through /api/notify/channels only
   if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
   // Service addresses are web addresses (a javascript: link would be clickable in the UI).
   if (/(^|\.)url$/i.test(path) || path === "externalUrl") {
@@ -664,6 +666,7 @@ export function publicSettings() {
   const auth = s.auth as Record<string, unknown>;
   auth.hasPassword = !!auth.passwordHash;
   delete auth.passwordHash;
+  delete (s.notify as Record<string, unknown>).channels; // masked copies come from /api/notify/channels
   delete s.secret;
   delete s.apiKey;
   return s;

@@ -20,7 +20,10 @@ import { setupProblems, withSetupProblems } from "./setupHealth.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
-import { bell, markRead, send } from "./notify.js";
+import { bell, channelStatus, markRead, send, testChannel } from "./notify.js";
+import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "./backupTransfer.js";
+import { getLogs, installLogCapture, logStream, logText } from "./logs.js";
+import { cleanChannels, maskChannel, CHANNEL_TYPES } from "./notifyChannels.js";
 import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { testEmbyLike, testKodi } from "./mediaservers.js";
@@ -115,6 +118,7 @@ const URL_BASE = (() => {
   console.warn(`Ignoring the URL base "${v}": use something like /animearr (letters, digits, . _ ~ - only)`);
   return "";
 })();
+installLogCapture(); // the log viewer keeps what the server prints
 const app = Fastify({
   rewriteUrl: (req) => {
     const u = req.url ?? "/";
@@ -122,7 +126,7 @@ const app = Fastify({
     if (u === URL_BASE) return "/";
     return u.startsWith(`${URL_BASE}/`) ? u.slice(URL_BASE.length) : u;
   },
-  logger: { level: process.env.LOG_LEVEL ?? "info", serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
+  logger: { level: process.env.LOG_LEVEL ?? "info", stream: logStream, serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
   trustProxy: trustProxyOption() as string[] | false,
   bodyLimit: 1_000_000,
 });
@@ -962,10 +966,23 @@ app.post<{ Body: { upToId?: number; ids?: number[] } }>("/api/notifications/read
 });
 app.post("/api/notifications/test", async () => {
   const s = getSettings().notify;
-  if (!s.discordWebhook && !s.ntfyUrl) throw fail("Set up Discord or ntfy first (and save)", 400);
+  if (!s.discordWebhook && !s.ntfyUrl && !s.channels?.some((c) => c.enabled)) throw fail("Set up a notification channel first (and save)", 400);
   const out = await send("imported", "Test", "AnimeArr can reach this channel.");
   if (!out.length) throw fail("The 'imported' event is switched off, or too many notifications this minute", 400);
   return { results: out };
+});
+// The extra channels (webhook, Telegram, Pushover, email): secrets masked going out, "masked" means unchanged coming in.
+app.get("/api/notify/channels", async () => ({ channels: (getSettings().notify.channels ?? []).map(maskChannel), status: channelStatus(), types: CHANNEL_TYPES }));
+app.put<{ Body: { channels?: unknown } }>("/api/notify/channels", async (req) => {
+  writable();
+  const channels = cleanChannels(req.body?.channels, getSettings().notify.channels ?? []);
+  patchSettings((x) => ({ ...x, notify: { ...x.notify, channels } }));
+  return { channels: channels.map(maskChannel), status: channelStatus(), types: CHANNEL_TYPES };
+});
+app.post<{ Params: { id: string } }>("/api/notify/channels/:id/test", async (req) => {
+  const c = (getSettings().notify.channels ?? []).find((x) => x.id === req.params.id);
+  if (!c) throw fail("Save the channel first, then test it", 404);
+  return { results: [await testChannel(c)] };
 });
 /** Library tag filter: Sonarr's tag names (read-only; empty when Sonarr isn't set up or doesn't answer). */
 app.get("/api/library/tags", async () => {
@@ -1425,6 +1442,12 @@ app.get("/api/system", async () => ({
   backupDir: BACKUP_DIR,
   memoryMb: Math.round(process.memoryUsage().rss / 1e6),
 }));
+// Logs: the last lines (secrets already scrubbed), filtered; the download is plain text.
+app.get<{ Querystring: { level?: string; q?: string; limit?: string } }>("/api/system/logs", async (req) => getLogs({ level: req.query.level, q: req.query.q, limit: Number(req.query.limit) || 500 }));
+app.get("/api/system/logs/download", async (_req, reply) => {
+  reply.header("Content-Type", "text/plain; charset=utf-8").header("Content-Disposition", `attachment; filename="animearr-logs-${new Date().toISOString().slice(0, 10)}.txt"`);
+  return logText();
+});
 app.post("/api/system/metadata", async () => refreshMetadata(false));
 // Read-only: which release is newest on GitHub (offline → { offline: true }).
 app.get("/api/system/updates", async () => checkForUpdates());
@@ -1440,6 +1463,31 @@ app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", 
   app.log.warn("Backup restored; exiting so the app restarts with it.");
   setTimeout(() => process.exit(0), 500);
   return { ok: true, message: "Restored. AnimeArr is restarting; reload the page in a few seconds (start it again yourself if it isn't running in Docker)." };
+});
+// Download / upload a whole backup (database + secret.key). Upload is two steps: the file is checked and staged,
+// then restoring it needs the account password, like restoring one of the automatic backups.
+app.get("/api/system/backup/download", async (req, reply) => {
+  if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
+  const b = createBackup();
+  reply.header("Content-Type", "application/gzip").header("Content-Disposition", `attachment; filename="${b.name}"`).header("Cache-Control", "no-store");
+  return b.data;
+});
+app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_BACKUP_BYTES }, (_req, body, done) => done(null, body));
+app.post<{ Body: Buffer }>("/api/system/backup/upload", { bodyLimit: MAX_BACKUP_BYTES }, async (req) => {
+  if (authState(req).via === "apikey") throw fail("Log in to restore a backup", 403);
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail("Choose a backup file", 400);
+  const parsed = parseBackup(req.body);
+  const m = parsed.manifest;
+  return { token: stageBackup(parsed), appVersion: m.appVersion, schema: m.schema, createdAt: m.createdAt, size: req.body.length };
+});
+app.post<{ Body: { token?: string; password?: string } }>("/api/system/backup/restore-upload", async (req) => {
+  if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
+  if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+  if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+  restoreUploaded(takeStaged(String(req.body?.token ?? "")));
+  app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
+  setTimeout(() => process.exit(0), 500);
+  return { ok: true, message: "Restored. AnimeArr is restarting; reload the page in a few seconds (start it again yourself if it isn't running in Docker). A safety copy of what was here before is in the backups folder." };
 });
 app.post("/api/system/cache/reset", async (req) => {
   writable();
