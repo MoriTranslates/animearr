@@ -228,6 +228,28 @@ Good to know:
 - Only anime that Anime-Lists maps to a TVDB id can be requested. Movies need a Radarr-side API, which isn't there yet.
 - AnimeArr reports itself as Sonarr 4, so the request app won't ask for a language profile.
 
+## Use with nzb360, LunaSea and Homepage
+
+The same Sonarr-compatible API also covers what dashboards and phone apps read: calendar, queue, history, wanted
+(missing and quality-goal unmet), episode files, disk space, health, and interactive search. In **nzb360**, add a
+server, choose the **Sonarr** service type, and enter:
+
+- **Address / port:** AnimeArr's address and port (8484 by default), with SSL on if you serve it over HTTPS. Add AnimeArr's
+  URL base to the address if you set one.
+- **API key:** AnimeArr's own key, from **Settings → Security → API key for other apps**.
+
+LunaSea (Sonarr module) and Homepage's Sonarr widget take the same address and key. What works:
+- Browse your shows, seasons, episodes and files, the calendar, the wanted lists, and what's downloading.
+- Search an episode or season by hand and pick a release: the list shows AnimeArr's score and its plain-words reasons for
+  rejecting a release; picking one grabs it through AnimeArr's normal checks (practice mode still applies).
+- Remove a download from the queue, with or without blocklisting it.
+- Search for missing episodes, run an RSS check, rescan a show folder, or take a backup.
+
+Good to know:
+- Episode files can't be deleted from the app (AnimeArr asks first, on its own pages). Removing a queue item always
+  removes the download from the client too.
+- A manual search can take half a minute while AnimeArr asks every indexer; the app may show a spinner meanwhile.
+
 ## Media servers
 
 Settings → Media servers connects Plex, Jellyfin, Emby and Kodi. After AnimeArr imports, upgrades, renames or deletes

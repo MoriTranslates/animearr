@@ -12,10 +12,17 @@
  * - Commands: MissingEpisodeSearch / SeriesSearch / EpisodeSearch run AnimeArr's own search (dry run and budgets
  *   apply); refresh and rescan commands are accepted and do nothing (AnimeArr refreshes on its own schedule).
  */
-import { CATEGORY_NAME, CATEGORY_QUALITIES, goalCategory, goalLabel, LADDER, ladderRank, type Category } from "./core/quality.js";
+import { langName } from "./core/rank.js";
+import { CATEGORY_NAME, CATEGORY_QUALITIES, goalCategory, sonarrQualityName, goalLabel, LADDER, ladderRank, type Category } from "./core/quality.js";
 import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { autoSearchEpisodes, searchMissingNow } from "./autosearch.js";
+import { deepSearch } from "./search.js";
+import { removeGrab, startGrab } from "./pipeline.js";
+import { backupNow } from "./db.js";
+import { rssTick } from "./managed.js";
+import { scanFolder } from "./mediafiles.js";
+import { registerSonarrMore } from "./sonarrApiMore.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
 import { cache, db, dbState, tx } from "./db.js";
@@ -40,20 +47,28 @@ export interface SonarrApiDeps {
   queue: () => ReturnType<typeof queueView>;
   searchMissing: typeof searchMissingNow;
   searchEpisodes: typeof autoSearchEpisodes;
+  /** Interactive search, the manual grab and the queue removal (tests swap them for fakes). */
+  deepSearch: typeof deepSearch;
+  startGrab: typeof startGrab;
+  removeGrab: typeof removeGrab;
+  /** Commands: rescan a show folder, check the RSS feeds now, take a backup. */
+  rescan: (folder: string) => Promise<unknown>;
+  rssSync: () => Promise<unknown>;
+  backup: () => string | null;
 }
-const realDeps: SonarrApiDeps = { media: mediaByIds, fribb, searchTitles: searchAdd, queue: () => queueView(), searchMissing: searchMissingNow, searchEpisodes: autoSearchEpisodes };
+const realDeps: SonarrApiDeps = { media: mediaByIds, fribb, searchTitles: searchAdd, queue: () => queueView(), searchMissing: searchMissingNow, searchEpisodes: autoSearchEpisodes, deepSearch, startGrab, removeGrab, rescan: (f) => scanFolder(f), rssSync: () => rssTick(), backup: () => backupNow("manual") };
 
-const fail = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
-const writable = () => {
+export const fail = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
+export const writable = () => {
   if (dbState.corrupt) throw fail("The database failed its integrity check, so AnimeArr is read-only", 503);
 };
-const int = (v: unknown, what = "id") => {
+export const int = (v: unknown, what = "id") => {
   const n = Number(v);
   if (!Number.isInteger(n) || n <= 0) throw fail(`Bad ${what}`);
   return n;
 };
-const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null);
-const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+export const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null);
+export const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // ---------------------------------------------------------------- stable numeric ids
 
@@ -71,7 +86,7 @@ export function apiId(kind: "profile" | "root", key: string): number {
 const keyOf = (kind: "profile" | "root", id: number) => (db.prepare("SELECT key FROM api_ids WHERE kind = ? AND id = ?").get(kind, id) as { key: string } | undefined)?.key ?? null;
 
 /** Sonarr's own quality ids, so request apps show the qualities they know. */
-const SONARR_QUALITY_IDS: Record<string, { id: number; source: string; resolution: number }> = {
+export const SONARR_QUALITY_IDS: Record<string, { id: number; source: string; resolution: number }> = {
   Unknown: { id: 0, source: "unknown", resolution: 0 },
   SDTV: { id: 1, source: "television", resolution: 480 },
   DVD: { id: 2, source: "dvd", resolution: 480 },
@@ -125,9 +140,9 @@ const setSeriesTags = (tvdbId: number, tags: unknown) => void setTags("series", 
 
 // ---------------------------------------------------------------- shows
 
-interface SeriesRow { id: number; tvdb_id: number; imdb_id: string | null; title: string; sort_title: string | null; year: number | null; status: string | null; path: string | null; root_folder: string | null; network: string | null; runtime: number | null; first_aired: string | null; poster: string | null; added: string | null; overview: string | null; genres: string; previous_airing: string | null; next_airing: string | null }
+export interface SeriesRow { id: number; tvdb_id: number; imdb_id: string | null; title: string; sort_title: string | null; year: number | null; status: string | null; path: string | null; root_folder: string | null; network: string | null; runtime: number | null; first_aired: string | null; poster: string | null; added: string | null; overview: string | null; genres: string; previous_airing: string | null; next_airing: string | null }
 
-const isManaged = (tvdbId: number) => !!db.prepare("SELECT 1 FROM managed WHERE tvdb_id = ?").get(tvdbId);
+export const isManaged = (tvdbId: number) => !!db.prepare("SELECT 1 FROM managed WHERE tvdb_id = ?").get(tvdbId);
 
 /** The seasons AnimeArr searches for a managed show (its scope); none for a show it doesn't manage. */
 function monitoredSeasons(s: { id: number; tvdb_id: number }, now = Date.now()): Set<number> {
@@ -159,13 +174,16 @@ export function seriesResource(s: SeriesRow, now = Date.now()) {
     id: s.id,
     title: s.title,
     sortTitle: s.sort_title ?? s.title.toLowerCase(),
+    alternateTitles: [] as unknown[],
     status: s.status ?? "continuing",
     ended: s.status === "ended",
     overview: s.overview ?? "",
     network: s.network ?? "",
+    airTime: undefined,
+    originalLanguage: { id: 8, name: "Japanese" },
     images: images(poster),
     remotePoster: poster,
-    seasons: st.map((x) => ({ seasonNumber: x.season, monitored: mon.has(x.season), statistics: { previousAiring: undefined, ...stats(x.files, x.aired, x.total, x.size) } })),
+    seasons: st.map((x) => ({ seasonNumber: x.season, monitored: mon.has(x.season), images: [] as unknown[], statistics: { previousAiring: undefined, ...stats(x.files, x.aired, x.total, x.size) } })),
     year: s.year ?? 0,
     path: s.path ?? "",
     rootFolderPath: s.root_folder ?? "",
@@ -179,26 +197,30 @@ export function seriesResource(s: SeriesRow, now = Date.now()) {
     tvdbId: s.tvdb_id >= NATIVE_BASE ? 0 : s.tvdb_id, // a synthetic id isn't a TVDB id
     tvRageId: 0,
     tvMazeId: 0,
+    tmdbId: 0,
     firstAired: s.first_aired ?? undefined,
+    lastAired: s.previous_airing ?? undefined,
     previousAiring: s.previous_airing ?? undefined,
     nextAiring: s.next_airing ?? undefined,
     seriesType: "anime",
     cleanTitle: compactKey(s.title),
     imdbId: s.imdb_id ?? "",
     titleSlug: slug(s.title),
+    folder: (s.path ?? "").split("/").filter(Boolean).pop() ?? "",
     certification: "",
     genres: JSON.parse(s.genres || "[]") as string[],
     tags: seriesTags(s.tvdb_id),
     added: s.added ?? new Date(0).toISOString(),
     ratings: { votes: 0, value: 0 },
+    episodesChanged: false,
     statistics: { seasonCount: st.filter((x) => x.season > 0).length, ...stats(sum.files, sum.aired, sum.total, sum.size), releaseGroups: [] as string[] },
   };
 }
 
-const SERIES_COLS = "id, tvdb_id, imdb_id, title, sort_title, year, status, path, root_folder, network, runtime, first_aired, poster, added, overview, genres, previous_airing, next_airing";
-const seriesById = (id: number) => cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE id = ?`).get(id) as SeriesRow | undefined;
-const seriesByTvdb = (tvdbId: number) => cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE tvdb_id = ? ORDER BY id LIMIT 1`).get(tvdbId) as SeriesRow | undefined;
-const mustSeries = (id: number) => seriesById(id) ?? (() => { throw fail("Series not found", 404); })();
+export const SERIES_COLS = "id, tvdb_id, imdb_id, title, sort_title, year, status, path, root_folder, network, runtime, first_aired, poster, added, overview, genres, previous_airing, next_airing";
+export const seriesById = (id: number) => cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE id = ?`).get(id) as SeriesRow | undefined;
+export const seriesByTvdb = (tvdbId: number) => cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE tvdb_id = ? ORDER BY id LIMIT 1`).get(tvdbId) as SeriesRow | undefined;
+export const mustSeries = (id: number) => seriesById(id) ?? (() => { throw fail("Series not found", 404); })();
 
 /** The AniList entry that stands for a TVDB series (its first numbered season), from the catalog or Anime-Lists. */
 export async function anilistForTvdb(tvdbId: number, d: Pick<SonarrApiDeps, "fribb"> = realDeps): Promise<number | null> {
@@ -272,9 +294,9 @@ const monitoredOf = (seasons: unknown) => (Array.isArray(seasons) ? seasons.filt
 
 // ---------------------------------------------------------------- episodes
 
-interface EpRow { id: number; series_id: number; season: number; episode: number; absolute: number | null; title: string | null; air_date: string | null; air_utc: number | null; has_file: number; file_id: number | null }
-const EP_COLS = "id, series_id, season, episode, absolute, title, air_date, air_utc, has_file, file_id";
-function episodeResources(rows: EpRow[], now = Date.now()) {
+export interface EpRow { id: number; series_id: number; season: number; episode: number; absolute: number | null; title: string | null; air_date: string | null; air_utc: number | null; has_file: number; file_id: number | null; runtime: number | null }
+export const EP_COLS = "id, series_id, season, episode, absolute, title, air_date, air_utc, has_file, file_id, runtime";
+export function episodeResources(rows: EpRow[], now = Date.now()) {
   const scoped = new Map<number, Set<number>>();
   const inScope = (r: EpRow) => {
     if (!scoped.has(r.series_id)) {
@@ -285,9 +307,23 @@ function episodeResources(rows: EpRow[], now = Date.now()) {
   };
   return rows.map((r) => ({
     id: r.id, seriesId: r.series_id, tvdbId: 0, episodeFileId: r.file_id ?? 0, seasonNumber: r.season, episodeNumber: r.episode, title: r.title ?? "TBA", airDate: r.air_date ?? undefined,
-    airDateUtc: iso(r.air_utc) ?? undefined, overview: "", hasFile: !!r.has_file, monitored: inScope(r), absoluteEpisodeNumber: r.absolute ?? undefined, unverifiedSceneNumbering: false,
+    airDateUtc: iso(r.air_utc) ?? undefined, overview: "", hasFile: !!r.has_file, runtime: r.runtime ?? 0, grabbed: false, monitored: inScope(r), absoluteEpisodeNumber: r.absolute ?? undefined, unverifiedSceneNumbering: false,
   }));
 }
+
+// ---------------------------------------------------------------- qualities and languages
+
+/** Sonarr language ids for the languages AnimeArr names (others are 0, "Unknown"). */
+const SONARR_LANGUAGES: Record<string, number> = { en: 1, fr: 2, es: 3, de: 4, it: 5, nl: 7, ja: 8, zh: 10, ru: 11, pl: 12, vi: 13, sv: 14, no: 15, fi: 16, tr: 17, pt: 18, el: 20, ko: 21, hu: 22, he: 23, cs: 25, hi: 26, ro: 27, th: 28, "pt-br": 30, ar: 31, uk: 32, id: 44 };
+export const languageResource = (code: string) => ({ id: SONARR_LANGUAGES[code.toLowerCase()] ?? 0, name: SONARR_LANGUAGES[code.toLowerCase()] ? langName(code.toLowerCase()) : "Unknown" });
+export const allLanguages = () => Object.keys(SONARR_LANGUAGES).map(languageResource);
+/** A quality as Sonarr writes it, from its name ("WEBDL-1080p") or, for a release title, what AnimeArr reads from it. */
+export function qualityByName(name: string | null | undefined, revision: { version?: number; real?: number; isRepack?: boolean } = {}) {
+  const q = SONARR_QUALITY_IDS[name ?? ""] ?? SONARR_QUALITY_IDS.Unknown;
+  const n = SONARR_QUALITY_IDS[name ?? ""] ? name! : "Unknown";
+  return { quality: { id: q.id, name: n, source: q.source, resolution: q.resolution }, revision: { version: revision.version ?? 1, real: revision.real ?? 0, isRepack: !!revision.isRepack } };
+}
+export const qualityResource = (release: string) => qualityByName(sonarrQualityName(release, null), { isRepack: /repack/i.test(release), version: /v(d)/i.test(release) ? Number(/v(d)/i.exec(release)![1]) : 1 });
 
 // ---------------------------------------------------------------- queue
 
@@ -305,7 +341,8 @@ export async function queueRecords(d: Pick<SonarrApiDeps, "queue"> = realDeps, o
     if (g.movieId || !g.tvdbId) continue; // movies have no Sonarr side
     const s = seriesByTvdb(g.tvdbId);
     if (!s) continue;
-    const row = db.prepare("SELECT client_ref FROM grabs WHERE id = ?").get(g.id) as { client_ref: string | null } | undefined;
+    const row = db.prepare("SELECT client_ref, indexer, at FROM grabs WHERE id = ?").get(g.id) as { client_ref: string | null; indexer: string | null; at: number } | undefined;
+    const quality = qualityResource(g.release);
     const live = g.live as { state?: string; progress?: number; etaSec?: number | null; sizeBytes?: number | null } | null;
     const progress = live?.progress ?? g.progress ?? 0;
     const size = live?.sizeBytes ?? 0;
@@ -321,7 +358,7 @@ export async function queueRecords(d: Pick<SonarrApiDeps, "queue"> = realDeps, o
         id: g.id * 1000 + i, seriesId: s.id, episodeId: e.id, seasonNumber: e.season, title: g.release, size, sizeleft: Math.max(0, size * (1 - progress)), timeleft: hms(live?.etaSec),
         estimatedCompletionTime: live?.etaSec ? iso(now + live.etaSec * 1000) : undefined, status, trackedDownloadStatus, trackedDownloadState,
         statusMessages: g.error ? [{ title: g.release, messages: [g.error] }] : [], errorMessage: g.error ?? undefined, downloadId: row?.client_ref ?? String(g.id), protocol: g.protocol,
-        downloadClient: g.clientName, indexer: "", outputPath: undefined,
+        downloadClient: g.clientName, downloadClientHasPostImportCategory: false, indexer: row?.indexer ?? "", outputPath: undefined, quality, languages: [languageResource("ja")], customFormats: [] as unknown[], customFormatScore: 0, added: iso(row?.at) ?? undefined, episodeHasFile: !!e.has_file,
         ...(opts.includeEpisode ? { episode: epRes[i] } : {}),
         ...(opts.includeSeries ? { series: seriesResource(s, now) } : {}),
       });
@@ -332,30 +369,70 @@ export async function queueRecords(d: Pick<SonarrApiDeps, "queue"> = realDeps, o
 
 // ---------------------------------------------------------------- commands
 
-interface CommandRes { id: number; name: string; commandName: string; status: string; queued: string; started?: string; ended?: string; trigger: string; message?: string; body: Record<string, unknown> }
+interface CommandRes { id: number; name: string; commandName: string; status: string; result: string; queued: string; started?: string; ended?: string; trigger: string; priority: string; message?: string; body: Record<string, unknown>; sendUpdatesToClient: boolean; updateScheduledTask: boolean }
 const commands = new Map<number, CommandRes>();
 let nextCommand = 1;
+
+/** Marks a command that is still running as finished (or failed) when its work settles, so clients polling it see it end. */
+function settle(c: CommandRes, work: Promise<unknown>) {
+  c.status = "started";
+  c.result = "unknown";
+  c.ended = undefined;
+  void work.then(
+    () => Object.assign(c, { status: "completed", result: "successful", ended: new Date().toISOString() }),
+    (e: Error) => Object.assign(c, { status: "failed", result: "unsuccessful", message: e.message, ended: new Date().toISOString() }),
+  );
+}
+const seasonEpisodeIds = (seriesId: number, season: number, now: number) => {
+  const rows = cache.prepare("SELECT id, has_file, air_utc FROM episodes WHERE series_id = ? AND season = ?").all(seriesId, season) as { id: number; has_file: number; air_utc: number | null }[];
+  const missing = rows.filter((r) => !r.has_file && r.air_utc !== null && r.air_utc <= now);
+  return (missing.length ? missing : rows.filter((r) => !r.has_file)).map((r) => r.id);
+};
 
 async function runCommand(body: Record<string, unknown>, d: SonarrApiDeps): Promise<CommandRes> {
   const name = String(body.name ?? "");
   const now = new Date().toISOString();
-  const c: CommandRes = { id: nextCommand++, name, commandName: name, status: "completed", queued: now, started: now, ended: now, trigger: "manual", body };
-  if (name === "MissingEpisodeSearch" || name === "SeriesSearch") {
+  const c: CommandRes = { id: nextCommand++, name, commandName: name, status: "completed", result: "successful", queued: now, started: now, ended: now, trigger: "manual", priority: "normal", body, sendUpdatesToClient: true, updateScheduledTask: true };
+  if (name === "MissingEpisodeSearch" || (name === "SeriesSearch" && body.seriesId)) {
     const s = mustSeries(int(body.seriesId, "seriesId"));
     const r = d.searchMissing(s.tvdb_id, s.title);
     c.message = r.queued ? `${r.missing} missing episodes went to the fill-in queue` : `Searching ${r.searching} missing episodes`;
+  } else if (name === "SeasonSearch") {
+    const s = mustSeries(int(body.seriesId, "seriesId"));
+    const season = Number(body.seasonNumber);
+    if (!Number.isInteger(season) || season < 0) throw fail("Bad seasonNumber");
+    const ids = seasonEpisodeIds(s.id, season, Date.now());
+    if (ids.length) settle(c, d.searchEpisodes(s.tvdb_id, ids));
+    c.message = `Searching ${ids.length} episodes of season ${season}`;
   } else if (name === "EpisodeSearch") {
     const ids = (Array.isArray(body.episodeIds) ? body.episodeIds : []).map((x) => int(x, "episode id"));
     const bySeries = new Map<number, number[]>();
     for (const e of ids.length ? (cache.prepare(`SELECT id, series_id FROM episodes WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) as { id: number; series_id: number }[]) : []) bySeries.set(e.series_id, [...(bySeries.get(e.series_id) ?? []), e.id]);
+    const jobs: Promise<unknown>[] = [];
     for (const [sid, eps] of bySeries) {
       const s = mustSeries(sid);
-      void d.searchEpisodes(s.tvdb_id, eps.slice(0, 26)).catch(() => undefined); // outcomes land in Activity
+      jobs.push(d.searchEpisodes(s.tvdb_id, eps.slice(0, 26))); // outcomes land in Activity
     }
-    c.status = "started";
+    settle(c, Promise.all(jobs));
     c.message = `Searching ${ids.length} episodes`;
-  } else if (/^(Refresh|Rescan)(Series|Monitored)?/.test(name)) {
+  } else if (name === "RescanSeries" || name === "RefreshSeries") {
+    // A rescan re-reads the show folder; AnimeArr refreshes metadata on its own schedule.
+    if (body.seriesId && name === "RescanSeries") {
+      const s = mustSeries(int(body.seriesId, "seriesId"));
+      if (s.path) settle(c, d.rescan(s.path));
+    }
+    c.message = name === "RescanSeries" ? "Rescanning the show folder" : "AnimeArr refreshes metadata on its own schedule";
+  } else if (/^(Refresh|Rescan)Monitored/.test(name)) {
     c.message = "AnimeArr refreshes and rescans on its own schedule";
+  } else if (name === "RssSync") {
+    settle(c, d.rssSync());
+    c.message = "Checking the indexers' newest releases";
+  } else if (name === "Backup") {
+    const file = d.backup();
+    c.message = file ? `Backup saved as ${file}` : "The backup could not be made";
+    if (!file) Object.assign(c, { status: "failed", result: "unsuccessful" });
+  } else if (name === "RenameSeries" || name === "RenameFiles") {
+    c.message = "AnimeArr renames only when you confirm it on the show's page (Rename)";
   } else {
     throw fail(`AnimeArr doesn't run the Sonarr command "${name}"`);
   }
@@ -386,7 +463,9 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     return profileResource(p);
   });
   // Sonarr 3's language profiles: AnimeArr's languages live in its profiles, so there's one catch-all.
-  app.get(`${V}/languageprofile`, async () => [{ id: 1, name: "AnimeArr profile languages", upgradeAllowed: false, cutoff: { id: 1, name: "Any" }, languages: [] }]);
+  app.get(`${V}/languageprofile`, async () => [{ id: 1, name: "AnimeArr profile languages", upgradeAllowed: false, cutoff: { id: 1, name: "English" }, languages: allLanguages().map((l) => ({ language: l, allowed: true })) }]);
+  app.get(`${V}/language`, async () => allLanguages());
+  app.get<{ Params: { id: string } }>(`${V}/language/:id`, async (req) => allLanguages().find((l) => l.id === Number(req.params.id)) ?? (() => { throw fail("Language not found", 404); })());
 
   app.get(`${V}/rootfolder`, async () =>
     getSettings().allowedRoots.map((p) => {
@@ -518,14 +597,7 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     return episodeResources(rows);
   });
 
-  app.get<{ Querystring: { page?: string; pageSize?: string; includeEpisode?: string; includeSeries?: string } }>(`${V}/queue`, async (req) => {
-    const q = req.query;
-    const all = await queueRecords(d, { includeEpisode: q.includeEpisode === "true", includeSeries: q.includeSeries === "true" });
-    const page = Math.max(1, Number(q.page) || 1);
-    // Sonarr's default page is 10 records; AnimeArr returns the whole queue unless a page size is asked for.
-    const size = Math.max(1, Number(q.pageSize) || all.length || 1);
-    return { page, pageSize: size, sortKey: "timeleft", sortDirection: "ascending", totalRecords: all.length, records: all.slice((page - 1) * size, page * size) };
-  });
+  registerSonarrMore(app, d);
 
   app.post<{ Body: Record<string, unknown> }>(`${V}/command`, async (req, reply) => {
     writable();
