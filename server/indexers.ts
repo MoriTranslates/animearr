@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import { getSettings, type IndexerCfg } from "./settings.js";
 import { prowlarrConfigured, prowlarrIndexers, prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { redactUrl } from "./arr/http.js";
+import { cachedQuery, querySlot } from "./searchQueue.js";
 
 /** A stable numeric id per direct indexer (health is tracked per numeric indexer id); far above Prowlarr's ids. */
 export function indexerNumId(id: string) {
@@ -59,7 +60,7 @@ export function parseSize(s: string | null | undefined): number {
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
 const magnetIn = (s: string | null) => /magnet:\?xt=urn:btih:[^"'<\s]+/i.exec(s ?? "")?.[0]?.replace(/&amp;/g, "&") ?? null;
 
-async function get(url: string, timeout = 30_000) {
+async function fetchText(url: string, timeout = 30_000) {
   let res: Response;
   try {
     res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, application/json, text/xml" }, signal: AbortSignal.timeout(timeout), redirect: "manual" });
@@ -71,6 +72,7 @@ async function get(url: string, timeout = 30_000) {
       res = await fetch(next.href, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(timeout), redirect: "manual" });
     }
   } catch (e) {
+    if ((e as Error).name === "TimeoutError") throw new Error(`timed out after ${Math.round(timeout / 1000)} s`);
     throw new Error(`unreachable (${redactUrl((e as Error).message)})`);
   }
   if (res.status === 401 || res.status === 403) throw new Error(`refused (HTTP ${res.status}: check the API key)`);
@@ -95,8 +97,9 @@ const base = (ix: IndexerCfg, r: Partial<ProwlarrRelease> & { title: string }): 
 });
 
 /** One search on one direct indexer. Empty query = its latest releases (RSS-style). */
-export async function searchIndexer(ix: IndexerCfg, query: string, opts: { categories?: number[]; limit?: number } = {}): Promise<ProwlarrRelease[]> {
+export async function searchIndexer(ix: IndexerCfg, query: string, opts: { categories?: number[]; limit?: number; timeoutMs?: number } = {}): Promise<ProwlarrRelease[]> {
   const q = query.trim();
+  const get = (url: string) => fetchText(url, opts.timeoutMs || 30_000);
   if (ix.kind === "newznab" || ix.kind === "torznab") {
     const u = new URL(`${ix.url.replace(/\/+$/, "")}${ix.apiPath || "/api"}`);
     u.searchParams.set("t", "search");
@@ -206,18 +209,43 @@ export const directIndexers = () => (getSettings().indexers ?? []).filter((x) =>
 /** Something to search with: Prowlarr, or at least one direct indexer. */
 export const searchConfigured = () => prowlarrConfigured() || directIndexers().length > 0;
 
-/** Prowlarr's search once per used indexer (the selection in Settings, else every enabled one); one that fails is skipped. */
-async function prowlarrPerIndexer(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean }) {
+/** The time limit for one indexer's answer to one query (Settings → search.indexerTimeoutSec; 0 = none). */
+export const indexerTimeoutMs = () => Math.max(0, getSettings().search?.indexerTimeoutSec ?? 20) * 1000;
+
+/** Prowlarr's enabled indexers, kept a few minutes (a per-indexer search asks for the list once per query). */
+let ixList: { at: number; key: string; rows: Promise<{ id: number; name: string; enable: boolean }[]> } | null = null;
+function prowlarrIndexerList() {
+  const key = `${getSettings().prowlarr.url}`;
+  if (!ixList || ixList.key !== key || Date.now() - ixList.at > 5 * 60_000) {
+    const rows = prowlarrIndexers();
+    ixList = { at: Date.now(), key, rows };
+    rows.catch(() => (ixList = null));
+  }
+  return ixList.rows;
+}
+
+/**
+ * Prowlarr's search once per used indexer (the selection in Settings, else every enabled one); one that fails is skipped.
+ * Each answer has its own time limit: Prowlarr's combined search waits for its slowest indexer, so asking each one on its
+ * own lets a slow one be left out after the limit instead of holding up the query. A failure (time-out included) counts
+ * against that indexer's search health, but only when another indexer answered (Prowlarr itself down blames nobody).
+ */
+async function prowlarrPerIndexer(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; timeoutMs?: number }) {
   const chosen = getSettings().prowlarr.indexerIds;
-  let ids: number[];
+  let list: { id: number; name: string }[];
   try {
-    ids = (await prowlarrIndexers()).filter((x) => x.enable && (!chosen.length || chosen.includes(x.id))).map((x) => x.id);
+    list = (await prowlarrIndexerList()).filter((x) => x.enable && (!chosen.length || chosen.includes(x.id)));
   } catch {
     return prowlarrSearch(query, opts); // no indexer list: one combined search still works
   }
-  const settled = await Promise.allSettled(ids.map((id) => prowlarrSearch(query, { ...opts, indexerIds: [id] })));
+  const settled = await Promise.allSettled(list.map((x) => prowlarrSearch(query, { ...opts, indexerIds: [x.id] })));
   const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
-  if (ids.length && !ok.length) throw (settled[0] as PromiseRejectedResult).reason;
+  if (list.length && !ok.length) throw (settled[0] as PromiseRejectedResult).reason;
+  if (query.trim())
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") recordIndexerSuccess(list[i].id, "search");
+      else recordIndexerFailure(list[i].id, redactUrl((r.reason as Error).message), Date.now(), { name: list[i].name, kind: "search" });
+    });
   return ok.flatMap((r) => r.value);
 }
 
@@ -225,18 +253,30 @@ async function prowlarrPerIndexer(query: string, opts: { limit?: number; categor
  * Prowlarr's indexers and the direct ones, in parallel. A failing indexer doesn't fail the search (its error is
  * reported); only when every source fails does the search throw. With `perIndexer`, `limit` holds for each Prowlarr
  * indexer on its own (one request each), so a busy indexer can't push the others' newest releases out of the list.
+ * Searches with words are also asked per Prowlarr indexer while there is a time limit (search.indexerTimeoutSec).
+ *
+ * Every call takes one slot of the app-wide query scheduler (server/searchQueue.ts), and identical searches within
+ * 10 minutes reuse the answers per indexer (`fresh` asks again); the empty recent-releases poll is never cached.
  */
-export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean } = {}): Promise<ProwlarrRelease[]> {
+export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean; /** Checked when the slot comes: true = not needed any more (answers nothing). */ skip?: () => boolean } = {}): Promise<ProwlarrRelease[]> {
+  return querySlot(() => (opts.skip?.() ? Promise.resolve([]) : searchAllNow(query, opts)));
+}
+
+async function searchAllNow(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean }): Promise<ProwlarrRelease[]> {
   const jobs: Promise<ProwlarrRelease[]>[] = [];
+  const timeoutMs = indexerTimeoutMs();
   if (prowlarrConfigured()) {
     await ensureProwlarrSelection();
-    jobs.push(opts.perIndexer ? prowlarrPerIndexer(query, opts) : prowlarrSearch(query, opts));
+    const o = { ...opts, ...(timeoutMs ? { timeoutMs } : {}) };
+    jobs.push(opts.perIndexer || (timeoutMs && query.trim()) ? prowlarrPerIndexer(query, o) : prowlarrSearch(query, o));
   }
   for (const ix of directIndexers()) {
     // A search-URL template needs words; the empty "latest releases" poll skips it.
     if (ix.kind === "rss" && !query.trim()) continue;
+    const o = { limit: opts.limit, categories: opts.categories && opts.categories.length ? opts.categories : undefined, ...(timeoutMs ? { timeoutMs } : {}) };
+    const run = () => searchIndexer(ix, query, o);
     jobs.push(
-      searchIndexer(ix, query, { limit: opts.limit, categories: opts.categories && opts.categories.length ? opts.categories : undefined }).then(
+      (query.trim() ? cachedQuery(`direct:${ix.id}:${ix.url}:${query.trim()}:${(o.categories ?? ix.categories).join(",")}:${o.limit ?? ""}`, run, { fresh: opts.fresh }) : run()).then(
         (rows) => (lastErrors.delete(ix.id), recordIndexerSuccess(indexerNumId(ix.id), "search"), rows),
         (e) => {
           const why = redactUrl(describeFetchError(e));

@@ -37,7 +37,7 @@ import fastifyStatic from "@fastify/static";
 import { authState, COOKIE, csrfOk, defaultLoginRefusal, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
-import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, testProwlarr } from "./arr/prowlarr.js";
+import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, prowlarrSearch, testProwlarr } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
 import { getTags, sonarrConfigured, sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
@@ -360,6 +360,8 @@ const breakerDeps = {
   fetch: (r: Parameters<Fetcher>[0]) => fetchReleaseFile({ guid: r.guid, title: r.title, size: r.size ?? 0, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, downloadUrl: r.downloadUrl ?? undefined, magnetUrl: r.magnetUrl ?? undefined }),
   search: async (indexerId: number) => {
     const ix = (getSettings().indexers ?? []).find((x) => indexerNumId(x.id) === indexerId);
+    // A Prowlarr indexer that kept timing out: one small recent-releases search through Prowlarr.
+    if (!ix && prowlarrConfigured() && indexerId < 1_000_000) return (await prowlarrSearch("", { indexerIds: [indexerId], limit: 5, timeoutMs: 60_000 }), true);
     if (!ix) return false;
     await searchIndexer(ix, ix.kind === "rss" ? "anime" : "", { limit: 5 });
     return true;
