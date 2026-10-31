@@ -135,7 +135,10 @@ export function authState(req: FastifyRequest) {
   const a = getSettings().auth;
   const setupRequired = !a.passwordHash;
   if (setupRequired) return { setupRequired, ok: false, via: null };
-  if (safeEqual(req.headers["x-api-key"] as string | undefined, getSettings().apiKey)) return { setupRequired, ok: true, via: "apikey" as const };
+  // The API key as Sonarr takes it: an X-Api-Key header or an ?apikey= parameter (Jellyseerr/Overseerr send the latter;
+  // logged URLs never include the query string).
+  const key = (req.headers["x-api-key"] as string | undefined) ?? (req.query as { apikey?: unknown } | undefined)?.apikey;
+  if (typeof key === "string" && safeEqual(key, getSettings().apiKey)) return { setupRequired, ok: true, via: "apikey" as const };
   if (validSession(req.cookies[COOKIE])) return { setupRequired, ok: true, via: "session" as const };
   if (a.bypassLocal && isLocalRequest(req) && hostAllowed(req)) return { setupRequired, ok: true, via: "local" as const };
   return { setupRequired, ok: false, via: null };

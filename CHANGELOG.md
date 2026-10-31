@@ -2,6 +2,20 @@
 
 All notable changes, newest first. The commit history has the crew's version of events; this is the Captain's log.
 
+## Unreleased
+
+### Added
+- **Use AnimeArr with Jellyseerr or Overseerr.** AnimeArr now answers a Sonarr v3-compatible API (`/api/v3`), so
+  request apps can add AnimeArr as a Sonarr server. A request becomes a native AnimeArr show, managed, with only the
+  requested seasons monitored, and a search for what's missing. Availability and download progress flow back.
+  See "Use with Jellyseerr / Overseerr" in the README.
+- Settings → Security shows AnimeArr's API key (copy, or make a new one) for those apps.
+- Monitoring scopes have a "picked seasons" option, which is what a request sets.
+
+### Notes
+- Removing a show through the API removes it from AnimeArr only: files are never deleted, whatever the request app
+  asks. Shows that Sonarr still owns can't be removed through it.
+
 ## 0.9.0-beta (2026-10-30): first public beta
 
 Everything is new, so here are the highlights rather than a list of 100 commits.

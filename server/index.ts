@@ -56,7 +56,7 @@ import { upgradeList, upgradeTick } from "./upgrade.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
-import { autoSearchEpisodes, autoSearchMovie } from "./autosearch.js";
+import { autoSearchEpisodes, autoSearchMovie, searchMissingNow } from "./autosearch.js";
 import { rootRefusal } from "./roots.js";
 import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
@@ -80,6 +80,7 @@ async function catalogTick(force = false) {
 import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMovieGrab } from "./movies.js";
 import { applyRenameRouted, browseImport, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
+import { registerSonarrApi } from "./sonarrApi.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -911,21 +912,7 @@ app.post<{ Body: { anilistId: number; rootFolder: string; kind?: "show" | "movie
   const managed = setManaged([added.tvdbId], true, { live: b.live !== false && !getSettings().managed.dryRun });
   let then: unknown = null;
   if (b.then === "queue") then = addToQueue([added.tvdbId]);
-  else if (b.then === "search") {
-    const ids = [...scopedEpisodeIds(added.tvdbId, (cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(added.tvdbId) as { id: number }).id)];
-    const now = Date.now();
-    const missing = ids.filter((e) => {
-      const r = cache.prepare("SELECT has_file, air_utc FROM episodes WHERE id = ?").get(e) as { has_file: number; air_utc: number | null } | undefined;
-      return r?.has_file === 0 && r.air_utc !== null && r.air_utc <= now; // aired, no file
-    });
-    // ⚡ handles at most 26 episodes at once; a longer backlog goes to the fill-in queue instead.
-    if (missing.length > 26) then = { searching: 0, queued: addToQueue([added.tvdbId]).added, missing: missing.length };
-    else {
-      then = { searching: missing.length };
-      if (missing.length)
-        void autoSearchEpisodes(added.tvdbId, missing).catch((e) => logDecision("fail", { tvdbId: added.tvdbId, title: added.title, why: `Search after adding ${added.title} failed: ${(e as Error).message}` }));
-    }
-  }
+  else if (b.then === "search") then = searchMissingNow(added.tvdbId, added.title);
   return { ...added, managed, then };
 });
 
@@ -1024,11 +1011,11 @@ app.post<{ Params: { id: string } }>("/api/movies/:id/scan", async (req) => {
   if (!m) throw fail("Unknown movie", 404);
   return scanFolder(m.path);
 });
-app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string; creditless?: string } }>("/api/series/:tvdbId/scope", async (req) => {
+app.get<{ Params: { tvdbId: string }; Querystring: { seasons?: string; recentN?: string; episodes?: string; specials?: string; creditless?: string; picked?: string } }>("/api/series/:tvdbId/scope", async (req) => {
   const tvdbId = id(req.params.tvdbId);
   const current = scopeFor(tvdbId);
   const q = req.query;
-  const want = q.seasons ? validateScope({ seasons: q.seasons as never, recentN: Number(q.recentN ?? 1), episodes: q.episodes as never, specials: q.specials === "1", creditless: q.creditless !== "0" }) : current;
+  const want = q.seasons ? validateScope({ seasons: q.seasons as never, recentN: Number(q.recentN ?? 1), episodes: q.episodes as never, specials: q.specials === "1", creditless: q.creditless !== "0", picked: (q.picked ?? "").split(",").filter(Boolean).map(Number) }) : current;
   return { scope: current, preview: scopePreview(tvdbId, want) };
 });
 app.put<{ Body: { tvdbIds?: number[]; scope?: Record<string, unknown> | null } }>("/api/scope", async (req) => {
@@ -1305,6 +1292,9 @@ app.post("/api/system/cache/reset", async (req) => {
 if (!fs.existsSync(path.join(WEB_DIR, "index.html"))) app.log.warn(`No web build in ${WEB_DIR} yet; run "npm run build" (the API works meanwhile).`);
 fs.mkdirSync(WEB_DIR, { recursive: true });
 // wildcard: true serves files built after startup too (vite build while the dev server runs).
+// Sonarr v3-compatible API for request apps (Jellyseerr, Overseerr): see server/sonarrApi.ts.
+registerSonarrApi(app, { urlBase: URL_BASE });
+
 await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true, index: false });
 /** The web build being served: the hashed name of its entry script (open tabs compare it to theirs to offer a reload). */
 let buildCache: { mtime: number; id: string | null } | null = null;

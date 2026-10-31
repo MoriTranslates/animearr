@@ -3,9 +3,9 @@ import { api } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { Toggle, useToast } from "./ui";
 
-export type SeasonScope = "all" | "first" | "latest" | "recent";
+export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
-export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; creditless?: boolean }
+export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; creditless?: boolean; /** Seasons picked elsewhere (a Jellyseerr request); offered only while the show has them. */ picked?: number[] }
 const EPISODES: EpisodeScope[] = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 const SEASONS: SeasonScope[] = ["all", "recent", "latest", "first"];
 
@@ -27,9 +27,9 @@ export function ScopeFields({ value, onChange }: { value: Scope; onChange: (s: S
         {t("scope.seasons")}
         <span className="row">
           <select value={value.seasons} onChange={(e) => onChange({ ...value, seasons: e.target.value as SeasonScope })}>
-            {SEASONS.map((x) => (
+            {(value.picked?.length ? [...SEASONS, "picked" as const] : SEASONS).map((x) => (
               <option key={x} value={x}>
-                {t(`scope.season.${x}` as I18nKey)}
+                {t(`scope.season.${x}` as I18nKey, { list: (value.picked ?? []).join(", ") })}
               </option>
             ))}
           </select>
@@ -54,13 +54,13 @@ export function ScopeEditor({ tvdbIds, previewFor, onSaved }: { tvdbIds: number[
   useEffect(() => {
     if (!one) return setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true });
     void api<{ scope: Scope & { source: string }; preview: typeof preview }>(`/series/${one}/scope`)
-      .then((r) => (setValue({ seasons: r.scope.seasons, recentN: r.scope.recentN, episodes: r.scope.episodes, specials: r.scope.specials, creditless: r.scope.creditless }), setSource(r.scope.source), setPreview(r.preview)))
+      .then((r) => (setValue({ seasons: r.scope.seasons, recentN: r.scope.recentN, episodes: r.scope.episodes, specials: r.scope.specials, creditless: r.scope.creditless, picked: r.scope.picked }), setSource(r.scope.source), setPreview(r.preview)))
       .catch((e) => (toast((e as Error).message, true), setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true })));
   }, [one]);
   useEffect(() => {
     if (!one || !value) return;
     const id = setTimeout(
-      () => void api<{ preview: typeof preview }>(`/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}&creditless=${value.creditless === false ? 0 : 1}`).then((r) => setPreview(r.preview)).catch(() => undefined),
+      () => void api<{ preview: typeof preview }>(`/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}&creditless=${value.creditless === false ? 0 : 1}&picked=${(value.picked ?? []).join(",")}`).then((r) => setPreview(r.preview)).catch(() => undefined),
       200,
     );
     return () => clearTimeout(id);

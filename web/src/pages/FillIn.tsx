@@ -5,7 +5,7 @@ import { t, type I18nKey } from "../i18n";
 import { useState } from "react";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-interface Item { tvdbId: number; title: string; cover: string | null; state: "queued" | "active" | "done" | "skipped"; wave: number | null; position: number; startMissing: number | null; missing: number | null; note: string; activatedAt: number | null; doneAt: number | null; scope: { seasons: string; recentN: number; episodes: string; specials: boolean } }
+interface Item { tvdbId: number; title: string; cover: string | null; state: "queued" | "active" | "done" | "skipped"; wave: number | null; position: number; startMissing: number | null; missing: number | null; note: string; activatedAt: number | null; doneAt: number | null; scope: { seasons: string; recentN: number; episodes: string; specials: boolean; picked?: number[] } }
 interface View { settings: { paused: boolean; waveSize: number; advancePct: number; stallDays: number }; backlogEnabled: boolean; perHour: number; remaining: number; etaHours: number; items: Item[] }
 
 const TONE = { active: "accent", queued: "info", done: "good", skipped: "warn" } as const;
@@ -73,7 +73,7 @@ export function FillIn() {
                             {t(`fill.state.${i.state}` as I18nKey)}
                             {i.wave ? ` · ${t("fill.wave", { n: i.wave })}` : ""}
                           </Chip>
-                          <span className="muted small">{t(`scope.ep.${i.scope.episodes}` as I18nKey)} · {i.scope.seasons === "recent" ? t("scope.recentShort", { n: i.scope.recentN }) : t(`scope.season.${i.scope.seasons}` as I18nKey)}</span>
+                          <span className="muted small">{t(`scope.ep.${i.scope.episodes}` as I18nKey)} · {i.scope.seasons === "recent" ? t("scope.recentShort", { n: i.scope.recentN }) : t(`scope.season.${i.scope.seasons}` as I18nKey, { list: (i.scope.picked ?? []).join(", ") })}</span>
                         </div>
                         <p className="small">
                           {i.state === "active" && pct !== null ? t("fill.progress", { pct, missing: i.missing ?? 0, start: i.startMissing ?? 0 }) : t("fill.missing", { n: i.missing ?? 0 })}

@@ -361,6 +361,12 @@ const USER_MIGRATIONS: string[] = [
   `ALTER TABLE grabs ADD COLUMN batch TEXT;`,
   // 31: AniList trailer per entry ({"site","id"} JSON: YouTube/Dailymotion, played from the site, never downloaded)
   `ALTER TABLE entries ADD COLUMN trailer TEXT;`,
+  // 32: Sonarr-compatible API (Jellyseerr/Overseerr): a scope's picked seasons, stable numeric ids for things AnimeArr
+  // keys by name (profiles, root folders), and the API's tags
+  `ALTER TABLE series_scope ADD COLUMN picked TEXT;
+   CREATE TABLE api_ids (kind TEXT NOT NULL, key TEXT NOT NULL, id INTEGER NOT NULL, PRIMARY KEY (kind, key), UNIQUE (kind, id));
+   CREATE TABLE api_tags (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE);
+   CREATE TABLE api_series_tags (tvdb_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (tvdb_id, tag_id));`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
