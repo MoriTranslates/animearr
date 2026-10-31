@@ -13,6 +13,7 @@ import { SeasonHeader } from "../seasonal";
 import { Settings, type SettingsTab } from "./Settings";
 import { ErrorBox, ErrorText, Spinner, useLoad, usePageTitle, useToast, Toggle } from "../ui";
 import { rememberDetail } from "../errors";
+import { ImportFolders } from "../importFolders";
 import { saveAllUnsaved } from "../unsaved";
 import { ChangeDefaultLogin } from "./Login";
 
@@ -444,6 +445,7 @@ function DoneStep({ path }: { path: Path }) {
   // Fresh statuses (a client that fails its check is said so here, not listed as set up).
   const o = useLoad(() => api<Overview>("/connections?fresh=1"), []);
   const toast = useToast();
+  const [importing, setImporting] = useState(false);
   const failing = (o.data?.clients ?? []).filter((c) => c.configured && c.ok === false);
   const working = (o.data?.clients ?? []).filter((c) => c.configured && c.ok !== false);
   const media = (o.data?.mediaServers ?? []).filter((m) => m.configured);
@@ -492,7 +494,9 @@ function DoneStep({ path }: { path: Path }) {
             {t("wiz.done.haveFiles")}
           </button>
         )}
+        {path === "new" && <button onClick={() => setImporting(true)}>{t("import.button")}</button>}
       </div>
+      {importing && <ImportFolders onClose={() => setImporting(false)} />}
       <div className="card pad stack">
         <h3>{t("phone.settingsTitle")}</h3>
         <PhonePanel />
