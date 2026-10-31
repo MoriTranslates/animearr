@@ -5,12 +5,12 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
-- **Works with nzb360, LunaSea and Homepage: add AnimeArr as a Sonarr server.** The Sonarr-compatible API now also answers
-  the calendar, the queue (paged, with remove and blocklist), history, wanted (missing, and below your quality goal), episode
-  files with their media info, disk space, health, languages and quality sizes. A manual search lists releases with
-  AnimeArr's score and its reasons for rejecting one, and picking a release grabs it through the normal checks (practice
-  mode still applies). Commands now cover season search, rescan, RSS check and backup, and clients can poll them.
-  Episode files can't be deleted through the API. See the README for how to connect nzb360.
+- **A fuller Sonarr-compatible API.** Besides what request apps use, it now also answers the calendar, the queue (paged,
+  with remove and blocklist), history, wanted (missing, and below your quality goal), episode files with their media info,
+  disk space, health, languages and quality sizes, a manual release search and grab (through the normal checks; practice
+  mode still applies), and more commands (season search, rescan, RSS check, backup) that clients can poll. Episode files
+  can't be deleted through it. Other Sonarr clients may work with this, but only request apps are supported.
+- **AnimeArr's own API is documented** in docs/API.md, for anyone who wants to build on AnimeArr directly.
 - **More ways to be notified.** Settings → Connections → Notifications can now add webhook, Telegram, Pushover and email
   (SMTP) channels next to Discord and ntfy. The webhook sends JSON per event (POST or PUT, with your own headers, such
   as an Authorization token). Telegram takes a bot token and chat id, with an optional topic and a silent switch.

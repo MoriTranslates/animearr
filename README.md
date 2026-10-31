@@ -226,29 +226,16 @@ Good to know:
 - **Removing a show from the request app never deletes files.** It removes the show from AnimeArr only.
 - Shows that Sonarr still owns (if AnimeArr runs next to Sonarr) are listed, but can't be removed through AnimeArr.
 - Only anime that Anime-Lists maps to a TVDB id can be requested. Movies need a Radarr-side API, which isn't there yet.
-- AnimeArr reports itself as Sonarr 4, so the request app won't ask for a language profile.
+- AnimeArr answers with Sonarr 4's API version (its name stays AnimeArr), so the request app won't ask for a language
+  profile.
 
-## Use with nzb360, LunaSea and Homepage
+### Other Sonarr clients
 
-The same Sonarr-compatible API also covers what dashboards and phone apps read: calendar, queue, history, wanted
-(missing and quality-goal unmet), episode files, disk space, health, and interactive search. In **nzb360**, add a
-server, choose the **Sonarr** service type, and enter:
-
-- **Address / port:** AnimeArr's address and port (8484 by default), with SSL on if you serve it over HTTPS. Add AnimeArr's
-  URL base to the address if you set one.
-- **API key:** AnimeArr's own key, from **Settings → Security → API key for other apps**.
-
-LunaSea (Sonarr module) and Homepage's Sonarr widget take the same address and key. What works:
-- Browse your shows, seasons, episodes and files, the calendar, the wanted lists, and what's downloading.
-- Search an episode or season by hand and pick a release: the list shows AnimeArr's score and its plain-words reasons for
-  rejecting a release; picking one grabs it through AnimeArr's normal checks (practice mode still applies).
-- Remove a download from the queue, with or without blocklisting it.
-- Search for missing episodes, run an RSS check, rescan a show folder, or take a backup.
-
-Good to know:
-- Episode files can't be deleted from the app (AnimeArr asks first, on its own pages). Removing a queue item always
-  removes the download from the client too.
-- A manual search can take half a minute while AnimeArr asks every indexer; the app may show a spinner meanwhile.
+The Sonarr-compatible API exists so request apps, which only know how to talk to Sonarr, can send requests to AnimeArr.
+It also answers the calendar, queue, history, wanted lists, episode files, disk space, health and interactive search,
+so other tools that speak Sonarr's API *may* work with it, but they aren't supported or tested: AnimeArr doesn't pretend
+to be Sonarr, and a client that expects Sonarr exactly can break. For your phone, use AnimeArr itself (it's built for
+phones and installs as an app). To build on AnimeArr, use its own API: see [docs/API.md](docs/API.md).
 
 ## Media servers
 
