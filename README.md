@@ -75,7 +75,7 @@ Radarr and Prowlarr, and can take your anime over from them when you're ready.
   it opens full screen, with the new mast-and-pennant icon.
 - **Plays nicely with your stack.** Prowlarr or direct indexers (Newznab, Torznab, Nyaa, SubsPlease, RSS) with a circuit
   breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see
-  [download clients](#download-clients)); Plex, Jellyfin, Emby and Kodi (see [media servers](#media-servers)); Discord and ntfy; a guided migration from
+  [download clients](#download-clients)); Plex, Jellyfin, Emby and Kodi (see [media servers](#media-servers)); Discord, ntfy, Telegram, Pushover, email and webhooks; a guided migration from
   Sonarr/Radarr.
 - **Looks after itself.** Stalled downloads get strikes before they are removed, downloads holding executables or fake
   videos are thrown out and blocklisted before anything is imported, clean-up after imports (SABnzbd, NZBGet,
@@ -253,6 +253,36 @@ cours, sequel seasons, specials) instead of guessing:
 - The `{Server Id Hint}` naming token adds the main server's folder ID hint to new series folders: `{tvdb-12345}`
   for Plex, `[tvdbid-12345]` for Jellyfin and Emby.
 
+## Notifications, logs and backups
+
+Settings → Connections → Notifications: Discord and ntfy, plus any number of **webhook**, **Telegram**, **Pushover** and
+**email (SMTP)** channels. Each has its own on switch, event toggles (grabbed, imported, failed, grabs paused, indexer
+off) and a Test button. Tokens, passwords and webhook addresses are stored encrypted and masked in the page; a channel
+that fails shows its last error there, and never holds anything else up.
+
+A **webhook** gets one JSON request per event (POST or PUT, with any headers you add, such as `Authorization`):
+
+```jsonc
+{
+  "eventType": "grabbed",            // grabbed | imported | failed | paused | indexer
+  "title": "Frieren",
+  "message": "Sent [Group] Frieren - 05 … to SABnzbd for Frieren S01E05: …",
+  "show": { "tvdbId": 424536, "title": "Frieren" },   // or "movie": { "id": 12, "title": "…" }
+  "episodeIds": [5],
+  "release": "[Group] Frieren - 05 [1080p]",
+  "reason": "Sent [Group] Frieren - 05 …",
+  "link": "http://animearr.lan/show/424536",          // when the external address is set
+  "timestamp": "2026-10-31T12:00:00.000Z",
+  "applicationVersion": "0.11.0"
+}
+```
+
+Fields that don't apply are left out. Settings → System → **Logs** shows the last 2000 log lines (filter by level, search,
+auto-refresh, download); keys, tokens and passwords are blanked out, and a copy is kept in `/config/logs`. Settings →
+System → Backups can **download a backup file** (a consistent copy of the database plus `secret.key`, so it holds your
+passwords: keep it private) and **restore from one**: the file is checked, a safety copy of the current data is kept, and
+AnimeArr restarts with the backup in place.
+
 ## Quality goals, SeaDex and Tdarr
 
 Each profile has a **quality goal** (the setup wizard asks; change it in **Settings → Profiles**):
@@ -328,7 +358,7 @@ affiliated with any anime, studio or publisher.
   profile, size preset and resolution.
 - The Sonarr-compatible API covers what Jellyseerr/Overseerr need; other Sonarr clients (Bazarr, LunaSea, nzb360,
   Homepage) may only partly work, and there's no Radarr-side API for movie requests yet.
-- "Watch in" links are Plex only (Jellyfin, Emby and Kodi get scans and files). Notifications are Discord and ntfy.
+- "Watch in" links are Plex only (Jellyfin, Emby and Kodi get scans and files). Notifications go to Discord, ntfy, Telegram, Pushover, email and webhooks.
 - Importing an existing anime folder without Sonarr (setup wizard, Settings → System) handles series only, one level
   of show folders per library folder; movies are still added one by one.
 - RAR archives aren't unpacked, on purpose (anime releases rarely use RAR; 7z/ZIP are unpacked). No log viewer or downloadable backups yet.

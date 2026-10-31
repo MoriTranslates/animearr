@@ -5,6 +5,20 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **More ways to be notified.** Settings → Connections → Notifications can now add webhook, Telegram, Pushover and email
+  (SMTP) channels next to Discord and ntfy. The webhook sends JSON per event (POST or PUT, with your own headers, such
+  as an Authorization token). Telegram takes a bot token and chat id, with an optional topic and a silent switch.
+  Pushover takes your user key and app token, with priority, device and sound. Email takes a server, port, encryption
+  (none, STARTTLS or TLS), login and addresses. Every channel has its own on switch, event toggles and a Test button;
+  tokens and passwords are stored encrypted and never shown again, and a channel that fails shows its last error
+  without holding anything up. The webhook's payload is described in the README.
+- **A log viewer.** Settings → System → Logs shows the last 2000 lines AnimeArr printed, with a level filter, search,
+  refresh every 5 seconds and a download. API keys, tokens and passwords are blanked out. A copy is kept in
+  `/config/logs` (5 MB, one older file), so the lines survive a restart.
+- **Download and upload a backup.** Settings → System → Backups can download one file with a consistent copy of the
+  database and the key that unlocks your saved passwords (so keep it private), and restore from such a file on another
+  machine or after a disaster. The file is checked first (a backup from a newer AnimeArr is refused), a safety copy of
+  what is there now is kept, and restoring asks for your password and restarts AnimeArr.
 - **The new-release watch also looks after files you already have.** Every few minutes AnimeArr checks each indexer's
   newest releases. As before, a release for an episode or movie you are waiting for makes its search run now. Now, a
   newer version (v2, REPACK) from the same group as an episode you have, or a better release (say a Blu-ray) for a

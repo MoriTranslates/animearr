@@ -80,10 +80,12 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [ ] Duplicate audit (the same movie in two roots, Sonarr S0 vs Radarr), empty Specials folders, mistyped series and wrong roots
 
 ### Notifications
+- [x] Generic webhook (JSON per event), Telegram, Pushover and email (SMTP) channels with per-event toggles and Test; Discord/ntfy stay as they were. Follow-up: tag scoping, Apprise
 - [ ] Richer push notifications (Apprise) with anime cards
 - [ ] Weekly digest — module 11
 
 ### Database
+- [x] Backup download / upload (database + secret.key, manifest and schema check, safety copy before a restore) and a log viewer with redaction (Settings → System)
 - [ ] Weekly deep integrity check (`PRAGMA integrity_check`)
 - [ ] Off-site backups (copy to another share or cloud)
 
