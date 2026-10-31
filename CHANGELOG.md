@@ -5,6 +5,12 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **Works with nzb360, LunaSea and Homepage: add AnimeArr as a Sonarr server.** The Sonarr-compatible API now also answers
+  the calendar, the queue (paged, with remove and blocklist), history, wanted (missing, and below your quality goal), episode
+  files with their media info, disk space, health, languages and quality sizes. A manual search lists releases with
+  AnimeArr's score and its reasons for rejecting one, and picking a release grabs it through the normal checks (practice
+  mode still applies). Commands now cover season search, rescan, RSS check and backup, and clients can poll them.
+  Episode files can't be deleted through the API. See the README for how to connect nzb360.
 - **The new-release watch also looks after files you already have.** Every few minutes AnimeArr checks each indexer's
   newest releases. As before, a release for an episode or movie you are waiting for makes its search run now. Now, a
   newer version (v2, REPACK) from the same group as an episode you have, or a better release (say a Blu-ray) for a
