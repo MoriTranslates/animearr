@@ -14,6 +14,12 @@ All notable changes, newest first. The commit history has the crew's version of 
   switch to be on. AnimeArr only ever replaces or removes thumbnails it wrote itself: yours, or ones Sonarr left, stay
   as they are. Its own follow the video when it is renamed and go when it is deleted. Plex ignores these files and
   uses its own pictures.
+- **Pick where a season's episode descriptions and thumbnails come from.** When TMDB is filed differently from the show
+  (say a sequel TVDB lists as season 2 is its own show on TMDB), a season's menu on the show page now has "Episode info
+  source…". Search TMDB, pick the show and season, set an episode offset if the numbering is shifted, check the first
+  titles line up side by side, and save. "Back to automatic" undoes it. This only changes the descriptions and
+  thumbnails written for your media server; searching, numbering and importing never use it. Rewrite the show's
+  metadata afterwards to see the change.
 - **Big changes make one library scan.** When more than 20 folders change at once, Plex, Jellyfin, Emby and Kodi are
   asked to scan the library once instead of folder by folder.
 - **A fuller Sonarr-compatible API.** Besides what request apps use, it now also answers the calendar, the queue (paged,
