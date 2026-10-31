@@ -21,6 +21,7 @@ import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, channelStatus, markRead, send, testChannel } from "./notify.js";
+import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "./backupTransfer.js";
 import { getLogs, installLogCapture, logStream, logText } from "./logs.js";
 import { cleanChannels, maskChannel, CHANNEL_TYPES } from "./notifyChannels.js";
 import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
@@ -1462,6 +1463,31 @@ app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", 
   app.log.warn("Backup restored; exiting so the app restarts with it.");
   setTimeout(() => process.exit(0), 500);
   return { ok: true, message: "Restored. AnimeArr is restarting; reload the page in a few seconds (start it again yourself if it isn't running in Docker)." };
+});
+// Download / upload a whole backup (database + secret.key). Upload is two steps: the file is checked and staged,
+// then restoring it needs the account password, like restoring one of the automatic backups.
+app.get("/api/system/backup/download", async (req, reply) => {
+  if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
+  const b = createBackup();
+  reply.header("Content-Type", "application/gzip").header("Content-Disposition", `attachment; filename="${b.name}"`).header("Cache-Control", "no-store");
+  return b.data;
+});
+app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_BACKUP_BYTES }, (_req, body, done) => done(null, body));
+app.post<{ Body: Buffer }>("/api/system/backup/upload", { bodyLimit: MAX_BACKUP_BYTES }, async (req) => {
+  if (authState(req).via === "apikey") throw fail("Log in to restore a backup", 403);
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail("Choose a backup file", 400);
+  const parsed = parseBackup(req.body);
+  const m = parsed.manifest;
+  return { token: stageBackup(parsed), appVersion: m.appVersion, schema: m.schema, createdAt: m.createdAt, size: req.body.length };
+});
+app.post<{ Body: { token?: string; password?: string } }>("/api/system/backup/restore-upload", async (req) => {
+  if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
+  if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+  if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+  restoreUploaded(takeStaged(String(req.body?.token ?? "")));
+  app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
+  setTimeout(() => process.exit(0), 500);
+  return { ok: true, message: "Restored. AnimeArr is restarting; reload the page in a few seconds (start it again yourself if it isn't running in Docker). A safety copy of what was here before is in the backups folder." };
 });
 app.post("/api/system/cache/reset", async (req) => {
   writable();

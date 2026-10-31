@@ -8,7 +8,7 @@ import { CONFIG_DIR } from "./db.js";
  * AES-256-GCM with a random 32-byte key kept in CONFIG_DIR/secret.key (mode 600), created on first run.
  * The key is separate from the database, so a copied animearr.db (or a backup) alone does not reveal any keys.
  */
-const KEY_FILE = path.join(CONFIG_DIR, "secret.key");
+export const KEY_FILE = path.join(CONFIG_DIR, "secret.key");
 
 function loadKey(): Buffer {
   if (fs.existsSync(KEY_FILE)) {
@@ -31,10 +31,10 @@ export function seal(plain: string): string {
   return PREFIX + Buffer.concat([iv, c.getAuthTag(), ct]).toString("base64");
 }
 
-export function open(stored: string): string {
+export function open(stored: string, key: Buffer = KEY): string {
   if (!stored.startsWith(PREFIX)) return stored; // plain (never written by this version; tolerated for imports)
   const buf = Buffer.from(stored.slice(PREFIX.length), "base64");
-  const d = crypto.createDecipheriv("aes-256-gcm", KEY, buf.subarray(0, 12));
+  const d = crypto.createDecipheriv("aes-256-gcm", key, buf.subarray(0, 12));
   d.setAuthTag(buf.subarray(12, 28));
   return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString("utf8");
 }

@@ -18,7 +18,7 @@ const isProd = process.env.NODE_ENV === "production";
 export const CONFIG_DIR = path.resolve(process.env.ANIMEARR_CONFIG ?? (isProd ? "/config" : ".devconfig"));
 export const BACKUP_DIR = path.join(CONFIG_DIR, "backups");
 export const CACHE_DIR = path.join(CONFIG_DIR, "cache");
-const USER_DB = path.join(CONFIG_DIR, "animearr.db");
+export const USER_DB = path.join(CONFIG_DIR, "animearr.db");
 const CACHE_DB = path.join(CONFIG_DIR, "cache.db");
 const LOCK = path.join(CONFIG_DIR, "animearr.lock");
 
@@ -99,7 +99,7 @@ function pragmas(d: DatabaseSync) {
   d.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;");
 }
 
-function quickCheck(d: DatabaseSync): string {
+export function quickCheck(d: DatabaseSync): string {
   try {
     const rows = d.prepare("PRAGMA quick_check").all() as { quick_check: string }[];
     return rows.map((r) => r.quick_check).join("; ");
@@ -423,6 +423,9 @@ const CACHE_SCHEMA = `
   -- AniList art per AniDB entry (via the Fribb mapping), for poster-forward lists.
   CREATE TABLE covers (anidb_id INTEGER PRIMARY KEY, anilist_id INTEGER, cover TEXT, banner TEXT, color TEXT, fetched_at INTEGER NOT NULL);
 `;
+
+/** The newest schema this build knows (PRAGMA user_version of a fully migrated animearr.db). */
+export const userSchemaVersion = () => USER_MIGRATIONS.length;
 
 function migrateUser() {
   if (dbState.corrupt) return;
