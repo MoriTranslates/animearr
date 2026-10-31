@@ -397,10 +397,15 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
 
   // Episode files (read only).
   app.get<{ Querystring: Record<string, string> }>(`${V}/episodefile`, async (req) => {
-    const q = req.query;
-    if (q.seriesId) return fileRows("series_id = ? ORDER BY season, path", int(q.seriesId, "seriesId")).map(fileResource);
-    const want = ids(q.episodeFileIds);
-    if (!want.length) throw fail("Pass seriesId or episodeFileIds");
+    // Parameter names in any case (clients differ: seriesId / seriesID, episodeFileIds / episodeFileId).
+    const q = Object.fromEntries(Object.entries(req.query ?? {}).map(([k, v]) => [k.toLowerCase(), v])) as Record<string, string>;
+    if (q.seriesid) return fileRows("series_id = ? ORDER BY season, path", int(q.seriesid, "seriesId")).map(fileResource);
+    const want = ids(q.episodefileids ?? q.episodefileid);
+    // Sonarr answers 400 here, but nzb360 crashes on that: an empty list is the safer answer.
+    if (!want.length) {
+      req.log.warn({ params: Object.keys(req.query ?? {}) }, "episodefile without seriesId or episodeFileIds");
+      return [];
+    }
     return fileRows(`id IN (${want.map(() => "?").join(",")}) ORDER BY season, path`, ...want).map(fileResource);
   });
   app.get<{ Params: { id: string } }>(`${V}/episodefile/:id`, async (req) => {
