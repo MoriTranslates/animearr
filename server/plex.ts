@@ -65,13 +65,16 @@ export function sectionFor(plexPath: string, sections: PlexSection[]) {
   return sections.filter((s) => s.locations.some((l) => plexPath === l || plexPath.startsWith(`${l}/`))).sort((a, b) => Math.max(...b.locations.map((l) => l.length)) - Math.max(...a.locations.map((l) => l.length)))[0] ?? null;
 }
 
+/** More changed folders than this and a server gets one scan of its whole library instead of one per folder. */
+export const BULK_SCAN_FOLDERS = 20;
+
 const pending = new Set<string>();
 let timer: NodeJS.Timeout | null = null;
 let sectionsCache: { at: number; url: string; v: PlexSection[] } | null = null;
 let retries = 0;
 
 /** Queues partial scans of these folders (AnimeArr paths); they go out together a few seconds later. */
-export function notifyPlex(folders: string[], deps = { sections: plexSections, refresh: (key: string, p: string) => plexCall(`/library/sections/${key}/refresh?path=${encodeURIComponent(p)}`) }, delayMs = 15_000) {
+export function notifyPlex(folders: string[], deps = { sections: plexSections, refresh: (key: string, p?: string) => plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`) }, delayMs = 15_000) {
   const s = getSettings().plex;
   if (!s.enabled || !s.url || !s.token) return;
   for (const f of folders) if (f) pending.add(f.replace(/\/+$/, ""));
@@ -80,7 +83,7 @@ export function notifyPlex(folders: string[], deps = { sections: plexSections, r
   timer.unref?.();
 }
 
-export async function flush(deps = { sections: plexSections, refresh: (key: string, p: string) => plexCall(`/library/sections/${key}/refresh?path=${encodeURIComponent(p)}`) }) {
+export async function flush(deps = { sections: plexSections, refresh: (key: string, p?: string) => plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`) }) {
   if (timer) clearTimeout(timer);
   timer = null;
   const s = getSettings().plex;
@@ -108,6 +111,8 @@ export async function flush(deps = { sections: plexSections, refresh: (key: stri
   retries = 0;
   pending.clear();
   const out: { folder: string; plexPath: string; section: string | null; ok: boolean; why: string }[] = [];
+  const bulk = folders.length > BULK_SCAN_FOLDERS;
+  const scanned = new Set<string>(); // bulk: each library section is scanned once
   for (const f of folders) {
     const pp = toPlexPath(f);
     let sec = sectionFor(pp, sectionsCache!.v);
@@ -124,7 +129,8 @@ export async function flush(deps = { sections: plexSections, refresh: (key: stri
       continue;
     }
     try {
-      await deps.refresh(sec.key, pp);
+      if (!bulk) await deps.refresh(sec.key, pp);
+      else if (!scanned.has(sec.key)) await deps.refresh(sec.key), scanned.add(sec.key);
       out.push({ folder: f, plexPath: pp, section: sec.title, ok: true, why: "scan asked" });
     } catch (e) {
       out.push({ folder: f, plexPath: pp, section: sec.title, ok: false, why: (e as Error).message });
