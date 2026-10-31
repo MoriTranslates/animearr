@@ -45,7 +45,9 @@ jobs:
           short=$(git rev-parse --short=7 HEAD)
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "short=$short" >> "$GITHUB_OUTPUT"
-          if docker buildx imagetools inspect "$IMAGE:nightly-$short" >/dev/null 2>&1; then
+          # Image names must be lowercase (the owner name has capitals).
+          image=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          if docker buildx imagetools inspect "$image:nightly-$short" >/dev/null 2>&1; then
             echo "Nightly $short already has an image; nothing to build."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
