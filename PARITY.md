@@ -33,10 +33,10 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Settings | Blackhole download clients (Usenet, Torrent) | Sonarr | ✅ | Watch folder + completed folder, .magnet files optional, timeout (24 h); off by default, not in the wizard, never auto-picked over a real client unless preferred; no progress, no partial downloads (see the README footnote) |
 | Grabbing | Partial batch downloads (skip episodes you have) | — | ✅ | Beyond Sonarr: qBittorrent, Transmission, Deluge, rTorrent download only the wanted files of a batch; others download the whole batch and the leftovers are cleaned after import |
 | Grabbing | Season consistency for batches | — | ✅ | Per season: only the missing episodes, or replace the whole season (same group/quality rules, old files to the bin only after the new ones pass) |
-| Settings | Media servers | Sonarr/Radarr | 🟡 | Plex (scan after import/rename). Jellyfin/Emby later |
+| Settings | Media servers | Sonarr/Radarr | ✅ | Plex, Jellyfin, Emby, Kodi: Test, path mappings, a scan of the changed folder after imports, upgrades, renames and deletes |
 | Settings | Migration (Sonarr/Radarr) | — | ✅ | Settings → Migration: connections + cutover, "only needed until cutover" |
 | Settings | Connect / notifications | Sonarr/Radarr | 🟡 | Discord, ntfy, in-app bell (Needs action / Recent); every problem carries fix buttons. No generic webhook, email, Telegram, Pushover |
-| Settings | Metadata (Plex/Kodi files) | Sonarr/Radarr | ❌ | Step 3 (.plexmatch) |
+| Settings | Metadata (Plex/Kodi files) | Sonarr/Radarr | 🟡 | Series: tvshow.nfo, season.nfo, episode NFOs, .plexmatch, poster/banner, from AnimeArr's catalog; user files never overwritten. No movie NFOs, no episode thumbnails yet |
 | Settings | Tags | Sonarr/Radarr | ❌ | |
 | System | Status, tasks, backups, logs | Sonarr/Radarr | 🟡 | Jobs, nightly backups/restore, update check against GitHub releases (Settings → System); no log viewer, no backup download/upload (copy /config incl. secret.key) |
 | Setup | First-run setup wizard | — | 🟡 | **Built (first version):** Welcome: "I'm new" vs "I already use Sonarr/Radarr" (+ language, skip). New: account → folders (browser, writable check, Docker path note) → download clients (Test, create the category) → indexers (Prowlarr, catalogue starter picks, custom) → preferences (protocol priority, language profile, size preset) → Plex → metadata keys → notifications → done (add first show / import existing folders). Migration path: connect Sonarr/Radarr → preview what's found (anime series/movies, roots, naming, clients, indexers, Plex, tags, profiles) with per-item import → review screens → handover (unmonitor, import lists off, with backups and undo) → guided takeover checklist (adopt, verify first imports, resolver, switch with confirmation, remove connections). Saved and resumable; re-run from Settings → System; Test or preview on every step |
@@ -44,7 +44,7 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Library | Import an existing folder without Sonarr | Sonarr/Radarr | ❌ | New users add shows one by one (the wizard's "scan files" only reads them) |
 | Calendar | iCal feed | Sonarr/Radarr | ❌ | |
 | Lists | Import lists (AniList/MAL/Plex watchlist) | Sonarr/Radarr | ❌ | |
-| Media servers | Jellyfin, Emby, Kodi; NFO / .plexmatch | Sonarr/Radarr | ❌ | Plex only |
+| Media servers | Jellyfin, Emby, Kodi; NFO / .plexmatch | Sonarr/Radarr | 🟡 | Connections and files done; "Watch in" deep links are still Plex only |
 | Auth | First-run account | Sonarr | ✅ | Default login captain / morebooty, works only on your home network until you change it (wizard prompt + banner); existing accounts untouched |
 
 ## Anime-specific

@@ -7,6 +7,7 @@ import { Link, navigate } from "../App";
 import { Cutover } from "../cutover";
 import { fromEntry, type CatalogEntry } from "../connectionsEdit";
 import { DownloadClients, Indexers, Migration, type SaveNow } from "../connections";
+import { MediaPicker } from "../mediaout";
 import { t, type I18nKey } from "../i18n";
 import { SeasonHeader } from "../seasonal";
 import { Settings, type SettingsTab } from "./Settings";
@@ -15,6 +16,7 @@ import { rememberDetail } from "../errors";
 import { saveAllUnsaved } from "../unsaved";
 import { ChangeDefaultLogin } from "./Login";
 
+const MEDIA_NAMES: Record<string, string> = { plex: "Plex", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };
 interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null; errorDetail?: string | null }
 interface Overview { clients: ConnState[]; indexers: { name: string }[]; mediaServers: ConnState[]; migration: ConnState[] }
 
@@ -107,7 +109,7 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
           { id: "clients", title: "wiz.s.clients", intro: "wiz.i.clients", body: <ClientsStep s={s} saveNow={saver.saveNow} /> },
           { id: "indexers", title: "wiz.s.indexers", intro: "wiz.i.indexers", body: <IndexersStep s={s} saveNow={saver.saveNow} /> },
           { id: "prefs", title: "wiz.s.prefs", intro: "wiz.i.prefs", body: section("profile") },
-          { id: "media", title: "wiz.s.media", intro: "wiz.i.media", body: section("mediaservers") },
+          { id: "media", title: "wiz.s.media", intro: "wiz.i.media", body: <><MediaPicker s={s} saveNow={saver.saveNow} />{section("mediaservers")}</> },
           { id: "metadata", title: "wiz.s.metadata", intro: "wiz.i.metadata", body: section("metadata") },
           { id: "notify", title: "wiz.s.notify", intro: "wiz.i.notify", body: section("notifications") },
           { id: "done", title: "wiz.s.done", intro: "wiz.i.done", body: <DoneStep path="new" /> },
@@ -467,7 +469,7 @@ function DoneStep({ path }: { path: Path }) {
               {t("wiz.done.indexers")}: {o.data.indexers.length}
             </li>
             <li>
-              {t("wiz.done.media")}: {media.length ? media.map((m) => (m.ok === false ? `Plex (${t("wiz.done.notWorkingShort")})` : "Plex")).join(", ") : "—"}
+              {t("wiz.done.media")}: {media.length ? media.map((m) => { const n = MEDIA_NAMES[(m as { key?: string }).key ?? "plex"] ?? "Plex"; return m.ok === false ? `${n} (${t("wiz.done.notWorkingShort")})` : n; }).join(", ") : "—"}
             </li>
           </ul>
         </div>

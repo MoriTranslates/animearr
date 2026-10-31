@@ -104,7 +104,7 @@ export function previewNaming(media: Partial<Settings["media"]>) {
     daily: safe(() => renderEpisode(m.dailyEpisodeFormat, { ...ep, seriesTitle: "Anime Daily News" }, opts) + ".mkv"),
     anime: safe(() => renderEpisode(m.animeEpisodeFormat, ep, opts) + ".mkv"),
     multi: safe(() => renderEpisode(m.animeEpisodeFormat, multi, opts) + ".mkv"),
-    seriesFolder: safe(() => renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: ep.seriesTitle, seriesYear: 2023, tvdbId: 424536, anidbTitle: ep.anidbTitle }, opts)),
+    seriesFolder: safe(() => renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: ep.seriesTitle, seriesYear: 2023, tvdbId: 424536, anidbTitle: ep.anidbTitle, server: getSettings().mediaOutput?.main }, opts)),
     seasonFolder: safe(() => renderSeasonFolder(m.seasonFolderFormat, 1, opts)),
     specialsFolder: safe(() => renderSeasonFolder(m.specialsFolderFormat, 0, opts)),
     movie: safe(() => renderMovie(m.movieFormat, { movieTitle: "Suzume: The Door", year: 2022, quality: "Bluray-1080p", mediaInfo: mi, releaseGroup: "GRP", imdbId: "tt16428256", tmdbId: 916224 }, { ...opts, colonReplacement: m.movieColonReplacement }) + ".mkv"),

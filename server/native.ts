@@ -413,7 +413,7 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
   const title = head.title_english ?? head.title_romaji ?? head.title_native ?? `AniList ${e.anilist_id}`;
   const year = head.season_year;
   const m = getSettings().media;
-  const folder = renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: title, seriesYear: year, tvdbId: synthetic ? null : tvdbId, anidbTitle: head.title_romaji }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
+  const folder = renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: title, seriesYear: year, tvdbId: synthetic ? null : tvdbId, anidbTitle: head.title_romaji, server: getSettings().mediaOutput?.main }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
   if (!folder.trim() || /^\.+$/.test(folder)) throw err("The series folder format gives an empty folder name");
   const showPath = `${root}/${folder}`;
   if (cache.prepare("SELECT 1 FROM series WHERE path = ?").get(showPath)) throw err(`${showPath} already belongs to another show`, 409);

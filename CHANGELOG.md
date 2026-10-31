@@ -16,6 +16,18 @@ All notable changes, newest first. The commit history has the crew's version of 
 - Removing a show through the API removes it from AnimeArr only: files are never deleted, whatever the request app
   asks. Shows that Sonarr still owns can't be removed through it.
 
+### Media servers
+- Jellyfin, Emby and Kodi connections next to Plex (Settings → Media servers): Test, path mappings, and a scan of just
+  the changed folder after AnimeArr imports, upgrades, renames or deletes something.
+- Optional files for the media servers, written beside the videos from AnimeArr's own catalog so every server shows
+  AnimeArr's numbering: NFO files (tvshow.nfo, season.nfo, one per episode file; read by Jellyfin, Emby and Kodi),
+  .plexmatch for Plex, and poster/banner artwork from AniList when a folder has none. Kept in step on imports,
+  upgrades, renames and deletes. Files you made yourself (no AnimeArr marker line) are never overwritten or removed.
+  Off by default on existing installs; "Write them for every show now" fills in an existing library.
+- The new-user wizard asks which media server(s) you use and switches on the files they read.
+- New naming token `{Server Id Hint}` for series folders: `{tvdb-12345}` (Plex) or `[tvdbid-12345]` (Jellyfin, Emby),
+  following the main media server.
+
 ## 0.9.0-beta (2026-10-30): first public beta
 
 Everything is new, so here are the highlights rather than a list of 100 commits.

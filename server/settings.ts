@@ -106,6 +106,9 @@ export interface IndexerCfg {
 }
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
+export type MediaServerKind = "none" | "plex" | "jellyfin" | "emby" | "kodi";
+export interface MediaServerConn { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] }
+
 export interface Settings {
   sonarr: { url: string; apiKey: string; /** Optional: also import series with this Sonarr tag even when not seriesType=anime. */ animeTag: string };
   radarr: { url: string; apiKey: string; /** Movies under these root folders count as anime. */ animeRoots: string[]; animeProfileIds: number[] };
@@ -246,6 +249,16 @@ export interface Settings {
   cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
   plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
+  /** Jellyfin and Emby: "media updated" for the changed folder after imports/renames. API keys are stored encrypted. */
+  jellyfin: MediaServerConn;
+  emby: MediaServerConn;
+  /** Kodi: JSON-RPC VideoLibrary.Scan of the changed folder. The password is stored encrypted. */
+  kodi: { url: string; username: string; password: string; enabled: boolean; pathMappings: PathMapping[] };
+  /**
+   * What AnimeArr writes beside the videos for the media servers (server/mediaout.ts): NFO files + artwork
+   * (Jellyfin/Emby/Kodi) and .plexmatch (Plex). `main` picks the folder ID hint style of {Server Id Hint}.
+   */
+  mediaOutput: { main: MediaServerKind; nfo: boolean; plexmatch: boolean; artwork: boolean };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
   downloads: {
     rules: import("./downloads.js").FolderRule[];
@@ -322,6 +335,11 @@ const DEFAULTS: Settings = {
   library: { scan: true, scanConcurrency: 0 },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
+  jellyfin: { url: "", apiKey: "", enabled: false, pathMappings: [] },
+  emby: { url: "", apiKey: "", enabled: false, pathMappings: [] },
+  kodi: { url: "", username: "", password: "", enabled: false, pathMappings: [] },
+  // Off for existing installs (they add files to every show folder); the new-user wizard turns them on.
+  mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false },
   cutover: { allowArrWrites: false },
   notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true } },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
@@ -374,9 +392,9 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -385,6 +403,9 @@ const SECRET_FOR_URL: [string, string][] = [
   ["sabnzbd.url", "sabnzbd.apiKey"],
   ["qbittorrent.url", "qbittorrent.password"],
   ["plex.url", "plex.token"],
+  ["jellyfin.url", "jellyfin.apiKey"],
+  ["emby.url", "emby.apiKey"],
+  ["kodi.url", "kodi.password"],
   ["notify.ntfyUrl", "notify.ntfyToken"],
 ];
 const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "prowlarr.knownIds", "prowlarr.newIds", "radarr.animeProfileIds", "managed.backoffMin"]);
@@ -394,6 +415,7 @@ const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "n
 export const URL_BASE_RE = /^(\/[A-Za-z0-9._~-]+)*$/;
 const ENUMS: Record<string, readonly string[]> = {
   "ui.textScale": ["sm", "md", "lg", "xl"],
+  "mediaOutput.main": ["none", "plex", "jellyfin", "emby", "kodi"],
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
@@ -461,7 +483,7 @@ function merge<T>(base: T, over: unknown): T {
 
 /** Coerces an untrusted patch into the shape of `shape`, dropping unknown keys and wrong types. */
 function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
-  if (path === "remotePathMappings" || path === "localPathMappings" || path === "plex.pathMappings") {
+  if (path === "remotePathMappings" || path === "localPathMappings" || /^(plex|jellyfin|emby|kodi)\.pathMappings$/.test(path)) {
     if (!Array.isArray(patch)) return undefined;
     return patch
       .filter((x) => x && typeof x === "object")
@@ -626,7 +648,7 @@ export function updateSettings(patch: unknown) {
   // Arrays replace rather than merge (merge() already replaces arrays; this keeps it explicit).
   for (const p of ["remotePathMappings", "localPathMappings", "allowedRoots"] as const) if (allowed[p]) (next as unknown as Record<string, unknown>)[p] = allowed[p];
   for (const p of SECRET_PATHS) if (isMasked(getPath(next, p))) setPath(next as unknown as Record<string, unknown>, p, getPath(cur, p));
-  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex"] as const) next[k].url = trimUrl(next[k].url);
+  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex", "jellyfin", "emby", "kodi"] as const) next[k].url = trimUrl(next[k].url);
   next.allowedRoots = [...new Set(next.allowedRoots.map((r) => r.trim().replace(/\/+$/, "")).filter(Boolean))];
   // A newly added library folder must be a real one (never /config, AnimeArr's own data, or a system folder).
   // Ones saved before this check stay (a save elsewhere mustn't fail over them); Settings flags them.

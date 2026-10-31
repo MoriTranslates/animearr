@@ -8,7 +8,7 @@ import { api, DEFAULT_LOGIN, fmtSize, store, type PathMapping, type Settings as 
 import { applyTheme, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
-import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type SaveNow } from "../connections";
+import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type MediaKey, type SaveNow } from "../connections";
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
 import { LibraryFolders } from "../folders";
@@ -123,7 +123,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
       <>
           {x === "indexers" && <Indexers s={s} saveNow={saveNow} />}
           {x === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
-          {x === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} />}
+          {x === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} serverForm={(k, draft, set) => (k === "plex" ? null : <ServerCard k={k} s={draft} upd={set} />)} />}
           {x === "notifications" && (
             <>
               <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
@@ -641,6 +641,43 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
       </div>
       <MappingList value={p.pathMappings} onChange={(v) => set({ pathMappings: v })} title={t("plex.paths")} help={t("plex.pathsHelp")} />
       {res && <p className={`small ${res.ok ? "good-text" : "warn-text"}`}>{res.ok ? res.text : <ErrorText msg={res.text} />}</p>}
+    </div>
+  );
+}
+
+/** Jellyfin, Emby, Kodi: address + key (Kodi: web-server login), on/off, path mappings. Test and Save are the dialog's. */
+function ServerCard({ k, s, upd }: { k: Exclude<MediaKey, "plex">; s: S; upd: Upd }) {
+  const c = s[k] as { url: string; apiKey?: string; username?: string; password?: string; enabled: boolean; pathMappings: PathMapping[] };
+  const set = (patch: Partial<typeof c>) => upd((x) => ({ ...x, [k]: { ...(x[k] as object), ...patch } }));
+  return (
+    <div className="stack">
+      <p className="muted small">{t(`media.help.${k}` as I18nKey)}</p>
+      <div className="form">
+        <label>
+          {t("settings.url")}
+          <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={k === "kodi" ? "http://192.168.1.10:8080" : "http://192.168.1.10:8096"} />
+        </label>
+        {k === "kodi" ? (
+          <>
+            <label>
+              {t("settings.username")}
+              <input value={c.username ?? ""} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
+            </label>
+            <label className="field">
+              {t("settings.password")}
+              <SecretInput value={c.password ?? ""} onChange={(v) => set({ password: v })} label={`Kodi ${t("settings.password")}`} />
+            </label>
+          </>
+        ) : (
+          <label className="field">
+            {t("settings.apiKey")}
+            <SecretInput value={c.apiKey ?? ""} onChange={(v) => set({ apiKey: v })} label={`${k === "emby" ? "Emby" : "Jellyfin"} ${t("settings.apiKey")}`} />
+            <span className="muted small">{t(`media.keyWhere.${k}` as I18nKey)}</span>
+          </label>
+        )}
+        <Toggle checked={c.enabled} onChange={(v) => set({ enabled: v })} label={t("media.enabled")} />
+      </div>
+      <MappingList value={c.pathMappings} onChange={(v) => set({ pathMappings: v })} title={t("plex.paths")} help={t("media.pathsHelp")} />
     </div>
   );
 }

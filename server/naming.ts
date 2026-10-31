@@ -7,6 +7,8 @@
  *   {MediaInfo SubtitleLanguages} {Release Group} {Release Hash} {Original Title} {Original Filename}
  *   {Movie Title} {Movie TitleYear} {Movie CleanTitle} {Release Year} {ImdbId} {TmdbId} {Edition Tags}
  *   anime extras: {AniDB Title} {Subs Lang}
+ *   media servers (series folder): {Server Id Hint} → {tvdb-12345} (Plex) or [tvdbid-12345] (Jellyfin/Emby), per the
+ *   main media server; empty for Kodi/none and for shows TVDB doesn't have
  * Token modifiers like Sonarr's: separators in the name ({Series.Title} → dots), case ({series title} → lower),
  * and prefix/suffix characters inside the braces that only appear when the value isn't empty ({-Release Group},
  * {[Quality Full]}, {( Edition Tags )}).
@@ -213,8 +215,16 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   return render(f, values, opts).replace(/\u0001EP\u0001/g, epText).replace(/\u0001AB\u0001/g, absText).replace(/\u0001DU\u0001/g, duText);
 }
 
-export function renderSeriesFolder(format: string, c: { seriesTitle: string; seriesYear?: number | null; tvdbId?: number | null; anidbTitle?: string | null }, opts: NamingOptions) {
-  return render(format, { "series title": c.seriesTitle, "series titleyear": withYear(c.seriesTitle, c.seriesYear), "series cleantitle": cleanTitle(c.seriesTitle), "series cleantitleyear": withYear(cleanTitle(c.seriesTitle), c.seriesYear), "series titlethe": titleThe(c.seriesTitle), "tvdbid": c.tvdbId ? String(c.tvdbId) : "", "anidb title": c.anidbTitle ?? "" }, opts);
+/** The folder ID hint each media server reads to match a show (so its own title search can't pick the wrong one). */
+export function serverIdHint(server: string | null | undefined, tvdbId: number | null | undefined) {
+  if (!tvdbId) return "";
+  if (server === "plex") return `{tvdb-${tvdbId}}`;
+  if (server === "jellyfin" || server === "emby") return `[tvdbid-${tvdbId}]`;
+  return "";
+}
+
+export function renderSeriesFolder(format: string, c: { seriesTitle: string; seriesYear?: number | null; tvdbId?: number | null; anidbTitle?: string | null; server?: string | null }, opts: NamingOptions) {
+  return render(format, { "server id hint": serverIdHint(c.server, c.tvdbId), "series title": c.seriesTitle, "series titleyear": withYear(c.seriesTitle, c.seriesYear), "series cleantitle": cleanTitle(c.seriesTitle), "series cleantitleyear": withYear(cleanTitle(c.seriesTitle), c.seriesYear), "series titlethe": titleThe(c.seriesTitle), "tvdbid": c.tvdbId ? String(c.tvdbId) : "", "anidb title": c.anidbTitle ?? "" }, opts);
 }
 export function renderSeasonFolder(format: string, season: number, opts: NamingOptions) {
   return render(format, { "season#num": String(season) }, opts);

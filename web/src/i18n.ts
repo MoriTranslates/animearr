@@ -4,6 +4,7 @@
  */
 import { setupStrings } from "./i18n.setup";
 import { viewStrings } from "./i18n.view";
+import { mediaStrings } from "./i18n.media";
 
 const en = {
   ...setupStrings,
@@ -156,7 +157,7 @@ const en = {
   "conn.flow.media": "Plex is told to scan",
   "conn.intro.indexers": "Indexers: where AnimeArr searches for releases.",
   "conn.intro.clients": "Download clients: the apps that actually download (Usenet → SABnzbd/NZBGet, torrents → qBittorrent/Transmission/Deluge/rTorrent).",
-  "conn.intro.media": "Media servers: told to scan after AnimeArr imports or renames something.",
+  "conn.intro.media": "Media servers: told to scan after AnimeArr imports or renames something, and optionally given NFO/.plexmatch files.",
   "conn.intro.notifications": "Notifications: Discord or ntfy messages when something is grabbed, imported or needs you.",
   "conn.intro.migration": "Migration: your old Sonarr/Radarr, only needed until the cutover.",
   "conn.noneOfProto": "None of your Prowlarr indexers use this protocol.",
@@ -410,7 +411,7 @@ const en = {
   "wiz.i.clientsMigrate": "AnimeArr can use the same download clients as Sonarr, with its own category so their downloads stay apart.",
   "wiz.i.indexers": "Where AnimeArr searches. Prowlarr if you have it, the built-in anime list, or both. The starter picks cover most anime for free.",
   "wiz.i.prefs": "How you watch: subtitles or dub and in which language, which protocol comes first, and how big files may be.",
-  "wiz.i.media": "Optional: tell Plex to scan right after AnimeArr imports something.",
+  "wiz.i.media": "Optional: tell your media server to scan right after AnimeArr imports something.",
   "wiz.i.metadata": "Optional keys that add episode titles and specials: a TMDB key and an AniDB client name. Each has a link to the page where you get it.",
   "wiz.i.notify": "Optional: a Discord or ntfy message when something is grabbed, imported or needs you.",
   "wiz.i.done": "That's it. You can change everything later in Settings, or run this setup again from Settings → System.",
@@ -1763,6 +1764,7 @@ const en = {
   "settings.system.logout": "Log out",
   "settings.system.dbCorrupt": "The database failed its check: {detail}. Restore a backup below.",
   ...viewStrings,
+  ...mediaStrings,
 };
 
 export type I18nKey = keyof typeof en;

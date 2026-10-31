@@ -23,6 +23,8 @@ import { testTmdb } from "./catalog.js";
 import { bell, markRead, send } from "./notify.js";
 import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
+import { testEmbyLike, testKodi } from "./mediaservers.js";
+import { metadataSyncRunning, syncAllMetadata, syncSeriesMetadata } from "./mediaout.js";
 import { cleanupPlan, downloadsStatus, downloadsTick, measure, PRESETS, reevaluate, runCleanup } from "./downloads.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -317,6 +319,15 @@ app.get<{ Querystring: { from?: string; managed?: string } }>("/api/home", async
 
 // ---------------------------------------------------------------- indexers & download clients (Settings cards)
 app.get("/api/catalog/indexers", async () => indexerCatalog());
+// ---------------------------------------------------------------- media-server files (NFO, .plexmatch, artwork)
+app.get("/api/mediaout", async () => ({ running: metadataSyncRunning() }));
+app.post("/api/mediaout/sync", async () => (writable(), syncAllMetadata()));
+app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/mediaout", async (req) => {
+  writable();
+  const r = await syncSeriesMetadata(id(req.params.tvdbId));
+  if (!r) throw fail("Nothing to write: switch on NFO files, .plexmatch or artwork in Settings → Media servers (and the show must be in an allowed root folder)", 409);
+  return r;
+});
 // ---------------------------------------------------------------- dropped shows
 app.get("/api/dropped", async () => droppedList());
 app.post<{ Params: { tvdbId: string }; Body: { why?: string; unmonitor?: boolean } }>("/api/series/:tvdbId/drop", async (req) => {
@@ -427,7 +438,7 @@ app.post<{ Body: Record<string, unknown> }>("/api/clients/test", async (req) => 
 
 app.get<{ Querystring: { fresh?: string } }>("/api/connections", async (req) => connectionsOverview(req.query.fresh === "1"));
 
-const SERVICE_NAMES: Record<string, string> = { sonarr: "Sonarr", radarr: "Radarr", prowlarr: "Prowlarr", sabnzbd: "SABnzbd", plex: "Plex", qbittorrent: "qBittorrent" };
+const SERVICE_NAMES: Record<string, string> = { sonarr: "Sonarr", radarr: "Radarr", prowlarr: "Prowlarr", sabnzbd: "SABnzbd", plex: "Plex", qbittorrent: "qBittorrent", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };
 app.post<{ Params: { service: string }; Body: TestBody }>("/api/test/:service", async (req) => {
   const svc = req.params.service;
   try {
@@ -462,6 +473,15 @@ async function testService(service: string, b: TestBody) {
     case "plex": {
       const c = withSecret(b.url, b.apiKey, s.plex.url, s.plex.token);
       return testPlex({ url: c.url, token: c.secret });
+    }
+    case "jellyfin":
+    case "emby": {
+      const c = withSecret(b.url, b.apiKey, s[service].url, s[service].apiKey);
+      return testEmbyLike(service, { url: c.url, apiKey: c.secret });
+    }
+    case "kodi": {
+      const c = withSecret(b.url, b.password, s.kodi.url, s.kodi.password, false);
+      return testKodi({ url: c.url, username: String(b.username ?? s.kodi.username), password: c.secret });
     }
     case "qbittorrent": {
       const c = withSecret(b.url, b.password, s.qbittorrent.url, s.qbittorrent.password, false);
