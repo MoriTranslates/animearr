@@ -5,6 +5,20 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **v2 and repack releases count.** Fansub groups often re-release an episode as v2 or v3 to fix mistakes, and scene
+  groups call theirs PROPER or REPACK. AnimeArr now reads all of these as a newer version. With Settings → Media
+  management → Propers and repacks on "Prefer and upgrade" (the default), a newer version from the same group as the
+  file you have replaces it, even when the quality is the same, and searches mark it "Newer version" with the reason
+  ("v2 of the episode you have from SubsPlease (fixes a v1) — upgrade"). A different group's v2 is not a swap, a
+  locked show, season or file ([Keep] / [Remaster]) is never replaced, and your release rules and blocklist still apply
+  first. The quality upgrade watcher also checks episodes that aired in the last two weeks for a newer version, and
+  the ⚡ search on an episode you already have looks for one (it needs a recycling bin). "Do not upgrade automatically"
+  prefers newer versions when picking a new release but never replaces a file you have; "Do not prefer" ignores versions.
+- **Change file date and delete empty folders now work.** Settings → Media management → Change file date sets an
+  imported or renamed episode's modified date to its air date (none, local day, or exact UTC time). Delete empty
+  folders removes a season or show folder that AnimeArr's own importer or renamer just left empty; folders with
+  anything inside (hidden files too) and your library folders are never removed. Both are for AnimeArr's own importer;
+  shows imported through Sonarr keep Sonarr's behaviour.
 - **Release rules.** Settings → Release rules works like Sonarr's release profiles: a rule lists terms a release name
   must contain (any one of them) and terms it must not contain, plus optional preferred terms with a score. A term is
   plain text (capitals don't matter) or a regular expression between slashes, like `/(x265|hevc)/`; a
