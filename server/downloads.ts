@@ -26,6 +26,8 @@ import { libraryRoots } from "./mediafiles.js";
 import { getSettings } from "./settings.js";
 import { readBatch } from "./batch.js";
 import { findCompleted } from "./arr/blackhole.js";
+import { nzbgetDriver, transmissionDriver } from "./arr/moreClients.js";
+import type { ClientCfg } from "./settings.js";
 
 export interface FolderRule {
   id: string;
@@ -498,24 +500,44 @@ export function removeDownloadPath(arrPath: string | null | undefined): string |
 /**
  * Cleans one grab's download right after its outcome is final (the user's rule): after a confirmed import, or after it
  * failed its check. Usenet: the folder goes now. Torrent: a rejected one goes now (with its data); an imported one
- * goes once qBittorrent stopped it or the seeding rules are met (otherwise the periodic sweep takes it later). Only
- * when automatic clean-up and deleting are switched on; only AnimeArr's own jobs. Never throws.
+ * goes once the client stopped it or the seeding rules are met (otherwise the periodic sweep takes it later; for
+ * qBittorrent and Transmission). Only when automatic clean-up and deleting are switched on; only AnimeArr's own jobs
+ * (its category/label). NZBGet with "remove finished jobs" on: the finished job leaves NZBGet's history once its
+ * folder holds no video (and the folder goes with it when deleting is on). Never throws.
  */
-export async function cleanupGrab(grabId: number, outcome: "imported" | "rejected", deps: { torrents: typeof ownTorrents; sab: typeof ownSabHistory; remove: typeof realClients.remove } = { torrents: ownTorrents, sab: ownSabHistory, remove: realClients.remove }): Promise<string | null> {
+export async function cleanupGrab(grabId: number, outcome: "imported" | "rejected", deps: { torrents: typeof ownTorrents; sab: typeof ownSabHistory; remove: typeof realClients.remove; nzbget?: typeof nzbgetDriver.job; transmission?: typeof transmissionDriver.info } = { torrents: ownTorrents, sab: ownSabHistory, remove: realClients.remove }): Promise<string | null> {
   const s = getSettings().downloads;
-  if (s.cleanup !== "auto" || !s.allowDelete || dbState.corrupt) return null;
+  if (dbState.corrupt) return null;
   const g = db.prepare("SELECT id, client, client_ref, release, tvdb_id, movie_id FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as { id: number; client: string | null; client_ref: string | null; release: string; tvdb_id: number | null; movie_id: number | null } | undefined;
   if (!g?.client || !g.client_ref) return null;
+  const extra: ClientCfg | undefined = getSettings().extraClients?.find((x) => x.id === g.client);
+  const deleteOk = s.cleanup === "auto" && s.allowDelete;
+  // Without deleting switched on, only an NZBGet job its client was told to drop after import is touched.
+  if (!deleteOk && !(extra?.type === "nzbget" && extra.removeCompleted && outcome === "imported")) return null;
   let did: string | null = null;
   try {
-    if (g.client === "qbittorrent") {
-      const t = (await deps.torrents()).find((x) => x.hash.toLowerCase() === g.client_ref!.toLowerCase());
+    if (g.client === "qbittorrent" || extra?.type === "transmission") {
+      // qBittorrent's torrents come from its own category listing; Transmission's from the one torrent, which must carry AnimeArr's label/folder.
+      const t = g.client === "qbittorrent" ? (await deps.torrents()).find((x) => x.hash.toLowerCase() === g.client_ref!.toLowerCase()) : await (deps.transmission ?? transmissionDriver.info)(extra!, g.client_ref).then((x) => (x?.ours ? x : null));
       if (!t) return null;
       const rejectedLongEnough = outcome === "rejected" && Date.now() - (failedAt(g.id) ?? Date.now()) > 3_600_000;
       if (rejectedLongEnough || (outcome === "imported" && seedingDone(t))) {
-        await deps.remove({ client: "qbittorrent", ref: t.hash });
+        await deps.remove({ client: g.client, ref: t.hash });
         did = outcome === "rejected" ? "removed the rejected torrent and its data" : "removed the torrent (seeding done)";
       } else did = null; // still seeding: the sweep removes it when the seeding rules are met
+    } else if (extra?.type === "nzbget") {
+      // The finished job must be in NZBGet's history under AnimeArr's category. Its folder goes after the import when no
+      // video is left (a pack's unimported files stay for you; a batch's unwanted ones go with it); then the job leaves the history.
+      const j = await (deps.nzbget ?? nzbgetDriver.job)(extra, g.client_ref);
+      if (!j || j.category !== extra.category || !/^(SUCCESS|WARNING)/.test(j.status)) return null;
+      const arr = clientToSonarr(j.dir).replace(/\/+$/, "");
+      const local = mappedPath(arr);
+      const there = fs.existsSync(local);
+      const leftovers = there && batchLeftovers(g.id);
+      if (there && !leftovers && listVideos(local).length) return null;
+      if (there && deleteOk && !removeDownloadPath(arr)) return null; // not inside AnimeArr's own download folders: left alone
+      await deps.remove({ client: g.client, ref: g.client_ref });
+      did = there && deleteOk ? (leftovers ? "deleted the download folder with the batch's unneeded files and removed the job from NZBGet" : "deleted the download folder and removed the job from NZBGet") : "removed the finished job from NZBGet";
     } else if (getSettings().extraClients?.find((x) => x.id === g.client)?.type === "blackhole-usenet") {
       // A Usenet blackhole: the finished folder in its completed folder goes after the import, by the same rules
       // (inside a source root, deleting on; a batch's leftovers only when every wanted episode got its file).
