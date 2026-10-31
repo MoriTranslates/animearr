@@ -383,6 +383,18 @@ const USER_MIGRATIONS: string[] = [
    ALTER TABLE grabs ADD COLUMN indexer TEXT;
    ALTER TABLE blocklist ADD COLUMN protocol TEXT;
    ALTER TABLE blocklist ADD COLUMN indexer TEXT;`,
+  // 36: tags for shows and movies (the Sonarr API's tags move here, ids kept) and release rules (must / must-not /
+  // preferred terms, optionally scoped by tags)
+  `CREATE TABLE tags (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE);
+   CREATE TABLE tag_links (kind TEXT NOT NULL CHECK (kind IN ('series', 'movie')), ref INTEGER NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (kind, ref, tag_id));
+   CREATE INDEX tag_links_tag ON tag_links (tag_id);
+   INSERT INTO tags (id, label) SELECT id, label FROM api_tags;
+   INSERT INTO tag_links (kind, ref, tag_id) SELECT 'series', tvdb_id, tag_id FROM api_series_tags;
+   DROP TABLE api_series_tags;
+   DROP TABLE api_tags;
+   CREATE TABLE release_rules (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, must TEXT NOT NULL DEFAULT '[]', must_not TEXT NOT NULL DEFAULT '[]',
+     preferred TEXT NOT NULL DEFAULT '[]', position INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+   CREATE TABLE release_rule_tags (rule_id TEXT NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (rule_id, tag_id));`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

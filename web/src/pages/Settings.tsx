@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, Tags as TagsIcon, ListFilter, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUnsaved } from "../unsaved";
 import { copyText, rememberDetail } from "../errors";
@@ -15,15 +15,16 @@ import { LibraryFolders } from "../folders";
 import { ImportFolders } from "../importFolders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
+import { RulesEditor, TagsEditor } from "../rules";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
+type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "rules" | "tags" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
 /** Settings, grouped like Sonarr's: a left sub-nav on desktop, a list on phones. */
 const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: LucideIcon }[] }[] = [
   { label: "settings.group.connect", tabs: [{ id: "indexers", icon: SearchIcon }, { id: "clients", icon: Download }, { id: "mediaservers", icon: MonitorPlay }, { id: "notifications", icon: BellIcon }, { id: "migration", icon: ArrowLeftRight }] },
-  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
+  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "rules", icon: ListFilter }, { id: "tags", icon: TagsIcon }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
   { label: "settings.group.automation", tabs: [{ id: "safety", icon: ShieldCheck }, { id: "downloads", icon: HardDrive }] },
   { label: "settings.group.general", tabs: [{ id: "appearance", icon: Palette }, { id: "security", icon: Lock }, { id: "system", icon: Cog }] },
 ];
@@ -137,6 +138,8 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
             </Migration>
           )}
           {x === "profile" && <ProfilesEditor />}
+          {x === "rules" && <RulesEditor />}
+          {x === "tags" && <TagsEditor />}
           {x === "media" && <MediaManagement s={s} upd={upd} />}
           {x === "downloads" && <DownloadRules s={s} upd={upd} />}
           {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}

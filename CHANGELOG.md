@@ -4,6 +4,19 @@ All notable changes, newest first. The commit history has the crew's version of 
 
 ## Unreleased
 
+### Added
+- **Release rules.** Settings → Release rules works like Sonarr's release profiles: a rule lists terms a release name
+  must contain (any one of them) and terms it must not contain, plus optional preferred terms with a score. A term is
+  plain text (capitals don't matter) or a regular expression between slashes, like `/(x265|hevc)/`; a
+  regular expression that doesn't work is refused when you save. A release a rule blocks is skipped everywhere
+  (searches, automatic grabs, upgrades, movies) and shown with the reason: "Blocked by release rule 'No HEVC':
+  contains 'x265'". Preferred terms only nudge the order (at most 8 points), after language, quality and SeaDex, so
+  they never win over a better language fit or rescue a blocked release. A rule can be limited to shows and movies
+  with certain tags, and a "Test against a title" box shows what your rules do to a sample name.
+- **Tags.** Settings → Tags adds, renames and deletes tags (deleting shows what uses the tag and unlinks it). Put tags
+  on a show or movie from its page, or on many shows at once with Library → Shows → Select → Tags. Request apps like
+  Jellyseerr see the same tags through the Sonarr-compatible API, and tags they set are real tags in AnimeArr.
+
 ## 0.10.0-beta (2026-10-31): works with your apps, aims for the best
 
 ### Added

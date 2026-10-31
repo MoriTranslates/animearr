@@ -8,12 +8,14 @@ import { mediaStrings } from "./i18n.media";
 import { dupStrings } from "./i18n.dup";
 import { qualityStrings } from "./i18n.quality";
 import { safetyStrings } from "./i18n.safety";
+import { rulesStrings } from "./i18n.rules";
 
 const en = {
   ...setupStrings,
   ...qualityStrings,
   ...dupStrings,
   ...safetyStrings,
+  ...rulesStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { Confirm, Empty, ErrorBox, Menu, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { ScopeEditor } from "../scope";
+import { BulkTags } from "../rules";
 
 type Filter = "airing" | "continuing" | "managed" | "all";
 
@@ -49,6 +50,7 @@ export function Shows({ status }: { status: Status }) {
   });
 
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [manageAsk, setManageAsk] = useState<{ shows: number; missing: number; dryRun: boolean; backlog: boolean; perHour: number } | null>(null);
   const [fillAsk, setFillAsk] = useState(false);
   async function askManage() {
@@ -173,6 +175,9 @@ export function Shows({ status }: { status: Status }) {
             <button className="ghost" disabled={busy} onClick={() => setScopeOpen(true)}>
               {t("scope.bulk")}
             </button>
+            <button className="ghost" disabled={busy} onClick={() => setTagsOpen(true)}>
+              {t("tags.bulk")}
+            </button>
             <button className="ghost" disabled={busy} onClick={() => setFillAsk(true)}>
               {t("fill.add")}
             </button>
@@ -209,6 +214,7 @@ export function Shows({ status }: { status: Status }) {
           <p>{t("fill.addBody")}</p>
         </Confirm>
       )}
+      {tagsOpen && <BulkTags ids={[...sel]} onClose={() => setTagsOpen(false)} />}
       {scopeOpen && (
         <Modal title={t("scope.bulkTitle", { n: sel.size })} onClose={() => setScopeOpen(false)}>
           <p className="muted small">{t("scope.bulkNote")}</p>

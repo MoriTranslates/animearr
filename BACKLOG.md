@@ -8,6 +8,7 @@ Rule: each step is complete, tested and in daily use, then hardened, before the 
 - [ ] **"For you" tab in Find & add**: Tastearr's taste-based season picks built in, with Add and ▶ Trailer on each pick. Target: in time for the Winter 2027 season (early January). Tastearr also stays a standalone app for Sonarr/Radarr users
 - [x] **Quality goal + upgrade watcher** ("always aim for the best"): a goal per profile (Good enough / Aim high / Collector) on Sonarr's quality names in TRaSH-style anime categories, SeaDex + group tiers in ranking; seasons below their goal are rechecked on a budget (weekly in the Blu-ray window) and upgraded through the Replace-season machinery, automatically from day one with guard rails; "keep as is" locks and the {Keep Tag} for Tdarr. Follow-ups: quality upgrades for movies, per-quality allow toggles
 - [ ] **Library audit** (0.9.1): re-check files imported before AnimeArr took over (runtime far off, a different year or show in the release name, live action, wrong audio language) and list them with "Find the right release" / "Ignore"; never auto-delete
+- [x] **Release rules + tags** (Sonarr parity): must / must-not / preferred terms (plain or /regex/) applied in ranking, optional tag scoping, a test box; tags on shows and movies shared with the Sonarr-compatible API. Follow-ups: scope indexers, download clients and notifications by tag (indexers keep free-text tags for now), import Sonarr's release profiles and tags in the migration preview, tags filter on the Shows page
 
 ## Must-have before tagging 1.0
 

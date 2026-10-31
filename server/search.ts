@@ -16,6 +16,7 @@ import { cache, db } from "./db.js";
 import { learnedFor, sourceKey } from "./library.js";
 import { aliasIndex } from "./metadata.js";
 import { profileFor } from "./profiles.js";
+import { releaseRulesFor } from "./releaseRules.js";
 import { parseRelease, type Source } from "./core/parser.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
@@ -147,7 +148,7 @@ export function seasonGroupOf(seriesId: number, season: number | null, weight: "
   return { group: name, source: best[1].source, weight };
 }
 
-function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean, groups?: Map<string, Known["seasonGroup"]>): Known {
+function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean, groups?: Map<string, Known["seasonGroup"]>, rules: Known["rules"] = []): Known {
   const k: Known = {};
   const prof = profileFor(series.tvdbId);
   for (const lang of prof.subLangs) {
@@ -162,6 +163,7 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   k.seasonGroup = groups?.get(`${season}`) ?? null;
   k.seadex = seadexForSeason(series.tvdbId, season);
   k.tiers = animeTiers();
+  k.rules = rules;
   return k;
 }
 
@@ -235,6 +237,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const raw = new Map<string, ProwlarrRelease>();
   const errors: string[] = [];
   const prof = profileFor(tvdbId);
+  const ruleSet = releaseRulesFor("series", tvdbId);
   const targetIds = new Set(targets.map((t) => t.id));
   const runtimeOf = new Map(all.map((e) => [e.id, e.runtime]));
   const results: SearchResult[] = [];
@@ -260,7 +263,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
       return;
     }
     const ss = eps[0]?.season ?? null;
-    const known = knownFor(r, series, ss, !id.parsed.group, groups);
+    const known = knownFor(r, series, ss, !id.parsed.group, groups, ruleSet);
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
     const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length, runtimeMin: runtimeOf.get(eps[0]?.id) ?? null }, prof, learned, known);
     results.push({

@@ -10,6 +10,7 @@ import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, FlagChips, Menu, Modal
 import { PosterCard } from "../posters";
 import { ResultCard } from "./Search";
 import { WatchAs, type WatchMode } from "../profiles";
+import { TagPicker } from "../rules";
 import { languageList, languageName } from "../lang";
 
 /** "has full en subtitles" → "has full English subtitles"; "en/vi audio only" → "English and Vietnamese audio only". */
@@ -152,6 +153,7 @@ interface MovieDetail {
   dates: { inCinemas: number | null; digital: number | null; physical: number | null };
   series: { tvdbId: number; title: string; cover: string | null; source: string }[];
   prefs: { profile_id: string | null; watch_mode: WatchMode | null };
+  tags: number[];
   profile: { name: string; watchMode: WatchMode; profileMode?: WatchMode };
   search: { state: string; nextAt: number; lastAt: number | null; attempts: number; why: string } | null;
   upgrade: { state: string; lastAt: number | null; why: string; release: string | null } | null;
@@ -169,6 +171,7 @@ export function MoviePage({ id }: { id: number }) {
   const [autoBusy, setAutoBusy] = useState(false);
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [importing, setImporting] = useState(false);
   const auto = async () => {
@@ -289,6 +292,9 @@ export function MoviePage({ id }: { id: number }) {
             <button className="glass-btn" onClick={() => setWatchOpen(true)} aria-haspopup="dialog">
               {t("profiles.watchAs")}: {m.profile.name}
             </button>
+            <button className="glass-btn" onClick={() => setTagsOpen(true)} aria-haspopup="dialog">
+              {t("tags.button")} {m.tags.length || ""}
+            </button>
           </div>
         </div>
         </div>
@@ -362,6 +368,11 @@ export function MoviePage({ id }: { id: number }) {
       {watchOpen && (
         <Modal title={t("profiles.watchAs")} onClose={() => setWatchOpen(false)}>
           <WatchAs tvdbId={m.id} endpoint={`/movies/${m.id}/prefs`} prefs={m.prefs} effective={m.profile} onChanged={() => void d.reload()} />
+        </Modal>
+      )}
+      {tagsOpen && (
+        <Modal title={t("tags.title")} onClose={() => setTagsOpen(false)}>
+          <TagPicker endpoint={`/movies/${m.id}/tags`} value={m.tags} onChanged={() => void d.reload()} />
         </Modal>
       )}
       {removing && <RemoveNative movieId={id} title={m.title} asked onClose={() => setRemoving(false)} />}
