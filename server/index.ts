@@ -87,6 +87,7 @@ import { listMovies, movieCalendar, movieDetail, searchMovie, setWanted, startMo
 import { applyRenameRouted, browseImport, executeImport, executeMovieImport, planImport, planMovieImport, planRename, renameBack, renamePlan } from "./importer.js";
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { registerSonarrApi } from "./sonarrApi.js";
+import { adoptFolder, matchFolder, scanRoot } from "./folderImport.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
@@ -991,6 +992,20 @@ app.post<{ Body: { anilistId: number; rootFolder: string; kind?: "show" | "movie
   if (b.then === "queue") then = addToQueue([added.tvdbId]);
   else if (b.then === "search") then = searchMissingNow(added.tvdbId, added.title);
   return { ...added, managed, then };
+});
+
+// Import existing folders: list a root's show folders, match one folder at a time (the page paces AniList), adopt as-is.
+app.get<{ Querystring: { root?: string } }>("/api/import/folders", async (req) => scanRoot(String(req.query.root ?? "")));
+app.post<{ Body: { name: string } }>("/api/import/match", async (req) => matchFolder(String(req.body?.name ?? "").slice(0, 300)));
+app.post<{ Body: { rootFolder: string; name: string; anilistId: number; profileId?: string | null } }>("/api/import/adopt", async (req) => {
+  writable();
+  const b = req.body ?? ({} as never);
+  if (b.profileId && !getSettings().profiles.some((p) => p.id === b.profileId)) throw fail("Unknown profile", 400);
+  refuseDropped((db.prepare("SELECT tvdb_id FROM entries WHERE anilist_id = ?").get(Number(b.anilistId)) as { tvdb_id: number | null } | undefined)?.tvdb_id);
+  const r = await adoptFolder({ rootFolder: String(b.rootFolder ?? ""), name: String(b.name ?? ""), anilistId: Number(b.anilistId) });
+  if (b.profileId) setSeriesPrefs(r.tvdbId, b.profileId, null, null);
+  const managed = setManaged([r.tvdbId], true, { live: !getSettings().managed.dryRun }); // the same defaults as Add
+  return { ...r, managed };
 });
 
 app.delete<{ Params: { movieId: string } }>("/api/add/movie/:movieId", async (req) => {

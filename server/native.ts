@@ -23,7 +23,7 @@ import { fribb } from "./covers.js";
 import { cache, db, dbState, tx } from "./db.js";
 import { animeListEntries, invalidateIndex } from "./metadata.js";
 import { renderMovie, renderSeriesFolder } from "./naming.js";
-import { mappedPath } from "./paths.js";
+import { localPath, mappedPath } from "./paths.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
 /** Cache ids of native shows/episodes/files start here (Sonarr's ids are far below). */
@@ -369,6 +369,25 @@ export interface AddInput {
   sizePreset?: "lean" | "balanced" | "best" | null;
   scope?: { seasons: string; recentN: number; episodes: string; specials: boolean } | null;
   monitor?: boolean;
+  /** Adopt a folder that already exists (the folder import): it becomes the show's path as it is, nothing is renamed or moved. */
+  existingPath?: string;
+}
+
+/** The folder a show adopts: directly inside the chosen root, inside an allowed root, a real folder, and not another show's. */
+export function checkExistingPath(raw: string, root: string): string {
+  const p = path.posix.normalize(String(raw ?? "").replace(/\\/g, "/")).replace(/\/+$/, "");
+  if (!p || path.posix.dirname(p) !== root || !path.posix.basename(p) || /^\.+$/.test(path.posix.basename(p))) throw err("That folder isn't directly inside the root folder");
+  if (!underAllowedRoot(p)) throw err("That folder is outside the allowed root folders");
+  if (cache.prepare("SELECT 1 FROM series WHERE path = ?").get(p) || db.prepare("SELECT 1 FROM native_series WHERE path = ?").get(p)) throw err(`${p} already belongs to another show`, 409);
+  const local = localPath(p);
+  let isDir = false;
+  try {
+    isDir = !!local && fs.statSync(local).isDirectory();
+  } catch {
+    /* not reachable */
+  }
+  if (!isDir) throw err("AnimeArr can't open that folder", 400);
+  return p;
 }
 
 /** Makes sure the catalog has this entry (and, for a TVDB show, every entry mapped to that series), pinned. */
@@ -414,11 +433,15 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
   const title = head.title_english ?? head.title_romaji ?? head.title_native ?? `AniList ${e.anilist_id}`;
   const year = head.season_year;
   const m = getSettings().media;
-  const folder = renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: title, seriesYear: year, tvdbId: synthetic ? null : tvdbId, anidbTitle: head.title_romaji, server: getSettings().mediaOutput?.main }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
-  if (!folder.trim() || /^\.+$/.test(folder)) throw err("The series folder format gives an empty folder name");
-  const showPath = `${root}/${folder}`;
-  if (cache.prepare("SELECT 1 FROM series WHERE path = ?").get(showPath)) throw err(`${showPath} already belongs to another show`, 409);
-  if (folder.includes("/") || !underAllowedRoot(showPath)) throw err("The series folder format gives a folder outside the root folder");
+  let showPath: string;
+  if (input.existingPath) showPath = checkExistingPath(input.existingPath, root);
+  else {
+    const folder = renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: title, seriesYear: year, tvdbId: synthetic ? null : tvdbId, anidbTitle: head.title_romaji, server: getSettings().mediaOutput?.main }, { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle });
+    if (!folder.trim() || /^\.+$/.test(folder)) throw err("The series folder format gives an empty folder name");
+    showPath = `${root}/${folder}`;
+    if (cache.prepare("SELECT 1 FROM series WHERE path = ?").get(showPath)) throw err(`${showPath} already belongs to another show`, 409);
+    if (folder.includes("/") || !underAllowedRoot(showPath)) throw err("The series folder format gives a folder outside the root folder");
+  }
   let rowId: number;
   try {
     rowId = Number(db.prepare("INSERT INTO native_series (tvdb_id, anilist_id, synthetic, title, year, path, root_folder, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(tvdbId, e.anilist_id, synthetic ? 1 : 0, title, year, showPath, root, Date.now()).lastInsertRowid);
@@ -436,7 +459,7 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
   }
   invalidateIndex();
   requestSeadex([e.anilist_id]); // SeaDex picks before its first searches
-  if (m.createEmptyFolders) {
+  if (m.createEmptyFolders && !input.existingPath) {
     try {
       fs.mkdirSync(mappedPath(showPath), { recursive: true });
     } catch {

@@ -20,7 +20,7 @@ import { localPath } from "./paths.js";
 import { getSettings } from "./settings.js";
 import { PARTIAL_TRACK } from "./verify.js";
 
-const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm|wmv|mov)$/i;
+export const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm|wmv|mov)$/i;
 const SIDECAR = /\.(ass|ssa|srt|sup|sub|vtt)$/i;
 
 export interface Track { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; forced: boolean }
