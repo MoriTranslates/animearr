@@ -20,7 +20,8 @@ import { setupProblems, withSetupProblems } from "./setupHealth.js";
 import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
-import { bell, markRead, send } from "./notify.js";
+import { bell, channelStatus, markRead, send, testChannel } from "./notify.js";
+import { cleanChannels, maskChannel, CHANNEL_TYPES } from "./notifyChannels.js";
 import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { testEmbyLike, testKodi } from "./mediaservers.js";
@@ -962,10 +963,23 @@ app.post<{ Body: { upToId?: number; ids?: number[] } }>("/api/notifications/read
 });
 app.post("/api/notifications/test", async () => {
   const s = getSettings().notify;
-  if (!s.discordWebhook && !s.ntfyUrl) throw fail("Set up Discord or ntfy first (and save)", 400);
+  if (!s.discordWebhook && !s.ntfyUrl && !s.channels?.some((c) => c.enabled)) throw fail("Set up a notification channel first (and save)", 400);
   const out = await send("imported", "Test", "AnimeArr can reach this channel.");
   if (!out.length) throw fail("The 'imported' event is switched off, or too many notifications this minute", 400);
   return { results: out };
+});
+// The extra channels (webhook, Telegram, Pushover, email): secrets masked going out, "masked" means unchanged coming in.
+app.get("/api/notify/channels", async () => ({ channels: (getSettings().notify.channels ?? []).map(maskChannel), status: channelStatus(), types: CHANNEL_TYPES }));
+app.put<{ Body: { channels?: unknown } }>("/api/notify/channels", async (req) => {
+  writable();
+  const channels = cleanChannels(req.body?.channels, getSettings().notify.channels ?? []);
+  patchSettings((x) => ({ ...x, notify: { ...x.notify, channels } }));
+  return { channels: channels.map(maskChannel), status: channelStatus(), types: CHANNEL_TYPES };
+});
+app.post<{ Params: { id: string } }>("/api/notify/channels/:id/test", async (req) => {
+  const c = (getSettings().notify.channels ?? []).find((x) => x.id === req.params.id);
+  if (!c) throw fail("Save the channel first, then test it", 404);
+  return { results: [await testChannel(c)] };
 });
 /** Library tag filter: Sonarr's tag names (read-only; empty when Sonarr isn't set up or doesn't answer). */
 app.get("/api/library/tags", async () => {
