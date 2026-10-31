@@ -83,7 +83,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          # A hand-run build of a plain branch has no tags to push, so it only builds (a check).
+          push: ${{ github.event_name != 'pull_request' && steps.meta.outputs.tags != '' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ANIMEARR_BUILD=${{ steps.nightly.outputs.sha }}
