@@ -3,11 +3,17 @@
 Ideas that are **not** in the current step, so they aren't lost. 
 Rule: each step is complete, tested and in daily use, then hardened, before the next one starts.
 
+## Next, after the 0.9.0-beta launch (2026-10-30)
+
+- [ ] **"For you" tab in Find & add**: Tastearr's taste-based season picks built in, with Add and ▶ Trailer on each pick. Target: in time for the Winter 2027 season (early January). Tastearr also stays a standalone app for Sonarr/Radarr users
+- [ ] **Quality goal + upgrade watcher** ("always aim for the best"): a goal per profile on the TV < WEB-DL < Blu-ray < remux ladder; shows below their goal are rechecked on a budget (extra checks when Blu-ray batches usually land) and upgraded through the Replace-season machinery; report-only by default; a per-show "keep as is" lock for hand-made remasters
+- [ ] **Library audit** (0.9.1): re-check files imported before AnimeArr took over (runtime far off, a different year or show in the release name, live action, wrong audio language) and list them with "Find the right release" / "Ignore"; never auto-delete
+
 ## Must-have before tagging 1.0
 
 - [x] **Creditless OP/ED (NCOP/NCED) are first-class, never junk** (done 2026-10-26; follow-ups: song title/artist from AniDB song data, detecting creditless files already sitting in Plex extras folders that AnimeArr didn't import) (user request, 2026-10-26): their own special type; an "Openings & endings" group on the series page (OP1, OP2, ED1… with song title and artist from AniDB when known), never under "minor extras"; a "Creditless OP/ED" monitoring toggle (default ON for new shows); searches understand NCOP/NCED/creditless naming and BD batch "Extras/NCOP" folders; import into S00 or as Plex extras (Featurettes/Other folder or -other suffix) by a setting; files already in the library count as Have. Seed of the music layer
-- [ ] **Indexers & download clients, Sonarr parity** (see PARITY.md): multiple clients (SABnzbd, NZBGet, qBittorrent, Transmission; Deluge/rTorrent later) with category, priority, enabled, remove-completed, Test, remote path mapping; direct Newznab/Torznab (custom forms; keys encrypted and redacted); Jackett as a manager; curated versioned anime indexer catalogue (each entry verified live, with date); duplicate detection; protocol priority per profile (Prefer Usenet / Prefer Torrent / No preference) with per-protocol delays, shown on both tabs and in grab reasons
-- [ ] **First-run setup wizard** (two paths: "I'm new" / "I already use Sonarr/Radarr"), saved and resumable, re-runnable from Settings → System (spec in PARITY.md)
+- [x] **Indexers & download clients, Sonarr parity** (done for 0.9.0-beta; open: NZBGet remove-completed; see PARITY.md): multiple clients (SABnzbd, NZBGet, qBittorrent, Transmission; Deluge/rTorrent later) with category, priority, enabled, remove-completed, Test, remote path mapping; direct Newznab/Torznab (custom forms; keys encrypted and redacted); Jackett as a manager; curated versioned anime indexer catalogue (each entry verified live, with date); duplicate detection; protocol priority per profile (Prefer Usenet / Prefer Torrent / No preference) with per-protocol delays, shown on both tabs and in grab reasons
+- [x] **First-run setup wizard** (first version shipped in 0.9.0-beta; two paths: "I'm new" / "I already use Sonarr/Radarr"), saved and resumable, re-runnable from Settings → System (spec in PARITY.md)
 
 - [x] Dual-mode automatic upgrade: replace a sub-only placeholder when a dual-audio release appears (Sonarr-parity upgrade path) — off / log (default) / auto
 - [x] Movies round 2: watch monitored movies for release (digital/physical dates), calendar entries, missing-movie search, dual upgrades for movies, series ↔ movie links (S0 double-download guard)
@@ -102,6 +108,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 
 ### Library audit
 - [ ] Unmanaged-folder audit with suggested matches (the 176 folders) — §7 Phase 0
+- [ ] Re-audit existing episode files for wrong matches (see Next: Library audit)
 - [ ] Duplicate audit (`Movies/` vs `Movies/Anime`, Sonarr S0 vs Radarr), empty Specials folders, mistyped series and wrong roots — §7 Phase 0
 
 ### Notifications
@@ -142,7 +149,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [ ] Right-to-left scripts and per-script fonts — §8.6
 
 ### Discover
-- [ ] Tastearr merged as Discover: For You, charts, share target, bookmarklet, franchise-aware add — §5.5
+- [ ] Tastearr merged as Discover: For You (moved up, see Next), charts, share target, bookmarklet, franchise-aware add — §5.5
 
 ### Other sources
 - [ ] Muse Asia and other official free-stream links
