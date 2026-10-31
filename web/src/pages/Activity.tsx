@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { merryOn } from "../merry";
 import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
-import { Link } from "../App";
+import { Link, query } from "../App";
 import { t, type I18nKey } from "../i18n";
+import { Blocklist } from "./Blocklist";
 import { Chip, Confirm, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast, ReleaseName } from "../ui";
 
 /** What an Undo will do, in words ("Frieren stops being managed by AnimeArr"). */
@@ -253,7 +254,34 @@ export function groupEvents(list: Decision[]): Ev[] {
   return out.sort((a, b) => b.at - a.at);
 }
 
+/** Activity and Blocklist share a page: the log, and the releases AnimeArr won't pick again. */
 export function Activity() {
+  const [view, setView] = useState<"log" | "blocklist">(query().get("tab") === "blocklist" ? "blocklist" : "log");
+  const pick = (v: "log" | "blocklist") => (setView(v), history.replaceState(null, "", v === "log" ? "/activity" : "/activity?tab=blocklist"));
+  const tabs = (
+    <div className="seg seg-accent" role="tablist">
+      {(["log", "blocklist"] as const).map((v) => (
+        <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => pick(v)}>
+          {t(v === "log" ? "blocklist.log" : "blocklist.tab")}
+        </button>
+      ))}
+    </div>
+  );
+  return view === "blocklist" ? <BlocklistView tabs={tabs} /> : <ActivityLog tabs={tabs} />;
+}
+
+function BlocklistView({ tabs }: { tabs: React.ReactNode }) {
+  usePageTitle(t("blocklist.tab"));
+  return (
+    <section>
+      <h1>{t("activity.title")}</h1>
+      {tabs}
+      <Blocklist />
+    </section>
+  );
+}
+
+function ActivityLog({ tabs }: { tabs: React.ReactNode }) {
   usePageTitle(t("activity.title"));
   const [filter, setFilter] = useState("all");
   const [extra, setExtra] = useState<Decision[]>([]);
@@ -306,6 +334,7 @@ export function Activity() {
   return (
     <section>
       <h1>{merryOn() ? t("merry.shipsLog") : t("activity.title")}</h1>
+      {tabs}
       <p className="muted small">{t("activity.intro")}</p>
       <div className="chips pickable" role="group" aria-label={t("common.filter")}>
         {FILTERS.map((f) => (

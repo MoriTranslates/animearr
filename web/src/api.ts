@@ -224,7 +224,8 @@ export interface Settings {
   managed: { dryRun: boolean; searchDelayMin: number; backoffMin: number[]; maxAttempts: number; rssMin: number; minConfidence: number };
   repair: { mode: "off" | "log" | "auto"; maxPerDay: number };
   backlog: { enabled: boolean; perHour: number; retryDays: number };
-  queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
+  queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean; strikes: number };
+  malware: { enabled: boolean; extensions: string[] };
   extraction: { enabled: boolean };
   dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
