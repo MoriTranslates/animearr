@@ -151,3 +151,18 @@ test("with no ids the exact title plus an agreeing episode count still resolves 
   assert.equal(o[0].via, "title");
   assert.equal(overlapsFor(600, { titleAids: () => [] }).length, 0);
 });
+
+test("reverse direction: the parent's empty season is owned when the standalone listing has the files (Lodoss case)", () => {
+  // Record of Lodoss War (parent, ids) files Chronicles as S02; the standalone Chronicles (no ids) has all 3 files.
+  series(700, 78777, "Record of Lodoss War", [137]);
+  const parentS2 = [1, 2, 3].map((n) => episode(700, 2, n, false));
+  series(701, 79270, "Record of Lodoss War: Chronicles of the Heroic Knight");
+  [1, 2, 3].forEach((n) => episode(701, 1, n, true));
+  entry(4100, 137, 78777, "2", 0, 3);
+  const deps = { titleAids: (t: string) => (/Chronicles/.test(t) ? [137] : []) };
+  const owned = ownedElsewhere(78777, deps);
+  assert.deepEqual([...owned.keys()].sort(), [...parentS2].sort());
+  assert.match(owned.get(parentS2[0])!.label, /Chronicles of the Heroic Knight S01E01/);
+  // The standalone itself is not blocked: its episodes are the ones with files.
+  assert.equal(ownedElsewhere(79270, deps).size, 0);
+});

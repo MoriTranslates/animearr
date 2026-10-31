@@ -108,9 +108,35 @@ export function overlapsFor(tvdbId: number, deps: DuplicateDeps = realDeps): Ove
   return out;
 }
 
-/** Episode id → where it is already filed with a file (the guard's view). */
+/**
+ * The other direction: a standalone listing (no AniDB ids of its own) that holds the files for episodes the catalog
+ * files under THIS series (Record of Lodoss War S02 = the standalone "Chronicles of the Heroic Knight", which has them).
+ * Kept a minute like the entry cache.
+ */
+let reverseMemo: { at: number; byHome: Map<number, Overlap[]> } | null = null;
+function reverseOverlaps(deps: DuplicateDeps): Map<number, Overlap[]> {
+  if (reverseMemo && Date.now() - reverseMemo.at < 60_000 && deps === realDeps) return reverseMemo.byHome;
+  const byHome = new Map<number, Overlap[]>();
+  for (const s of cache.prepare("SELECT tvdb_id, title FROM series WHERE anidb_ids IS NULL OR anidb_ids IN ('', '[]')").all() as { tvdb_id: number; title: string }[]) {
+    for (const o of overlapsFor(s.tvdb_id, deps)) {
+      if (!o.ownHasFile) continue;
+      const flipped: Overlap = {
+        episodeId: o.other.episodeId, season: o.other.season, episode: o.other.episode, anilistId: o.anilistId, entryTitle: o.entryTitle, via: o.via,
+        other: { tvdbId: s.tvdb_id, seriesId: 0, title: s.title, season: o.season, episode: o.episode, episodeId: o.episodeId, hasFile: true },
+        ownHasFile: o.other.hasFile, label: `${s.title} ${sxe(o.season, o.episode)}`,
+      };
+      byHome.set(o.other.tvdbId, [...(byHome.get(o.other.tvdbId) ?? []), flipped]);
+    }
+  }
+  if (deps === realDeps) reverseMemo = { at: Date.now(), byHome };
+  return byHome;
+}
+
+/** Episode id → where it is already filed with a file (the guard's view), in either direction. */
 export function ownedElsewhere(tvdbId: number, deps: DuplicateDeps = realDeps): Map<number, Overlap> {
-  return new Map(overlapsFor(tvdbId, deps).filter((o) => o.other.hasFile).map((o) => [o.episodeId, o]));
+  const out = new Map(overlapsFor(tvdbId, deps).filter((o) => o.other.hasFile).map((o) => [o.episodeId, o] as const));
+  for (const o of reverseOverlaps(deps).get(tvdbId) ?? []) if (!out.has(o.episodeId)) out.set(o.episodeId, o);
+  return out;
 }
 
 /** The reason line shown wherever an owned-elsewhere episode is skipped. */
@@ -142,17 +168,17 @@ const range = (list: { season: number; episode: number }[]) => {
 };
 
 /**
- * Audit → Duplicate listings. Built from catalog ids only (no title guessing here: titles gave false alarms like
- * Berserk 1997 vs 2016). A duplicate whose other home has no files is listed too, even though nothing is blocked.
+ * Audit → Duplicate listings. Catalog ids first; a standalone listing has no AniDB ids of its own (Anime-Lists files
+ * its entry under the parent), so the strict title fallback (exact AniDB title AND the same episode count, which keeps
+ * Berserk 1997 vs 2016 apart) is what finds those. A duplicate whose other home has no files is listed too.
  */
 export function duplicateListings() {
   const managed = new Set((db.prepare("SELECT tvdb_id FROM managed").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id));
   const sonarrUrl = getSettings().sonarr.url;
-  const noTitles: DuplicateDeps = { titleAids: () => [] };
   const out: { tvdbId: number; title: string; managed: boolean; sonarr: boolean; sonarrUrl: string; otherTvdbId: number; otherTitle: string; mine: string; there: string; mineFiles: { files: number; total: number }; thereFiles: { files: number; total: number }; blocking: boolean }[] = [];
   for (const s of cache.prepare("SELECT id, tvdb_id, title FROM series").all() as { id: number; tvdb_id: number; title: string }[]) {
     const byHome = new Map<number, Overlap[]>();
-    for (const o of overlapsFor(s.tvdb_id, noTitles)) byHome.set(o.other.tvdbId, [...(byHome.get(o.other.tvdbId) ?? []), o]);
+    for (const o of overlapsFor(s.tvdb_id)) byHome.set(o.other.tvdbId, [...(byHome.get(o.other.tvdbId) ?? []), o]);
     for (const [home, list] of byHome) {
       const homeEps = cache.prepare(`SELECT id, has_file FROM episodes WHERE id IN (${marks(list.map((o) => o.other.episodeId))})`).all(...list.map((o) => o.other.episodeId)) as { id: number; has_file: number }[];
       const mineEps = cache.prepare(`SELECT id, has_file FROM episodes WHERE id IN (${marks(list.map((o) => o.episodeId))})`).all(...list.map((o) => o.episodeId)) as { id: number; has_file: number }[];
@@ -161,7 +187,7 @@ export function duplicateListings() {
         otherTvdbId: home, otherTitle: list[0].other.title,
         mine: range(list), there: range(list.map((o) => ({ season: o.other.season, episode: o.other.episode }))),
         mineFiles: { files: mineEps.filter((e) => e.has_file).length, total: mineEps.length }, thereFiles: { files: homeEps.filter((e) => e.has_file).length, total: homeEps.length },
-        blocking: list.some((o) => o.other.hasFile),
+        blocking: list.some((o) => o.other.hasFile || o.ownHasFile),
       });
     }
   }
