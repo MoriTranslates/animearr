@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { api, type Settings as S, withBase } from "./api";
 import { navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
+import { MediaOutputCard } from "./mediaout";
 import { Confirm, dateTime, ErrorText, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";
 import { rememberDetail } from "./errors";
 import { CataloguePicker, ExtraClientDialog, IndexerDialog, JackettDialog, newClient, PrimaryPrefs, ProtocolBar, CLIENT_INFO, isBlackholeType, type CatalogEntry, type DirectIndexer, type ExtraClient, type ExtraType } from "./connectionsEdit";
@@ -81,7 +82,9 @@ function BreakerStatus({ b, onChanged }: { b: Breaker; onChanged: () => void }) 
 export interface ClientRow extends ConnStatus { type: "sabnzbd" | "qbittorrent" | ExtraType; name: string; priority: number; enabled: boolean }
 export interface Overview { clients: ClientRow[]; indexerSources: ConnStatus[]; indexers: IndexerRow[]; mediaServers: ConnStatus[]; migration: ConnStatus[]; protocolOrder: ("usenet" | "torrent")[]; noPreference?: boolean; duplicates?: { id: string; name: string; with: string }[]; delays?: { usenetDelayMin: number; torrentDelayMin: number } }
 
-type Key = "sabnzbd" | "qbittorrent" | "prowlarr" | "plex" | "sonarr" | "radarr";
+type Key = "sabnzbd" | "qbittorrent" | "prowlarr" | "plex" | "sonarr" | "radarr" | MediaKey;
+export type MediaKey = "plex" | "jellyfin" | "emby" | "kodi";
+const MEDIA_KEYS: MediaKey[] = ["plex", "jellyfin", "emby", "kodi"];
 type Protocol = "usenet" | "torrent";
 
 /** Every type the "+" pickers offer; `ready: false` ones arrive with multiple clients/indexers. */
@@ -98,13 +101,14 @@ const TYPES: { id: string; name: string; protocol: Protocol | "both" | "media" |
   { id: "newznab", name: "Newznab (custom)", protocol: "usenet", kind: "indexer", ready: false, logo: "NZ" },
   { id: "torznab", name: "Torznab (custom)", protocol: "torrent", kind: "indexer", ready: false, logo: "TZ" },
   { id: "plex", name: "Plex", protocol: "media", kind: "media", key: "plex", ready: true, logo: "Px" },
-  { id: "jellyfin", name: "Jellyfin", protocol: "media", kind: "media", ready: false, logo: "Jf" },
-  { id: "emby", name: "Emby", protocol: "media", kind: "media", ready: false, logo: "Em" },
+  { id: "jellyfin", name: "Jellyfin", protocol: "media", kind: "media", key: "jellyfin", ready: true, logo: "Jf" },
+  { id: "emby", name: "Emby", protocol: "media", kind: "media", key: "emby", ready: true, logo: "Em" },
+  { id: "kodi", name: "Kodi", protocol: "media", kind: "media", key: "kodi", ready: true, logo: "Ko" },
   { id: "sonarr", name: "Sonarr", protocol: "migration", kind: "migration", key: "sonarr", ready: true, logo: "So" },
   { id: "radarr", name: "Radarr", protocol: "migration", kind: "migration", key: "radarr", ready: true, logo: "Ra" },
 ];
-const NAME: Record<Key, string> = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr" };
-const ROLE: Record<Key, I18nKey> = { sabnzbd: "conn.role.usenetClient", qbittorrent: "conn.role.torrentClient", prowlarr: "conn.role.prowlarr", plex: "conn.role.plex", sonarr: "conn.role.sonarr", radarr: "conn.role.radarr" };
+const NAME: Record<Key, string> = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };
+const ROLE: Record<Key, I18nKey> = { sabnzbd: "conn.role.usenetClient", qbittorrent: "conn.role.torrentClient", prowlarr: "conn.role.prowlarr", plex: "conn.role.plex", sonarr: "conn.role.sonarr", radarr: "conn.role.radarr", jellyfin: "conn.role.plex", emby: "conn.role.plex", kodi: "conn.role.plex" };
 const logoOf = (key: string) => TYPES.find((x) => x.id === key)?.logo ?? key.slice(0, 2);
 
 export type SaveNow = (fn: (x: S) => S) => Promise<boolean>;
@@ -249,7 +253,7 @@ function EditConn({ k, s, saveNow, onClose, children }: { k: Key; s: S; saveNow:
   const cleared = (x: S): S => {
     if (k === "plex") return { ...x, plex: { ...x.plex, url: "", token: "", enabled: false } };
     const cur = x[k] as Record<string, unknown>;
-    return { ...x, [k]: { ...cur, url: "", ...("apiKey" in cur ? { apiKey: "" } : {}), ...("password" in cur ? { password: "" } : {}) } };
+    return { ...x, [k]: { ...cur, url: "", ...("apiKey" in cur ? { apiKey: "" } : {}), ...("password" in cur ? { password: "" } : {}), ...("enabled" in cur ? { enabled: false } : {}) } };
   };
   return (
     <Modal title={NAME[k]} onClose={onClose}>
@@ -286,7 +290,7 @@ function EditConn({ k, s, saveNow, onClose, children }: { k: Key; s: S; saveNow:
             }
           }}
         >
-          <p>{t(`conn.deleteBody.${k === "plex" ? "plex" : k === "sonarr" || k === "radarr" ? "migration" : "other"}` as I18nKey)}</p>
+          <p>{t(`conn.deleteBody.${MEDIA_KEYS.includes(k as MediaKey) ? "plex" : k === "sonarr" || k === "radarr" ? "migration" : "other"}` as I18nKey)}</p>
         </Confirm>
       )}
     </Modal>
@@ -302,9 +306,9 @@ function PrimaryFields({ k, draft, set }: { k: Key; draft: S; set: (fn: (x: S) =
     <div className="form">
       <label>
             {t("settings.url")}
-            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : k === "radarr" ? "http://192.168.1.10:7878" : k === "plex" ? "http://192.168.1.10:32400" : "http://192.168.1.10:8989"} />
+            <input value={String(c.url ?? "")} onChange={(e) => field("url", e.target.value)} placeholder={k === "sabnzbd" ? "http://192.168.1.10:8080" : k === "qbittorrent" ? "http://192.168.1.10:8081" : k === "prowlarr" ? "http://192.168.1.10:9696" : k === "radarr" ? "http://192.168.1.10:7878" : k === "plex" ? "http://192.168.1.10:32400" : k === "jellyfin" || k === "emby" ? "http://192.168.1.10:8096" : k === "kodi" ? "http://192.168.1.10:8080" : "http://192.168.1.10:8989"} />
           </label>
-          {k === "qbittorrent" ? (
+          {k === "qbittorrent" || k === "kodi" ? (
             <>
               <label>
                 {t("settings.username")}
@@ -603,23 +607,27 @@ export function Indexers({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   );
 }
 
-export function MediaServers({ s, saveNow, plexForm }: { s: S; saveNow: SaveNow; plexForm: (draft: S, set: (fn: (x: S) => S) => void) => ReactNode }) {
+export function MediaServers({ s, saveNow, plexForm, serverForm }: { s: S; saveNow: SaveNow; plexForm: (draft: S, set: (fn: (x: S) => S) => void) => ReactNode; serverForm?: (k: MediaKey, draft: S, set: (fn: (x: S) => S) => void) => ReactNode }) {
   const o = useOverview();
-  const [edit, setEdit] = useState(false);
+  const [edit, setEdit] = useState<MediaKey | null>(null);
   const [pick, setPick] = useState(false);
-  const plex = statusOf(o.data?.mediaServers, "plex");
+  const enabled = (k: MediaKey) => !!(s[k] as { enabled?: boolean }).enabled;
   return (
     <div className="stack">
       <SectionIntro icon="▶" text={t("conn.intro.media")} />
       <HowItFits here="media" />
       <div className="conn-grid">
-        {(plex?.configured || !o.data) && <ConnCard k="plex" st={plex} loading={o.loading} onEdit={() => setEdit(true)} extra={<span className="muted small">{s.plex.enabled ? t("conn.plexOn") : t("conn.plexOff")}</span>} />}
+        {MEDIA_KEYS.map((k) => {
+          const st = statusOf(o.data?.mediaServers, k);
+          return st?.configured || (!o.data && k === "plex") ? <ConnCard key={k} k={k} st={st} loading={o.loading} onEdit={() => setEdit(k)} extra={<span className="muted small">{enabled(k) ? t("conn.plexOn") : t("conn.plexOff")}</span>} /> : null;
+        })}
         <AddCard label={t("conn.add.media")} onClick={() => setPick(true)} />
       </div>
-      {pick && <TypePicker title={t("conn.add.media")} types={TYPES.filter((x) => x.kind === "media")} configured={(k) => k === "plex" && !!plex?.configured} onPick={() => (setPick(false), setEdit(true))} onClose={() => setPick(false)} />}
+      <MediaOutputCard s={s} saveNow={saveNow} />
+      {pick && <TypePicker title={t("conn.add.media")} types={TYPES.filter((x) => x.kind === "media")} configured={(k) => !!k && !!statusOf(o.data?.mediaServers, k)?.configured} onPick={(k) => (setPick(false), setEdit(k as MediaKey))} onClose={() => setPick(false)} />}
       {edit && (
-        <EditConn k="plex" s={s} saveNow={async (fn) => { const ok = await saveNow(fn); if (ok) void o.fresh(); return ok; }} onClose={() => setEdit(false)}>
-          {plexForm}
+        <EditConn k={edit} s={s} saveNow={async (fn) => { const ok = await saveNow(fn); if (ok) void o.fresh(); return ok; }} onClose={() => setEdit(null)}>
+          {edit === "plex" ? plexForm : serverForm ? (draft, set) => serverForm(edit, draft, set) : undefined}
         </EditConn>
       )}
     </div>

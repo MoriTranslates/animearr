@@ -28,6 +28,7 @@ import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
 import { summarize } from "./summary.js";
+import { afterLibraryChange } from "./mediaout.js";
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
 
@@ -375,6 +376,7 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
     }
   }
   await deps.refresh(s.id).catch(() => undefined);
+  if (deleted.length) await afterLibraryChange({ tvdbId, folders: [s.path] });
   const m = listManaged().find((x) => x.tvdbId === tvdbId);
   const affected = all.filter((e) => deleted.some((d) => d.episodes.includes(sxe(e.season, e.episode)))).map((e) => e.id);
   return { deleted, skipped, affected, askSearch: !!m && !isDryRun(m.dryRun) && deleted.length > 0 };

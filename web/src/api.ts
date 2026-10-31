@@ -231,6 +231,10 @@ export interface Settings {
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   media: MediaSettings;
   plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
+  jellyfin: { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] };
+  emby: { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] };
+  kodi: { url: string; username: string; password: string; enabled: boolean; pathMappings: PathMapping[] };
+  mediaOutput: { main: "none" | "plex" | "jellyfin" | "emby" | "kodi"; nfo: boolean; plexmatch: boolean; artwork: boolean };
   notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean } };
   downloads: { rules: import("./downloads").FolderRule[]; freeSpaceGb: number; freeSpacePath: string; excludeSeeding: boolean; cleanup: "off" | "plan" | "auto"; allowDelete: boolean; minRatio: number; minSeedDays: number; maxSeedDays: number };
   importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean; realBudget: number; movies: boolean; sourceRoots: string[] };

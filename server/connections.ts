@@ -12,6 +12,7 @@ import { humanizeError } from "./errors.js";
 import { testSonarr } from "./arr/sonarr.js";
 import { testRadarr } from "./arr/radarr.js";
 import { testPlex } from "./plex.js";
+import { testEmbyLike, testKodi } from "./mediaservers.js";
 import { redactUrl } from "./arr/http.js";
 import { getSettings as settingsNow } from "./settings.js";
 import { clientConfigured, testClient } from "./arr/clients.js";
@@ -37,7 +38,7 @@ let cache: { at: number; v: Promise<Awaited<ReturnType<typeof build>>> } | null 
 /** After a change in Settings: the next overview is fresh. */
 export const invalidateConnections = () => void (cache = null);
 /** Cached for 20 s (the page polls; the services shouldn't be hammered). */
-const NAMES = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr" } as const;
+const NAMES = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" } as const;
 /** A status card's error in plain words, naming the service and its address; the raw text as `errorDetail`. */
 function plain(service: string, url: string, error: string | null) {
   if (!error) return { error: null, errorDetail: null };
@@ -58,16 +59,22 @@ async function build() {
     qbittorrent: !!s.qbittorrent.url,
     prowlarr: !!(s.prowlarr.url && s.prowlarr.apiKey),
     plex: !!(s.plex.url && s.plex.token),
+    jellyfin: !!(s.jellyfin.url && s.jellyfin.apiKey),
+    emby: !!(s.emby.url && s.emby.apiKey),
+    kodi: !!s.kodi.url,
     sonarr: !!(s.sonarr.url && s.sonarr.apiKey),
     radarr: !!(s.radarr.url && s.radarr.apiKey),
   };
-  const [sab, qbit, prow, plex, sonarr, radarr] = await Promise.all([
+  const [sab, qbit, prow, plex, sonarr, radarr, jellyfin, emby, kodi] = await Promise.all([
     conf.sabnzbd ? probe(() => testSab(s.sabnzbd)) : null,
     conf.qbittorrent ? probe(() => testQbit(s.qbittorrent)) : null,
     conf.prowlarr ? probe(() => testProwlarr(s.prowlarr)) : null,
     conf.plex ? probe(() => testPlex({ url: s.plex.url, token: s.plex.token })) : null,
     conf.sonarr ? probe(() => testSonarr(s.sonarr)) : null,
     conf.radarr ? probe(() => testRadarr(s.radarr)) : null,
+    conf.jellyfin ? probe(() => testEmbyLike("jellyfin", s.jellyfin)) : null,
+    conf.emby ? probe(() => testEmbyLike("emby", s.emby)) : null,
+    conf.kodi ? probe(() => testKodi(s.kodi)) : null,
   ]);
   const st = (key: keyof typeof conf, p: { ok: boolean; v: unknown; error: string | null } | null, use = { n: 0, last: null as number | null }): ConnStatus => ({
     key,
@@ -120,7 +127,7 @@ async function build() {
     delays: s.protocol ?? { usenetDelayMin: 0, torrentDelayMin: 0 },
     indexerSources: [st("prowlarr", prow, usage("indexer_id IS NOT NULL"))],
     indexers: indexers.sort((a, b) => (a.priority ?? 25) - (b.priority ?? 25) || a.name.localeCompare(b.name)),
-    mediaServers: [st("plex", plex)],
+    mediaServers: [st("plex", plex), st("jellyfin", jellyfin), st("emby", emby), st("kodi", kodi)],
     migration: [st("sonarr", sonarr), st("radarr", radarr)],
     // The default language profile's protocol order ("Usenet is tried first"); per-profile choice in Profiles.
     protocolOrder: (s.profiles.find((p) => p.id === s.defaultProfileId) ?? s.profiles[0])?.protocolOrder ?? ["usenet", "torrent"],

@@ -32,7 +32,7 @@ import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafi
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
 import { isNativeMovieId, isNativeSeriesId, rematerializeMovie, rematerializeSeries } from "./native.js";
 import { localPath, mappedPath } from "./paths.js";
-import { notifyPlex } from "./plex.js";
+import { afterLibraryChange } from "./mediaout.js";
 import { identifyContext, seriesByTvdb } from "./search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
 import { fileForMovie, movieSubtitles } from "./core/movieTitle.js";
@@ -470,7 +470,7 @@ export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; 
       if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
       await scanFolder(series.path).catch(() => undefined);
       if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
-      notifyPlex([...new Set(plan.items.filter((i) => !i.problem && i.destArr).map((i) => path.posix.dirname(i.destArr)))]);
+      await afterLibraryChange({ tvdbId: plan.tvdbId, folders: [...new Set(plan.items.filter((i) => !i.problem && i.destArr).map((i) => path.posix.dirname(i.destArr)))] });
     },
   }, opts);
 }
@@ -681,7 +681,7 @@ export async function executeMovieImport(plan: MoviePlan, opts: { dryRun?: boole
       if (!isNativeMovieId(mv.id)) await radarr.rescanMovie(mv.id).catch(() => undefined);
       await scanFolder(mv.path).catch(() => undefined);
       if (isNativeMovieId(mv.id)) rematerializeMovie(mv.id);
-      notifyPlex([mv.path]);
+      await afterLibraryChange({ folders: [mv.path] });
     },
   }, opts);
 }
@@ -830,7 +830,7 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
     if (!isNativeSeriesId(s.id)) await sonarr.rescanSeries(s.id).catch(() => undefined);
     await scanFolder(s.path).catch(() => undefined);
     if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
-    notifyPlex([s.path]);
+    await afterLibraryChange({ tvdbId, folders: [s.path] });
   }
   return out;
 }
@@ -855,7 +855,7 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
   if (!isNativeSeriesId(s.id)) await sonarr.rescanSeries(s.id).catch(() => undefined);
   await scanFolder(s.path).catch(() => undefined);
   if (isNativeSeriesId(s.id)) rematerializeSeries(s.id);
-  notifyPlex([s.path]);
+  await afterLibraryChange({ tvdbId: args.tvdbId, folders: [s.path] });
 }
 
 // ---------------------------------------------------------------- manual import: browse the download folders
