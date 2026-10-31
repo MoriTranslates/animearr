@@ -26,7 +26,7 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [~] 2. Own importer (built; movie import/rename still through Radarr) (move/hardlink, naming templates, folders, permissions, sidecars, recycle on upgrade, manual import, dry-run preview) — needs read-write library mounts. Renamer can refresh {Quality}/{MediaInfo} tokens after a re-encode (optional "Rename after Tdarr re-encode", default off)
 - [~] 3. Plex (partial scans + path mapping done; .plexmatch not yet)
 - [ ] 4. Own metadata (AniDB/AniList-first franchise model; TVDB/TMDB as mappings; donghua/ONAs)
-- [~] 5. Add series/movies UI (AniList/AniDB search) — native show Add done (no Sonarr); movies next
+- [~] 5. Add series/movies UI (AniList/AniDB search) — native show Add done (no Sonarr); existing-folder import for series done (wizard + Settings → System, never touches files); movies next
 - [x] 6. RSS/new-release monitoring via Prowlarr feeds
 - [x] Download-folder rules + clean-up
 - [~] 7. Migration/cutover tool (built: plan/adopt/switch/resolver; the switch always asks first) (import, parallel mode, final removal checklist; never deletes without confirmation)

@@ -318,7 +318,8 @@ affiliated with any anime, studio or publisher.
 - The Sonarr-compatible API covers what Jellyseerr/Overseerr need; other Sonarr clients (Bazarr, LunaSea, nzb360,
   Homepage) may only partly work, and there's no Radarr-side API for movie requests yet.
 - "Watch in" links are Plex only (Jellyfin, Emby and Kodi get scans and files). Notifications are Discord and ntfy.
-- An existing anime folder can't yet be imported without Sonarr (new users add shows one by one).
+- Importing an existing anime folder without Sonarr (setup wizard, Settings → System) handles series only, one level
+  of show folders per library folder; movies are still added one by one.
 - RAR archives aren't unpacked (7z/ZIP are). No blocklist page, log viewer or downloadable backups yet.
 - No "forgot password" reset yet: keep your new password somewhere safe.
 

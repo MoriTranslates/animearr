@@ -12,6 +12,7 @@ import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type 
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
 import { LibraryFolders } from "../folders";
+import { ImportFolders } from "../importFolders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { ScopeFields } from "../scope";
@@ -846,6 +847,21 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
   );
 }
 
+/** Import existing folders (Settings → System, next to the library file scan): a button that opens the review. */
+function ImportFoldersCard() {
+  const [open, setOpen] = useState(false);
+  if (open) return <ImportFolders onClose={() => setOpen(false)} />;
+  return (
+    <div className="card pad stack">
+      <h2>{t("import.title")}</h2>
+      <p className="muted small">{t("import.help")}</p>
+      <div className="row">
+        <button onClick={() => setOpen(true)}>{t("import.button")}</button>
+      </div>
+    </div>
+  );
+}
+
 /** AnimeArr's own file records: what was scanned, problems found, scan now. */
 function LibraryFiles() {
   const toast = useToast();
@@ -943,6 +959,7 @@ function System({ status }: { status: Status }) {
     <div className="stack">
       {x.db.corrupt && <p className="banner warn">{t("settings.system.dbCorrupt", { detail: x.db.detail })}</p>}
       <ServerOptions />
+      <ImportFoldersCard />
       <LibraryFiles />
       <div className="card pad stack">
         <h2>{t("phone.settingsTitle")}</h2>

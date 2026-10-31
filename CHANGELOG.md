@@ -5,6 +5,15 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **Import an existing anime folder without Sonarr.** Pick a library folder (setup wizard for new users, or
+  Settings → System → Import existing folders) and AnimeArr lists its show folders, skipping hidden folders and ones
+  a show already owns. Each folder is matched to a show with a confidence and a plain reason: IDs in the folder name
+  (`{tvdb-N}`, `[tvdbid-N]`, `{anidb-N}`, `[anidbid-N]`, `{tmdb-N}`) win; otherwise "Title (Year)" is matched against
+  AnimeArr's alias index and AniList (one folder at a time, within the existing AniList budget). You accept a match,
+  pick another candidate, search by hand or skip, or add all confident matches at once. Shows are added as the
+  native Add does (managed, same defaults) but keep the existing folder as their path; the files in it are recorded
+  and matched to episodes. Nothing is moved, renamed or deleted: files that can't be matched are listed and left
+  alone, and renaming stays the separate "Rename files" action. Series only; movies aren't imported this way.
 - **Use AnimeArr with Jellyseerr or Overseerr.** AnimeArr now answers a Sonarr v3-compatible API (`/api/v3`), so
   request apps can add AnimeArr as a Sonarr server. A request becomes a native AnimeArr show, managed, with only the
   requested seasons monitored, and a search for what's missing. Availability and download progress flow back.
