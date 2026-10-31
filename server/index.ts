@@ -43,6 +43,8 @@ import { gaps, listFacts, missingLanguage, specials, coverFor } from "./audit.js
 import { deleteRule, listRules, saveRule, testRules } from "./releaseRules.js";
 import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "./tags.js";
 import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs, setMoviePrefs } from "./profiles.js";
+import { registerIcal } from "./ical.js";
+import { addExclusion, cleanList, deleteList, excludeShow, exclusions, importListsTick, LIST_STATUSES, listLists, MAX_AUTO, planList, removeExclusion, saveList, syncList } from "./importLists.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
 import { compactKey } from "./core/normalize.js";
@@ -659,6 +661,8 @@ app.get<{ Querystring: { from?: string; to?: string; managed?: string } }>("/api
   return { from, to, entries: calendar(from, to, req.query.managed === "1"), movies: movieCalendar(from, to, req.query.managed === "1") };
 });
 
+registerIcal(app);
+
 app.post<{ Body: { tvdbIds?: number[]; on?: boolean; live?: boolean } }>("/api/managed", async (req) => {
   writable();
   const ids = (req.body?.tvdbIds ?? []).map(id).slice(0, 500);
@@ -1082,10 +1086,43 @@ app.delete<{ Params: { movieId: string } }>("/api/add/movie/:movieId", async (re
   writable();
   return removeMovie(id(req.params.movieId));
 });
-app.delete<{ Params: { tvdbId: string } }>("/api/add/:tvdbId", async (req) => {
+app.delete<{ Params: { tvdbId: string }; Querystring: { exclude?: string } }>("/api/add/:tvdbId", async (req) => {
   writable();
-  return removeShow(id(req.params.tvdbId));
+  const tvdbId = id(req.params.tvdbId);
+  // "Don't let my import lists add it again" (Sonarr's list exclusion), taken before the show's entries are forgotten.
+  const title = (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? "";
+  const out = removeShow(tvdbId);
+  return req.query.exclude === "1" ? { ...out, excluded: excludeShow(tvdbId, title) } : out;
 });
+
+// ---------------------------------------------------------------- import lists (AniList / MyAnimeList)
+
+app.get("/api/import-lists", async () => ({ lists: listLists(), exclusions: exclusions(), statuses: LIST_STATUSES, intervalHours: getSettings().lists.intervalHours, maxAuto: MAX_AUTO }));
+app.post<{ Body: Record<string, unknown> }>("/api/import-lists", async (req) => (writable(), saveList(null, req.body ?? {})));
+app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/import-lists/:id", async (req) => (writable(), saveList(id(req.params.id), req.body ?? {})));
+app.delete<{ Params: { id: string } }>("/api/import-lists/:id", async (req) => (writable(), deleteList(id(req.params.id)), { ok: true }));
+// Test: reads the (unsaved) account and says what a sync would do. Adds nothing.
+app.post<{ Body: Record<string, unknown> }>("/api/import-lists/test", async (req) => {
+  const c = cleanList(req.body ?? {});
+  const plan = await planList(c);
+  return { total: plan.total, matched: plan.matched, wouldAdd: plan.add.length, skipped: plan.skipped, items: plan.items.slice(0, 200) };
+});
+app.post<{ Params: { id: string }; Body: { confirm?: boolean } }>("/api/import-lists/:id/sync", async (req) => (writable(), syncList(id(req.params.id), { confirm: req.body?.confirm === true })));
+app.post("/api/import-lists/sync", async () => {
+  writable();
+  const out: { id: number; name: string; added: number; preview: boolean; error?: string }[] = [];
+  for (const l of listLists().filter((x) => x.enabled)) {
+    try {
+      const r = await syncList(l.id);
+      out.push({ id: l.id, name: l.name, added: r.added, preview: r.preview });
+    } catch (e) {
+      out.push({ id: l.id, name: l.name, added: 0, preview: false, error: (e as Error).message });
+    }
+  }
+  return { lists: out };
+});
+app.post<{ Body: { anilistId?: number; title?: string } }>("/api/import-lists/exclusions", async (req) => (writable(), addExclusion(Number(req.body?.anilistId), String(req.body?.title ?? "")), { exclusions: exclusions() }));
+app.delete<{ Params: { anilistId: string } }>("/api/import-lists/exclusions/:anilistId", async (req) => (writable(), removeExclusion(id(req.params.anilistId)), { exclusions: exclusions() }));
 
 // ---------------------------------------------------------------- AnimeArr's own importer + renamer (plans first)
 
@@ -1533,6 +1570,7 @@ every(15 * 60_000, () => breakerTick(breakerDeps), "indexer re-tests");
 every(60 * 60_000, async () => binTick(), "recycling bin purge");
 every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "file scan");
 every(30 * 60_000, () => fillInTick(), "fill-in");
+every(15 * 60_000, () => importListsTick(), "import lists"); // (each list syncs every lists.intervalHours)
 every(6 * 3_600_000, () => catalogTick(), "catalog");
 setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);
 setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);

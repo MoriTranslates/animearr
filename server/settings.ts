@@ -311,6 +311,8 @@ export interface Settings {
   /** Staged fill-in queue (see fillin.ts). */
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   sync: { intervalHours: number };
+  /** Import lists (server/importLists.ts): how often they sync, and the MyAnimeList API client ID (stored encrypted). */
+  lists: { intervalHours: number; malClientId: string };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;
   /** URL base for a reverse proxy on a sub-path ("/animearr"); the URL_BASE env wins; needs a restart. */
@@ -411,6 +413,7 @@ const DEFAULTS: Settings = {
   scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false, creditless: true } },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
+  lists: { intervalHours: 6, malClientId: "" },
   externalUrl: "",
   urlBase: "",
   ui: { language: "en", textScale: "md" },
@@ -419,9 +422,9 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
+const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken", "lists.malClientId"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "lists", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -468,6 +471,7 @@ const RANGES: Record<string, [number, number]> = {
   "managed.rssMin": [0, 1440],
   "managed.minConfidence": [50, 100],
   "sync.intervalHours": [1, 168],
+  "lists.intervalHours": [1, 168],
   "repair.maxPerDay": [1, 100],
   "backlog.perHour": [1, 24],
   "backlog.retryDays": [1, 60],
