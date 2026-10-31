@@ -10,6 +10,9 @@ import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
 import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type MediaKey, type SaveNow } from "../connections";
 import { NotifyCard } from "../notify";
+import { NotifyChannelsCard } from "../notifyChannels";
+import { LogsCard } from "../logs";
+import { BackupTransfer } from "../backupTransfer";
 import { DownloadRules } from "../downloads";
 import { LibraryFolders } from "../folders";
 import { ImportFolders } from "../importFolders";
@@ -130,6 +133,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
             <>
               <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
               <NotifyCard s={s} upd={upd} />
+              <NotifyChannelsCard />
             </>
           )}
           {x === "migration" && (
@@ -1032,11 +1036,13 @@ function System({ status }: { status: Status }) {
             </li>
           ))}
         </ul>
+        <BackupTransfer />
         <p className="muted small">{t("settings.system.rebuildHelp")}</p>
         <button className="small self-start" onClick={() => setRebuild(true)}>
           {t("settings.system.rebuildCache")}
         </button>
       </div>
+      <LogsCard />
       <div className="card pad stack">
         <p className="muted small">AnimeArr v{x.version}</p>
         <UpdatesCheck />
