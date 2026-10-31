@@ -367,6 +367,13 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE api_ids (kind TEXT NOT NULL, key TEXT NOT NULL, id INTEGER NOT NULL, PRIMARY KEY (kind, key), UNIQUE (kind, id));
    CREATE TABLE api_tags (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE);
    CREATE TABLE api_series_tags (tvdb_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (tvdb_id, tag_id));`,
+  // 33: quality goals: SeaDex picks per AniList entry (cached), the upgrade watcher's per-season state and budgets,
+  // and "keep as is" locks (season -1 = the whole show)
+  `CREATE TABLE seadex (anilist_id INTEGER PRIMARY KEY, fetched_at INTEGER NOT NULL, found INTEGER NOT NULL, incomplete INTEGER NOT NULL DEFAULT 0, torrents TEXT NOT NULL DEFAULT '[]');
+   CREATE TABLE quality_upgrade (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, state TEXT NOT NULL, last_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0, why TEXT NOT NULL DEFAULT '',
+     release TEXT, grab_id INTEGER, best_seen TEXT, no_bd INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));
+   CREATE TABLE quality_upgrade_log (at INTEGER NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('search', 'grab')));
+   CREATE TABLE quality_locks (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

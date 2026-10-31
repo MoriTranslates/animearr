@@ -12,6 +12,7 @@
  * - Commands: MissingEpisodeSearch / SeriesSearch / EpisodeSearch run AnimeArr's own search (dry run and budgets
  *   apply); refresh and rescan commands are accepted and do nothing (AnimeArr refreshes on its own schedule).
  */
+import { CATEGORY_NAME, CATEGORY_QUALITIES, goalCategory, goalLabel, LADDER, ladderRank, type Category } from "./core/quality.js";
 import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { autoSearchEpisodes, searchMissingNow } from "./autosearch.js";
@@ -68,12 +69,47 @@ export function apiId(kind: "profile" | "root", key: string): number {
 }
 const keyOf = (kind: "profile" | "root", id: number) => (db.prepare("SELECT key FROM api_ids WHERE kind = ? AND id = ?").get(kind, id) as { key: string } | undefined)?.key ?? null;
 
+/** Sonarr's own quality ids, so request apps show the qualities they know. */
+const SONARR_QUALITY_IDS: Record<string, { id: number; source: string; resolution: number }> = {
+  Unknown: { id: 0, source: "unknown", resolution: 0 },
+  SDTV: { id: 1, source: "television", resolution: 480 },
+  DVD: { id: 2, source: "dvd", resolution: 480 },
+  "WEBDL-1080p": { id: 3, source: "web", resolution: 1080 },
+  "HDTV-720p": { id: 4, source: "television", resolution: 720 },
+  "WEBDL-720p": { id: 5, source: "web", resolution: 720 },
+  "Bluray-720p": { id: 6, source: "bluray", resolution: 720 },
+  "Bluray-1080p": { id: 7, source: "bluray", resolution: 1080 },
+  "WEBDL-480p": { id: 8, source: "web", resolution: 480 },
+  "HDTV-1080p": { id: 9, source: "television", resolution: 1080 },
+  "WEBRip-480p": { id: 12, source: "webRip", resolution: 480 },
+  "Bluray-480p": { id: 13, source: "bluray", resolution: 480 },
+  "WEBRip-720p": { id: 14, source: "webRip", resolution: 720 },
+  "WEBRip-1080p": { id: 15, source: "webRip", resolution: 1080 },
+  "HDTV-2160p": { id: 16, source: "television", resolution: 2160 },
+  "WEBRip-2160p": { id: 17, source: "webRip", resolution: 2160 },
+  "WEBDL-2160p": { id: 18, source: "web", resolution: 2160 },
+  "Bluray-2160p": { id: 19, source: "bluray", resolution: 2160 },
+  "Bluray-1080p Remux": { id: 20, source: "blurayRaw", resolution: 1080 },
+  "Bluray-2160p Remux": { id: 21, source: "blurayRaw", resolution: 2160 },
+};
+/** A quality category as one of Sonarr's quality groups (ids from 1000, by ladder position). */
+const categoryItem = (c: Category, allowed: boolean) => ({
+  id: 1000 + ladderRank(c),
+  name: CATEGORY_NAME[c],
+  allowed,
+  items: CATEGORY_QUALITIES[c].filter((n) => SONARR_QUALITY_IDS[n]).map((n) => ({ quality: { id: SONARR_QUALITY_IDS[n].id, name: n, source: SONARR_QUALITY_IDS[n].source, resolution: SONARR_QUALITY_IDS[n].resolution }, items: [], allowed })),
+});
+
 /**
- * A profile as Sonarr's quality profile. The one place a profile is described to request apps: when profiles get a
- * quality goal (TV < WEB-DL < Blu-ray < remux + resolution), it's reported here (cutoff/items); the id stays the same.
+ * A profile as Sonarr's quality profile. The one place a profile is described to request apps: its name carries the
+ * quality goal ("English subs: Aim high (Bluray 1080p)"), the items are AnimeArr's quality categories (worst first,
+ * like Sonarr) and the cutoff is the goal's category. The numeric id never changes.
  */
 export function profileResource(p: LanguageProfile) {
-  return { id: apiId("profile", p.id), name: p.name, upgradeAllowed: false, cutoff: 0, items: [], minFormatScore: 0, cutoffFormatScore: 0, formatItems: [] };
+  const goal = p.qualityGoal ?? "high";
+  const target = goalCategory(goal, p.resolution);
+  const items = LADDER.filter((c) => c !== "unknown").map((c) => categoryItem(c, !c.endsWith("2160") || p.resolution >= 2160));
+  return { id: apiId("profile", p.id), name: `${p.name}: ${goalLabel(goal)}`, upgradeAllowed: (getSettings().qualityUpgrade?.mode ?? "auto") !== "off", cutoff: 1000 + ladderRank(target), items, minFormatScore: 0, cutoffFormatScore: 0, formatItems: [] };
 }
 const profileByApiId = (id: unknown) => {
   const key = Number.isInteger(Number(id)) ? keyOf("profile", Number(id)) : null;

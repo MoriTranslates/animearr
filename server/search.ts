@@ -9,6 +9,7 @@ import { searchAll } from "./indexers.js";
 import { identify, type IdentifyContext } from "./core/identify.js";
 import { normalizeTitle, splitSeason } from "./core/normalize.js";
 import { rankRelease, compareRanked, type Known, type Ranked } from "./core/rank.js";
+import { animeTiers, seadexForSeason } from "./seadex.js";
 import type { LibEpisode, NumberingRule } from "./core/resolver.js";
 import { burnedInFact, coverFor, seasonResolution } from "./audit.js";
 import { cache, db } from "./db.js";
@@ -159,6 +160,8 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
   if (scene) k.inLibrary = true;
   k.indexerHealth = indexerHealth(r.indexerId);
   k.seasonGroup = groups?.get(`${season}`) ?? null;
+  k.seadex = seadexForSeason(series.tvdbId, season);
+  k.tiers = animeTiers();
   return k;
 }
 

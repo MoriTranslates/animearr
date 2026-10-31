@@ -8,10 +8,12 @@
  * The watch mode decides which matters: sub → P(sub) (a dub without the original audio is rejected); dub → P(dub);
  * dual → dual audio wanted, a sub-only release is a placeholder; either → whichever is higher.
  * Preference points (Usenet, uncensored, resolution, dual audio, size sanity) and penalties (burn-in) order the
- * accepted releases. Hard rejections: raws, Chinese-only, foreign-only and JP-market releases (in sub modes), dubs
+ * accepted releases; SeaDex picks and TRaSH group tiers (core/quality.ts) rank releases inside a quality category,
+ * after the language fit. Hard rejections: raws, Chinese-only, foreign-only and JP-market releases (in sub modes), dubs
  * without the original audio (sub mode), releases without a dub (dub mode).
  */
 import { EN_GROUPS, type ParsedRelease } from "./parser.js";
+import { qualityScore, type CompiledTiers, type GoalId, type SeadexEntry } from "./quality.js";
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 
@@ -28,6 +30,8 @@ export interface Profile {
   noProtocolPreference?: boolean;
   resolution: number;
   sizePreset?: "lean" | "balanced" | "best";
+  /** The profile's quality goal (good / high / collector): Blu-ray goals lean towards BD sources. */
+  qualityGoal?: GoalId;
 }
 
 /** Lean's ceiling in MB per minute by resolution (1080p: ~2 GB per 24-minute episode). */
@@ -65,6 +69,10 @@ export interface Known {
   indexerHealth?: { failures: number; ok: number; lastWhy: string; off?: boolean };
   /** The group (and source) the season's other episodes come from, and how much consistency matters to the profile. */
   seasonGroup?: { group: string; source: string | null; weight: "prefer" | "strong" } | null;
+  /** SeaDex's picks for the show (season), when known. */
+  seadex?: SeadexEntry | null;
+  /** TRaSH anime group tiers (catalog/anime-tiers.json). */
+  tiers?: CompiledTiers | null;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -251,6 +259,11 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     else score -= 3;
   }
   if (p.version > 1) score += 2;
+  // ---- quality inside the category: SeaDex first, then group tiers; HDTV captures and 4K upscales lose a little
+  const q = qualityScore(p, { tiers: known.tiers, seadex: known.seadex, mode, goal: profile.qualityGoal });
+  score += q.points;
+  why.push(...q.why);
+  flags.push(...q.flags);
   const perEp = info.size / Math.max(1, info.episodeCount);
   if (info.size > 0 && perEp < 90e6) {
     score -= 30;

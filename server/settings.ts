@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
+import type { GoalId } from "./core/quality.js";
 import { open, seal } from "./secretbox.js";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -50,6 +51,16 @@ export interface LanguageProfile {
    * Never overrides a hard requirement (language, burn-ins).
    */
   groupConsistency?: "off" | "prefer" | "strong";
+  /**
+   * Quality goal (server/core/quality.ts): "good" (WEB 1080p), "high" (Blu-ray 1080p, the default) or "collector"
+   * (SeaDex's best). The upgrade watcher replaces files below it; ranking always uses SeaDex and group tiers.
+   */
+  qualityGoal?: GoalId;
+  /**
+   * "tdarr": Tdarr may re-encode this profile's files (default). "keep": keep the original files; their names get the
+   * {Keep Tag} ("[Keep]") so a Tdarr guard skips them, and the upgrade watcher never replaces them.
+   */
+  reencode?: "tdarr" | "keep";
 }
 export type SizePreset = "lean" | "balanced" | "best";
 
@@ -175,6 +186,14 @@ export interface Settings {
    * searched now and then for a dual-audio release, which replaces it. off / log (report only; default) / auto.
    */
   dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
+  /**
+   * Quality upgrades towards each profile's goal (server/qualityUpgrade.ts). Automatic from day one (the owner's call)
+   * with guard rails: seasonsPerDay grabs at most, searches within perHour, recheckDays between looks (weekly in the
+   * Blu-ray window 3–6 months after airing), a pause switch, and a first run that only lists its plan.
+   */
+  qualityUpgrade: { mode: "off" | "auto"; paused: boolean; seasonsPerDay: number; perHour: number; recheckDays: number };
+  /** The one-time "pick your quality goal" question was answered (wizard, Home card or Settings → Profiles). */
+  qualityGoalAsked: boolean;
   /**
    * Automatic movie search (Radarr side): monitored anime movies in the allowed roots without a file are searched
    * delayHours after their digital/physical release, then again with backoff and every retryDays (missing-movie
@@ -331,6 +350,8 @@ const DEFAULTS: Settings = {
   queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
   extraction: { enabled: false },
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
+  qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 3, perHour: 4, recheckDays: 21 },
+  qualityGoalAsked: false,
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true, scanConcurrency: 0 },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
@@ -394,7 +415,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -418,6 +439,7 @@ const ENUMS: Record<string, readonly string[]> = {
   "mediaOutput.main": ["none", "plex", "jellyfin", "emby", "kodi"],
   "repair.mode": ["off", "log", "auto"],
   "dualUpgrade.mode": ["off", "log", "auto"],
+  "qualityUpgrade.mode": ["off", "auto"],
   "media.colonReplacement": ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"],
   "media.creditlessAs": ["s00", "extras"],
   "downloads.cleanup": ["off", "plan", "auto"],
@@ -445,6 +467,9 @@ const RANGES: Record<string, [number, number]> = {
   "backlog.retryDays": [1, 60],
   "queueHealth.stallHours": [1, 72],
   "dualUpgrade.perHour": [1, 24],
+  "qualityUpgrade.seasonsPerDay": [1, 50],
+  "qualityUpgrade.perHour": [1, 24],
+  "qualityUpgrade.recheckDays": [1, 120],
   "movieSearch.delayHours": [0, 168],
   "scope.ended.recentN": [1, 100],
   "scope.continuing.recentN": [1, 100],

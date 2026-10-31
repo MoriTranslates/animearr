@@ -4,10 +4,11 @@ import { languageNames } from "./lang";
 import { api } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, ErrorBox, ListInput, Spinner, Toggle, useLoad, useToast } from "./ui";
+import { GOAL_IDS, QualityGoalCard, type GoalId } from "./quality";
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 export const MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
-export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset; groupConsistency?: "off" | "prefer" | "strong" }
+export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset; groupConsistency?: "off" | "prefer" | "strong"; qualityGoal?: GoalId; reencode?: "tdarr" | "keep" }
 export type SizePreset = "lean" | "balanced" | "best";
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
@@ -20,6 +21,7 @@ export function ProfilesEditor() {
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
     <div className="stack">
+      <QualityGoalCard onSaved={d.reload} />
       <p className="muted small">{t("profiles.intro")}</p>
       {d.data.profiles.map((p) => (
         <ProfileCard key={`${p.id}:${JSON.stringify(p)}`} p={p} isDefault={p.id === d.data!.defaultProfileId} onSaved={d.reload} onDelete={() => setDel(p)} />
@@ -142,6 +144,26 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
         </label>
       </div>
       <p className="muted small">{t(`size.${p.sizePreset ?? "lean"}.help` as I18nKey)}</p>
+      <div className="form">
+        <label>
+          {t("profile.goal")}
+          <select value={p.qualityGoal ?? "high"} onChange={(e) => set({ qualityGoal: e.target.value as GoalId })}>
+            {GOAL_IDS.map((g) => (
+              <option key={g} value={g}>
+                {t(`goal.${g}` as I18nKey)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t("profile.reencode")}
+          <select value={p.reencode ?? "tdarr"} onChange={(e) => set({ reencode: e.target.value as "tdarr" | "keep" })}>
+            <option value="tdarr">{t("profile.reencode.tdarr")}</option>
+            <option value="keep">{t("profile.reencode.keep")}</option>
+          </select>
+        </label>
+      </div>
+      <p className="muted small">{t(`goal.${p.qualityGoal ?? "high"}.help` as I18nKey)} {p.reencode === "keep" && t("profile.reencode.help")}</p>
       <label>
         {t("group.label")}
         <select value={p.groupConsistency ?? "prefer"} onChange={(e) => set({ groupConsistency: e.target.value as "off" | "prefer" | "strong" })}>
