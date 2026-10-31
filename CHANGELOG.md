@@ -5,6 +5,17 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **Episode thumbnails and descriptions for Jellyfin, Emby and Kodi.** Next to each video AnimeArr can now write a
+  `name-thumb.jpg` picture, and each episode's NFO gets its description. They come from TMDB first (the right episode,
+  following AnimeArr's season numbering; needs the TMDB key in Settings → Metadata; each season is fetched once and
+  remembered for a week), then from Sonarr if it is connected. A frame cut from the video itself is available as a last
+  resort, off by default, because it reads every file (wakes sleeping disks, slow on a big library) and skips anything
+  still downloading or importing. Settings → Media servers has the two switches; thumbnails need the poster and banner
+  switch to be on. AnimeArr only ever replaces or removes thumbnails it wrote itself: yours, or ones Sonarr left, stay
+  as they are. Its own follow the video when it is renamed and go when it is deleted. Plex ignores these files and
+  uses its own pictures.
+- **Big changes make one library scan.** When more than 20 folders change at once, Plex, Jellyfin, Emby and Kodi are
+  asked to scan the library once instead of folder by folder.
 - **A fuller Sonarr-compatible API.** Besides what request apps use, it now also answers the calendar, the queue (paged,
   with remove and blocklist), history, wanted (missing, and below your quality goal), episode files with their media info,
   disk space, health, languages and quality sizes, a manual release search and grab (through the normal checks; practice
