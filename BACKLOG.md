@@ -46,7 +46,6 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 
 ### Propers and media management
 - [x] v2 / REPACK / PROPER upgrades from the same group; change file date; delete empty folders
-- [ ] RSS grabbing should call the same newer-version check (`newerVersionOf` in `server/propers.ts`) so a v2 is taken the moment it is posted
 - [ ] The quality watcher grabs one episode's v2 per season pass; several v2s in one season wait for the next pass
 - [ ] Unmonitor deleted episodes: needs a rescan that notices a file has gone (today the library is rebuilt from Sonarr or the media scan, so the change is not seen)
 - [ ] Rescan after refresh: needs a per-show metadata refresh job to hang a disk rescan on

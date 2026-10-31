@@ -5,6 +5,16 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **The new-release watch also looks after files you already have.** Every few minutes AnimeArr checks each indexer's
+  newest releases. As before, a release for an episode or movie you are waiting for makes its search run now. Now, a
+  newer version (v2, REPACK) from the same group as an episode you have, or a better release (say a Blu-ray) for a
+  season whose files are below your quality goal, brings that check forward instead of waiting days or weeks. The
+  Activity log says what it saw ("New release seen: SubsPlease v2 of episode 9, checking for a newer version"). Nothing
+  is grabbed straight from the feed: the normal search still ranks every release, and the upgrade watcher's limits (daily
+  size, seasons a day, the first-day wait, pause, locks, the recycling bin) still apply.
+- **The new-release watch asks each indexer for its own newest releases.** Before, one shared list of 300 could be
+  filled by a busy indexer and push a quieter one's new releases out between checks. Now each Prowlarr indexer is asked
+  for its newest 100 in its own request.
 - **v2 and repack releases count.** Fansub groups often re-release an episode as v2 or v3 to fix mistakes, and scene
   groups call theirs PROPER or REPACK. AnimeArr now reads all of these as a newer version. With Settings → Media
   management → Propers and repacks on "Prefer and upgrade" (the default), a newer version from the same group as the
