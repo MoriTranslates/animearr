@@ -242,6 +242,21 @@ test("early stop in a real Deep Search: a SeaDex-best hit skips the queries stil
   }
 });
 
+test("⚡ asks for the early stop on single episodes and says so when it fired", async () => {
+  const asked: unknown[] = [];
+  const d = {
+    search: (async (_t: number, ids: number[], o: unknown) => (asked.push(o), { results: [res(`[Kekkan] Queue Show - ${ids[0]}`, ids)], stoppedEarly: "[Kekkan] Queue Show is SeaDex's best release (1 query skipped)" })) as never,
+    grab: (async () => ({ id: 1, dryRun: false, message: "Sent" })) as never,
+  };
+  const r = queueAutoSearch(700600, [6008], d);
+  await autoJobsIdle();
+  assert.deepEqual(asked, [{ budget: 12, earlyStop: { minConfidence: 80 } }]);
+  const job = autoJobs().jobs.find((j) => j.id === r.jobId)!;
+  assert.match(job.results[0].why, /stopped early: \[Kekkan\] Queue Show is SeaDex's best release/);
+  const log = db.prepare("SELECT why FROM decisions WHERE kind = 'search' ORDER BY id DESC LIMIT 1").get() as { why: string };
+  assert.match(log.why, /1 started, 1 stopped early/);
+});
+
 test("identical queries within 10 minutes reuse the answer; fresh asks again; after the window it's asked again", async () => {
   clearQueryCache();
   let fetches = 0;

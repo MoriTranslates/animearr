@@ -329,7 +329,7 @@ function logJob(job: AutoJob) {
   const r = job.results;
   if (!r.length) return;
   const n = (o: AutoOutcome["outcome"]) => r.filter((x) => x.outcome === o).length;
-  const parts = [n("grabbed") && `${n("grabbed")} started`, n("would-grab") && `${n("would-grab")} would download (practice mode)`, n("needs-look") && `${n("needs-look")} need a look`, n("skipped") && `${n("skipped")} skipped`, n("failed") && `${n("failed")} failed`].filter(Boolean);
+  const parts = [n("grabbed") && `${n("grabbed")} started`, n("would-grab") && `${n("would-grab")} would download (practice mode)`, n("needs-look") && `${n("needs-look")} need a look`, n("skipped") && `${n("skipped")} skipped`, n("failed") && `${n("failed")} failed`, r.some((x) => x.why.includes("stopped early:")) && `${r.filter((x) => x.why.includes("stopped early:")).length} stopped early (SeaDex's best was already found)`].filter(Boolean);
   const notes = r.filter((x) => x.outcome === "skipped" || x.outcome === "failed").slice(0, 5).map((x) => `${x.label}: ${x.why}`);
   const took = Math.round(((job.finishedAt ?? Date.now()) - (job.startedAt ?? job.queuedAt)) / 1000);
   const more = job.queued ? `; ${job.queued.n} more queued for ${job.queued.where === "soon" ? "the next searches" : "Fill-in"}` : "";
