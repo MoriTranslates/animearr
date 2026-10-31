@@ -322,6 +322,7 @@ function QualityBadge({ r, have }: { r: SearchResult; have: LibraryQuality | nul
 }
 
 export function ResultCard({ r, onGrab, extra }: { r: SearchResult; onGrab?: () => void; extra?: React.ReactNode }) {
+  const sd = r.rank.flags.find((f) => f.key === "seadex");
   return (
     <article className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
       <p className="release"><ReleaseName name={r.title} /></p>
@@ -333,7 +334,8 @@ export function ResultCard({ r, onGrab, extra }: { r: SearchResult; onGrab?: () 
           {r.ageHours !== null ? ` · ${Math.round(r.ageHours / 24)}d` : ""}
         </span>
       </div>
-      <FlagChips flags={r.rank.flags} />
+      {sd && <div className="chips"><Chip tone={/best/i.test(sd.label) ? "good" : "info"}>{t(/best/i.test(sd.label) ? "seadex.mark.best" : "seadex.mark.alt")}</Chip></div>}
+      <FlagChips flags={r.rank.flags.filter((f) => f.key !== "seadex")} />
       <p className="small">{r.rank.why}</p>
       <div className="row between">
         <Why lines={r.mappingWhy} />

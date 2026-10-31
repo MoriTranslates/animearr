@@ -191,7 +191,7 @@ export interface Settings {
    * with guard rails: seasonsPerDay grabs at most, searches within perHour, recheckDays between looks (weekly in the
    * Blu-ray window 3–6 months after airing), a pause switch, and a first run that only lists its plan.
    */
-  qualityUpgrade: { mode: "off" | "auto"; paused: boolean; seasonsPerDay: number; perHour: number; recheckDays: number };
+  qualityUpgrade: { mode: "off" | "auto"; paused: boolean; seasonsPerDay: number; /** Estimated download size of the day's upgrade grabs, in GB (a season that doesn't fit waits). */ gbPerDay: number; perHour: number; recheckDays: number };
   /** The one-time "pick your quality goal" question was answered (wizard, Home card or Settings → Profiles). */
   qualityGoalAsked: boolean;
   /**
@@ -350,7 +350,7 @@ const DEFAULTS: Settings = {
   queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
   extraction: { enabled: false },
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
-  qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 3, perHour: 4, recheckDays: 21 },
+  qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 3, gbPerDay: 100, perHour: 4, recheckDays: 21 },
   qualityGoalAsked: false,
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
   library: { scan: true, scanConcurrency: 0 },
@@ -468,6 +468,7 @@ const RANGES: Record<string, [number, number]> = {
   "queueHealth.stallHours": [1, 72],
   "dualUpgrade.perHour": [1, 24],
   "qualityUpgrade.seasonsPerDay": [1, 50],
+  "qualityUpgrade.gbPerDay": [1, 100000],
   "qualityUpgrade.perHour": [1, 24],
   "qualityUpgrade.recheckDays": [1, 120],
   "movieSearch.delayHours": [0, 168],

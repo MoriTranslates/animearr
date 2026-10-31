@@ -55,10 +55,11 @@ import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } fr
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
-import { GOAL_IDS, GOALS, goalLabel, isGoal } from "./core/quality.js";
+import { GOAL_IDS, GOALS, goalLabel, isGoal, seadexSource } from "./core/quality.js";
 import { locksFor, setLock, TDARR_GUARD } from "./qualityLocks.js";
-import { qualityUpgradeTick, qualityUpgradeView, startNow } from "./qualityUpgrade.js";
-import { seadexForSeason, seadexTick } from "./seadex.js";
+import { qualityUpgradeTick, qualityUpgradeView, startNow, upgradeSeasonNow } from "./qualityUpgrade.js";
+import { seasonComparison } from "./seadexFiles.js";
+import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason, seadexTick } from "./seadex.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
@@ -820,10 +821,10 @@ app.post("/api/quality/upgrades/start", async () => {
   startNow();
   return qualityUpgradeView();
 });
-app.put<{ Body: { paused?: boolean; mode?: string } }>("/api/quality/upgrades", async (req) => {
+app.put<{ Body: { paused?: boolean; mode?: string; gbPerDay?: number } }>("/api/quality/upgrades", async (req) => {
   writable();
   const b = req.body ?? {};
-  patchSettings((x) => ({ ...x, qualityUpgrade: { ...x.qualityUpgrade, ...(typeof b.paused === "boolean" ? { paused: b.paused } : {}), ...(b.mode === "off" || b.mode === "auto" ? { mode: b.mode } : {}) } }));
+  patchSettings((x) => ({ ...x, qualityUpgrade: { ...x.qualityUpgrade, ...(typeof b.paused === "boolean" ? { paused: b.paused } : {}), ...(b.mode === "off" || b.mode === "auto" ? { mode: b.mode } : {}), ...(Number.isFinite(b.gbPerDay) ? { gbPerDay: Math.min(100000, Math.max(1, Math.round(b.gbPerDay!))) } : {}) } }));
   if (typeof b.paused === "boolean") logDecision("info", { why: `Quality upgrades ${b.paused ? "paused" : "resumed"}` });
   return qualityUpgradeView();
 });
@@ -838,8 +839,30 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/quality", async (re
     goalLabel: goalLabel(prof.qualityGoal ?? "high"),
     reencode: prof.reencode ?? "tdarr",
     locks: locksFor(tvdbId),
-    seadex: seasons.map((season) => ({ season, picks: (seadexForSeason(tvdbId, season)?.torrents ?? []).map((x) => ({ group: x.group, best: x.best, dualAudio: x.dualAudio, tracker: x.tracker })) })),
+    seadex: seasons.map((season) => ({ season, picks: (seadexForSeason(tvdbId, season)?.torrents ?? []).map((x) => ({ group: x.group, best: x.best, dualAudio: x.dualAudio, tracker: x.tracker, source: seadexSource(x) })), compare: seasonComparison(tvdbId, season) })),
+    managed: listManaged().some((m) => m.tvdbId === tvdbId),
+    check: { lastAt: lastCheck(tvdbId), retryInMs: cooldownLeft(lastCheck(tvdbId)) },
   };
+});
+/** "Check SeaDex now": fetches and saves SeaDex's picks for this show's AniList entries (once per cooldown). */
+app.post<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/seadex/check", async (req) => {
+  writable();
+  const tvdbId = id(req.params.tvdbId);
+  try {
+    const r = await checkSeadexNow(tvdbId);
+    if (r.status === "checked") logDecision("info", { tvdbId, why: `SeaDex checked by hand: ${r.found} of ${r.entries} AniList entries have picks` });
+    return r;
+  } catch (e) {
+    throw fail(`SeaDex didn't answer: ${(e as Error).message}`, 502);
+  }
+});
+/** "Upgrade now" for one season: without confirm it only says what it would grab; with confirm it grabs that. */
+app.post<{ Params: { tvdbId: string }; Body: { season?: number; confirm?: boolean } }>("/api/series/:tvdbId/upgrade-season", async (req) => {
+  writable();
+  const season = Number(req.body?.season);
+  if (!Number.isInteger(season) || season < 1) throw fail("Pick a season", 400);
+  if (!searchConfigured()) throw fail("No indexer is set up for searching", 409);
+  return upgradeSeasonNow(id(req.params.tvdbId), season, { confirm: req.body?.confirm === true });
 });
 app.put<{ Params: { tvdbId: string }; Body: { season?: number | null; keep?: boolean } }>("/api/series/:tvdbId/keep", async (req) => {
   writable();

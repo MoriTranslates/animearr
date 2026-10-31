@@ -16,7 +16,7 @@
  * SeaDex (releases.moe) is part of the ranking itself: its "best" pick for a show is the top score, an "alt" just
  * below. Dual and Either watch modes prefer the dual-audio picks.
  */
-import { parseRelease, type ParsedRelease } from "./parser.js";
+import { parseRelease, type ParsedRelease, type Source } from "./parser.js";
 
 export type Category = "unknown" | "sdtv" | "dvd" | "web-480" | "bluray-480" | "web-720" | "bluray-720" | "web-1080" | "bluray-1080" | "web-2160" | "bluray-2160";
 
@@ -167,16 +167,38 @@ export interface SeadexEntry { incomplete: boolean; torrents: SeadexTorrent[] }
 const groupKey = (g: string | null | undefined) => (g ?? "").toLowerCase().replace(/[^a-z0-9&]+/g, "");
 
 /**
- * Whether a release's group is SeaDex's pick for the show: "best" (the top pick for this watch mode) or "alt".
- * Dual and Either watch modes rank dual-audio picks above the rest; Sub mode ignores the flag.
+ * The source of a SeaDex torrent: its tags (and tracker) when they say so, else Blu-ray: SeaDex is a list of the best
+ * Blu-ray releases, and a pick only counts as WEB/DVD/TV when it is tagged that way.
  */
-export function seadexPick(group: string | null, entry: SeadexEntry | null | undefined, mode: "sub" | "dub" | "dual" | "either" = "sub"): { level: "best" | "alt"; torrent: SeadexTorrent } | null {
+export function seadexSource(t: Pick<SeadexTorrent, "tags" | "tracker">): NonNullable<Source> {
+  const text = [...t.tags, t.tracker].join(" ").toLowerCase();
+  if (/\b(bd|blu-?ray|remux|bdmv)\b/.test(text)) return "bluray";
+  if (/\bweb(?:[ ._-]?(?:dl|rip))?\b/.test(text)) return "web";
+  if (/\b(hdtv|tv ?raw|tvrip)\b/.test(text)) return "hdtv";
+  if (/\bdvd(?:rip)?\b/.test(text)) return "dvd";
+  return "bluray";
+}
+
+/** A release shares a SeaDex pick's source (a release that names none is given the benefit of the doubt). */
+export const sourceMatches = (pick: NonNullable<Source>, release: Source) => release === null || release === pick;
+
+/** Sort key of a SeaDex torrent for a watch mode (lower is better): dual audio first in Dual/Either, then "best". */
+const seadexKey = (mode: "sub" | "dub" | "dual" | "either") => (t: SeadexTorrent) => ((mode === "dual" || mode === "either") && !t.dualAudio ? 2 : 0) + (t.best ? 0 : 1);
+
+/** SeaDex's top pick for a watch mode. */
+export const seadexTop = (entry: SeadexEntry, mode: "sub" | "dub" | "dual" | "either" = "sub"): SeadexTorrent | null => [...entry.torrents].sort((a, b) => seadexKey(mode)(a) - seadexKey(mode)(b))[0] ?? null;
+
+/**
+ * Whether a release is SeaDex's pick for the show: "best" (the top pick for this watch mode) or "alt". The group has
+ * to match AND the release's source be compatible with the pick's: a SeaDex Blu-ray pick doesn't bless that group's
+ * HDTV, TV raw or WEB release. Dual and Either watch modes rank dual-audio picks above the rest; Sub mode ignores the flag.
+ */
+export function seadexPick(group: string | null, entry: SeadexEntry | null | undefined, mode: "sub" | "dub" | "dual" | "either" = "sub", source: Source = null): { level: "best" | "alt"; torrent: SeadexTorrent } | null {
   if (!entry || !group || !entry.torrents.length) return null;
-  const preferDual = mode === "dual" || mode === "either";
-  const key = (t: SeadexTorrent) => (preferDual && !t.dualAudio ? 2 : 0) + (t.best ? 0 : 1);
+  const key = seadexKey(mode);
   const top = Math.min(...entry.torrents.map(key));
   const g = groupKey(group);
-  const mine = entry.torrents.filter((t) => groupKey(t.group) === g).sort((a, b) => key(a) - key(b))[0];
+  const mine = entry.torrents.filter((t) => groupKey(t.group) === g && sourceMatches(seadexSource(t), source)).sort((a, b) => key(a) - key(b))[0];
   if (!mine) return null;
   return { level: key(mine) === top ? "best" : "alt", torrent: mine };
 }
@@ -212,7 +234,7 @@ export function qualityScore(release: string | ParsedRelease, ctx: QualityContex
   const flags: QualityScore["flags"] = [];
   let points = 0;
   let extra = 0;
-  const pick = seadexPick(p.group, ctx.seadex, ctx.mode);
+  const pick = seadexPick(p.group, ctx.seadex, ctx.mode, p.source);
   if (pick) {
     points += pick.level === "best" ? SEADEX_BEST : SEADEX_ALT;
     const dual = pick.torrent.dualAudio ? ", dual audio" : "";

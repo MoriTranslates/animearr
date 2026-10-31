@@ -374,6 +374,8 @@ const USER_MIGRATIONS: string[] = [
      release TEXT, grab_id INTEGER, best_seen TEXT, no_bd INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));
    CREATE TABLE quality_upgrade_log (at INTEGER NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('search', 'grab')));
    CREATE TABLE quality_locks (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));`,
+  // 34: the upgrade watcher's daily size budget: each grab records its estimated download size
+  `ALTER TABLE quality_upgrade_log ADD COLUMN bytes INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

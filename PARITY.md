@@ -62,7 +62,7 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Replace season with a better season pack | ✅ | Season packs first, one verified episode at a time, old files to the bin |
 | ▶ Trailer on Find & add and the show page | ✅ | Beyond Sonarr: official trailer from YouTube/Dailymotion, nothing downloaded |
 | Re-audit files imported before AnimeArr | ❌ | Wrong-file checks run on new imports only; a library audit is planned for 0.9.1 |
-| SeaDex input | ✅ | SeaDex's best/alt picks are part of ranking (cached per AniList entry, weekly); dual-audio picks first in Dual/Either modes |
+| SeaDex input | ✅ | SeaDex's best/alt picks are part of ranking (cached per AniList entry, weekly, or on demand per show); a pick counts only when the release's source fits (a Blu-ray pick doesn't bless the group's WEB/TV release); dual-audio picks first in Dual/Either modes; shown on the show page and episode sheet |
 
 ## Absorbed tools
 
