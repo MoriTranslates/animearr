@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { logDecision } from "./activity.js";
 import { toLang } from "./core/langs.js";
+import { isGoal } from "./core/quality.js";
 import { cache, db, dbState } from "./db.js";
 import { getSettings, patchSettings, SIZE_PRESETS, WATCH_MODES, type LanguageProfile, type SizePreset, type WatchMode } from "./settings.js";
 
@@ -51,6 +52,8 @@ export function validateProfile(input: Partial<LanguageProfile>, base: LanguageP
     resolution,
     sizePreset: SIZE_PRESETS.includes(input.sizePreset as SizePreset) ? input.sizePreset : (base.sizePreset ?? "lean"),
     groupConsistency: input.groupConsistency === "off" || input.groupConsistency === "strong" || input.groupConsistency === "prefer" ? input.groupConsistency : (base.groupConsistency ?? "prefer"),
+    qualityGoal: isGoal(input.qualityGoal) ? input.qualityGoal : (base.qualityGoal ?? "high"),
+    reencode: input.reencode === "keep" || input.reencode === "tdarr" ? input.reencode : (base.reencode ?? "tdarr"),
   };
 }
 
@@ -113,11 +116,11 @@ export function originalLangs(tvdbId: number | null): string[] {
 /** The profile that applies to a show (or the default when no show is given). */
 export function profileFor(tvdbId: number | null = null): EffectiveProfile {
   const base = defaultProfile();
-  if (tvdbId === null) return { ...base, sizePreset: base.sizePreset ?? "lean", originalLangs: ["ja"], source: "default" };
+  if (tvdbId === null) return { ...base, sizePreset: base.sizePreset ?? "lean", qualityGoal: base.qualityGoal ?? "high", reencode: base.reencode ?? "tdarr", originalLangs: ["ja"], source: "default" };
   const prefs = seriesPrefs(tvdbId);
   const chosen = prefs.profile_id ? getSettings().profiles.find((p) => p.id === prefs.profile_id) : undefined;
   const prof = chosen ?? base;
-  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prefs.size_preset ?? prof.sizePreset ?? "lean", originalLangs: originalLangs(tvdbId), source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
+  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prefs.size_preset ?? prof.sizePreset ?? "lean", qualityGoal: prof.qualityGoal ?? "high", reencode: prof.reencode ?? "tdarr", originalLangs: originalLangs(tvdbId), source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
 }
 
 // ---------------------------------------------------------------- movies
@@ -142,5 +145,5 @@ export function profileForMovie(movieId: number): EffectiveProfile {
   const prefs = moviePrefs(movieId);
   const chosen = prefs.profile_id ? getSettings().profiles.find((p) => p.id === prefs.profile_id) : undefined;
   const prof = chosen ?? base;
-  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prof.sizePreset ?? "lean", originalLangs: ["ja"], source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
+  return { ...prof, profileMode: prof.watchMode, watchMode: prefs.watch_mode ?? prof.watchMode, sizePreset: prof.sizePreset ?? "lean", qualityGoal: prof.qualityGoal ?? "high", reencode: prof.reencode ?? "tdarr", originalLangs: ["ja"], source: prefs.watch_mode ? "show" : chosen ? "profile" : "default" };
 }

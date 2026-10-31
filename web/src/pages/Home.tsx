@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { languageName } from "../lang";
 import { PosterCard } from "../posters";
 import { InstallCard } from "../phone";
+import { QualityGoalNudge } from "../quality";
 import { Pill, SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
 import { Cover, Empty, ErrorBox, Skeleton, thumbUrl, useLoad, usePageTitle } from "../ui";
@@ -56,6 +57,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
   return (
     <section className="home">
       <InstallCard />
+      <QualityGoalNudge />
       {steps.some((x) => !x.done) && (
         <div className="card pad stack">
           <h2>{t("home.start")}</h2>

@@ -6,7 +6,7 @@
  *   {MediaInfo VideoDynamicRangeType} {MediaInfo AudioCodec} {MediaInfo AudioChannels} {MediaInfo AudioLanguages}
  *   {MediaInfo SubtitleLanguages} {Release Group} {Release Hash} {Original Title} {Original Filename}
  *   {Movie Title} {Movie TitleYear} {Movie CleanTitle} {Release Year} {ImdbId} {TmdbId} {Edition Tags}
- *   anime extras: {AniDB Title} {Subs Lang}
+ *   anime extras: {AniDB Title} {Subs Lang} {Keep Tag} ("[Keep]" for locked / keep-original shows, else empty)
  * Token modifiers like Sonarr's: separators in the name ({Series.Title} → dots), case ({series title} → lower),
  * and prefix/suffix characters inside the braces that only appear when the value isn't empty ({-Release Group},
  * {[Quality Full]}, {( Edition Tags )}).
@@ -39,6 +39,8 @@ export interface EpisodeCtx {
   originalTitle?: string | null;
   originalFilename?: string | null;
   anidbTitle?: string | null;
+  /** The show/season is locked "keep as is" (or its profile keeps originals): {Keep Tag} renders "[Keep]". */
+  keepTag?: boolean;
 }
 export interface MovieCtx {
   movieTitle: string;
@@ -208,6 +210,7 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
     "original filename": c.originalFilename ?? "",
     "anidb title": c.anidbTitle ?? "",
     "subs lang": langs(c.mediaInfo?.subtitleLanguages).replace(/[[\]]/g, ""),
+    "keep tag": c.keepTag ? "[Keep]" : "",
     ...mediaTokens(c.mediaInfo),
   };
   return render(f, values, opts).replace(/\u0001EP\u0001/g, epText).replace(/\u0001AB\u0001/g, absText).replace(/\u0001DU\u0001/g, duText);

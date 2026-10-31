@@ -4,9 +4,11 @@
  */
 import { setupStrings } from "./i18n.setup";
 import { viewStrings } from "./i18n.view";
+import { qualityStrings } from "./i18n.quality";
 
 const en = {
   ...setupStrings,
+  ...qualityStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",
@@ -1600,7 +1602,7 @@ const en = {
   "media.seasonFolder": "Season folder format",
   "media.specialsFolder": "Specials folder format",
   "media.multiStyle": "Multi-episode style",
-  "media.tokensHelp": "Sonarr/Radarr tokens work as in Sonarr ({Series TitleYear}, {season:00}, {Episode CleanTitle}, {Quality Full}, {MediaInfo VideoCodec}, {-Release Group}…), plus {AniDB Title} and {Subs Lang}. The grey line is an example.",
+  "media.tokensHelp": "Sonarr/Radarr tokens work as in Sonarr ({Series TitleYear}, {season:00}, {Episode CleanTitle}, {Quality Full}, {MediaInfo VideoCodec}, {-Release Group}…), plus {AniDB Title}, {Subs Lang} and {Keep Tag} ([Keep] on shows locked \"keep as is\", so a Tdarr guard skips them). The grey line is an example.",
   "media.movieNaming": "Movie naming",
   "media.renameMovies": "Rename movies",
   "media.movieFormat": "Movie format",

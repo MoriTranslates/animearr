@@ -10,6 +10,7 @@ import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
+import { ShowQuality } from "../quality";
 import { ScopeEditor } from "../scope";
 import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
@@ -283,6 +284,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {tab === "details" && (
         <>
           {h.native && <p className="muted small">{t("add.nativeNote")}</p>}
+          <section className="card pad stack" aria-labelledby="show-quality">
+            <h2 id="show-quality">{t("upq.title")}</h2>
+            <ShowQuality tvdbId={tvdbId} />
+          </section>
           <Franchise tvdbId={tvdbId} />
           <AnidbEntries tvdbId={tvdbId} onChanged={() => void d.reload()} />
           <Advanced s={s} tvdbId={tvdbId} path={h.path} onChanged={() => (void d.reload(), void act.reload())} />

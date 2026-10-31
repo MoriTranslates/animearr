@@ -81,6 +81,7 @@ test("profiles keep their numeric ids; root folders and tags", async () => {
   assert.equal(b.length, 2);
   assert.equal(b.find((p) => p.name === a[0].name)?.id, a[0].id, "adding a profile doesn't renumber the others");
   assert.notEqual(b[0].id, b[1].id);
+  assert.ok(b.every((p) => p.name.endsWith(": Aim high (Bluray 1080p)")), "the name carries the quality goal");
   const roots = (await call("GET", "/api/v3/rootfolder")).body;
   assert.deepEqual(roots.map((r: { path: string }) => r.path), ["/media/Anime"]);
   assert.ok(roots[0].id > 0);
@@ -103,7 +104,7 @@ test("lookup by TVDB id: an anime not in the library comes back without an id, w
 
 test("add (what Jellyseerr sends): a native show, managed, only the requested season monitored, search started", async () => {
   const profiles = (await call("GET", "/api/v3/qualityprofile")).body as { id: number; name: string }[];
-  const dub = profiles.find((p) => p.name === "Dub fans")!;
+  const dub = profiles.find((p) => p.name.startsWith("Dub fans:"))!;
   const tag = (await call("GET", "/api/v3/tag")).body[0];
   const r = await call("POST", "/api/v3/series", {
     tvdbId: 777, title: "Harbor Tales", qualityProfileId: dub.id, seasons: [{ seasonNumber: 1, monitored: false }, { seasonNumber: 2, monitored: true }], tags: [tag.id], seasonFolder: true,

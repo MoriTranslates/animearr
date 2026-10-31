@@ -10,6 +10,7 @@
  * episodes, files, alt_titles) are materialized from the catalog and AnimeArr's own file records, so every other part
  * of AnimeArr (search, grabs, scopes, calendar, the Show page) works on it like on a Sonarr show.
  */
+import { requestSeadex } from "./seadex.js";
 import { anidbForTvdb } from "./anidb.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -434,6 +435,7 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
     throw err(`Couldn't build the show's episodes: ${(x as Error).message}`, 500);
   }
   invalidateIndex();
+  requestSeadex([e.anilist_id]); // SeaDex picks before its first searches
   if (m.createEmptyFolders) {
     try {
       fs.mkdirSync(mappedPath(showPath), { recursive: true });

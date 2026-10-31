@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { api, fmtSize, sxe } from "../api";
 import { Link, navigate, query } from "../App";
+import { QualityUpgradesPanel } from "../quality";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
 import { ReleaseLine } from "./Queue";
 
 type Tab = "gaps" | "language" | "specials" | "maintenance";
-type Maint = "checks" | "upgrades" | "recycle";
+type Maint = "checks" | "upgrades" | "quality" | "recycle";
 
-/** Audit: three read-only reports, plus Maintenance (after-import checks, dual-audio upgrades, recycle bin). */
+/** Audit: three read-only reports, plus Maintenance (after-import checks, dual-audio and quality upgrades, recycle bin). */
 export function Audit() {
   usePageTitle(t("audit.title"));
   const q = query().get("tab") ?? "gaps";
-  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
-  const [maint, setMaint] = useState<Maint>(["upgrades", "recycle"].includes(q) ? (q as Maint) : "checks");
+  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "quality", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
+  const [maint, setMaint] = useState<Maint>(["upgrades", "quality", "recycle"].includes(q) ? (q as Maint) : "checks");
   const pick = (x: Tab, m: Maint = maint) => {
     setTab(x);
     setMaint(m);
@@ -33,7 +34,7 @@ export function Audit() {
       <p className="muted small">{t(tab === "maintenance" && maint !== "recycle" ? "repair.notReadOnly" : "audit.readOnly")}</p>
       {tab === "maintenance" && (
         <div className="seg self-start" role="group" aria-label={t("audit.tab.maintenance")}>
-          {(["checks", "upgrades", "recycle"] as Maint[]).map((m) => (
+          {(["checks", "upgrades", "quality", "recycle"] as Maint[]).map((m) => (
             <button key={m} className={maint === m ? "on" : ""} aria-pressed={maint === m} onClick={() => pick("maintenance", m)}>
               {t(`audit.tab.${m}` as I18nKey)}
             </button>
@@ -51,6 +52,7 @@ export function Audit() {
         </div>
       )}
       {tab === "maintenance" && maint === "upgrades" && <Upgrades />}
+      {tab === "maintenance" && maint === "quality" && <QualityUpgradesPanel />}
     </section>
   );
 }

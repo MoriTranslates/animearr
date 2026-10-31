@@ -26,6 +26,8 @@ import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { parseRelease } from "./core/parser.js";
+import { sonarrQualityName } from "./core/quality.js";
+import { keepTagFor } from "./qualityLocks.js";
 import { cache, CONFIG_DIR, db } from "./db.js";
 import { catalogLookup } from "./catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
@@ -63,17 +65,7 @@ export const namingOptions = (): NamingOptions => {
 };
 
 /** Sonarr-style quality name from a release name / probe ("WEBDL-1080p", "Bluray-1080p Remux"). */
-export function qualityName(release: string, height: number | null) {
-  const p = parseRelease(release);
-  const res = p.resolution ?? (height ? (height >= 2000 ? 2160 : height >= 1000 ? 1080 : height >= 700 ? 720 : 480) : null);
-  const r = res ? `${res}p` : "";
-  if (/remux/i.test(release)) return `Bluray-${r || "1080p"} Remux`;
-  if (p.source === "bluray") return `Bluray-${r}`.replace(/-$/, "");
-  if (p.source === "web") return /webrip/i.test(release) ? `WEBRip-${r}` : `WEBDL-${r}`;
-  if (p.source === "hdtv") return `HDTV-${r}`;
-  if (p.source === "dvd") return "DVD";
-  return r ? `WEBDL-${r}` : "Unknown";
-}
+export const qualityName = (release: string, height: number | null) => sonarrQualityName(release, height);
 
 type Probe = Pick<MediaRecord, "video" | "audio" | "subs">;
 const mediaInfoOf = (rec: Probe | null) =>
@@ -129,6 +121,7 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
         mediaInfo: mediaInfoOf(ctx.probe),
         releaseGroup: parsed.group,
         originalTitle: ctx.release,
+        keepTag: keepTagFor(tvdbId, season),
       },
       opts,
     );

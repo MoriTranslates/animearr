@@ -53,6 +53,10 @@ import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } fr
 import { recentChecks, repairTick } from "./repair.js";
 import { recycleSetting, recycleStatus } from "./recycle.js";
 import { upgradeList, upgradeTick } from "./upgrade.js";
+import { GOAL_IDS, GOALS, goalLabel, isGoal } from "./core/quality.js";
+import { locksFor, setLock, TDARR_GUARD } from "./qualityLocks.js";
+import { qualityUpgradeTick, qualityUpgradeView, startNow } from "./qualityUpgrade.js";
+import { seadexForSeason, seadexTick } from "./seadex.js";
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
@@ -770,6 +774,59 @@ app.get<{ Params: { tvdbId: string }; Querystring: { season?: string } }>("/api/
 app.get("/api/grabs", async () => listGrabs(100));
 app.get("/api/backlog", async () => backlogSummary());
 app.get("/api/upgrades", async () => upgradeList());
+// Quality goals: the one-time goal question (wizard / Home card / Settings), the upgrade watcher, keep-as-is locks.
+app.get("/api/quality/goal", async () => {
+  const s = getSettings();
+  const def = s.profiles.find((p) => p.id === s.defaultProfileId) ?? s.profiles[0];
+  return { asked: !!s.qualityGoalAsked, goal: def.qualityGoal ?? "high", goals: GOAL_IDS.map((g) => ({ id: g, label: goalLabel(g), help: GOALS[g].help })), tdarrGuard: TDARR_GUARD };
+});
+app.put<{ Body: { goal?: string } }>("/api/quality/goal", async (req) => {
+  writable();
+  const goal = req.body?.goal;
+  if (!isGoal(goal)) throw fail("Pick a quality goal");
+  const s = getSettings();
+  saveProfile(s.defaultProfileId, { qualityGoal: goal });
+  patchSettings((x) => ({ ...x, qualityGoalAsked: true }));
+  return { goal, label: goalLabel(goal) };
+});
+app.get("/api/quality/upgrades", async () => qualityUpgradeView());
+app.post("/api/quality/upgrades/start", async () => {
+  writable();
+  startNow();
+  return qualityUpgradeView();
+});
+app.put<{ Body: { paused?: boolean; mode?: string } }>("/api/quality/upgrades", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  patchSettings((x) => ({ ...x, qualityUpgrade: { ...x.qualityUpgrade, ...(typeof b.paused === "boolean" ? { paused: b.paused } : {}), ...(b.mode === "off" || b.mode === "auto" ? { mode: b.mode } : {}) } }));
+  if (typeof b.paused === "boolean") logDecision("info", { why: `Quality upgrades ${b.paused ? "paused" : "resumed"}` });
+  return qualityUpgradeView();
+});
+app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/quality", async (req) => {
+  const tvdbId = id(req.params.tvdbId);
+  const prof = profileFor(tvdbId);
+  const series = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
+  if (!series) throw fail("Unknown series", 404);
+  const seasons = (cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ? AND season > 0 ORDER BY season").all(series.id) as { season: number }[]).map((r) => r.season);
+  return {
+    goal: prof.qualityGoal ?? "high",
+    goalLabel: goalLabel(prof.qualityGoal ?? "high"),
+    reencode: prof.reencode ?? "tdarr",
+    locks: locksFor(tvdbId),
+    seadex: seasons.map((season) => ({ season, picks: (seadexForSeason(tvdbId, season)?.torrents ?? []).map((x) => ({ group: x.group, best: x.best, dualAudio: x.dualAudio, tracker: x.tracker })) })),
+  };
+});
+app.put<{ Params: { tvdbId: string }; Body: { season?: number | null; keep?: boolean } }>("/api/series/:tvdbId/keep", async (req) => {
+  writable();
+  const tvdbId = id(req.params.tvdbId);
+  const season = req.body?.season === null || req.body?.season === undefined ? null : Number(req.body.season);
+  const keep = req.body?.keep === true;
+  const changed = setLock(tvdbId, season, keep);
+  const title = (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? String(tvdbId);
+  if (changed) logDecision("info", { tvdbId, title, why: `${title}${season === null ? "" : ` season ${season}`}: ${keep ? "locked \"keep as is\" (never upgraded; file names get [Keep] so Tdarr skips them)" : "unlocked (quality upgrades may replace its files again)"}` });
+  // The file names follow the lock ({Keep Tag}): the rename plan shows what changes.
+  return { locks: locksFor(tvdbId), rename: await renamePlan(tvdbId).then((r) => r.items.length).catch(() => null) };
+});
 app.get("/api/catalog", async () => catalogStatus());
 app.post("/api/catalog/refresh", async () => {
   writable();
@@ -1363,6 +1420,8 @@ every(60 * 60_000, async () => {
 every(30_000, () => pipelineTick(), "pipeline");
 every(10 * 60_000, () => repairTick(), "after-import check");
 every(15 * 60_000, () => upgradeTick(), "dual upgrades");
+every(30 * 60_000, () => qualityUpgradeTick(), "quality upgrades");
+every(10 * 60_000, () => seadexTick(), "SeaDex");
 every(10 * 60_000, () => movieTick(), "movie search");
 every(15 * 60_000, () => breakerTick(breakerDeps), "indexer re-tests");
 every(60 * 60_000, async () => binTick(), "recycling bin purge");
