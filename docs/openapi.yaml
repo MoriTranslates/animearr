@@ -897,14 +897,34 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         default:
           "$ref": "#/components/responses/Error"
+  "/api/rootfolders":
+    get:
+      operationId: getRootfolders
+      tags:
+        - Library
+      summary: "Root folders and which are allowed"
+      description: "`allowed` lists the folders AnimeArr may add shows to. Use one of them as `rootFolder` for `POST /api/add`. It also lists Radarr's folders."
+      x-stability: stable
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/RootFolders"
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
   "/api/sonarr/rootfolders":
     get:
       operationId: getSonarrRootfolders
       tags:
         - Library
-      summary: "Root folders and which are allowed"
+      summary: "Old name of /api/rootfolders: Root folders and which are allowed"
       description: "`allowed` lists the folders AnimeArr may add shows to. Use one of them as `rootFolder` for `POST /api/add`. (The path says \"sonarr\" for historical reasons: it also lists Radarr's folders.)"
-      x-stability: stable
+      x-stability: internal
+      deprecated: true
       responses:
         "200":
           description: OK
@@ -1063,14 +1083,52 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         default:
           "$ref": "#/components/responses/Error"
-  "/api/library/candidates":
+  "/api/shows":
     get:
-      operationId: getLibraryCandidates
+      operationId: getShows
       tags:
         - Library
       summary: "List every show in the library"
       description: "The full library, sorted by title, in one response. Use it to build a show list; use `GET /api/series/{tvdbId}` for episodes."
       x-stability: stable
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                type: object
+                properties:
+                  season:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      year:
+                        type: integer
+                  allowedRoots:
+                    type: array
+                    items:
+                      type: string
+                  series:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Show"
+                required:
+                  - series
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/api/library/candidates":
+    get:
+      operationId: getLibraryCandidates
+      tags:
+        - Library
+      summary: "Old name of /api/shows: List every show in the library"
+      description: "The full library, sorted by title, in one response. Use it to build a show list; use `GET /api/series/{tvdbId}` for episodes."
+      x-stability: internal
+      deprecated: true
       responses:
         "200":
           description: OK
@@ -3127,14 +3185,34 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         default:
           "$ref": "#/components/responses/Error"
-  "/api/audit/gaps":
+  "/api/wanted":
     get:
-      operationId: getAuditGaps
+      operationId: getWanted
       tags:
         - Wanted
       summary: "Missing episodes and missing seasons"
       description: "Aired, monitored episodes without a file, per show, plus seasons with no files at all. This is the \"wanted\" list. Search for them with `POST /api/autosearch`."
       x-stability: stable
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Gaps"
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/api/audit/gaps":
+    get:
+      operationId: getAuditGaps
+      tags:
+        - Wanted
+      summary: "Old name of /api/wanted: Missing episodes and missing seasons"
+      description: "Aired, monitored episodes without a file, per show, plus seasons with no files at all. This is the \"wanted\" list. Search for them with `POST /api/autosearch`."
+      x-stability: internal
+      deprecated: true
       responses:
         "200":
           description: OK
@@ -7999,7 +8077,7 @@ components:
           description: "From `/api/add/search`."
         rootFolder:
           type: string
-          description: "One of the allowed root folders (see `/api/sonarr/rootfolders`)."
+          description: "One of the allowed root folders (see `/api/rootfolders`)."
         kind:
           type: string
           enum:

@@ -93,7 +93,7 @@ JSON request bodies are limited to 1 MB; a backup upload may be up to 256 MiB.
 - **Ids.** Shows are identified by **`tvdbId`** in URLs (`/api/series/{tvdbId}`) and in most payloads. A show that has
   no TVDB id gets a synthetic one, so treat it as an opaque number. `seriesId` and `id` on a show are internal and
   should not be stored. Episodes have an **episode `id`** (the same number across `/api/series/{tvdbId}`,
-  `/api/calendar` as `episodeId`, and `/api/audit/gaps`). Movies have a **movie `id`**. Downloads have a **grab `id`**.
+  `/api/calendar` as `episodeId`, and `/api/wanted`). Movies have a **movie `id`**. Downloads have a **grab `id`**.
   Adding a title takes an **`anilistId`**, which comes from the add-search results.
 - **Times.** Fields such as `at`, `updatedAt`, `airUtc` and `releaseAt` are **milliseconds since the Unix epoch**
   (UTC). The calendar's `from` and `to` parameters are in the same unit. A few values that come straight from a search
@@ -126,11 +126,11 @@ The stable operations:
 | Area | Operations |
 | --- | --- |
 | Status and health | `GET /ping`, `GET /api/status`, `GET /api/connections` |
-| Library | `GET /api/library/candidates`, `GET /api/series`, `GET /api/series/{tvdbId}`, `GET /api/sonarr/rootfolders` |
+| Library | `GET /api/shows`, `GET /api/series`, `GET /api/series/{tvdbId}`, `GET /api/rootfolders` |
 | Add | `GET /api/add/search`, `POST /api/add` |
 | Search and grab | `POST /api/autosearch`, `POST /api/search`, `POST /api/grab` |
 | Queue and history | `GET /api/queue`, `GET /api/history`, `POST /api/queue/{id}/remove` |
-| Calendar and wanted | `GET /api/calendar`, `GET /feed/calendar/animearr.ics`, `GET /api/audit/gaps` |
+| Calendar and wanted | `GET /api/calendar`, `GET /feed/calendar/animearr.ics`, `GET /api/wanted` |
 | Activity | `GET /api/activity` |
 | Blocklist | `GET /api/blocklist`, `DELETE /api/blocklist/{id}` |
 | Tags | `GET /api/tags`, `POST /api/tags`, `PUT /api/series/{tvdbId}/tags` |
@@ -184,7 +184,7 @@ needs no key is `GET /ping`, which returns `{ "status": "OK" }`.
 ### List shows
 
 ```sh
-aa $ANIMEARR/api/library/candidates | jq '.series[] | {tvdbId, title, status, monitored, managed, nextAiring}'
+aa $ANIMEARR/api/shows | jq '.series[] | {tvdbId, title, status, monitored, managed, nextAiring}'
 ```
 
 This returns every show in one response, sorted by title. `managed` means AnimeArr searches for and grabs the show's
@@ -241,7 +241,7 @@ the next page.
 ### Wanted / missing episodes
 
 ```sh
-aa $ANIMEARR/api/audit/gaps | jq '{episodes, seasons, shows: [.series[] | {title, missing: (.missing | length)}]}'
+aa $ANIMEARR/api/wanted | jq '{episodes, seasons, shows: [.series[] | {title, missing: (.missing | length)}]}'
 ```
 
 Lists, per show, the aired and monitored episodes that have no file, and whole seasons with no files. Each missing
@@ -258,7 +258,7 @@ aa "$ANIMEARR/api/add/search?q=sousou%20no%20frieren" | jq '.results[] | {anilis
 Pick a root folder. Only the allowed ones are accepted:
 
 ```sh
-aa $ANIMEARR/api/sonarr/rootfolders | jq -r '.allowed[]'
+aa $ANIMEARR/api/rootfolders | jq -r '.allowed[]'
 ```
 
 Add it and start searching for the missing episodes:
@@ -432,8 +432,8 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 
 | | Operation | What it does |
 | --- | --- | --- |
-| * | `GET /api/sonarr/rootfolders` | Root folders and which are allowed |
-| * | `GET /api/library/candidates` | List every show in the library |
+| * | `GET /api/rootfolders` | Root folders and which are allowed |
+| * | `GET /api/shows` | List every show in the library |
 | * | `GET /api/series` | Search library shows by title |
 | * | `GET /api/series/{tvdbId}` | One show with its seasons and episodes |
 |  | `POST /api/library/sync` | Sync the library from Sonarr now |
@@ -527,7 +527,7 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 
 | | Operation | What it does |
 | --- | --- | --- |
-| * | `GET /api/audit/gaps` | Missing episodes and missing seasons |
+| * | `GET /api/wanted` | Missing episodes and missing seasons |
 |  | `GET /api/backlog` | Backlog search status |
 |  | `GET /api/home` | The Home page summary |
 
@@ -746,15 +746,21 @@ A Homepage-style widget polls a few cheap endpoints and shows numbers. A reasona
 | Shows in library / managed | `GET /api/status`: `librarySeries`, `managed` |
 | Currently downloading (list, progress) | `GET /api/queue`: `items[].series`, `episodes`, `live.progress` |
 | Airing today and this week | `GET /api/calendar?from=<ms>&to=<ms>`: `entries[]` |
-| Missing episodes | `GET /api/audit/gaps`: `episodes`, `seasons` |
+| Missing episodes | `GET /api/wanted`: `episodes`, `seasons` |
 | Recently grabbed or imported | `GET /api/activity?kinds=grab,import`: first few entries |
 | Failed downloads | `GET /api/history?state=failed` |
 | Service problems | `GET /api/connections`: clients/indexers with `ok: false` |
 | Practice mode on | `GET /api/status`: `dryRun` |
 
 Poll no faster than every 30 seconds to 1 minute. `/api/status` is cheap. `/api/queue` asks the download client for live
-progress (up to 4 seconds if the client is slow), `/api/audit/gaps` walks the whole library, and `/api/connections` makes
+progress (up to 4 seconds if the client is slow), `/api/wanted` walks the whole library, and `/api/connections` makes
 live calls to your services, so keep those slower (a minute or more). Poster images: `cover` URLs are either a full image
 URL or can be passed through `GET /api/img?u=<url>&s=md`, which serves a cached thumbnail (send your key there too).
 
 If you need a field these endpoints don't return, say so in an issue rather than scraping an internal endpoint.
+
+### Older endpoint names
+
+`/api/sonarr/rootfolders`, `/api/library/candidates` and `/api/audit/gaps` answer exactly like `/api/rootfolders`,
+`/api/shows` and `/api/wanted`. AnimeArr's own pages still use them, but they aren't part of the stable set: use the
+new names.

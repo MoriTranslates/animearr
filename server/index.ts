@@ -509,8 +509,11 @@ async function testService(service: string, b: TestBody) {
   throw fail("Unknown service", 404);
 }
 
-/** Sonarr root folders, for the "allowed root folders" picker (suggests /media/AnimeArr when present; never auto-enabled). */
-app.get("/api/sonarr/rootfolders", async () => {
+/**
+ * Root folders, for the "allowed root folders" picker (suggests /media/AnimeArr when present; never auto-enabled).
+ * `/api/rootfolders` is the documented name (docs/API.md); `/api/sonarr/rootfolders` stays for older callers.
+ */
+const rootFolders = async () => {
   const o = await sonarrOptions().catch(() => ({ roots: [] as { id: number; path: string; freeSpace?: number }[] }));
   // Radarr's root folders too (movies), when Radarr is set up.
   const movieRoots = radarrConfigured() ? await radarrRootFolders().catch(() => []) : [];
@@ -518,7 +521,9 @@ app.get("/api/sonarr/rootfolders", async () => {
   // `refused`: saved folders that can't be a library (e.g. /config from before that was checked), with why.
   const refused = Object.fromEntries(getSettings().allowedRoots.map((r) => [r, rootRefusal(r, CONFIG_DIR)]).filter(([, why]) => why));
   return { roots, suggested: o.roots.find((r) => /\/AnimeArr\/?$/i.test(r.path))?.path ?? null, allowed: getSettings().allowedRoots, refused };
-});
+};
+app.get("/api/rootfolders", rootFolders);
+app.get("/api/sonarr/rootfolders", rootFolders);
 
 // ---------------------------------------------------------------- library import / sync, managed shows
 
@@ -527,6 +532,8 @@ app.post<{ Body: { full?: boolean } }>("/api/library/sync", async (req) => {
   void syncLibrary(req.body?.full === true).then(() => refreshCovers()).catch(() => undefined);
   return { started: true };
 });
+// `/api/shows` is the documented name for the full library list (docs/API.md); the Shows page still uses the old one.
+app.get("/api/shows", async () => candidates());
 app.get("/api/library/candidates", async () => candidates());
 app.get<{ Querystring: { q?: string } }>("/api/series", async (req) => {
   const q = compactKey(String(req.query.q ?? ""));
@@ -696,6 +703,8 @@ app.post("/api/managed/run", async () => {
 // ---------------------------------------------------------------- audits (read-only)
 
 app.get<{ Querystring: { sidecars?: string } }>("/api/audit/language", async (req) => missingLanguage({ checkSidecars: req.query.sidecars === "1" }));
+// `/api/wanted` is the documented name for the wanted list (docs/API.md); Audit → Gaps still uses the old one.
+app.get("/api/wanted", async () => gaps());
 app.get("/api/audit/gaps", async () => gaps());
 app.get("/api/audit/duplicates", async () => ({ items: duplicateListings() }));
 app.get("/api/audit/specials", async () => specials());
