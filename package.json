@@ -1,6 +1,6 @@
 {
   "name": "animearr",
-  "version": "0.9.0-beta",
+  "version": "0.10.0-nightly",
   "private": true,
   "description": "Anime-first library manager: finds, checks and imports anime (subtitle-language aware), next to or instead of Sonarr/Radarr.",
   "license": "GPL-3.0-only",

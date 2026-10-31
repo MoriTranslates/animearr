@@ -11,4 +11,6 @@ function findPackageJson() {
 }
 const PKG = findPackageJson();
 export const ROOT_DIR = path.dirname(PKG);
-export const VERSION = JSON.parse(fs.readFileSync(PKG, "utf8")).version as string;
+// Nightly images add the commit they were built from ("0.10.0-nightly+1a2b3c4"), so a bug report names the exact build.
+const BUILD = (process.env.ANIMEARR_BUILD ?? "").trim().slice(0, 7);
+export const VERSION = (JSON.parse(fs.readFileSync(PKG, "utf8")).version as string) + (BUILD ? `+${BUILD}` : "");

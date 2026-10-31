@@ -18,6 +18,8 @@ LABEL org.opencontainers.image.title="AnimeArr" \
 # mkvtoolnix: "Also fix the tag inside the file" (mkvpropedit edits an MKV header in place, no remux).
 # su-exec: drops root to PUID:PGID in the entrypoint; tzdata: TZ works.
 RUN apk add --no-cache ffmpeg 7zip mkvtoolnix su-exec tzdata
+ARG ANIMEARR_BUILD=""
+ENV ANIMEARR_BUILD=$ANIMEARR_BUILD
 ENV NODE_ENV=production ANIMEARR_CONFIG=/config PORT=8484 PUID=1000 PGID=1000 UMASK=002 TZ=UTC
 WORKDIR /app
 COPY --from=build /app/package.json ./
