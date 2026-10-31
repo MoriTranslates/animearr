@@ -21,7 +21,7 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Search | Cutoff unmet / upgrades | Sonarr/Radarr | ✅ | Quality goal per profile (the cutoff) with an automatic upgrade watcher (daily budget, first-run plan, pause, no-churn rule, keep-as-is locks); dual-audio upgrades. Episodes only: movies aren't upgraded for quality yet |
 | Activity | Queue with live progress, remove/blocklist | Sonarr/Radarr | ✅ | Own downloads + Sonarr queue problems |
 | Activity | History | Sonarr/Radarr | ✅ | Timeline grouped by day; one event per grab with a stage track; why, fixes, undo |
-| Activity | Blocklist | Sonarr/Radarr | 🟡 | Blocklist exists; a turned-down release can be un-blocked with Undo in Activity; no management page yet |
+| Activity | Blocklist | Sonarr/Radarr | ✅ | Activity → Blocklist: release, show or movie, reason, date, protocol and indexer; remove one or several, filter by show. Undo in Activity still works |
 | Calendar | Month / week / agenda, movies | Sonarr/Radarr | ✅ | |
 | Import | Completed download handling | Sonarr/Radarr | ✅ | AnimeArr's own importer only |
 | Import | Manual import UI | Sonarr/Radarr | ✅ | Series ⋯ → Import files; "Import manually…" fix button |
@@ -29,7 +29,7 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Settings | Profiles | Sonarr/Radarr | 🟡 | Language profiles, watch modes, size presets, group consistency, quality goal (Sonarr's quality names in TRaSH-style anime categories), SeaDex + TRaSH group tiers instead of custom formats. Missing: per-quality allow toggles, release profiles (must / must-not contain), propers |
 | Settings | Protocol priority + delay profiles | Sonarr | ✅ | Prefer Usenet / Prefer torrents / No preference per profile (top of Indexers and Download clients); Usenet/torrent delays for automatic grabs; reasons say "(preferred)" |
 | Settings | Indexers | Sonarr/Radarr | ✅ | Cards in Usenet \| Torrent columns: Prowlarr's indexers (protocol, priority, learned health) and direct ones — custom Newznab/Torznab/RSS (keys encrypted, masked, redacted; categories 5070/5000/2000; priority; seed ratio; tags; Test with a sample search), Jackett trackers in one click, a curated anime catalogue (catalog/indexers.json, each entry checked live 2026-10-26), duplicate warnings. Prowlarr optional |
-| Settings | Download clients | Sonarr/Radarr | 🟡 | SABnzbd, qBittorrent, NZBGet, Transmission, Deluge, rTorrent with priority, enabled, category/label, Test, per-client path mappings; grabs go to the best client of their protocol with fallback. "Remove completed" for NZBGet not wired yet |
+| Settings | Download clients | Sonarr/Radarr | 🟡 | SABnzbd, qBittorrent, NZBGet, Transmission, Deluge, rTorrent with priority, enabled, category/label, Test, per-client path mappings; grabs go to the best client of their protocol with fallback. "Remove finished jobs" works for NZBGet: after a confirmed import the finished job leaves NZBGet's history once no video is left in its folder |
 | Settings | Blackhole download clients (Usenet, Torrent) | Sonarr | ✅ | Watch folder + completed folder, .magnet files optional, timeout (24 h); off by default, not in the wizard, never auto-picked over a real client unless preferred; no progress, no partial downloads (see the README footnote) |
 | Grabbing | Partial batch downloads (skip episodes you have) | — | ✅ | Beyond Sonarr: qBittorrent, Transmission, Deluge, rTorrent download only the wanted files of a batch; others download the whole batch and the leftovers are cleaned after import |
 | Grabbing | Season consistency for batches | — | ✅ | Per season: only the missing episodes, or replace the whole season (same group/quality rules, old files to the bin only after the new ones pass) |
@@ -69,10 +69,10 @@ Status: ✅ cloned · 🟡 partial · ❌ missing · ➖ intentionally dropped. 
 | Tool | Feature | AnimeArr | Notes |
 |---|---|---|---|
 | Cleanuparr | Queue cleaner (stalled, failed, metadata) | ✅ | Queue health |
-| Cleanuparr | Strikes before removal | ❌ | Single timeout today |
-| Cleanuparr | Malware blocker (e.g. .exe/.lnk in downloads) | ❌ | |
-| Cleanuparr | Download cleaner / seeding rules | 🟡 | After a confirmed import, hourly sweep, failed downloads after an hour; qBittorrent + SABnzbd (not NZBGet/Transmission yet) |
-| Unpackerr | Unpack archives | 🟡 | 7z/ZIP; RAR needs a user decision; off by default |
+| Cleanuparr | Strikes before removal | ✅ | A stalled or metadata-less download gets a strike per health check (at least 10 minutes apart; 3 by default, Settings → Queue health) and is removed only at the limit; moving again clears them. A failure the client reports is final. Strikes show in the queue |
+| Cleanuparr | Malware blocker (e.g. .exe/.lnk in downloads) | ✅ | On by default. Executables and scripts (editable extension list), double extensions (episode.mkv.exe), password-protected archives instead of a video, and videos far too small for the runtime: removed from the client, blocklisted with the plain reason, next release searched, nothing imported. Torrents are checked while downloading, Usenet before import; names and sizes only, files are never opened |
+| Cleanuparr | Download cleaner / seeding rules | ✅ | After a confirmed import, hourly sweep, failed downloads after an hour; qBittorrent, SABnzbd, NZBGet and Transmission, AnimeArr's own category/label only, seeding rules respected. Deluge and rTorrent downloads are only removed together with their grab; Usenet blackhole folders are cleaned, torrent blackholes never |
+| Unpackerr | Unpack archives | ➖ | 7z/ZIP only, off by default. RAR is intentionally not supported: anime releases rarely use RAR, so it is not worth the licence and image-size cost; RAR downloads are flagged for you |
 | Huntarr | Missing hunting | 🟡 | Missing-episode/movie search, managed shows only, per-hour cap, off by default |
 | Huntarr | Upgrade hunting | ✅ | Quality upgrades towards each profile's goal, plus dual-audio upgrades; budgeted |
 | Prowlarr | Indexer health | ✅ | Learned per indexer from failed download links |

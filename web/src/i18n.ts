@@ -7,11 +7,13 @@ import { viewStrings } from "./i18n.view";
 import { mediaStrings } from "./i18n.media";
 import { dupStrings } from "./i18n.dup";
 import { qualityStrings } from "./i18n.quality";
+import { safetyStrings } from "./i18n.safety";
 
 const en = {
   ...setupStrings,
   ...qualityStrings,
   ...dupStrings,
+  ...safetyStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",
@@ -1010,7 +1012,7 @@ const en = {
   "managed.state.backlog": "Missing · retried every few days",
   "managed.state.replace": "Replacing a bad file",
   "extract.enabled": "Unpack downloads that arrive as archives (RAR, 7z, ZIP)",
-  "extract.help": "For torrents only (SABnzbd unpacks by itself). The video files are unpacked into a subfolder of the download, imported by AnimeArr, and the subfolder is removed; the archives keep seeding. Needs write access to the download folder: AnimeArr’s /data mount must not be read-only. 7z and ZIP work; RAR needs a RAR-capable unpacker, which this image doesn’t have yet, so RAR downloads are flagged for you instead.",
+  "extract.help": "For torrents only (SABnzbd unpacks by itself). The video files are unpacked into a subfolder of the download, imported by AnimeArr, and the subfolder is removed; the archives keep seeding. Needs write access to the download folder: AnimeArr’s /data mount must not be read-only. 7z and ZIP work. RAR is intentionally not unpacked (anime releases rarely use it), so RAR downloads are flagged for you instead.",
   "msearch.title": "Movie search",
   "msearch.help": "For monitored anime movies in your allowed root folders without a file: AnimeArr searches a few hours after the digital or Blu-ray release, then again with growing pauses (the missing-movie search). It skips movies Radarr is already downloading. Imports go through Radarr.",
   "msearch.enabled": "Search for movies automatically",

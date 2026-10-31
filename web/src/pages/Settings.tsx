@@ -455,8 +455,22 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
             {t("qh.metadataMin")}
             <NumberInput value={s.queueHealth.metadataMin} min={10} max={1440} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, metadataMin: v } }))} label={t("qh.metadataMin")} />
           </label>
+          <label>
+            {t("qh.strikes")}
+            <NumberInput value={s.queueHealth.strikes} min={1} max={20} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, strikes: v } }))} label={t("qh.strikes")} />
+            <span className="muted small">{t("qh.strikesHelp")}</span>
+          </label>
         </div>
         <Toggle checked={s.queueHealth.removeFailed} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, removeFailed: v } }))} label={t("qh.removeFailed")} help={t("qh.removeFailedHelp")} />
+      </div>
+      <div className="card pad stack">
+        <h2>{t("malware.title")}</h2>
+        <Toggle checked={s.malware.enabled} onChange={(v) => upd((x) => ({ ...x, malware: { ...x.malware, enabled: v } }))} label={t("malware.enabled")} help={t("malware.help")} />
+        <label>
+          {t("malware.extensions")}
+          <ExtensionsInput value={s.malware.extensions} disabled={!s.malware.enabled} onChange={(extensions) => upd((x) => ({ ...x, malware: { ...x.malware, extensions } }))} />
+          <span className="muted small">{t("malware.extensionsHelp")}</span>
+        </label>
       </div>
       <div className="card pad stack">
         <Toggle checked={s.extraction.enabled} onChange={(v) => upd((x) => ({ ...x, extraction: { enabled: v } }))} label={t("extract.enabled")} help={t("extract.help")} />
@@ -1299,5 +1313,23 @@ function ServerOptions() {
         {t("common.save")}
       </button>
     </div>
+  );
+}
+
+/** The malware blocker's extension list as one line ("exe scr bat"); edited freely, tidied when you leave the field. */
+function ExtensionsInput({ value, onChange, disabled }: { value: string[]; onChange: (v: string[]) => void; disabled: boolean }) {
+  const [text, setText] = useState(value.join(" "));
+  return (
+    <input
+      type="text"
+      className="mono"
+      value={text}
+      disabled={disabled}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(e.target.value.split(/[\s,]+/).map((v) => v.replace(/^\./, "").toLowerCase()).filter(Boolean));
+      }}
+      onBlur={() => setText(value.join(" "))}
+    />
   );
 }

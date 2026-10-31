@@ -22,7 +22,7 @@ import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
 import { cache, db, dbState } from "./db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
-import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, runTimeSec, selectAfterAdd, setState, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, rejectUnsafe, runTimeSec, selectAfterAdd, setState, unsafeDownload, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { BatchInfo, FileMapOpts } from "./batch.js";
 import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
@@ -423,8 +423,8 @@ export async function startMovieGrab(req: MovieGrabRequest, deps: PipelineDeps =
   const batch: BatchInfo | null = inBatch ? { mode: select ? "pending" : "whole", total: 0, wanted: 1, skippedEpisodes: [], skippedFiles: 0, leftovers: true, note: null, movie: true, since: now } : null;
   const id = Number(
     db
-      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file, purpose, batch) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0, req.purpose ?? null, batch ? JSON.stringify(batch) : null).lastInsertRowid,
+      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, movie_id, replace_file, purpose, batch, indexer) VALUES (?, ?, NULL, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(now, now, c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, c.why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, req.movieId, req.replace ? 1 : 0, req.purpose ?? null, batch ? JSON.stringify(batch) : null, c.indexer ?? null).lastInsertRowid,
   );
   const label = m.year ? `${m.title} (${m.year})` : m.title;
   if (dryRun) {
@@ -609,6 +609,9 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   const p0 = clientToSonarr(clientPath);
   const single = VIDEO.test(p0);
   const folder = single ? path.posix.dirname(p0) : p0;
+  // Malware blocker: nothing from a download with dangerous or fake files is imported.
+  const unsafe = unsafeDownload(deps, row, p0, !single);
+  if (unsafe) return rejectUnsafe(row, unsafe, deps, "before import");
   let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];
   if (native) {
     const lf = deps.localPath(single ? p0 : folder);

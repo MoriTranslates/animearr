@@ -77,8 +77,9 @@ Radarr and Prowlarr, and can take your anime over from them when you're ready.
   breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see
   [download clients](#download-clients)); Plex, Jellyfin, Emby and Kodi (see [media servers](#media-servers)); Discord and ntfy; a guided migration from
   Sonarr/Radarr.
-- **Looks after itself.** Stalled-download handling, clean-up after imports, a recycling bin with retention, nightly
-  backups.
+- **Looks after itself.** Stalled downloads get strikes before they are removed, downloads holding executables or fake
+  videos are thrown out and blocklisted before anything is imported, clean-up after imports (SABnzbd, NZBGet,
+  qBittorrent, Transmission), a blocklist page (Activity → Blocklist), a recycling bin with retention, nightly backups.
 
 ## Screenshots
 
@@ -330,7 +331,7 @@ affiliated with any anime, studio or publisher.
 - "Watch in" links are Plex only (Jellyfin, Emby and Kodi get scans and files). Notifications are Discord and ntfy.
 - Importing an existing anime folder without Sonarr (setup wizard, Settings → System) handles series only, one level
   of show folders per library folder; movies are still added one by one.
-- RAR archives aren't unpacked (7z/ZIP are). No blocklist page, log viewer or downloadable backups yet.
+- RAR archives aren't unpacked, on purpose (anime releases rarely use RAR; 7z/ZIP are unpacked). No log viewer or downloadable backups yet.
 - No "forgot password" reset yet: keep your new password somewhere safe.
 
 The full, honest list is in [PARITY.md](PARITY.md); the plan is in [BACKLOG.md](BACKLOG.md).

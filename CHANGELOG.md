@@ -5,6 +5,22 @@ All notable changes, newest first. The commit history has the crew's version of 
 ## Unreleased
 
 ### Added
+- **Malware blocker.** A download that holds an executable or script (`.exe .scr .bat .cmd .com .msi .lnk .vbs .js
+  .ps1 .jar .apk`, editable in Settings), a video with a second extension (`episode.mkv.exe`), a password-protected
+  archive instead of a video, or a video far too small for the episode's runtime is removed from the download client,
+  blocklisted with a plain reason ("contained Episode 05.mkv.lnk") and never imported; AnimeArr searches for the next
+  release. Torrents are checked while they download (when the client lists their files), every download before
+  import. On by default; the check reads names and sizes only. It is logged in Activity.
+- **Strikes before removal.** A stalled download, or a torrent that finds no metadata, gets a strike per health check
+  (at least 10 minutes apart) and is removed only at the limit (3 by default, Settings → Stalled and failed
+  downloads). A download that starts moving again loses its strikes. The queue shows the strikes. A failure the
+  download client itself reports is still final.
+- **NZBGet and Transmission clean-up.** After a confirmed import, NZBGet's finished job leaves its history (the
+  "remove finished jobs" client setting now does this) once no video is left in its folder, and Transmission torrents
+  are removed with their data once the seeding rules are met, like SABnzbd and qBittorrent. Only AnimeArr's own
+  category or label, and only inside its own download folders.
+- **Blocklist page.** Activity → Blocklist lists blocklisted releases with show or movie, reason, date, protocol and
+  indexer. Remove one or several (a release can then be picked again), and filter by show.
 - **Import an existing anime folder without Sonarr.** Pick a library folder (setup wizard for new users, or
   Settings → System → Import existing folders) and AnimeArr lists its show folders, skipping hidden folders and ones
   a show already owns. Each folder is matched to a show with a confidence and a plain reason: IDs in the folder name
@@ -64,6 +80,7 @@ All notable changes, newest first. The commit history has the crew's version of 
   source still matches by group.
 
 ### Notes
+- RAR unpacking is intentionally not supported (anime releases rarely use RAR). 7z and ZIP unpacking stay.
 - Removing a show through the API removes it from AnimeArr only: files are never deleted, whatever the request app
   asks. Shows that Sonarr still owns can't be removed through it.
 

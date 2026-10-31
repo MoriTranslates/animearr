@@ -376,6 +376,13 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE quality_locks (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));`,
   // 34: the upgrade watcher's daily size budget: each grab records its estimated download size
   `ALTER TABLE quality_upgrade_log ADD COLUMN bytes INTEGER NOT NULL DEFAULT 0;`,
+  // 35: download safety: strikes on a stalled download (health checks in a row), and where a blocklisted release came from
+  `ALTER TABLE grabs ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE grabs ADD COLUMN strike_at INTEGER;
+   ALTER TABLE grabs ADD COLUMN strike_why TEXT;
+   ALTER TABLE grabs ADD COLUMN indexer TEXT;
+   ALTER TABLE blocklist ADD COLUMN protocol TEXT;
+   ALTER TABLE blocklist ADD COLUMN indexer TEXT;`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

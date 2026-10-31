@@ -5,7 +5,7 @@
  */
 import type { ClientCfg } from "../settings.js";
 import { redactUrl } from "./http.js";
-import type { ClientFile, ClientStatus } from "./clients.js";
+import type { ClientFile, ClientStatus, OwnTorrent } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
 const mapPath = (p: string, c: ClientCfg) => {
@@ -64,6 +64,12 @@ export const nzbgetDriver = {
     if (h.Status.startsWith("DELETED")) return { state: "missing", progress: 0 };
     return { state: "error", progress: 1, message: `${c.name} reports ${h.Status}` };
   },
+  /** A finished job in NZBGet's history: its category (ownership), outcome and where its files are (AnimeArr's path view). Read-only. */
+  async job(c: ClientCfg, ref: string): Promise<{ category: string; status: string; dir: string } | null> {
+    const hist = await nzbget<{ NZBID: number; Status: string; Category: string; DestDir: string; FinalDir?: string }[]>(c, "history", [false]);
+    const h = hist.find((x) => x.NZBID === Number(ref));
+    return h ? { category: h.Category, status: h.Status, dir: mapPath(h.FinalDir || h.DestDir, c) } : null;
+  },
   async remove(c: ClientCfg, ref: string) {
     const id = Number(ref);
     const groups = await nzbget<{ NZBID: number; Category: string }[]>(c, "listgroups", [0]);
@@ -113,8 +119,8 @@ async function transmission<T>(c: ClientCfg, method: string, args: Record<string
   return j.arguments;
 }
 
-interface TrTorrent { hashString: string; name: string; percentDone: number; status: number; downloadDir: string; eta: number; rateDownload: number; totalSize: number; peersSendingToUs: number; error: number; errorString: string; labels?: string[] }
-const TR_FIELDS = ["hashString", "name", "percentDone", "status", "downloadDir", "eta", "rateDownload", "totalSize", "peersSendingToUs", "error", "errorString", "labels"];
+interface TrTorrent { hashString: string; name: string; percentDone: number; status: number; downloadDir: string; eta: number; rateDownload: number; totalSize: number; peersSendingToUs: number; error: number; errorString: string; labels?: string[]; uploadRatio?: number; secondsSeeding?: number; doneDate?: number }
+const TR_FIELDS = ["hashString", "name", "percentDone", "status", "downloadDir", "eta", "rateDownload", "totalSize", "peersSendingToUs", "error", "errorString", "labels", "uploadRatio", "secondsSeeding", "doneDate"];
 const ours = (t: TrTorrent, c: ClientCfg) => (t.labels ?? []).includes(c.category) || t.downloadDir.replace(/\/+$/, "").endsWith(`/${c.category}`);
 
 export const transmissionDriver = {
@@ -164,6 +170,28 @@ export const transmissionDriver = {
     if (t.error === 3) return { state: "error", progress: t.percentDone, message: `${c.name}: ${t.errorString}`, ...live };
     if (t.percentDone >= 1) return { state: "completed", progress: 1, path: mapPath(`${t.downloadDir.replace(/\/+$/, "")}/${t.name}`, c), ...live };
     return { state: t.status === 4 ? "downloading" : "queued", progress: t.percentDone, ...live };
+  },
+  /** One torrent as the clean-up needs it (same shape as qBittorrent's), and whether it is AnimeArr's own (label/folder). Read-only. */
+  async info(c: ClientCfg, ref: string): Promise<(OwnTorrent & { ours: boolean }) | null> {
+    const r = await transmission<{ torrents: TrTorrent[] }>(c, "torrent-get", { ids: [ref], fields: TR_FIELDS });
+    const t = r.torrents[0];
+    if (!t) return null;
+    const done = t.percentDone >= 1;
+    return {
+      hash: t.hashString.toLowerCase(),
+      name: t.name,
+      contentPath: mapPath(`${t.downloadDir.replace(/\/+$/, "")}/${t.name}`, c),
+      savePath: mapPath(t.downloadDir, c),
+      size: t.totalSize,
+      // Stopped (0) after finishing = seeding is over (a ratio limit stops it); the clean-up's seeding rules read this like qBittorrent's states.
+      state: done ? (t.status === 0 ? "stoppedUP" : "uploading") : t.status === 0 ? "stoppedDL" : "downloading",
+      ratio: Math.max(0, t.uploadRatio ?? 0),
+      seedingTimeSec: t.secondsSeeding ?? 0,
+      completedOn: t.doneDate && t.doneDate > 0 ? t.doneDate * 1000 : null,
+      ratioLimit: -2,
+      seedingTimeLimitMin: -2,
+      ours: ours(t, c),
+    };
   },
   async remove(c: ClientCfg, ref: string) {
     const r = await transmission<{ torrents: TrTorrent[] }>(c, "torrent-get", { ids: [ref], fields: TR_FIELDS });

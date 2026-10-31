@@ -30,6 +30,10 @@ interface Item {
   clientName?: string;
   progress: number | null;
   attempt: number;
+  /** Strikes so far (stalled health checks) and the limit. */
+  strikes?: number;
+  strikeLimit?: number;
+  strikeWhy?: string | null;
   stage?: string | null;
   ahead?: number | null;
   /** Smart batch: "Downloading 4 of 26 episodes (you have the rest)". */
@@ -127,6 +131,14 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
               </span>
             </div>
             <ReleaseLine release={g.release} />
+            {!!g.strikes && g.state === "downloading" && (
+              <p className="small qerr">
+                <Chip tone="warn" title={g.strikeWhy ? t("queue.strikesHelp", { why: g.strikeWhy }) : undefined}>
+                  {t("queue.strikes", { n: g.strikes, max: g.strikeLimit ?? 3 })}
+                </Chip>{" "}
+                <span className="muted">{g.strikeWhy}</span>
+              </p>
+            )}
             {g.state === "needs-attention" && g.error && (
               <p className="warn-text small qerr">
                 <FileX className="lucide" aria-hidden="true" /> {g.summary ?? g.error}

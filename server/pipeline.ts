@@ -42,6 +42,7 @@ import { importMovie, movieNextForRow } from "./movies.js";
 import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import { scanFolder } from "./mediafiles.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
+import { inspectFiles, walkFiles } from "./safety.js";
 
 export interface PipelineDeps {
   clients: DownloadClients;
@@ -135,6 +136,12 @@ export interface GrabRow {
   keep?: number;
   /** Smart batch info (JSON, batch.ts). */
   batch?: string | null;
+  /** Strikes so far (consecutive health checks that found it stalled), when the last one was added, and why. */
+  strikes?: number;
+  strike_at?: number | null;
+  strike_why?: string | null;
+  /** The indexer's name (blocklist page). */
+  indexer?: string | null;
 }
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
@@ -270,8 +277,8 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     inBatch.length > 1 ? { mode: select ? "pending" : "whole", total: inBatch.length, wanted: importIds.length, skippedEpisodes: skippedEps, skippedFiles: 0, leftovers: skippedEps.length > 0, note: null, autoReplace: purpose === "replace" && !req.purpose, since: now } : null;
   const why = seasonWhy ? `${c.why}. ${seasonWhy}` : c.why;
   const ins = db
-    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null);
+    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null, c.indexer ?? null);
   const id = Number(ins.lastInsertRowid);
   const line = batchLine(batch);
   if (dryRun) {
@@ -325,7 +332,7 @@ async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, rea
 }
 
 export function blocklist(row: GrabRow, reason: string) {
-  db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id) VALUES (?, ?, ?, ?, ?, ?)").run(row.guid, row.release, row.tvdb_id, reason, Date.now(), row.movie_id ?? null);
+  return Number(db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id, protocol, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(row.guid, row.release, row.tvdb_id, reason, Date.now(), row.movie_id ?? null, row.protocol ?? null, row.indexer ?? null).lastInsertRowid);
 }
 
 export const VIDEO = /\.(mkv|mp4|avi|m4v|ts|webm)$/i;
@@ -350,6 +357,70 @@ export function recoverGrabs() {
   db.prepare("UPDATE grabs SET state = 'failed', error = 'AnimeArr restarted while sending to the download client' WHERE state = 'sending' AND updated_at < ?").run(Date.now() - 10 * 60_000);
 }
 
+/** Health checks that count as separate strikes are at least this far apart (the tick itself runs every 30 s). */
+export const STRIKE_GAP_MS = 10 * 60_000;
+
+/** Adds a strike (at most one per STRIKE_GAP_MS) and returns the strikes so far. */
+export function addStrike(row: GrabRow, why: string, now: number, limit: number): number {
+  const cur = (db.prepare("SELECT strikes, strike_at FROM grabs WHERE id = ?").get(row.id) as { strikes: number; strike_at: number | null } | undefined) ?? { strikes: 0, strike_at: null };
+  if (cur.strike_at && now - cur.strike_at < STRIKE_GAP_MS) return cur.strikes;
+  const n = cur.strikes + 1;
+  db.prepare("UPDATE grabs SET strikes = ?, strike_at = ?, strike_why = ? WHERE id = ?").run(n, now, why, row.id);
+  if (n < limit) logDecision("info", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Strike ${n} of ${limit} for ${row.release}: ${why}. It is removed if it doesn't recover.`, detail: { grabId: row.id, strikes: n } });
+  return n;
+}
+const resetStrikes = (id: number) => db.prepare("UPDATE grabs SET strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?").run(id);
+
+/** The runtime (minutes) of the episode, or movie, a grab is for; null when unknown. */
+function runtimeOf(row: GrabRow): number | null {
+  if (row.movie_id) return (cache.prepare("SELECT runtime FROM movies WHERE id = ?").get(row.movie_id) as { runtime: number | null } | undefined)?.runtime ?? null;
+  const wanted = JSON.parse(row.episode_ids) as number[];
+  return episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.runtime ?? null;
+}
+
+/** Malware blocker, before import: looks through the download's folder (or file) when AnimeArr can reach it. */
+export function unsafeDownload(deps: Pick<PipelineDeps, "localPath">, row: GrabRow, arrPath: string, isFolder: boolean): string | null {
+  const s = getSettings().malware;
+  if (!s.enabled) return null;
+  const local = deps.localPath(arrPath);
+  if (!local) return null;
+  return inspectFiles(walkFiles(local, isFolder ? (rel) => rel === UNPACK_DIR || rel.startsWith(`${UNPACK_DIR}/`) : undefined), { extensions: s.extensions, runtimeMin: runtimeOf(row) });
+}
+
+/** Grabs whose torrent file list was already checked and found fine. */
+const scanned = new Set<number>();
+/** Malware blocker, while downloading: the file list of a torrent (once it has metadata), for clients that expose it. */
+async function scanWhileDownloading(row: GrabRow, job: ClientJob, deps: PipelineDeps): Promise<string | null> {
+  const s = getSettings().malware;
+  if (!s.enabled || scanned.has(row.id) || !deps.clients.listFiles || !deps.clients.canSelectFiles?.(job)) return null;
+  const files = await deps.clients.listFiles(job).catch(() => null);
+  if (!files?.length) return null; // no metadata yet: looked at again next round
+  const bad = inspectFiles(files, { extensions: s.extensions, runtimeMin: runtimeOf(row) });
+  if (!bad) scanned.add(row.id);
+  return bad;
+}
+
+/**
+ * A download that holds something dangerous or fake: removed from its client (with its data), the release blocklisted
+ * with the plain reason, the next release searched; nothing from it is ever imported.
+ */
+export async function rejectUnsafe(row: GrabRow, reason: string, deps: PipelineDeps, when: string) {
+  setState(row.id, "failed", reason);
+  const bid = blocklist(row, reason);
+  let removed = "";
+  if (row.client && row.client_ref) {
+    try {
+      await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
+      removed = `; removed it from ${clientName(row.client) || row.client}`;
+    } catch (e) {
+      removed = `; couldn't remove it from the download client (${(e as Error).message}), so delete it there by hand`;
+    }
+  }
+  logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `${row.release} ${reason} (found ${when}). Blocklisted it${removed}; nothing from it was imported. Looking for the next release.`, detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) }, undo: { action: "unblock", args: { id: bid, release: row.release } } });
+  if (row.movie_id) await movieNextForRow(row, deps, reason);
+  else await tryNext(row.id, rowRequest(row), deps, reason);
+}
+
 let ticking = false;
 /** One pass over in-flight grabs: checks the download clients, then imports and verifies finished downloads. */
 export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now()) {
@@ -366,11 +437,19 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
         const qh = getSettings().queueHealth;
         const stallMs = qh.stallHours * 3_600_000;
         const noMetadata = /metaDL/i.test(st.clientStatus ?? "");
+        // Malware blocker while it downloads (only clients that can list a torrent's files; Usenet is checked before import).
+        if (st.state !== "missing" && st.state !== "completed") {
+          const bad = await scanWhileDownloading(row, job, deps);
+          if (bad) {
+            await rejectUnsafe(row, bad, deps, "while it was downloading");
+            continue;
+          }
+        }
         // Waiting in the client's queue behind other downloads, paused, or post-processing isn't stalling: restart the
         // clock. After 3 days of that the Queue page says so (nothing is removed).
         if (st.state === "queued" && !noMetadata) {
           const long = now - row.at > 3 * 86_400_000 ? `still waiting in the download client after ${Math.floor((now - row.at) / 86_400_000)} days (${st.clientStatus ?? "queued"})` : null;
-          db.prepare("UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ? WHERE id = ?").run(now, st.progress, long, row.id);
+          db.prepare("UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ?, strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?").run(now, st.progress, long, row.id);
           continue;
         }
         if (st.state === "error") {
@@ -381,19 +460,28 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
         // Time spent in metaDL (the queued branch keeps progress_at fresh until the torrent starts fetching metadata).
         const metadataStuck = noMetadata && now - (row.progress_at ?? row.at) > qh.metadataMin * 60_000;
         const stalled = st.state === "downloading" && !noMetadata && now - (row.progress_at ?? row.updated_at) > stallMs && (row.progress ?? -1) >= st.progress;
-        if (st.state === "failed" || stalled || metadataStuck) {
-          const why = metadataStuck
+        const unhealthy = stalled || metadataStuck;
+        // A download that recovered loses its strikes.
+        if (!unhealthy && st.state !== "failed" && row.strikes) resetStrikes(row.id);
+        if (st.state === "failed" || unhealthy) {
+          let why = metadataStuck
             ? `the torrent found no peers to get its metadata from in ${qh.metadataMin} min`
             : stalled
               ? `no download progress for ${qh.stallHours} hours${st.seeders === 0 ? " (no seeders)" : ""}`
               : `download failed${st.message ? `: ${st.message}` : ""}`;
+          // Stalled and metadata-less downloads get strikes on consecutive health checks; a failure the client itself reports is final.
+          if (unhealthy && qh.strikes > 1) {
+            const n = addStrike(row, why, now, qh.strikes);
+            if (n < qh.strikes) continue;
+            why = `${why} (strike ${n} of ${qh.strikes})`;
+          }
           setState(row.id, "failed", why);
           blocklist(row, why);
           let removed = "";
           if (qh.removeFailed) {
             try {
               await deps.clients.remove(job);
-              removed = `; removed it from ${job.client === "sabnzbd" ? "SABnzbd" : "qBittorrent"}`;
+              removed = `; removed it from ${clientName(job.client) || job.client}`;
             } catch (e) {
               removed = `; couldn't remove it from the download client (${(e as Error).message})`;
             }
@@ -604,6 +692,9 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   const sonarrPath = singleArchive ? path.posix.dirname(sonarrPath0) : sonarrPath0;
   const single = VIDEO.test(sonarrPath);
   const folder = single ? path.posix.dirname(sonarrPath) : sonarrPath;
+  // Malware blocker: nothing from a download with dangerous or fake files is unpacked or imported.
+  const unsafe = unsafeDownload(deps, row, single || singleArchive ? sonarrPath0 : folder, !(single || singleArchive));
+  if (unsafe) return rejectUnsafe(row, unsafe, deps, "before import");
   // Torrents that arrive as archives: unpack (in the background) into the grab's own subfolder first; Sonarr then
   // MOVES the unpacked files, so the archives keep seeding and nothing is left behind. SABnzbd unpacks by itself.
   let unpackRel: string | null = null;
@@ -617,7 +708,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       return;
     }
     if (x.kind === "unavailable") return attention(x.why);
-    if (x.kind === "broken") return fail(x.why, false);
+    if (x.kind === "broken") return getSettings().malware.enabled && /password-protected/.test(x.why) ? rejectUnsafe(row, `contained a password-protected archive instead of a video (${x.why})`, deps, "before import") : fail(x.why, false);
     if (x.kind === "extracted") {
       unpacked = x.dest;
       unpackRel = `${folder}/${UNPACK_DIR}/${row.id}/`;
@@ -857,8 +948,7 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
   const eps = JSON.parse(row.episode_ids) as number[];
   let undo = null;
   if (opts.blocklist) {
-    const r = db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id) VALUES (?, ?, ?, ?, ?, ?)").run(row.guid, row.release, row.tvdb_id, "removed from the queue by you", Date.now(), row.movie_id ?? null);
-    undo = { action: "unblock" as const, args: { id: Number(r.lastInsertRowid), release: row.release } };
+    undo = { action: "unblock" as const, args: { id: blocklist(row, "removed from the queue by you"), release: row.release } };
   }
   logDecision("info", { tvdbId: row.tvdb_id, episodeIds: eps, release: row.release, why: `${mayBeImporting ? "Closed" : "Removed"} ${row.release}${mayBeImporting ? " without deleting its files (an import may have been in progress)" : " from the queue"}${opts.blocklist ? " and blocklisted it" : ""}${opts.searchNext ? "; trying the next candidate" : ""} (you confirmed)`, detail: { grabId: row.id }, undo });
   if (opts.searchNext) return row.movie_id ? movieNextForRow(row, deps, "removed by you") : tryNext(row.id, rowRequest(row), deps, "removed by you");

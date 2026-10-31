@@ -14,7 +14,8 @@ const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
 
 // These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
-patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" } }));
+// These cover the first-timeout path (strikes have their own tests in malware.test.ts).
+patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" }, queueHealth: { ...s.queueHealth, strikes: 1 } }));
 const { startGrab, pipelineTick, STALL_MS, recoverGrabs, removeGrab } = await import("../server/pipeline.js");
 const { queueView, grabHistory } = await import("../server/queue.js");
 const { releaseDryRunDecisions } = await import("../server/managed.js");
