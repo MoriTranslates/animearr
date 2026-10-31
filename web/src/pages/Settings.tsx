@@ -1,7 +1,7 @@
 import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUnsaved } from "../unsaved";
-import { rememberDetail } from "../errors";
+import { copyText, rememberDetail } from "../errors";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, DEFAULT_LOGIN, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
@@ -1107,6 +1107,57 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
         <p className="muted small">{t("security.bypassHelp")}</p>
         {bypass && <p className="warn-text small">{t("security.bypassWarn")}</p>}
       </div>
+      <ApiKeyCard />
+    </div>
+  );
+}
+
+/** AnimeArr's own API key, for request apps that use its Sonarr-compatible API (shown to a logged-in session only). */
+function ApiKeyCard() {
+  const toast = useToast();
+  const [key, setKey] = useState<string | null | undefined>(undefined);
+  const [ask, setAsk] = useState(false);
+  useEffect(() => {
+    void api<{ apiKey: string | null }>("/settings/apikey").then((r) => setKey(r.apiKey)).catch(() => setKey(null));
+  }, []);
+  return (
+    <div className="card pad stack">
+      <h2>{t("apikey.title")}</h2>
+      <p className="muted small">{t("apikey.help")}</p>
+      {key === null && <p className="small">{t("apikey.loginNeeded")}</p>}
+      {key && (
+        <div className="row">
+          <SecretInput value={key} onChange={() => undefined} label={t("apikey.title")} />
+          <button type="button" className="small" onClick={async () => {
+              const ok = await copyText(key);
+              toast(ok ? t("apikey.copied") : t("apikey.copyFailed"), !ok);
+            }}
+          >
+            {t("apikey.copy")}
+          </button>
+          <button type="button" className="small ghost" onClick={() => setAsk(true)}>
+            {t("apikey.new")}
+          </button>
+        </div>
+      )}
+      {ask && (
+        <Confirm
+          title={t("apikey.newTitle")}
+          confirmLabel={t("apikey.new")}
+          danger
+          onClose={() => setAsk(false)}
+          onConfirm={async () => {
+            try {
+              setKey((await api<{ apiKey: string }>("/settings/apikey/regenerate", { method: "POST" })).apiKey);
+              setAsk(false);
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
+          <p>{t("apikey.newBody")}</p>
+        </Confirm>
+      )}
     </div>
   );
 }

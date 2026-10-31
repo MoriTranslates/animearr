@@ -17,6 +17,8 @@ import { getSettings, underAllowedRoot } from "./settings.js";
 import { searchMovie, startMovieGrab } from "./movies.js";
 import type { Candidate } from "./pipeline.js";
 import { batchPrefersSingles } from "./batch.js";
+import { addToQueue } from "./fillin.js";
+import { scopedEpisodeIds } from "./scope.js";
 
 export interface AutoDeps {
   search: typeof deepSearch;
@@ -145,6 +147,22 @@ async function searchTargets(tvdbId: number, seriesTitle: string, targets: numbe
   return { results: out };
 }
 
+
+/**
+ * "Search now" for a show that was just added (Add, or a Jellyseerr request): its aired, missing episodes in scope.
+ * ⚡ handles at most 26 episodes at once; a longer backlog goes to the fill-in queue instead.
+ */
+export function searchMissingNow(tvdbId: number, title: string, now = Date.now()) {
+  const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
+  if (!s) return { searching: 0 };
+  const missing = [...scopedEpisodeIds(tvdbId, s.id, now)].filter((e) => {
+    const r = cache.prepare("SELECT has_file, air_utc FROM episodes WHERE id = ?").get(e) as { has_file: number; air_utc: number | null } | undefined;
+    return r?.has_file === 0 && r.air_utc !== null && r.air_utc <= now; // aired, no file
+  });
+  if (missing.length > 26) return { searching: 0, queued: addToQueue([tvdbId]).added, missing: missing.length };
+  if (missing.length) void autoSearchEpisodes(tvdbId, missing).catch((e) => logDecision("fail", { tvdbId, title, why: `Search after adding ${title} failed: ${(e as Error).message}` }));
+  return { searching: missing.length };
+}
 /** ⚡ for a movie (a movie that has a file needs replace = the user confirmed it). */
 export async function autoSearchMovie(movieId: number, opts: { replace?: boolean } = {}, deps = { search: searchMovie, grab: startMovieGrab }) {
   const m = cache.prepare("SELECT title, year FROM movies WHERE id = ?").get(movieId) as { title: string; year: number | null } | undefined;

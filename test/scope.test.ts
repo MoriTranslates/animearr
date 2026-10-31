@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
-const { inScope, scopeFor, scopePreview, setScope } = await import("../server/scope.js");
+const { inScope, scopeFor, scopePreview, setScope, validateScope } = await import("../server/scope.js");
 const { addToQueue, fillInTick, fillInView, editQueue } = await import("../server/fillin.js");
 
 const DAY = 86_400_000;
@@ -43,6 +43,17 @@ test("scope: most recent N seasons, missing only, specials on/off, future only, 
   assert.equal(ids({ seasons: "latest", recentN: 1, episodes: "future", specials: false }), 1);
   assert.equal(ids({ seasons: "all", recentN: 1, episodes: "none", specials: true }), 0);
   assert.deepEqual(scopePreview(100, { seasons: "recent", recentN: 3, episodes: "all", specials: false }), { seasons: 3, episodes: 12, missing: 5, upcoming: 1 });
+});
+
+test("scope: picked seasons (a Jellyseerr request) cover exactly those seasons, and need at least one", () => {
+  const ids = (sc: Parameters<typeof inScope>[0]) => inScope({ ...sc, since: now }, eps(), now).length;
+  assert.equal(ids({ seasons: "picked", picked: [2, 5], recentN: 1, episodes: "all", specials: false, creditless: true }), 8);
+  assert.equal(ids({ seasons: "picked", picked: [2, 5], recentN: 1, episodes: "missing", specials: false, creditless: true }), 3);
+  assert.deepEqual(validateScope({ seasons: "picked", picked: [5, 2, 2], recentN: 1, episodes: "all" }).picked, [2, 5]);
+  assert.throws(() => validateScope({ seasons: "picked", picked: [], recentN: 1, episodes: "all" }), /at least one season/);
+  setScope([100], validateScope({ seasons: "picked", picked: [3], recentN: 1, episodes: "missing" }));
+  assert.deepEqual(scopeFor(100).picked, [3], "kept across reads");
+  setScope([100], null);
 });
 
 test("defaults: continuing = future + missing of the latest season; a show's own scope wins", () => {

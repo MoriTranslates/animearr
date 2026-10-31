@@ -1,7 +1,7 @@
 /**
  * Per-show monitoring scope (Sonarr's "Monitor" options, plus "most recent N seasons"): which episodes of a managed
  * show AnimeArr searches for. Two parts:
- *   seasons:  all | first | latest | recent (N most recent seasons)
+ *   seasons:  all | first | latest | recent (N most recent seasons) | picked (a list, e.g. what Jellyseerr requested)
  *   episodes: all (aired) | missing | future | futureAndMissing | existing | none
  *   specials: S0 included or not
  * Defaults: ended shows "Missing only" (all seasons); continuing shows "Future + missing of the latest season".
@@ -12,14 +12,14 @@ import { anidbSpecialKind } from "./anidb.js";
 import { cache, db } from "./db.js";
 import { getSettings } from "./settings.js";
 
-export type SeasonScope = "all" | "first" | "latest" | "recent";
+export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
-export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; /** Creditless OP/ED (NCOP/NCED) specials, even when other specials are off. */ creditless: boolean }
+export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; /** Creditless OP/ED (NCOP/NCED) specials, even when other specials are off. */ creditless: boolean; /** The seasons of a "picked" scope. */ picked?: number[] }
 /** Default scopes (no own scope yet) keep honouring Sonarr's per-episode monitored flags, so upgrading never widens what an existing managed show searches. */
-export const SEASON_SCOPES: SeasonScope[] = ["all", "first", "latest", "recent"];
+export const SEASON_SCOPES: SeasonScope[] = ["all", "first", "latest", "recent", "picked"];
 export const EPISODE_SCOPES: EpisodeScope[] = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 
-interface Row { tvdb_id: number; seasons: SeasonScope; recent_n: number; episodes: EpisodeScope; specials: number; creditless?: number; since: number }
+interface Row { tvdb_id: number; seasons: SeasonScope; recent_n: number; episodes: EpisodeScope; specials: number; creditless?: number; since: number; picked?: string | null }
 
 /** When creditless OP/ED became part of the default scope (shows managed before keep their search set). */
 const CREDITLESS_FROM = Date.parse("2026-10-26T20:00:00Z");
@@ -27,7 +27,7 @@ const CREDITLESS_FROM = Date.parse("2026-10-26T20:00:00Z");
 /** The scope a show has: its own, else the default for its status. */
 export function scopeFor(tvdbId: number): Scope & { source: "show" | "default"; since: number; honourSonarr?: boolean } {
   const r = db.prepare("SELECT * FROM series_scope WHERE tvdb_id = ?").get(tvdbId) as Row | undefined;
-  if (r) return { seasons: r.seasons, recentN: r.recent_n, episodes: r.episodes, specials: !!r.specials, creditless: r.creditless !== 0, source: "show", since: r.since };
+  if (r) return { seasons: r.seasons, recentN: r.recent_n, episodes: r.episodes, specials: !!r.specials, creditless: r.creditless !== 0, ...(r.seasons === "picked" ? { picked: JSON.parse(r.picked ?? "[]") as number[] } : {}), source: "show", since: r.since };
   const status = (cache.prepare("SELECT status FROM series WHERE tvdb_id = ?").get(tvdbId) as { status: string } | undefined)?.status;
   const d = status === "ended" ? getSettings().scope.ended : getSettings().scope.continuing;
   const since = (db.prepare("SELECT since FROM managed WHERE tvdb_id = ?").get(tvdbId) as { since: number } | undefined)?.since ?? 0;
@@ -40,7 +40,13 @@ export function validateScope(x: Partial<Scope>): Scope {
   if (!x.episodes || !EPISODE_SCOPES.includes(x.episodes)) throw Object.assign(new Error("Unknown episode scope"), { statusCode: 400 });
   const n = Math.round(Number(x.recentN ?? 1));
   if (!Number.isFinite(n) || n < 1 || n > 100) throw Object.assign(new Error("Most recent seasons: 1 to 100"), { statusCode: 400 });
-  return { seasons: x.seasons, recentN: n, episodes: x.episodes, specials: x.specials === true, creditless: x.creditless !== false };
+  const out: Scope = { seasons: x.seasons, recentN: n, episodes: x.episodes, specials: x.specials === true, creditless: x.creditless !== false };
+  if (x.seasons === "picked") {
+    const picked = [...new Set((Array.isArray(x.picked) ? x.picked : []).map(Number))].sort((a, b) => a - b);
+    if (!picked.length || picked.some((s) => !Number.isInteger(s) || s < 0 || s > 9999)) throw Object.assign(new Error("Pick at least one season"), { statusCode: 400 });
+    out.picked = picked;
+  }
+  return out;
 }
 
 /** Sets (or clears, with null) a show's own scope. "Future" counts from when the episode mode was chosen. */
@@ -49,8 +55,8 @@ export function setScope(tvdbIds: number[], scope: Scope | null, now = Date.now(
     if (!scope) db.prepare("DELETE FROM series_scope WHERE tvdb_id = ?").run(id);
     else
       db.prepare(
-        "INSERT INTO series_scope (tvdb_id, seasons, recent_n, episodes, specials, creditless, since) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET seasons = excluded.seasons, recent_n = excluded.recent_n, specials = excluded.specials, creditless = excluded.creditless, since = CASE WHEN series_scope.episodes = excluded.episodes THEN series_scope.since ELSE excluded.since END, episodes = excluded.episodes",
-      ).run(id, scope.seasons, scope.recentN, scope.episodes, scope.specials ? 1 : 0, scope.creditless === false ? 0 : 1, now);
+        "INSERT INTO series_scope (tvdb_id, seasons, recent_n, episodes, specials, creditless, since, picked) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tvdb_id) DO UPDATE SET seasons = excluded.seasons, recent_n = excluded.recent_n, specials = excluded.specials, creditless = excluded.creditless, picked = excluded.picked, since = CASE WHEN series_scope.episodes = excluded.episodes THEN series_scope.since ELSE excluded.since END, episodes = excluded.episodes",
+      ).run(id, scope.seasons, scope.recentN, scope.episodes, scope.specials ? 1 : 0, scope.creditless === false ? 0 : 1, now, scope.seasons === "picked" ? JSON.stringify(scope.picked ?? []) : null);
   }
 }
 
@@ -64,7 +70,13 @@ export function inScope(scope: Scope & { since?: number; honourSonarr?: boolean 
   const lastStarted = started.at(-1) ?? 0;
   const later = regular.filter((n) => n > lastStarted);
   const seasons = new Set<number>(
-    scope.seasons === "all" ? regular : scope.seasons === "first" ? regular.slice(0, 1) : [...(scope.seasons === "latest" ? started.slice(-1) : started.slice(-scope.recentN)), ...later],
+    scope.seasons === "picked"
+      ? (scope.picked ?? [])
+      : scope.seasons === "all"
+        ? regular
+        : scope.seasons === "first"
+          ? regular.slice(0, 1)
+          : [...(scope.seasons === "latest" ? started.slice(-1) : started.slice(-scope.recentN)), ...later],
   );
   if (scope.specials) seasons.add(0);
   const since = scope.since ?? 0;
