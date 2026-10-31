@@ -8,7 +8,7 @@ import { type ProwlarrRelease } from "./arr/prowlarr.js";
 import { searchAll } from "./indexers.js";
 import { identify, type IdentifyContext } from "./core/identify.js";
 import { normalizeTitle, splitSeason } from "./core/normalize.js";
-import { rankRelease, compareRanked, type Known, type Ranked } from "./core/rank.js";
+import { rankRelease, compareRanked, type Known, type Profile, type Ranked } from "./core/rank.js";
 import { animeTiers, seadexForSeason } from "./seadex.js";
 import type { LibEpisode, NumberingRule } from "./core/resolver.js";
 import { burnedInFact, coverFor, seasonResolution } from "./audit.js";
@@ -19,6 +19,7 @@ import { profileFor } from "./profiles.js";
 import { releaseRulesFor } from "./releaseRules.js";
 import { parseRelease, type Source } from "./core/parser.js";
 import { combineHave, haveRevisions, properMode } from "./propers.js";
+import { currentLane, inLane } from "./searchQueue.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
   const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
@@ -211,9 +212,43 @@ export interface SearchProgress {
   tier: 1 | 2;
   found: number;
   results: SearchResult[];
+  /** Why the remaining queries were skipped (early stop), when they were. */
+  stoppedEarly?: string | null;
 }
 
-export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; packs?: boolean; onProgress?: (p: SearchProgress) => void } = {}) {
+/**
+ * Early stop: the release is already the top of what any later query could find for this episode, so the remaining
+ * queries can't change the winner. Deliberately narrow: SeaDex's best release for the show and watch mode (the highest
+ * quality points there are), accepted, at least 90% sure of the language and of the episode (and the automatic
+ * minimum), from the preferred protocol, at the profile's resolution, exactly the episode (no pack or extras), the
+ * season's group when the season has one, and no warning or problem flag (burn-in, censored, size, seeders, indexer
+ * health, placeholder...). Another copy of the same release elsewhere ties at best.
+ */
+export function clearlyBest(r: SearchResult, o: { profile: Pick<Profile, "protocolOrder" | "noProtocolPreference" | "resolution">; minConfidence: number; seasonGroup: string | null }) {
+  return (
+    r.rank.accept &&
+    r.rank.flags.some((f) => f.key === "seadex" && f.label === "SeaDex best") &&
+    !r.rank.flags.some((f) => f.tone === "bad" || f.tone === "warn") &&
+    r.rank.langProb >= 0.9 &&
+    r.confidence >= Math.max(90, o.minConfidence) &&
+    (!!o.profile.noProtocolPreference || r.protocol === o.profile.protocolOrder[0]) &&
+    r.quality?.resolution === o.profile.resolution &&
+    r.coversTarget &&
+    r.extra === 0 &&
+    (!o.seasonGroup || r.group?.toLowerCase() === o.seasonGroup.toLowerCase())
+  );
+}
+
+/**
+ * `earlyStop` (automatic searches of one episode): once the best result is clearlyBest(), the queries not sent yet are
+ * skipped (tier 1's rest and tier 2). Interactive searches always run in full.
+ */
+export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; packs?: boolean; earlyStop?: { minConfidence: number }; onProgress?: (p: SearchProgress) => void } = {}) {
+  // Each search waits its turn for indexer queries in its own lane (or its caller's, e.g. a ⚡ job).
+  return currentLane() ? deepSearchNow(tvdbId, episodeIds, opts) : inLane(null, () => deepSearchNow(tvdbId, episodeIds, opts));
+}
+
+async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Parameters<typeof deepSearch>[2] = {}) {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("That series isn't in the synced library; run Sync first"), { statusCode: 404 });
   const all = episodesFor(tvdbId);
@@ -250,6 +285,8 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   let searched = 0;
   let total = tier1.length;
   let tier: 1 | 2 = 1;
+  let stoppedEarly = null as string | null;
+  let skippedQueries = 0;
 
   /** Parses, maps and ranks one release as soon as it arrives (so partial results can be shown). */
   const consider = (r: ProwlarrRelease) => {
@@ -296,16 +333,34 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
     });
   };
   const sorted = () => [...results].sort((a, b) => compareRanked(a, b) || a.extra - b.extra);
-  const report = () => opts.onProgress?.({ searched, total, tier, found: raw.size, results: sorted() });
+  const report = () => opts.onProgress?.({ searched, total, tier, found: raw.size, results: sorted(), stoppedEarly });
+  const single = targets.length === 1 && !opts.packs && !opts.full ? targets[0] : null;
+  const stop = () => {
+    if (!opts.earlyStop || !single || stoppedEarly) return !!stoppedEarly;
+    const best = sorted()[0];
+    const sg = groups.get(`${single.season}`)?.group ?? null;
+    if (!best || !clearlyBest(best, { profile: prof, minConfidence: opts.earlyStop.minConfidence, seasonGroup: sg })) return false;
+    stoppedEarly = `${best.title} is SeaDex's best release, ${Math.round(best.rank.langProb * 100)}% ${best.rank.lang}, ${best.confidence}% sure of the episode, nothing to improve on`;
+    return true;
+  };
 
   const run = async (list: string[]) => {
     let i = 0;
     await Promise.all(
       Array.from({ length: Math.min(6, list.length) }, async () => {
         while (i < list.length) {
+          if (stop()) {
+            skippedQueries += list.length - i;
+            i = list.length;
+            break;
+          }
           const q = list[i++];
+          let skipped = false;
           try {
-            for (const r of await searchAll(q, allCats.has(q) ? { categories: [] } : {}))
+            // A query still waiting for a slot when the search stops early is dropped without asking the indexers.
+            const rows = await searchAll(q, { ...(allCats.has(q) ? { categories: [] } : {}), skip: () => (skipped = stop()) });
+            if (skipped) skippedQueries++;
+            for (const r of rows)
               if (!raw.has(r.guid)) {
                 raw.set(r.guid, r);
                 consider(r);
@@ -313,7 +368,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
           } catch (e) {
             errors.push(`${q}: ${(e as Error).message}`);
           }
-          searched++;
+          if (!skipped) searched++;
           report();
         }
       }),
@@ -327,7 +382,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   // Replace season wants packs: single episodes don't count as covering it.
   const usable = (eid: number) => results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid) && (!opts.packs || r.episodeIds.length > 1));
   const uncovered = targets.filter((t) => !usable(t.id));
-  if (opts.full || uncovered.length) {
+  if (!stop() && (opts.full || uncovered.length)) {
     tier = 2;
     const done = new Set(queries);
     const more = [...queryGrid(titles, targets, opts.budget), ...(opts.budget && opts.budget < 10 ? [] : combos)].filter((q) => !done.has(q));
@@ -337,6 +392,7 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
     await run(more);
   }
   const final = sorted();
+  if (stoppedEarly && skippedQueries) stoppedEarly += ` (${skippedQueries} ${skippedQueries === 1 ? "query" : "queries"} skipped)`;
   return {
     series: { tvdbId: series.tvdbId, title: series.title, cover: series.cover },
     targets: targets.map((t) => ({ id: t.id, season: t.season, episode: t.episode, absolute: t.absolute, title: t.title ?? null, hasFile: !!t.hasFile })),
@@ -349,6 +405,8 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
     skipped,
     errors,
     tookMs: Date.now() - started,
+    /** Set when the search stopped early (see clearlyBest): why, and how many queries it skipped. */
+    stoppedEarly,
     results: final,
   };
 }
