@@ -10,6 +10,9 @@ npm test           # node:test suites in test/
 npm run typecheck
 ```
 
+- **Branches:** `main` holds released versions only; new work goes to `nightly`. Open pull requests against
+  `nightly` (fixes for a released version can target `main`). Both branches are protected: changes arrive through pull
+  requests whose tests pass.
 - **Small, focused pull requests**, with a test when you change behaviour (the pipeline, parser and ranking all have
   tests with mocks; nothing should need a real Sonarr or download client).
 - **Never commit keys, tokens or personal paths.** `scripts/secret-scan.sh` runs as a pre-commit check; please run it.
