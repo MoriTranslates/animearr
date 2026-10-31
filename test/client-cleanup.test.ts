@@ -14,7 +14,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
-const { cleanupGrab } = await import("../server/downloads.js");
+const { cleanupGrab, sweepExtraClients } = await import("../server/downloads.js");
 const { realClients } = await import("../server/arr/clients.js");
 type Cfg = import("../server/settings.js").ClientCfg;
 
@@ -152,4 +152,17 @@ test("Transmission: a rejected torrent goes only after an hour; deleting switche
   assert.equal(await cleanupGrab(addGrab("tr1", "abcdef0123"), "imported", deps), null);
   assert.equal(rpc.length, 0, "no request at all");
   patchSettings((s) => ({ ...s, downloads: { ...s.downloads, allowDelete: true } }));
+});
+
+test("hourly sweep: a Transmission torrent that was still seeding at import time is removed once seeding is done; others are left", async () => {
+  let seeded = false;
+  mock((m) => (m === "torrent-get" ? { torrents: [tor(seeded ? {} : { status: 6, uploadRatio: 0.1, secondsSeeding: 60, doneDate: Math.floor(Date.now() / 1000) })] } : {}), true);
+  const id = addGrab("tr1", "abcdef0123");
+  db.prepare("UPDATE grabs SET updated_at = ? WHERE id = ?").run(Date.now(), id);
+  assert.equal(await cleanupGrab(id, "imported", deps), null, "seeding at import time");
+  assert.equal(await sweepExtraClients(deps), 0);
+  assert.equal(rpc.some((r) => r.method === "torrent-remove"), false);
+  seeded = true;
+  assert.equal(await sweepExtraClients(deps), 1);
+  assert.deepEqual(rpc.find((r) => r.method === "torrent-remove")?.args, { ids: ["abcdef0123"], "delete-local-data": true });
 });

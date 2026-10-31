@@ -443,7 +443,21 @@ export async function downloadsTick() {
   else if (s.cleanup === "auto" && s.allowDelete && Date.now() - lastSweep > 3_600_000) {
     lastSweep = Date.now();
     await runCleanup({ only: ["leftover"] }).catch(() => undefined);
+    await sweepExtraClients().catch(() => undefined);
   }
+}
+
+/**
+ * NZBGet and Transmission downloads that couldn't be cleaned right after their outcome (a torrent still seeding) get
+ * another look: the same rules, own category/label only, recent grabs only. Hourly, from downloadsTick.
+ */
+export async function sweepExtraClients(deps?: Parameters<typeof cleanupGrab>[2]) {
+  const ids = (getSettings().extraClients ?? []).filter((c) => c.enabled && (c.type === "transmission" || c.type === "nzbget")).map((c) => c.id);
+  if (!ids.length) return 0;
+  const rows = db.prepare(`SELECT id, state FROM grabs WHERE dry_run = 0 AND state IN ('done', 'failed') AND updated_at > ? AND client IN (${ids.map(() => "?").join(",")}) ORDER BY id DESC LIMIT 200`).all(Date.now() - 30 * 86_400_000, ...ids) as { id: number; state: string }[];
+  let n = 0;
+  for (const r of rows) if (await cleanupGrab(r.id, r.state === "done" ? "imported" : "rejected", deps)) n++;
+  return n;
 }
 
 export function downloadsStatus() {
