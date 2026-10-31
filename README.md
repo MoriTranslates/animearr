@@ -75,7 +75,7 @@ Radarr and Prowlarr, and can take your anime over from them when you're ready.
   it opens full screen, with the new mast-and-pennant icon.
 - **Plays nicely with your stack.** Prowlarr or direct indexers (Newznab, Torznab, Nyaa, SubsPlease, RSS) with a circuit
   breaker for broken ones; SABnzbd, NZBGet, qBittorrent, Transmission, Deluge, rTorrent (see
-  [download clients](#download-clients)); Plex scans and "Watch in Plex"; Discord and ntfy; a guided migration from
+  [download clients](#download-clients)); Plex, Jellyfin, Emby and Kodi (see [media servers](#media-servers)); Discord and ntfy; a guided migration from
   Sonarr/Radarr.
 - **Looks after itself.** Stalled-download handling, clean-up after imports, a recycling bin with retention, nightly
   backups.
@@ -207,6 +207,31 @@ must be one of the importer's source roots). What you lose with Blackhole:
 
 </details>
 
+## Media servers
+
+Settings → Media servers connects Plex, Jellyfin, Emby and Kodi. After AnimeArr imports, upgrades, renames or deletes
+something, each enabled server is asked to scan just that folder. Use the path mappings when a server sees your
+library under a different path than AnimeArr does.
+
+AnimeArr can also write small files beside your videos, so the servers show a show with AnimeArr's numbering (split
+cours, sequel seasons, specials) instead of guessing:
+
+| Server | Files | Where to find the key |
+|---|---|---|
+| Plex | `.plexmatch` (title, year, TVDB id) | your Plex token |
+| Jellyfin | NFO files + poster/banner | Dashboard → API Keys |
+| Emby | NFO files + poster/banner | Settings → Advanced → API Keys |
+| Kodi | NFO files + poster/banner | Kodi's web-server login (Settings → Services → Control) |
+
+- NFO files are Kodi's format: `tvshow.nfo`, `season.nfo` and one `.nfo` per episode file, with the TVDB, TMDB,
+  IMDb, AniDB and AniList ids AnimeArr knows. They're kept in step on every import, upgrade, rename and delete.
+- Every file AnimeArr writes starts with a "Written by AnimeArr" line. Delete that line to keep your own edits; AnimeArr
+  then leaves the file alone. Files you made yourself are never overwritten or removed.
+- The files are off on existing installs (they add files to every show folder). Switch them on, then use "Write them
+  for every show now" to fill in your library. The new-user wizard asks which server(s) you use and switches them on.
+- The `{Server Id Hint}` naming token adds the main server's folder ID hint to new series folders: `{tvdb-12345}`
+  for Plex, `[tvdbid-12345]` for Jellyfin and Emby.
+
 ## FAQ
 
 **Do I need Sonarr?**
@@ -248,7 +273,7 @@ affiliated with any anime, studio or publisher.
 - No quality profiles/cutoffs, custom formats or must/must-not-contain words yet: choices come from your language
   profile, size preset and resolution.
 - No Sonarr-compatible API, so Overseerr/Jellyseerr, Bazarr, LunaSea or nzb360 can't talk to AnimeArr directly.
-- Jellyfin/Emby/Kodi aren't supported yet (Plex is). Notifications are Discord and ntfy.
+- "Watch in" links are Plex only (Jellyfin, Emby and Kodi get scans and files). Notifications are Discord and ntfy.
 - An existing anime folder can't yet be imported without Sonarr (new users add shows one by one).
 - RAR archives aren't unpacked (7z/ZIP are). No blocklist page, log viewer or downloadable backups yet.
 - No "forgot password" reset yet: keep your new password somewhere safe.
