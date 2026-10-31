@@ -48,6 +48,7 @@ registerSonarrApi(app, {
     searchEpisodes: async () => ({ results: [] }),
     searchTitles: async () => ({ results: [], anilist: "ok" as const }),
     queue: async () => ({ items: queueItems }) as never,
+    rescan: async () => undefined,
   },
 });
 let KEY = "";
@@ -156,7 +157,7 @@ test("commands: missing-episode search runs AnimeArr's search; unknown commands 
   assert.deepEqual(searched, [777]);
   assert.equal((await call("GET", `/api/v3/command/${c.body.id}`)).body.name, "MissingEpisodeSearch");
   assert.equal((await call("POST", "/api/v3/command", { name: "RescanSeries", seriesId: s.id })).status, 201);
-  assert.equal((await call("POST", "/api/v3/command", { name: "Backup" })).status, 400);
+  assert.equal((await call("POST", "/api/v3/command", { name: "Frobnicate" })).status, 400);
 });
 
 test("queue: one record per episode with the fields request apps read", async () => {
