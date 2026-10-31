@@ -70,6 +70,8 @@ export const viewStrings = {
   "ep.subsNone": "None",
   "ep.subsNoTarget": "No {lang} (has {langs})",
   "ep.subsAlso": "also {langs}",
+  "ep.subsAlsoMore": "also {langs} and {n} more",
+  "ep.openSeries": "Series",
   "ep.subsUnlabelled": "Not labelled (language unknown)",
   "activity.resolved": "Sorted ✓",
   "activity.resolvedHelp": "A later download of the same episode worked, so nothing is left to do.",

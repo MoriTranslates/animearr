@@ -276,14 +276,17 @@ function subsLine(d: Detail, lang: string) {
   const side = d.own?.sidecars ?? [];
   const tracks = own.length || side.length;
   const all = tracks ? [...own.map((x) => x.lang), ...side.map((x) => x.lang)] : (d.file?.subs ?? []);
-  const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))];
-  const also = others.length ? ` · ${t("ep.subsAlso", { langs: languageList(others) })}` : "";
+  // Japanese first (the original), then the rest; a long list (a streaming release can carry 25+) is shortened here and
+  // spelled out under Technical details.
+  const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))].sort((a, b) => Number(b === "ja") - Number(a === "ja"));
+  const short = (xs: string[]) => (xs.length > 3 ? t("ep.subsAlsoMore", { langs: languageList(xs.slice(0, 2)), n: xs.length - 2 }) : t("ep.subsAlso", { langs: languageList(xs) }));
+  const also = others.length ? ` · ${short(others)}` : "";
   if (code === "forced-only") return t("ep.subsSigns", { lang: L }) + also;
   if (code === "untagged") return t("ep.subsUnlabelled");
   const full = tracks ? own.some((x) => x.lang === lang && !x.partial) || side.some((x) => x.lang === lang) : (d.file?.subs ?? []).includes(lang);
   if (full) return t("ep.subsFull", { lang: L }) + also;
   if (!all.length) return t("ep.subsNone");
-  return t("ep.subsNoTarget", { lang: L, langs: languageList(others) });
+  return t("ep.subsNoTarget", { lang: L, langs: others.length > 3 ? `${languageList(others.slice(0, 2))} +${others.length - 2}` : languageList(others) });
 }
 /** "English", "Japanese + English", "1 track, language unknown". */
 function trackAudio(d: Detail) {
@@ -372,7 +375,15 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
           </button>
           <div className="sh-title">
             <span className="eyebrow show-eyebrow">
-              {d ? [d.seriesTitle, d.season === 0 ? t("series.specials") : t("common.season", { n: d.season }), t("ep.episodeN", { n: d.episode }), d.airUtc ? new Date(d.airUtc).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ") : ""}
+              {/* The show name opens the series (and closes the sheet, which may sit on that very page). */}
+              {d && (
+                <span onClick={onClose}>
+                  <Link to={`/show/${d.tvdbId}`} className="sh-series">
+                    {d.seriesTitle}
+                  </Link>
+                </span>
+              )}
+              {d ? " · " + [d.season === 0 ? t("series.specials") : t("common.season", { n: d.season }), t("ep.episodeN", { n: d.episode }), d.airUtc ? new Date(d.airUtc).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ") : ""}
             </span>
             <h2>{d ? (d.title ?? label) : ""}</h2>
           </div>
@@ -423,10 +434,6 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             {d.file ? (
               <dl className="facts">
                 {/* The friendly facts first; the file path, codecs, tracks and release names are under Technical details. */}
-                <div>
-                  <dt>{t("ep.quality")}</dt>
-                  <dd>{resLabel(d.file.resolution) ?? d.file.quality ?? "—"}</dd>
-                </div>
                 <div>
                   <dt>{t("ep.size")}</dt>
                   <dd>{d.file.size ? fmtSize(d.file.size) : "—"}</dd>
@@ -580,9 +587,16 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               </div>
             </details>
             )}
-            <Link to={`/activity`} className="small">
-              {t("nav.activity")} →
-            </Link>
+            <div className="row">
+              <span onClick={onClose}>
+                <Link to={`/show/${d.tvdbId}`} className="small">
+                  {t("ep.openSeries")} →
+                </Link>
+              </span>
+              <Link to={`/activity`} className="small">
+                {t("nav.activity")} →
+              </Link>
+            </div>
           </div>
         )}
         {actions.ui}
