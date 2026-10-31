@@ -70,7 +70,9 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 ### Absorbed glue apps
 - [ ] Queue Doctor (stalled/slow/failed imports, extraction, extension blocker)
 - [ ] Backlog hunter (rate-limited missing/upgrade searches) — module 7
-- [ ] Lists and watchlists (AniList/MAL, Plex watchlist, follow-a-group rules) — module 10
+- [x] Import lists: AniList and MyAnimeList accounts add shows by themselves (preview and confirm first, never removes, exclusions) — module 10
+- [x] iCal calendar feed (`/feed/calendar/animearr.ics?apikey=`), with a link button on the Calendar
+- [ ] Lists and watchlists, the rest: Plex watchlist, follow-a-group rules, a list that clears the library (Sonarr's "clean library"; deliberately not built)
 - [ ] Collections — module 14
 - [ ] Retention and watch-driven monitoring — module 15
 
