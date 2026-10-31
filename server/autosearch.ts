@@ -9,6 +9,10 @@
  *
  * An episode that already has a file is only looked at for a newer version of it (v2, REPACK from the same group, when
  * "Propers and repacks" allows upgrades, the file isn't locked and a recycling bin is set): that one is replaced, nothing else.
+ *
+ * The ⚡ button doesn't wait for all that: queueAutoSearch() marks the episodes as being searched and returns at once;
+ * the search runs as a background job (a few at a time, its indexer queries in a lane of the app-wide scheduler) and its
+ * outcomes land in Activity, the bell (grabs, failures) and GET /api/autosearch/jobs. Jobs live in memory only.
  */
 import { logDecision } from "./activity.js";
 import { cache, db } from "./db.js";
@@ -26,6 +30,8 @@ import { listManaged } from "./managed.js";
 import { scopedEpisodeIds } from "./scope.js";
 import { ownedElsewhere, ownedWhy } from "./duplicates.js";
 import { properMode } from "./propers.js";
+import { inLane } from "./searchQueue.js";
+import crypto from "node:crypto";
 
 export interface AutoDeps {
   search: typeof deepSearch;
@@ -59,12 +65,12 @@ function gateWhy(results: SearchResult[], minConf: number) {
   return "no result passes the automatic rules";
 }
 
-async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: SearchResult[], label: string, purpose?: "replace"): Promise<AutoOutcome> {
+async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: SearchResult[], label: string, purpose?: "replace", note?: string | null): Promise<AutoOutcome> {
   const best = ok[0];
   try {
     const out = await deps.grab({ tvdbId, episodeIds: ids, candidate: toCandidate(best), fallbacks: ok.slice(1, 6).map(toCandidate), origin: "manual", automatic: true, ...(purpose ? { purpose } : {}) });
     const outcome = out.dryRun ? "would-grab" : out.failed ? "failed" : "grabbed";
-    return { episodeIds: ids, label, outcome, release: best.title, why: `${best.label} · ${best.rank.why}${out.failed ? ` (${out.message})` : ""}` };
+    return { episodeIds: ids, label, outcome, release: best.title, why: `${best.label} · ${best.rank.why}${out.failed ? ` (${out.message})` : ""}${note ? ` · stopped early: ${note}` : ""}` };
   } catch (e) {
     return { episodeIds: ids, label, outcome: "failed", release: best.title, why: (e as Error).message };
   }
@@ -80,7 +86,11 @@ const MIN_PACK_SEEDERS = 3;
 /** How far below the best single release a pack may rank and still be picked (one grab instead of many). */
 const PACK_SCORE_SLACK = 5;
 
-export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps): Promise<{ results: AutoOutcome[]; queued?: { n: number; where: "soon" | "fillin" } }> {
+/**
+ * ⚡ for one or more episodes, waiting for the outcome (the HTTP route queues it with queueAutoSearch() instead).
+ * `claimed`: episodes a queued job already marked as being searched (they aren't skipped as "already being searched").
+ */
+export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps, opts: { claimed?: Set<number> } = {}): Promise<{ results: AutoOutcome[]; queued?: { n: number; where: "soon" | "fillin" } }> {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
   if (!underAllowedRoot(series.path)) throw Object.assign(new Error(`${series.title} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
@@ -114,7 +124,7 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
       out.push({ episodeIds: [id], label, outcome: "skipped", why: ownedWhy(owned.get(id)!) });
       logDecision("info", { tvdbId, title: series.title, episodeIds: [id], why: `Automatic search for ${series.title} ${label} skipped: ${ownedWhy(owned.get(id)!)}. Nothing was searched or grabbed.` });
     } else if (inFlight(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already downloading" });
-    else if (searching.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already being searched" });
+    else if (searching.has(id) && !opts.claimed?.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already being searched" });
     else if (e.hasFile && checkVersions && versionChecks.length < MAX_VERSION_CHECKS) versionChecks.push(id);
     else if (e.hasFile) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already has a file (use Download again to replace it)" });
     else targets.push(id);
@@ -189,7 +199,7 @@ async function searchTargets(tvdbId: number, seriesTitle: string, targets: numbe
     const e = all.get(id)!;
     const label = epLabel(e);
     try {
-      const res = await deps.search(tvdbId, [id], { budget: 12 });
+      const res = await deps.search(tvdbId, [id], { budget: 12, earlyStop: { minConfidence: minConf } });
       const ok = automaticPicks(res.results, tvdbId, e.season);
       if (!ok.length) {
         const why = gateWhy(res.results, minConf);
@@ -197,7 +207,7 @@ async function searchTargets(tvdbId: number, seriesTitle: string, targets: numbe
         logDecision("info", { tvdbId, title: seriesTitle, episodeIds: [id], why: `Automatic search for ${seriesTitle} ${label}: needs a look — ${why}. Nothing was grabbed; open the interactive list to pick one.`, detail: { needsLook: true } });
         continue;
       }
-      out.push(await grabOne(deps, tvdbId, [id], ok, label));
+      out.push(await grabOne(deps, tvdbId, [id], ok, label, undefined, ok[0] === res.results[0] ? res.stoppedEarly : null));
     } catch (e) {
       out.push({ episodeIds: [id], label, outcome: "failed", why: (e as Error).message });
     }
@@ -221,14 +231,19 @@ export function searchMissingNow(tvdbId: number, title: string, now = Date.now()
   if (missing.length) void autoSearchEpisodes(tvdbId, missing).catch((e) => logDecision("fail", { tvdbId, title, why: `Search after adding ${title} failed: ${(e as Error).message}` }));
   return { searching: missing.length };
 }
-/** ⚡ for a movie (a movie that has a file needs replace = the user confirmed it). */
-export async function autoSearchMovie(movieId: number, opts: { replace?: boolean } = {}, deps = { search: searchMovie, grab: startMovieGrab }) {
-  const m = cache.prepare("SELECT title, year FROM movies WHERE id = ?").get(movieId) as { title: string; year: number | null } | undefined;
+/** The movie ⚡'s checks, before anything is searched: known, in a library folder, and replace confirmed when it has a file. */
+function movieTarget(movieId: number, opts: { replace?: boolean }) {
+  const m = cache.prepare("SELECT title, year, has_file, path FROM movies WHERE id = ?").get(movieId) as { title: string; year: number | null; has_file: number; path: string } | undefined;
   if (!m) throw Object.assign(new Error("Unknown movie"), { statusCode: 404 });
   const label = m.year ? `${m.title} (${m.year})` : m.title;
-  const row = cache.prepare("SELECT has_file, path FROM movies WHERE id = ?").get(movieId) as { has_file: number; path: string };
-  if (!underAllowedRoot(row.path)) throw Object.assign(new Error(`${label} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
-  if (row.has_file && !opts.replace) throw Object.assign(new Error(`${label} already has a file; confirm replacing it`), { statusCode: 409 });
+  if (!underAllowedRoot(m.path)) throw Object.assign(new Error(`${label} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
+  if (m.has_file && !opts.replace) throw Object.assign(new Error(`${label} already has a file; confirm replacing it`), { statusCode: 409 });
+  return label;
+}
+
+/** ⚡ for a movie (a movie that has a file needs replace = the user confirmed it). */
+export async function autoSearchMovie(movieId: number, opts: { replace?: boolean } = {}, deps = { search: searchMovie, grab: startMovieGrab }) {
+  const label = movieTarget(movieId, opts);
   const minConf = getSettings().managed.minConfidence;
   const res = await deps.search(movieId);
   const ok = res.results.filter((x) => x.rank.accept && x.confidence >= minConf && x.rank.langProb >= 0.5 && !x.rank.flags.some((f) => f.key === "burnIn") && !(x.protocol === "torrent" && !x.seeders));
@@ -242,3 +257,174 @@ export async function autoSearchMovie(movieId: number, opts: { replace?: boolean
   const out = await deps.grab({ movieId, candidate: cand(ok[0]), fallbacks: ok.slice(1, 6).map(cand), origin: "manual", replace: opts.replace });
   return { outcome: out.dryRun ? ("would-grab" as const) : out.failed ? ("failed" as const) : ("grabbed" as const), release: ok[0].title, why: `${ok[0].rank.why}${out.failed ? ` (${out.message})` : ""}`, label };
 }
+
+// ---------------------------------------------------------------- ⚡ as background jobs
+
+export interface AutoJob {
+  id: string;
+  kind: "episodes" | "movie";
+  tvdbId: number | null;
+  movieId: number | null;
+  title: string;
+  /** The episodes this job searches (marked "being searched" until it ends). */
+  episodeIds: number[];
+  state: "queued" | "running" | "done" | "failed";
+  queuedAt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  /** Per episode (or the movie): grabbed, would-grab, needs-look, skipped or failed, with why. */
+  results: AutoOutcome[];
+  /** Episodes over the 26 handed to the paced searches or Fill-in. */
+  queued?: { n: number; where: "soon" | "fillin" };
+  error: string | null;
+}
+type JobRun = () => Promise<Pick<AutoJob, "results" | "queued">>;
+/** ⚡ jobs that run at once; more wait their turn (first come, first served). Their queries share the global cap anyway. */
+export const MAX_AUTO_JOBS = 2;
+/** Finished jobs are listed this long (and at most KEEP_DONE of them). */
+const KEEP_DONE_MS = 60 * 60_000;
+const KEEP_DONE = 30;
+const jobs: AutoJob[] = [];
+const runners = new Map<string, JobRun>();
+/** Movies with a ⚡ queued or running. */
+const searchingMovies = new Set<number>();
+
+const position = (job: AutoJob) => (job.state === "queued" ? jobs.filter((j) => j.state === "queued").indexOf(job) + 1 : 0);
+
+function pumpJobs() {
+  while (jobs.filter((j) => j.state === "running").length < MAX_AUTO_JOBS) {
+    const job = jobs.find((j) => j.state === "queued");
+    if (!job) return;
+    job.state = "running";
+    job.startedAt = Date.now();
+    const run = runners.get(job.id)!;
+    runners.delete(job.id);
+    // The job's indexer queries share one lane: served in turn with other jobs and searches, never all first.
+    void inLane(`auto:${job.id}`, run)
+      .then(
+        (r) => {
+          job.results.push(...r.results);
+          if (r.queued) job.queued = r.queued;
+          job.state = "done";
+          job.finishedAt = Date.now();
+          logJob(job);
+        },
+        (e) => {
+          job.state = "failed";
+          job.error = (e as Error).message;
+          job.finishedAt = Date.now();
+          logDecision("fail", { tvdbId: job.tvdbId, title: job.title, episodeIds: job.episodeIds, why: `Automatic search for ${job.title} failed: ${job.error}`, detail: job.movieId ? { movieId: job.movieId } : {} });
+        },
+      )
+      .finally(() => {
+        for (const id of job.episodeIds) searching.delete(id);
+        if (job.movieId) searchingMovies.delete(job.movieId);
+        pumpJobs();
+      });
+  }
+}
+
+/** One Activity line per job: what happened to each episode (grabs and needs-a-look have their own lines too). */
+function logJob(job: AutoJob) {
+  const r = job.results;
+  if (!r.length) return;
+  const n = (o: AutoOutcome["outcome"]) => r.filter((x) => x.outcome === o).length;
+  const parts = [n("grabbed") && `${n("grabbed")} started`, n("would-grab") && `${n("would-grab")} would download (practice mode)`, n("needs-look") && `${n("needs-look")} need a look`, n("skipped") && `${n("skipped")} skipped`, n("failed") && `${n("failed")} failed`].filter(Boolean);
+  const notes = r.filter((x) => x.outcome === "skipped" || x.outcome === "failed").slice(0, 5).map((x) => `${x.label}: ${x.why}`);
+  const took = Math.round(((job.finishedAt ?? Date.now()) - (job.startedAt ?? job.queuedAt)) / 1000);
+  const more = job.queued ? `; ${job.queued.n} more queued for ${job.queued.where === "soon" ? "the next searches" : "Fill-in"}` : "";
+  logDecision("search", { tvdbId: job.tvdbId, title: job.title, episodeIds: job.episodeIds, why: `Automatic search for ${job.title}: ${parts.join(", ")}${notes.length ? ` (${notes.join("; ")})` : ""}${more} · ${took} s`, detail: { autoJob: job.id, ...(job.movieId ? { movieId: job.movieId } : {}) } });
+}
+
+function addJob(job: AutoJob, run: JobRun) {
+  const now = Date.now();
+  for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].finishedAt && now - jobs[i].finishedAt! > KEEP_DONE_MS) jobs.splice(i, 1);
+  while (jobs.filter((j) => j.finishedAt).length >= KEEP_DONE) jobs.splice(jobs.findIndex((j) => j.finishedAt), 1);
+  jobs.push(job);
+  if (job.state === "queued") {
+    runners.set(job.id, run);
+    pumpJobs();
+  }
+  return { queued: true as const, jobId: job.id, episodes: job.episodeIds.length, position: position(job) };
+}
+
+/**
+ * ⚡ from the UI: checks the show, marks the episodes as being searched and queues the search; returns at once.
+ * An episode already being searched (an earlier tap still queued or running) is skipped right away. `deps` for tests.
+ */
+export function queueAutoSearch(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps) {
+  const series = seriesByTvdb(tvdbId);
+  if (!series) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
+  if (!underAllowedRoot(series.path)) throw Object.assign(new Error(`${series.title} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
+  const all = new Map(episodesFor(tvdbId).map((e) => [e.id, e]));
+  const ids = [...new Set(episodeIds)].filter((id) => all.has(id));
+  const busy = ids.filter((id) => searching.has(id));
+  const list = ids.filter((id) => !searching.has(id));
+  const claimed = new Set(list.slice(0, AUTO_NOW));
+  for (const id of claimed) searching.add(id);
+  const job: AutoJob = {
+    id: crypto.randomUUID(),
+    kind: "episodes",
+    tvdbId,
+    movieId: null,
+    title: series.title,
+    episodeIds: [...claimed],
+    state: list.length ? "queued" : "done",
+    queuedAt: Date.now(),
+    startedAt: null,
+    finishedAt: list.length ? null : Date.now(),
+    results: busy.map((id) => ({ episodeIds: [id], label: epLabel(all.get(id)!), outcome: "skipped" as const, why: "already being searched" })),
+    error: null,
+  };
+  return addJob(job, () => autoSearchEpisodes(tvdbId, list, deps, { claimed }));
+}
+
+/** The movie ⚡ as a job (checked first, so a missing replace confirmation still answers 409 at once). */
+export function queueAutoSearchMovie(movieId: number, opts: { replace?: boolean } = {}, deps = { search: searchMovie, grab: startMovieGrab }) {
+  const label = movieTarget(movieId, opts);
+  const busy = searchingMovies.has(movieId);
+  if (!busy) searchingMovies.add(movieId);
+  const job: AutoJob = {
+    id: crypto.randomUUID(),
+    kind: "movie",
+    tvdbId: null,
+    movieId,
+    title: label,
+    episodeIds: [],
+    state: busy ? "done" : "queued",
+    queuedAt: Date.now(),
+    startedAt: null,
+    finishedAt: busy ? Date.now() : null,
+    results: busy ? [{ episodeIds: [], label, outcome: "skipped", why: "already being searched" }] : [],
+    error: null,
+  };
+  return addJob(job, async () => {
+    const r = await autoSearchMovie(movieId, opts, deps);
+    return { results: [{ episodeIds: [], label: r.label, outcome: r.outcome, release: "release" in r ? r.release : undefined, why: r.why }] };
+  });
+}
+
+/** GET /api/autosearch/jobs: running and waiting jobs, then recent finished ones (newest first), and what's being searched. */
+export function autoJobs() {
+  const order = { running: 0, queued: 1, done: 2, failed: 2 };
+  return {
+    jobs: [...jobs].sort((a, b) => order[a.state] - order[b.state] || (b.finishedAt ?? b.queuedAt) - (a.finishedAt ?? a.queuedAt)).map((j) => ({ ...j, position: position(j) })),
+    searching: [...searching],
+    searchingMovies: [...searchingMovies],
+  };
+}
+
+/** Tests: waits until no ⚡ job is queued or running. */
+export async function autoJobsIdle() {
+  while (jobs.some((j) => j.state === "queued" || j.state === "running")) await new Promise((r) => setTimeout(r, 5));
+}
+
+// Jobs live in memory: a restart drops the ones still waiting or running (the scheduled searches pick those episodes up again).
+process.once("exit", () => {
+  const left = jobs.filter((j) => j.state === "queued" || j.state === "running");
+  try {
+    for (const j of left) logDecision("info", { tvdbId: j.tvdbId, title: j.title, episodeIds: j.episodeIds, why: `Automatic search for ${j.title} was ${j.state === "running" ? "interrupted" : "still waiting"} when AnimeArr stopped, so it didn't finish. Search again, or let the scheduled searches find it.`, detail: { autoJob: j.id } });
+  } catch {
+    /* shutting down: best effort */
+  }
+});

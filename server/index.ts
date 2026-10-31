@@ -71,7 +71,7 @@ import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason, seadexTick } 
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
-import { autoSearchEpisodes, autoSearchMovie, searchMissingNow } from "./autosearch.js";
+import { autoJobs, autoSearchMovie, queueAutoSearch, queueAutoSearchMovie, searchMissingNow } from "./autosearch.js";
 import { rootRefusal } from "./roots.js";
 import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
@@ -1266,11 +1266,13 @@ app.put<{ Params: { tvdbId: string }; Body: { action?: string } }>("/api/fillin/
   editQueue(id(req.params.tvdbId), a as "up");
   return { ok: true };
 });
+// ⚡ answers at once: the search runs as a background job; its outcomes go to Activity, the bell and /api/autosearch/jobs.
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
   writable();
   if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
-  return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
+  return queueAutoSearch(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
 });
+app.get("/api/autosearch/jobs", async () => autoJobs());
 app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wanted", async (req) => {
   writable();
   const r = setWanted((req.body?.movieIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0), req.body?.wanted !== false);
@@ -1281,7 +1283,7 @@ app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:
   writable();
   // The same indexers as "Pick a version…" (Prowlarr or AnimeArr's own), not Prowlarr only.
   if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
-  return autoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
+  return queueAutoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
 });
 app.get("/api/files/summary", async () => fileSummary());
 app.post<{ Body: { full?: boolean } }>("/api/files/scan", async (req) => {
