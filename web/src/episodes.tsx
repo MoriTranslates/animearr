@@ -269,24 +269,46 @@ function releaseBits(release: string) {
  * The Subtitles fact in words, agreeing with the status badge: "English (full)", "English (signs only)", "None",
  * "No English (has Indonesian, Thai)", plus the other languages.
  */
-function subsLine(d: Detail, lang: string) {
+function SubsLine({ d, lang }: { d: Detail; lang: string }) {
+  const [open, setOpen] = useState(false);
   const L = languageName(lang);
   const code = d.file?.lang?.code;
   const own = d.own?.subs ?? [];
   const side = d.own?.sidecars ?? [];
   const tracks = own.length || side.length;
   const all = tracks ? [...own.map((x) => x.lang), ...side.map((x) => x.lang)] : (d.file?.subs ?? []);
-  // Japanese first (the original), then the rest; a long list (a streaming release can carry 25+) is shortened here and
-  // spelled out under Technical details.
+  // Japanese first (the original), then the rest. A streaming release can carry 25+ languages: show two and a
+  // "+N more" that opens the full list in place.
   const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))].sort((a, b) => Number(b === "ja") - Number(a === "ja"));
-  const short = (xs: string[]) => (xs.length > 3 ? t("ep.subsAlsoMore", { langs: languageList(xs.slice(0, 2)), n: xs.length - 2 }) : t("ep.subsAlso", { langs: languageList(xs) }));
-  const also = others.length ? ` · ${short(others)}` : "";
-  if (code === "forced-only") return t("ep.subsSigns", { lang: L }) + also;
-  if (code === "untagged") return t("ep.subsUnlabelled");
+  const long = others.length > 3;
+  const list = (
+    <>
+      {languageList(long && !open ? others.slice(0, 2) : others)}
+      {long && (
+        <>
+          {" "}
+          <button type="button" className="link small" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? t("ep.subsLess") : t("ep.subsMore", { n: others.length - 2 })}
+          </button>
+        </>
+      )}
+    </>
+  );
+  const also = others.length ? (
+    <>
+      {" · "}
+      {t("ep.subsAlso", { langs: "" })}
+      {list}
+    </>
+  ) : null;
+  if (code === "forced-only") return <>{t("ep.subsSigns", { lang: L })}{also}</>;
+  if (code === "untagged") return <>{t("ep.subsUnlabelled")}</>;
   const full = tracks ? own.some((x) => x.lang === lang && !x.partial) || side.some((x) => x.lang === lang) : (d.file?.subs ?? []).includes(lang);
-  if (full) return t("ep.subsFull", { lang: L }) + also;
-  if (!all.length) return t("ep.subsNone");
-  return t("ep.subsNoTarget", { lang: L, langs: others.length > 3 ? `${languageList(others.slice(0, 2))} +${others.length - 2}` : languageList(others) });
+  if (full) return <>{t("ep.subsFull", { lang: L })}{also}</>;
+  if (!all.length) return <>{t("ep.subsNone")}</>;
+  // "No English (has Indonesian, Thai +12 more)": the list goes where {langs} sits.
+  const [pre, post = ""] = t("ep.subsNoTarget", { lang: L, langs: "\u0000" }).split("\u0000");
+  return <>{pre}{list}{post}</>;
 }
 /** "English", "Japanese + English", "1 track, language unknown". */
 function trackAudio(d: Detail) {
@@ -444,7 +466,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 </div>
                 <div>
                   <dt>{t("ep.subtitles")}</dt>
-                  <dd>{subsLine(d, lang)}</dd>
+                  <dd><SubsLine d={d} lang={lang} /></dd>
                 </div>
                 <div>
                   <dt>{t("ep.runtime")}</dt>
