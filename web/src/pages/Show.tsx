@@ -3,13 +3,14 @@ import { openInMediaServer } from "../filetools";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../App";
 import { airLabel, EpisodeSheet, langOf, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
-import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks } from "lucide-react";
+import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks, Tag as TagIcon } from "lucide-react";
 import { Ring } from "../posters";
 import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
+import { TagPicker } from "../rules";
 import { ShowQuality } from "../quality";
 import { ScopeEditor } from "../scope";
 import { ManualImport, RenamePreview } from "../media";
@@ -49,6 +50,7 @@ interface Header {
 interface ShowData {
   header: Header;
   prefs: { profile_id: string | null; watch_mode: WatchMode | null };
+  tags: number[];
   rows: EpisodeRow[];
   anidb: { aid: number; season: number | "a" | null; offset: number; title: string | null }[];
   aliases: { id: number; title: string; season: number | null; source: string }[];
@@ -75,7 +77,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
   const [tab, setTabState] = useState<ShowTab>(() => (["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes"));
   const [replacing, setReplacing] = useState<number | null>(null);
-  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
+  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "tags" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
   const [linking, setLinking] = useState(false);
   const toast = useToast();
 
@@ -243,6 +245,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 <span className="hide-phone">{t("profiles.watchAs")}:</span> {t(`mode.${h.profile.watchMode}` as I18nKey)}
                 <span className="hide-phone"> · {h.profile.name}</span>
                 <ChevronDown className="lucide" aria-hidden="true" />
+              </button>
+              <button className="glass-btn" onClick={() => setPanel("tags")} aria-haspopup="dialog">
+                <TagIcon className="lucide" aria-hidden="true" />
+                <span className="hide-phone">{t("tags.button")}</span> {d.data.tags.length || ""}
               </button>
               <TrailerButton trailer={h.catalog?.trailer} title={h.title} className="glass-btn" />
             </div>
@@ -473,6 +479,11 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {panel === "watch" && (
         <Modal title={t("profiles.watchAs")} onClose={() => setPanel(null)}>
           <WatchAs tvdbId={tvdbId} prefs={d.data.prefs} effective={h.profile} onChanged={() => void d.reload()} />
+        </Modal>
+      )}
+      {panel === "tags" && (
+        <Modal title={t("tags.title")} onClose={() => setPanel(null)}>
+          <TagPicker endpoint={`/series/${tvdbId}/tags`} value={d.data.tags} onChanged={() => void d.reload()} />
         </Modal>
       )}
       {replacing !== null && <ReplaceSeason tvdbId={tvdbId} season={replacing} onClose={() => setReplacing(null)} />}
