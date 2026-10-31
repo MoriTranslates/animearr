@@ -207,6 +207,26 @@ must be one of the importer's source roots). What you lose with Blackhole:
 
 </details>
 
+## Use with Jellyseerr / Overseerr
+
+AnimeArr speaks enough of Sonarr's API for request apps. In Jellyseerr or Overseerr: **Settings → Services → Add Sonarr
+Server**, then:
+
+- **Hostname / port:** AnimeArr's address and port (8484 by default). **URL base:** AnimeArr's URL base, if you set one.
+- **API key:** AnimeArr's own key, from **Settings → Security → API key for other apps**.
+- **Test**, then pick a quality profile (your AnimeArr profiles), a root folder (your allowed root folders) and the
+  series type **Anime**. Tick it as the default **anime** server if you also have a real Sonarr for other TV.
+
+What happens on a request: the show is added to AnimeArr (matched by its TVDB id through Anime-Lists), managed, with
+only the requested seasons monitored (a "picked seasons" scope you can change on the show), and AnimeArr searches for
+what's missing. Practice mode still applies. Availability and download progress show up in the request app as usual.
+
+Good to know:
+- **Removing a show from the request app never deletes files.** It removes the show from AnimeArr only.
+- Shows that Sonarr still owns (if AnimeArr runs next to Sonarr) are listed, but can't be removed through AnimeArr.
+- Only anime that Anime-Lists maps to a TVDB id can be requested. Movies need a Radarr-side API, which isn't there yet.
+- AnimeArr reports itself as Sonarr 4, so the request app won't ask for a language profile.
+
 ## FAQ
 
 **Do I need Sonarr?**
@@ -234,7 +254,8 @@ No. It embeds the official trailer from YouTube (no-cookie) or Dailymotion and l
 stored.
 
 **Jellyfin, Emby, Overseerr, Bazarr?**
-Not yet: see the limitations below and [PARITY.md](PARITY.md).
+Jellyseerr and Overseerr work (see [Use with Jellyseerr / Overseerr](#use-with-jellyseerr--overseerr)). Jellyfin,
+Emby and Bazarr not yet: see the limitations below and [PARITY.md](PARITY.md).
 
 **What's with the ships and the crew?**
 A nautical theme and a crew voice in the commit history, as a light-hearted tribute to adventure anime. AnimeArr isn't
@@ -247,7 +268,8 @@ affiliated with any anime, studio or publisher.
   it. A library audit that re-checks existing files is planned for 0.9.1.
 - No quality profiles/cutoffs, custom formats or must/must-not-contain words yet: choices come from your language
   profile, size preset and resolution.
-- No Sonarr-compatible API, so Overseerr/Jellyseerr, Bazarr, LunaSea or nzb360 can't talk to AnimeArr directly.
+- The Sonarr-compatible API covers what Jellyseerr/Overseerr need; other Sonarr clients (Bazarr, LunaSea, nzb360,
+  Homepage) may only partly work, and there's no Radarr-side API for movie requests yet.
 - Jellyfin/Emby/Kodi aren't supported yet (Plex is). Notifications are Discord and ntfy.
 - An existing anime folder can't yet be imported without Sonarr (new users add shows one by one).
 - RAR archives aren't unpacked (7z/ZIP are). No blocklist page, log viewer or downloadable backups yet.
