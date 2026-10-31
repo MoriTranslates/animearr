@@ -41,6 +41,8 @@ export function MediaOutputCard({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       <Toggle checked={m.nfo} onChange={(v) => set({ nfo: v })} label={t("media.out.nfo")} help={t("media.out.nfoHelp")} />
       <Toggle checked={m.plexmatch} onChange={(v) => set({ plexmatch: v })} label={t("media.out.plexmatch")} help={t("media.out.plexmatchHelp")} />
       <Toggle checked={m.artwork} onChange={(v) => set({ artwork: v })} label={t("media.out.artwork")} help={t("media.out.artworkHelp")} />
+      <Toggle checked={m.episodeThumbs} onChange={(v) => set({ episodeThumbs: v })} label={t("media.out.thumbs")} help={t("media.out.thumbsHelp")} />
+      <Toggle checked={m.episodeThumbsFromVideo} onChange={(v) => set({ episodeThumbsFromVideo: v })} label={t("media.out.thumbsVideo")} help={t("media.out.thumbsVideoHelp")} />
       <div className="row">
         <button
           disabled={busy || !(m.nfo || m.plexmatch || m.artwork)}
@@ -73,6 +75,7 @@ export function MediaPicker({ s, saveNow }: { s: S; saveNow: SaveNow }) {
     void saveNow((x) => ({
       ...x,
       mediaOutput: {
+        ...x.mediaOutput,
         main: next[0] ?? "none",
         // Jellyfin, Emby and Kodi read NFO files and artwork; Plex reads .plexmatch.
         nfo: next.some((k) => k !== "plex"),

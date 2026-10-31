@@ -47,6 +47,8 @@ export interface SonarrEpisode {
   airDate?: string;
   airDateUtc?: string;
   runtime?: number;
+  overview?: string;
+  images?: { coverType: string; url?: string; remoteUrl?: string }[];
   monitored: boolean;
   hasFile: boolean;
   episodeFileId?: number;

@@ -402,6 +402,9 @@ const USER_MIGRATIONS: string[] = [
      scope TEXT, then_do TEXT NOT NULL DEFAULT 'none', tags TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, confirmed INTEGER NOT NULL DEFAULT 0,
      last_sync_at INTEGER, last_result TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
    CREATE TABLE import_list_exclusions (anilist_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', list_name TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL);`,
+  // 38: the episode thumbnails AnimeArr wrote (a JPG can't carry the "Written by AnimeArr" marker the NFOs do, so only
+  // the files listed here are ever replaced or removed; ep_key is the episode, to follow a renamed video)
+  `CREATE TABLE media_thumbs (path TEXT PRIMARY KEY, source TEXT NOT NULL, ep_key TEXT NOT NULL, written_at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

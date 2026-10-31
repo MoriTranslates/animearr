@@ -36,3 +36,13 @@ test("notify: nothing unless switched on; then one scan per folder, batched", as
   assert.deepEqual(calls, ["1:/data/Anime/Frieren/Season 1"]);
   assert.equal(out.find((o) => o.folder === "/media/Unknown/x")?.ok, false);
 });
+
+test("notify: more folders than the bulk limit scan each library once", async () => {
+  const { BULK_SCAN_FOLDERS } = await import("../server/plex.js");
+  const calls: string[] = [];
+  const deps = { sections: async () => sections, refresh: async (k: string, p?: string) => void calls.push(`${k}:${p ?? "*"}`) };
+  const many = Array.from({ length: BULK_SCAN_FOLDERS + 1 }, (_, i) => `/media/Anime/Show ${i}`);
+  notifyPlex(many, deps, 60_000);
+  await flush(deps);
+  assert.deepEqual(calls, ["1:*"], "one scan of the whole library section, not one per folder");
+});

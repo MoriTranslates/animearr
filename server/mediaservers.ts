@@ -7,11 +7,14 @@
  * - Emby: the same endpoint under /emby, `X-Emby-Token` (Emby's API-key authentication).
  * - Kodi: JSON-RPC `VideoLibrary.Scan` with the folder as `directory` (Kodi's json-rpc methods.json), basic auth.
  *
+ * A bulk change (more than BULK_SCAN_FOLDERS folders) asks for one scan of the whole library instead: Jellyfin/Emby
+ * POST /Library/Refresh, Kodi VideoLibrary.Scan without a directory.
+ *
  * Keys and passwords are stored encrypted in the settings (never logged). Paths are mapped from AnimeArr's view to the
  * server's with each server's own path mappings (longest prefix wins).
  */
 import { logDecision } from "./activity.js";
-import { toPlexPath as mapPath } from "./plex.js";
+import { BULK_SCAN_FOLDERS, toPlexPath as mapPath } from "./plex.js";
 import { getSettings, type MediaServerConn, type PathMapping } from "./settings.js";
 import { VERSION as appVersion } from "./version.js";
 
@@ -94,6 +97,14 @@ export async function testKodi(conn: KodiConn, f: Fetch = fetch) {
 /** Tells one server about these folders (its own paths). */
 export async function scanFolders(kind: NotifyKind, folders: string[], f: Fetch = fetch) {
   const s = getSettings();
+  if (folders.length > BULK_SCAN_FOLDERS) {
+    if (kind === "kodi") await kodiCall(s.kodi, "VideoLibrary.Scan", { showdialogs: false }, f);
+    else {
+      const r = embyRequest(kind, s[kind], "/Library/Refresh", {});
+      await call(r.name, r.url, r.init, f);
+    }
+    return;
+  }
   if (kind === "kodi") {
     // One scan per folder; Kodi wants a trailing slash on a directory.
     for (const p of folders) await kodiCall(s.kodi, "VideoLibrary.Scan", { directory: p.endsWith("/") ? p : `${p}/`, showdialogs: false }, f);
@@ -138,6 +149,6 @@ export async function flushMediaServers(deps: { scan: typeof scanFolders } = { s
     }
   }
   for (const r of out)
-    logDecision(r.ok ? "info" : "fail", { why: `${SERVER_NAMES[r.server]}: ${r.ok ? `asked to scan ${r.folders.slice(0, 3).join(", ")}${r.folders.length > 3 ? "…" : ""}` : `couldn't scan ${r.folders.slice(0, 2).join(", ")}: ${r.why}`}` });
+    logDecision(r.ok ? "info" : "fail", { why: `${SERVER_NAMES[r.server]}: ${r.ok ? `${r.folders.length > BULK_SCAN_FOLDERS ? `asked to scan the whole library (${r.folders.length} folders changed)` : `asked to scan ${r.folders.slice(0, 3).join(", ")}${r.folders.length > 3 ? "…" : ""}`}` : `couldn't scan ${r.folders.slice(0, 2).join(", ")}: ${r.why}`}` });
   return out;
 }

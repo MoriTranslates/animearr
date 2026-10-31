@@ -188,3 +188,24 @@ test("from AnimeArr's catalog: a show's files are written only inside an allowed
   patchSettings((s) => ({ ...s, mediaOutput: { ...s.mediaOutput, nfo: false, plexmatch: false } }));
   assert.equal(await syncSeriesMetadata(424536), null, "all switched off: nothing to do");
 });
+
+test("notify: a big batch of folders asks each server for one library scan; a small one stays per folder", async () => {
+  const { BULK_SCAN_FOLDERS } = await import("../server/plex.js");
+  const { scanFolders } = await import("../server/mediaservers.js");
+  patchSettings((s) => ({ ...s, jellyfin: { url: "http://jf:8096", apiKey: "k3y", enabled: true, pathMappings: [] }, kodi: { url: "http://kodi:8080", username: "", password: "", enabled: true, pathMappings: [] } }));
+  const sent: { url: string; body: string }[] = [];
+  const fake = (async (u: string, init: RequestInit) => (sent.push({ url: String(u), body: String(init.body ?? "") }), new Response("{}"))) as unknown as typeof fetch;
+  const folders = (n: number) => Array.from({ length: n }, (_, i) => `/media/Anime/Show ${i}`);
+  await scanFolders("jellyfin", folders(BULK_SCAN_FOLDERS), fake);
+  assert.deepEqual(sent.map((x) => x.url), ["http://jf:8096/Library/Media/Updated"], "at the threshold: still per folder");
+  sent.length = 0;
+  await scanFolders("jellyfin", folders(BULK_SCAN_FOLDERS + 1), fake);
+  assert.deepEqual(sent.map((x) => x.url), ["http://jf:8096/Library/Refresh"], "over it: one refresh of the whole library");
+  sent.length = 0;
+  await scanFolders("kodi", folders(BULK_SCAN_FOLDERS + 1), fake);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(JSON.parse(sent[0].body).params, { showdialogs: false }, "Kodi: a scan without a directory");
+  sent.length = 0;
+  await scanFolders("kodi", folders(2), fake);
+  assert.equal(sent.length, 2, "a small batch is one scan per folder");
+});

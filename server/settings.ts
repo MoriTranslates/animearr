@@ -283,7 +283,16 @@ export interface Settings {
    * What AnimeArr writes beside the videos for the media servers (server/mediaout.ts): NFO files + artwork
    * (Jellyfin/Emby/Kodi) and .plexmatch (Plex). `main` picks the folder ID hint style of {Server Id Hint}.
    */
-  mediaOutput: { main: MediaServerKind; nfo: boolean; plexmatch: boolean; artwork: boolean };
+  mediaOutput: {
+    main: MediaServerKind;
+    nfo: boolean;
+    plexmatch: boolean;
+    artwork: boolean;
+    /** Episode thumbnails (<video>-thumb.jpg) from TMDB, then Sonarr; written only while `artwork` is on. */
+    episodeThumbs: boolean;
+    /** Last resort: a frame from the video itself (reads every file, so off unless asked for). */
+    episodeThumbsFromVideo: boolean;
+  };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
   downloads: {
     rules: import("./downloads.js").FolderRule[];
@@ -369,7 +378,7 @@ const DEFAULTS: Settings = {
   emby: { url: "", apiKey: "", enabled: false, pathMappings: [] },
   kodi: { url: "", username: "", password: "", enabled: false, pathMappings: [] },
   // Off for existing installs (they add files to every show folder); the new-user wizard turns them on.
-  mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false },
+  mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false, episodeThumbs: true, episodeThumbsFromVideo: false },
   cutover: { allowArrWrites: false },
   notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true }, channels: [] },
   downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },

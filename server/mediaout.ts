@@ -8,14 +8,19 @@
  *   Multi-episode files get one <episodedetails> block per episode (Kodi's convention; Jellyfin's parser reads it).
  * - .plexmatch for Plex (title, year, tvdbid/tmdbid hints).
  * - poster/banner artwork from AniList, only when the folder has none.
+ * - episode thumbnails (<video>-thumb.jpg, read by Jellyfin/Emby/Kodi) and the episode <plot>, from server/episodemeta.ts.
  *
  * Every text file AnimeArr writes carries MARKER. A file without it is the user's own and is never overwritten or
  * removed. Files are only rewritten when their content changes, so servers don't rescan for nothing.
+ * A thumbnail can't carry the marker, so the ones AnimeArr wrote are listed in media_thumbs; a -thumb file that isn't
+ * listed is the user's (or Sonarr's old one) and is left alone. Our own thumbnail follows its video when it is renamed
+ * and goes when the video goes.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { cache, db } from "./db.js";
+import { enrichEpisodes, ffmpegFrame, type MetaDeps } from "./episodemeta.js";
 import { allowedImage } from "./img.js";
 import { notifyMediaServers } from "./mediaservers.js";
 import { mappedPath } from "./paths.js";
@@ -25,6 +30,9 @@ import { getSettings, underAllowedRoot } from "./settings.js";
 export const MARKER = "Written by AnimeArr";
 const NOTE = `${MARKER}. Delete this line to keep your own edits; AnimeArr then leaves the file alone.`;
 const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;
+const THUMB_EXTS = ["jpg", "jpeg", "png", "webp", "tbn"];
+/** A file this young may still be downloading or being imported: no frame is read from it. */
+const SETTLE_MS = 10 * 60_000;
 
 export interface ShowMeta {
   title: string;
@@ -39,7 +47,18 @@ export interface ShowMeta {
   poster?: string | null;
   banner?: string | null;
 }
-export interface EpisodeMeta { season: number; episode: number; title?: string | null; aired?: string | null; runtime?: number | null; absolute?: number | null }
+export interface EpisodeMeta {
+  season: number;
+  episode: number;
+  title?: string | null;
+  aired?: string | null;
+  runtime?: number | null;
+  absolute?: number | null;
+  plot?: string | null;
+  /** Image URL for the thumbnail and where it came from (set by enrichEpisodes). */
+  still?: string | null;
+  stillSource?: "tmdb" | "sonarr";
+}
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const el = (name: string, v: string | number | null | undefined, attrs = "") => (v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`);
@@ -90,7 +109,7 @@ export function episodeNfo(showTitle: string, eps: EpisodeMeta[]) {
   return (
     head +
     eps
-      .map((e) => "<episodedetails>\n" + el("title", e.title || `Episode ${e.episode}`) + el("showtitle", showTitle) + el("season", e.season) + el("episode", e.episode) + el("aired", e.aired) + el("runtime", e.runtime) + "</episodedetails>\n")
+      .map((e) => "<episodedetails>\n" + el("title", e.title || `Episode ${e.episode}`) + el("showtitle", showTitle) + el("plot", plainText(e.plot)) + el("season", e.season) + el("episode", e.episode) + el("aired", e.aired) + el("runtime", e.runtime) + "</episodedetails>\n")
       .join("")
   );
 }
@@ -109,6 +128,9 @@ export interface WriteDeps {
   exists(p: string): boolean;
   list(dir: string): { name: string; dir: boolean }[];
   image(url: string): Promise<{ data: Buffer; ext: string } | null>;
+  rename(from: string, to: string): void;
+  mtime(p: string): number | null;
+  frame(video: string, atSec: number): Promise<Buffer | null>;
 }
 export const realWriteDeps: WriteDeps = {
   read: (p) => {
@@ -130,6 +152,15 @@ export const realWriteDeps: WriteDeps = {
     }
   },
   image: fetchImage,
+  rename: (from, to) => fs.renameSync(from, to),
+  mtime: (p) => {
+    try {
+      return fs.statSync(p).mtimeMs;
+    } catch {
+      return null;
+    }
+  },
+  frame: ffmpegFrame,
 };
 
 /** An artwork file from a known image host (no open proxy), size-capped, images only. */
@@ -147,7 +178,8 @@ async function fetchImage(url: string): Promise<{ data: Buffer; ext: string } | 
   }
 }
 
-export interface SyncCounts { written: number; unchanged: number; userFiles: number; removed: number; artwork: number }
+/** thumbs: written or moved along; thumbsSkipped: the user's own thumbnail was there, so left alone; thumbsMissing: no source had one. */
+export interface SyncCounts { written: number; unchanged: number; userFiles: number; removed: number; artwork: number; thumbs: number; thumbsSkipped: number; thumbsMissing: number }
 
 /** Writes text unless the file is the user's own; unchanged content isn't rewritten. */
 function put(file: string, text: string, deps: WriteDeps, c: SyncCounts) {
@@ -158,14 +190,98 @@ function put(file: string, text: string, deps: WriteDeps, c: SyncCounts) {
   c.written++;
 }
 
-export interface SeriesOutput { show: ShowMeta; folder: string; files: { path: string; episodes: EpisodeMeta[] }[] }
+export interface SeriesOutput {
+  show: ShowMeta;
+  folder: string;
+  files: { path: string; episodes: EpisodeMeta[]; durationSec?: number | null }[];
+  /** Sonarr's id for the show (for its episode overviews and screenshots). */
+  sonarrId?: number | null;
+  /** A grab of the show is being imported right now. */
+  importing?: boolean;
+}
+export interface SyncOpts { nfo: boolean; plexmatch: boolean; artwork: boolean; thumbs?: boolean; thumbsFromVideo?: boolean }
+
+interface ThumbRow { path: string; source: string; ep_key: string }
+
+/** Episode thumbnails: writes the missing ones from the best source, moves ours along with a renamed video, drops ours whose video is gone. */
+async function syncThumbs(o: SeriesOutput, opts: SyncOpts, deps: WriteDeps, c: SyncCounts) {
+  const owned = new Map((db.prepare("SELECT path, source, ep_key FROM media_thumbs WHERE substr(path, 1, ?) = ?").all(o.folder.length, o.folder) as unknown as ThumbRow[]).map((r) => [r.path, r]));
+  const lists = new Map<string, Set<string>>();
+  const hasVideo = (thumb: string) => {
+    const dir = path.dirname(thumb);
+    if (!lists.has(dir)) lists.set(dir, new Set(deps.list(dir).filter((x) => !x.dir && VIDEO.test(x.name)).map((x) => x.name.replace(/\.[^.]+$/, "").toLowerCase())));
+    return lists.get(dir)!.has(path.basename(thumb).replace(/-thumb\.[^.]+$/i, "").toLowerCase());
+  };
+  const save = (file: string, source: string, key: string) => {
+    db.prepare("INSERT OR REPLACE INTO media_thumbs (path, source, ep_key, written_at) VALUES (?, ?, ?, ?)").run(file, source, key, Date.now());
+    owned.set(file, { path: file, source, ep_key: key });
+  };
+  const forget = (file: string) => (db.prepare("DELETE FROM media_thumbs WHERE path = ?").run(file), owned.delete(file));
+  if (opts.thumbs) {
+    for (const f of o.files) {
+      if (!f.episodes.length || !deps.exists(f.path)) continue;
+      const base = f.path.replace(/\.[^./\\]+$/, "");
+      const key = `${f.episodes[0].season}x${f.episodes[0].episode}`;
+      const still = f.episodes.find((e) => e.still);
+      const existing = THUMB_EXTS.map((x) => `${base}-thumb.${x}`).find((p) => deps.exists(p));
+      if (!existing) {
+        // The video was renamed: our thumbnail for this episode moves along instead of being fetched again.
+        const old = [...owned.values()].find((r) => r.ep_key === key && path.dirname(r.path) === path.dirname(f.path) && deps.exists(r.path) && !hasVideo(r.path));
+        if (old) {
+          const to = `${base}-thumb.${old.path.slice(old.path.lastIndexOf(".") + 1)}`;
+          deps.rename(old.path, to);
+          forget(old.path);
+          save(to, old.source, key);
+          c.thumbs++;
+          continue;
+        }
+      } else {
+        const row = owned.get(existing);
+        if (!row) {
+          c.thumbsSkipped++; // not ours: the user's (or Sonarr's old one)
+          continue;
+        }
+        if (!(row.source === "video" && still)) continue; // ours and fine; a frame is only swapped for a real still
+      }
+      let got: { data: Buffer; ext: string; source: string } | null = null;
+      const img = still?.still ? await deps.image(still.still) : null;
+      if (img) got = { ...img, source: still!.stillSource ?? "tmdb" };
+      const mtime = deps.mtime(f.path);
+      if (!got && opts.thumbsFromVideo && !o.importing && mtime !== null && Date.now() - mtime > SETTLE_MS) {
+        const frame = await deps.frame(f.path, (f.durationSec || (f.episodes[0].runtime ?? 24) * 60) / 3);
+        if (frame) got = { data: frame, ext: "jpg", source: "video" };
+      }
+      if (!got) {
+        c.thumbsMissing++;
+        continue;
+      }
+      const to = `${base}-thumb.${got.ext}`;
+      if (existing && existing !== to) {
+        deps.remove(existing);
+        forget(existing);
+      }
+      deps.writeBytes(to, got.data);
+      save(to, got.source, key);
+      c.thumbs++;
+    }
+  }
+  // Ours whose file or video is gone.
+  for (const r of [...owned.values()]) {
+    if (!deps.exists(r.path)) forget(r.path);
+    else if (!hasVideo(r.path)) {
+      deps.remove(r.path);
+      forget(r.path);
+      c.removed++;
+    }
+  }
+}
 
 /**
  * Brings one show's metadata files in step with its videos: writes what's enabled, removes AnimeArr's own episode
  * NFOs whose video is gone (renamed, upgraded or deleted). `folder` and file paths are local paths.
  */
-export async function syncSeriesFiles(o: SeriesOutput, opts: { nfo: boolean; plexmatch: boolean; artwork: boolean }, deps: WriteDeps = realWriteDeps): Promise<SyncCounts> {
-  const c: SyncCounts = { written: 0, unchanged: 0, userFiles: 0, removed: 0, artwork: 0 };
+export async function syncSeriesFiles(o: SeriesOutput, opts: SyncOpts, deps: WriteDeps = realWriteDeps): Promise<SyncCounts> {
+  const c: SyncCounts = { written: 0, unchanged: 0, userFiles: 0, removed: 0, artwork: 0, thumbs: 0, thumbsSkipped: 0, thumbsMissing: 0 };
   if (!deps.exists(o.folder)) return c;
   if (opts.nfo) {
     put(path.join(o.folder, "tvshow.nfo"), tvshowNfo(o.show), deps, c);
@@ -190,6 +306,7 @@ export async function syncSeriesFiles(o: SeriesOutput, opts: { nfo: boolean; ple
       c.artwork++;
     }
   }
+  await syncThumbs(o, opts, deps, c);
   // AnimeArr's own episode NFOs whose video is gone (show folder and one level of season folders).
   const dirs = [o.folder, ...deps.list(o.folder).filter((x) => x.dir).map((x) => path.join(o.folder, x.name))];
   for (const dir of dirs) {
@@ -250,21 +367,31 @@ export function seriesOutput(tvdbId: number): SeriesOutput | null {
     list.push({ season: r.season, episode: r.episode, absolute: r.absolute, title: r.title, aired: r.air_date?.slice(0, 10) ?? null, runtime: r.runtime });
     byFile.set(r.path, list);
   }
-  return { show, folder: mappedPath(s.path), files: [...byFile].map(([p, eps]) => ({ path: mappedPath(p), episodes: eps })) };
+  const importing = !!db.prepare("SELECT 1 FROM grabs WHERE tvdb_id = ? AND state = 'importing'").get(tvdbId);
+  const duration = db.prepare("SELECT duration FROM media_files WHERE path = ?");
+  return {
+    show,
+    folder: mappedPath(s.path),
+    files: [...byFile].map(([p, eps]) => ({ path: mappedPath(p), episodes: eps, durationSec: (duration.get(p) as { duration: number | null } | undefined)?.duration ?? null })),
+    sonarrId: s.id,
+    importing,
+  };
 }
 
 const enabledOutput = () => {
   const m = getSettings().mediaOutput;
-  return { nfo: !!m?.nfo, plexmatch: !!m?.plexmatch, artwork: !!m?.artwork };
+  // Thumbnails ride on the artwork switch (they're images); the frame-from-video option is its own, off by default.
+  return { nfo: !!m?.nfo, plexmatch: !!m?.plexmatch, artwork: !!m?.artwork, thumbs: !!m?.artwork && m?.episodeThumbs !== false, thumbsFromVideo: !!m?.artwork && m?.episodeThumbs !== false && !!m?.episodeThumbsFromVideo };
 };
 
 /** Writes one show's metadata files (when any are switched on and the show is inside an allowed root folder). */
-export async function syncSeriesMetadata(tvdbId: number, deps: WriteDeps = realWriteDeps) {
+export async function syncSeriesMetadata(tvdbId: number, deps: WriteDeps = realWriteDeps, meta?: MetaDeps) {
   const opts = enabledOutput();
   if (!opts.nfo && !opts.plexmatch && !opts.artwork) return null;
   const o = seriesOutput(tvdbId);
   const arrPath = (cache.prepare("SELECT path FROM series WHERE tvdb_id = ?").get(tvdbId) as { path: string | null } | undefined)?.path;
   if (!o || !underAllowedRoot(arrPath)) return null;
+  await enrichEpisodes(o.show.ids.tvdb ?? null, o.sonarrId ?? null, o.files, { plot: opts.nfo, still: !!opts.thumbs }, meta);
   return syncSeriesFiles(o, opts, deps);
 }
 
@@ -286,22 +413,22 @@ export async function afterLibraryChange(c: { tvdbId?: number | null; folders: s
 
 let running: Promise<SyncCounts & { shows: number }> | null = null;
 /** "Write metadata for every show now" (Settings → Media servers): one show at a time, in the background. */
-export function syncAllMetadata(deps: WriteDeps = realWriteDeps) {
+export function syncAllMetadata(deps: WriteDeps = realWriteDeps, meta?: MetaDeps) {
   if (running) return { started: false };
   running = (async () => {
-    const total: SyncCounts & { shows: number } = { written: 0, unchanged: 0, userFiles: 0, removed: 0, artwork: 0, shows: 0 };
+    const total: SyncCounts & { shows: number } = { written: 0, unchanged: 0, userFiles: 0, removed: 0, artwork: 0, thumbs: 0, thumbsSkipped: 0, thumbsMissing: 0, shows: 0 };
     const ids = (cache.prepare("SELECT tvdb_id FROM series ORDER BY title").all() as { tvdb_id: number }[]).map((x) => x.tvdb_id);
     for (const id of ids) {
       try {
-        const c = await syncSeriesMetadata(id, deps);
+        const c = await syncSeriesMetadata(id, deps, meta);
         if (!c) continue;
         total.shows++;
-        for (const k of ["written", "unchanged", "userFiles", "removed", "artwork"] as const) total[k] += c[k];
+        for (const k of ["written", "unchanged", "userFiles", "removed", "artwork", "thumbs", "thumbsSkipped", "thumbsMissing"] as const) total[k] += c[k];
       } catch {
         /* one unreadable folder doesn't stop the rest */
       }
     }
-    logDecision("info", { why: `Media-server files for ${total.shows} ${total.shows === 1 ? "show" : "shows"}: ${total.written} written, ${total.unchanged} already up to date, ${total.removed} removed, ${total.artwork} artwork${total.userFiles ? `; ${total.userFiles} of your own files left alone` : ""}` });
+    logDecision("info", { why: `Media-server files for ${total.shows} ${total.shows === 1 ? "show" : "shows"}: ${total.written} written, ${total.unchanged} already up to date, ${total.removed} removed, ${total.artwork} artwork, ${total.thumbs} episode thumbnails${total.thumbsSkipped ? ` (${total.thumbsSkipped} of your own left alone)` : ""}${total.userFiles ? `; ${total.userFiles} of your own files left alone` : ""}` });
     return total;
   })().finally(() => (running = null));
   return { started: true };
