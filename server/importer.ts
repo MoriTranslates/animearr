@@ -39,6 +39,7 @@ import { identifyContext, seriesByTvdb } from "./search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "./settings.js";
 import { fileForMovie, movieSubtitles } from "./core/movieTitle.js";
 import { seriesForMovie } from "./franchise.js";
+import { applyFileDate, tidyAfterMove } from "./tidy.js";
 
 const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;
 const MAX_NAME_BYTES = 250;
@@ -557,6 +558,8 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
       out.push({ label: it.label, done: true, why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}` });
       try {
         setPerms(path.dirname(it.dest));
+        if (target.tvdbId && it.episodeIds.length) applyFileDate(it.dest, it.episodeIds); // "Change file date"
+        if (target.tvdbId && binned.length) tidyAfterMove(binned.map((b) => b.from), target.arrRoot); // "Delete empty folders" (the new file is already in place)
         if (it.episodeIds.length) db.prepare("INSERT OR REPLACE INTO file_links (path, tvdb_id, episode_ids, at) VALUES (?, ?, ?, ?)").run(it.destArr, target.tvdbId ?? null, JSON.stringify(it.episodeIds), Date.now());
       } catch {
         /* bookkeeping only */
@@ -803,6 +806,7 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
       const b = mappedPath(it.to);
       if (!under(a, seriesLocal) || !under(b, seriesLocal)) throw new Error("outside the show's folder");
       moveNoClobber(a, b);
+      applyFileDate(b, (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id)); // "Change file date"
       const st = fs.statSync(b);
       const sides: { from: string; to: string }[] = [];
       for (const x of it.sidecars) {
@@ -813,6 +817,7 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
           /* a subtitle that can't be renamed keeps its name */
         }
       }
+      tidyAfterMove([a], s.path); // "Delete empty folders": the old season folder, when the new name put the file elsewhere
       out.push({ from: it.from, to: it.to, done: true, why: sides.length < it.sidecars.length ? "renamed (some subtitle files kept their names)" : "renamed" });
       logDecision("info", { tvdbId, title: s.title, why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`, undo: { action: "rename-back", args: { tvdbId, from: b, to: a, size: st.size, mtime: st.mtimeMs, sidecars: sides } } });
     } catch (e) {
