@@ -89,6 +89,7 @@ import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./m
 import { registerSonarrApi } from "./sonarrApi.js";
 import { adoptFolder, matchFolder, scanRoot } from "./folderImport.js";
 import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
+import { duplicateListings, ownedElsewhere, ownedWhy } from "./duplicates.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";
 import { ROOT_DIR, VERSION } from "./version.js";
@@ -642,6 +643,7 @@ app.post("/api/managed/run", async () => {
 
 app.get<{ Querystring: { sidecars?: string } }>("/api/audit/language", async (req) => missingLanguage({ checkSidecars: req.query.sidecars === "1" }));
 app.get("/api/audit/gaps", async () => gaps());
+app.get("/api/audit/duplicates", async () => ({ items: duplicateListings() }));
 app.get("/api/audit/specials", async () => specials());
 
 // ---------------------------------------------------------------- facts, aliases, numbering rules (user data)
@@ -734,7 +736,9 @@ async function runSearch(tvdbId: number, eps: number[], full: boolean, onProgres
   for (const [k, v] of lastResults) if (Date.now() - v.at > 30 * 60_000) lastResults.delete(k);
   lastResults.set(searchKey(tvdbId, eps), { at: Date.now(), tvdbId, episodeIds: eps, results: r.results });
   logDecision("search", { tvdbId, title: r.series.title, episodeIds: eps, why: `Deep Search: ${r.queries.length} queries (${r.tier === 1 ? "quick" : "wide"} search, ${Math.round(r.tookMs / 100) / 10} s), ${r.found} releases, ${r.matched} for these episodes, ${r.results.filter((x) => x.rank.accept).length} acceptable` });
-  return { ...r, results: publicResults(r.results), dryRun: getSettings().managed.dryRun };
+  // Episodes the library already holds under another series: a hand-picked release is allowed, with a warning.
+  const owned = ownedElsewhere(tvdbId);
+  return { ...r, results: publicResults(r.results), dryRun: getSettings().managed.dryRun, ownedElsewhere: eps.filter((e) => owned.has(e)).map((e) => ({ episodeId: e, why: ownedWhy(owned.get(e)!) })) };
 }
 
 const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean; packs?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, 50), full: b?.full === true, packs: b?.packs === true });

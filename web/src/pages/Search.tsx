@@ -155,6 +155,7 @@ function DeepSearch() {
                 {res.series.title}
               </Link>
               <p className="muted small">{t("search.summary", { found: res.found, matched: res.matched, queries: res.queries.length, secs: Math.round(res.tookMs / 1000) })}</p>
+              {!!res.ownedElsewhere?.length && <p className="warn-text small">{t("dup.pickWarn", { why: res.ownedElsewhere[0].why, n: res.ownedElsewhere.length })}</p>}
               {!!Object.keys(res.skipped).length && <p className="muted small">{t("search.skipped", { list: Object.entries(res.skipped).map(([k, v]) => `${v} ${k}`).join(", ") })}</p>}
             </div>
           </div>

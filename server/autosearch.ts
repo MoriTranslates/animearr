@@ -21,6 +21,7 @@ import { addToQueue } from "./fillin.js";
 import { searchAgainSoon } from "./episodes.js";
 import { listManaged } from "./managed.js";
 import { scopedEpisodeIds } from "./scope.js";
+import { ownedElsewhere, ownedWhy } from "./duplicates.js";
 
 export interface AutoDeps {
   search: typeof deepSearch;
@@ -95,12 +96,16 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
   const minConf = getSettings().managed.minConfidence;
   const out: AutoOutcome[] = [];
   const targets: number[] = [];
+  const owned = ownedElsewhere(tvdbId);
   for (const id of episodeIds) {
     const e = all.get(id);
     if (!e) continue;
     const label = epLabel(e);
     if (movies.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: `a movie (${movies.get(id)!.title}): handled by Radarr` });
-    else if (inFlight(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already downloading" });
+    else if (owned.has(id)) {
+      out.push({ episodeIds: [id], label, outcome: "skipped", why: ownedWhy(owned.get(id)!) });
+      logDecision("info", { tvdbId, title: series.title, episodeIds: [id], why: `Automatic search for ${series.title} ${label} skipped: ${ownedWhy(owned.get(id)!)}. Nothing was searched or grabbed.` });
+    } else if (inFlight(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already downloading" });
     else if (searching.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already being searched" });
     else if (e.hasFile) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already has a file (use Download again to replace it)" });
     else targets.push(id);

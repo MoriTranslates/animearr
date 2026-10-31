@@ -20,6 +20,7 @@
 import { logDecision } from "./activity.js";
 import { CATEGORY_NAME, beatsCurrent, goalCategory, goalLabel, ladderRank, LOCK_TAG, meetsGoal, qualityScore, type Category, type GoalId, type QualityScore, type SeadexEntry } from "./core/quality.js";
 import { cache, db, dbState, setJob } from "./db.js";
+import { ownedElsewhere } from "./duplicates.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged, toCandidate } from "./managed.js";
 import { startGrab } from "./pipeline.js";
@@ -110,9 +111,11 @@ export function upgradeUnits(now = Date.now()): Unit[] {
     const series = cache.prepare("SELECT path, year FROM series WHERE tvdb_id = ?").get(m.tvdbId) as { path: string; year: number | null } | undefined;
     if (!series || !underAllowedRoot(series.path)) continue;
     const goal = prof.qualityGoal ?? "high";
-    const rows = cache
+    const owned = ownedElsewhere(m.tvdbId); // a duplicate listing's copy: the real files are upgraded under the show that holds them
+    let rows = cache
       .prepare("SELECT e.id, e.season, e.episode, e.air_utc, f.path, f.scene_name, f.resolution FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season > 0 AND e.monitored = 1 AND e.has_file = 1 ORDER BY e.season, e.episode")
       .all(m.seriesId) as { id: number; season: number; episode: number; air_utc: number | null; path: string; scene_name: string | null; resolution: string | null }[];
+    rows = rows.filter((r) => !owned.has(r.id));
     const seasons = [...new Set(rows.map((r) => r.season))];
     for (const season of seasons) {
       if (isLocked(m.tvdbId, season)) continue;

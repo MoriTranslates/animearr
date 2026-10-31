@@ -10,6 +10,7 @@
 import { isCreditlessTitle } from "./core/resolver.js";
 import { anidbSpecialKind } from "./anidb.js";
 import { cache, db } from "./db.js";
+import { ownedElsewhere } from "./duplicates.js";
 import { getSettings } from "./settings.js";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
@@ -133,7 +134,8 @@ function scopeEps(tvdbId: number, seriesId: number): ScopeEp[] {
 /** The episode ids a managed show's searches may cover (cached per call site by the caller). */
 export function scopedEpisodeIds(tvdbId: number, seriesId: number, now = Date.now()): Set<number> {
   const eps = scopeEps(tvdbId, seriesId);
-  return new Set(inScope(scopeFor(tvdbId), eps, now).map((e) => e.id));
+  const owned = ownedElsewhere(tvdbId); // already filed with a file under another library series: never searched again
+  return new Set(inScope(scopeFor(tvdbId), eps, now).filter((e) => !owned.has(e.id)).map((e) => e.id));
 }
 
 /**
@@ -146,7 +148,8 @@ export const isMissing = (e: { air_utc: number | null; has_file: number }, now =
 
 /** A show's missing episodes (in scope), with their air times. */
 export function missingScoped(tvdbId: number, seriesId: number, now = Date.now()) {
-  return inScope(scopeFor(tvdbId), scopeEps(tvdbId, seriesId), now).filter((e) => isMissing(e, now));
+  const owned = ownedElsewhere(tvdbId);
+  return inScope(scopeFor(tvdbId), scopeEps(tvdbId, seriesId), now).filter((e) => isMissing(e, now) && !owned.has(e.id));
 }
 
 /** Live preview for the UI: "Will monitor 3 seasons · 52 episodes · 6 missing". */

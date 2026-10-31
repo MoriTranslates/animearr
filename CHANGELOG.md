@@ -39,6 +39,15 @@ All notable changes, newest first. The commit history has the crew's version of 
   in Settings → Profiles) skips them. Files named `[Remaster]` count the same.
 - Request apps see each profile with its goal (e.g. "English subs: Aim high (Bluray 1080p)") and AnimeArr's quality
   categories as the profile's qualities.
+- **Duplicate-listing guard.** TVDB sometimes lists an OVA or sequel twice: as specials or a season of a parent show
+  and as its own show. AnimeArr's catalog knows where each AniList entry is filed, so an episode the library already
+  holds under another show ("owned elsewhere, filed as Slayers S00E03") is no longer counted as missing and is never
+  searched or grabbed automatically: not by the scheduler, the missing-episode search, fill-in, ⚡ search or the
+  quality upgrade watcher (the grab itself refuses it as a last line). Shows are matched by AniDB/AniList ids; a title
+  is used only when no id resolves and the episode counts agree. Picking a release by hand is still allowed, with a
+  warning. Audit → Maintenance → Duplicate listings shows each pair with the overlapping episodes and file counts on
+  both sides, and "Stop managing this show" (AnimeArr only; for Sonarr's shows it explains how to retire the copy in
+  Sonarr, which AnimeArr never changes). A duplicate whose other listing has no files yet is listed but not blocked.
 
 ### Notes
 - Removing a show through the API removes it from AnimeArr only: files are never deleted, whatever the request app
