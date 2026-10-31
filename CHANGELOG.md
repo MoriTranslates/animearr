@@ -25,6 +25,22 @@ All notable changes, newest first. The commit history has the crew's version of 
   database and the key that unlocks your saved passwords (so keep it private), and restore from such a file on another
   machine or after a disaster. The file is checked first (a backup from a newer AnimeArr is refused), a safety copy of
   what is there now is kept, and restoring asks for your password and restarts AnimeArr.
+- **Import lists: AniList and MyAnimeList.** Settings → Import lists adds the shows on your AniList or MyAnimeList
+  account to AnimeArr by itself, the way Sonarr's import lists do. Pick the account, which statuses to import
+  (Watching and Planning by default; Completed, Paused, Dropped and Rewatching are optional), the language profile,
+  folders, how to monitor, tags and whether new shows go to the fill-in queue. Test shows what it found. Lists check
+  every 6 hours (changeable) and Sync now runs one at once. Shows already in your library are skipped (another season
+  of a show you have counts), and movies on a list are added as movies. A list only ever adds: it never removes or
+  unmonitors anything. A new list first shows what it would add and adds nothing until you confirm; after that it adds
+  new shows by itself, up to 50 per check. Exclude a show to keep every list from adding it, and tick "Don't let my
+  import lists add it again" when you remove a show. In practice mode shows are added but nothing downloads. Each add
+  appears in Activity as "Added from AniList list 'name'". MyAnimeList needs a free client ID from
+  myanimelist.net/apiconfig (stored encrypted); AniList needs nothing.
+- **A calendar feed for your calendar app.** The Calendar page has an "iCal link" button. The link
+  (`/feed/calendar/animearr.ics?apikey=…`) works in Google Calendar, Apple Calendar, Outlook and others, and shows
+  every episode at its air time (with its length) and movie releases as all-day events. Choose how many days back and
+  ahead, whether to include shows you don't monitor, and only some tags. The link contains your API key, so treat it
+  like a password.
 - **The new-release watch also looks after files you already have.** Every few minutes AnimeArr checks each indexer's
   newest releases. As before, a release for an episode or movie you are waiting for makes its search run now. Now, a
   newer version (v2, REPACK) from the same group as an episode you have, or a better release (say a Blu-ray) for a

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ListFilter } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListFilter, Rss } from "lucide-react";
 import { seasonOf } from "../season";
 import { SeasonHeader } from "../seasonal";
 import { api, store, sxe } from "../api";
 import { navigate, Link } from "../App";
+import { IcalLink } from "../icalLink";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
@@ -74,6 +75,7 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
   });
   const [anchor, setAnchor] = useState(() => Date.now());
   const [open, setOpen] = useState<number | null>(null);
+  const [ical, setIcal] = useState(false);
   const [from, to] = rangeOf(view, anchor, compact);
   const d = useLoad(() => api<{ from: number; to: number; entries: EpEntry[]; movies?: MovieEntry[] }>(`/calendar?from=${from}&to=${to}${managedOnly ? "&managed=1" : ""}`), [managedOnly, from, to]);
   const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
@@ -110,6 +112,7 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
 
   return (
     <section>
+      {ical && <IcalLink onClose={() => setIcal(false)} />}
       {!compact && (
         <SeasonHeader
           compact
@@ -149,6 +152,9 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
                 }}
               >
                 <ListFilter className="lucide" aria-hidden="true" />
+              </button>
+              <button className="icon-btn" aria-label={t("ical.button")} title={t("ical.button")} onClick={() => setIcal(true)}>
+                <Rss className="lucide" aria-hidden="true" />
               </button>
             </div>
           }

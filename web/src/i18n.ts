@@ -10,6 +10,7 @@ import { qualityStrings } from "./i18n.quality";
 import { safetyStrings } from "./i18n.safety";
 import { rulesStrings } from "./i18n.rules";
 import { notifyStrings } from "./i18n.notify";
+import { listsStrings } from "./i18n.lists";
 
 const en = {
   ...setupStrings,
@@ -18,6 +19,7 @@ const en = {
   ...safetyStrings,
   ...rulesStrings,
   ...notifyStrings,
+  ...listsStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",

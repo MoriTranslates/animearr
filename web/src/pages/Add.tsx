@@ -4,7 +4,7 @@ import { Link, navigate } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
 import { ScopeFields, type Scope } from "../scope";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { seasonOf } from "../season";
 import { TrailerButton } from "../trailer";
@@ -323,6 +323,9 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
   const toast = useToast();
   const [askState, setAsk] = useState(false);
   const ask = asked ?? askState;
+  // "Don't let my import lists add it again": offered for a show, once there are lists.
+  const lists = useLoad(() => (ask && tvdbId ? api<{ lists: unknown[] }>("/import-lists") : Promise.resolve({ lists: [] })), [ask]);
+  const [exclude, setExclude] = useState(true);
   return (
     <>
       {asked === undefined && (
@@ -338,7 +341,7 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
           onClose={() => (setAsk(false), onClose?.())}
           onConfirm={async () => {
             try {
-              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}`, { method: "DELETE" });
+              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}${exclude && lists.data?.lists.length ? "?exclude=1" : ""}`, { method: "DELETE" });
               navigate(movieId ? "/movies" : "/shows");
             } catch (e) {
               toast((e as Error).message, true);
@@ -346,6 +349,7 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
           }}
         >
           <p>{t(movieId ? "add.removeMovieBody" : "add.removeBody")}</p>
+          {!movieId && !!lists.data?.lists.length && <Toggle checked={exclude} onChange={setExclude} label={t("lists.removeExclude")} />}
         </Confirm>
       )}
     </>

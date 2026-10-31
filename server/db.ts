@@ -395,6 +395,13 @@ const USER_MIGRATIONS: string[] = [
    CREATE TABLE release_rules (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, must TEXT NOT NULL DEFAULT '[]', must_not TEXT NOT NULL DEFAULT '[]',
      preferred TEXT NOT NULL DEFAULT '[]', position INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
    CREATE TABLE release_rule_tags (rule_id TEXT NOT NULL, tag_id INTEGER NOT NULL, PRIMARY KEY (rule_id, tag_id));`,
+  // ---- import lists (AniList / MyAnimeList) ----
+  // 37: lists that add shows from a public AniList or MyAnimeList account, and the shows a list must never add again
+  `CREATE TABLE import_lists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, source TEXT NOT NULL CHECK (source IN ('anilist', 'mal')), username TEXT NOT NULL,
+     statuses TEXT NOT NULL DEFAULT '["CURRENT","PLANNING"]', profile_id TEXT, root_folder TEXT NOT NULL DEFAULT '', movie_root_folder TEXT NOT NULL DEFAULT '',
+     scope TEXT, then_do TEXT NOT NULL DEFAULT 'none', tags TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, confirmed INTEGER NOT NULL DEFAULT 0,
+     last_sync_at INTEGER, last_result TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+   CREATE TABLE import_list_exclusions (anilist_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', list_name TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
