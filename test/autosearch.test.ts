@@ -87,3 +87,15 @@ test("smart batch: a worse batch from another group waits while the season's gro
   await autoSearchEpisodes(700500, [5001, 5002, 5003], { ...two.d, preferSingles: async () => "Judas" });
   assert.deepEqual(two.grabbed.map((g) => g.title), ["[Erai] Auto Show 01-03"]);
 });
+
+test("more than 26 episodes: the first 26 are searched now, the rest queued (fill-in for a show that isn't managed)", async () => {
+  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (51, 700501, 'Long Show', '/media/AnimeArr/Long Show', 1, 0)").run();
+  const ids = Array.from({ length: 30 }, (_, i) => 6000 + i);
+  for (const [i, id] of ids.entries()) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, title, monitored, has_file, air_utc, runtime) VALUES (?, 51, 1, ?, ?, 1, 0, 0, 24)").run(id, i + 1, `E${i + 1}`);
+  const searched: number[] = [];
+  const { d } = deps((t) => (searched.push(...t), []));
+  const out = await autoSearchEpisodes(700501, ids, d);
+  assert.deepEqual(out.queued, { n: 4, where: "fillin" });
+  assert.ok(searched.every((id) => id < 6026), "only the first 26 are searched now");
+  assert.ok(db.prepare("SELECT 1 FROM fill_queue WHERE tvdb_id = 700501").get(), "the show is in the fill-in queue");
+});

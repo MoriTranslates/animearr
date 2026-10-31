@@ -18,6 +18,8 @@ import { searchMovie, startMovieGrab } from "./movies.js";
 import type { Candidate } from "./pipeline.js";
 import { batchPrefersSingles } from "./batch.js";
 import { addToQueue } from "./fillin.js";
+import { searchAgainSoon } from "./episodes.js";
+import { listManaged } from "./managed.js";
 import { scopedEpisodeIds } from "./scope.js";
 
 export interface AutoDeps {
@@ -64,11 +66,26 @@ async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: Search
 }
 
 /** ⚡ for one or more episodes of a show. */
-export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps): Promise<{ results: AutoOutcome[] }> {
+/** ⚡ searches this many episodes at once; more would hit every indexer once per episode in one burst. */
+export const AUTO_NOW = 26;
+
+export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps): Promise<{ results: AutoOutcome[]; queued?: { n: number; where: "soon" | "fillin" } }> {
   const series = seriesByTvdb(tvdbId);
   if (!series) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
   if (!underAllowedRoot(series.path)) throw Object.assign(new Error(`${series.title} isn't in an library folder (Settings → Automation & safety → Library folders)`), { statusCode: 403 });
-  if (episodeIds.length > 26) throw Object.assign(new Error("Search at most 26 episodes at a time"), { statusCode: 400 });
+  // A bigger pick: the first 26 now, the rest to the paced searches (managed shows) or the fill-in queue (others).
+  let queued: { n: number; where: "soon" | "fillin" } | undefined;
+  if (episodeIds.length > AUTO_NOW) {
+    const rest = episodeIds.slice(AUTO_NOW);
+    episodeIds = episodeIds.slice(0, AUTO_NOW);
+    if (listManaged().some((m) => m.tvdbId === tvdbId)) {
+      searchAgainSoon(tvdbId, rest, { why: `${rest.length} more episodes than ⚡ searches at once: queued for the next searches` });
+      queued = { n: rest.length, where: "soon" };
+    } else {
+      addToQueue([tvdbId]);
+      queued = { n: rest.length, where: "fillin" };
+    }
+  }
   const all = new Map(episodesFor(tvdbId).map((e) => [e.id, e]));
   const movies = radarrMovieSpecials(series.id);
   const minConf = getSettings().managed.minConfidence;
@@ -86,7 +103,7 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
   }
   for (const id of targets) searching.add(id);
   try {
-    return await searchTargets(tvdbId, series.title, targets, all, out, minConf, deps);
+    return { ...(await searchTargets(tvdbId, series.title, targets, all, out, minConf, deps)), queued };
   } finally {
     for (const id of targets) searching.delete(id);
   }

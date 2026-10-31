@@ -127,13 +127,13 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
   const runAuto = async () => {
     setAutoBusy(true);
     try {
-      const r = await api<{ results: { episodeIds: number[]; label: string; outcome: string; release?: string; why: string }[] }>("/autosearch", { body: { tvdbId, episodeIds: ids } });
+      const r = await api<{ results: { episodeIds: number[]; label: string; outcome: string; release?: string; why: string }[]; queued?: { n: number; where: "soon" | "fillin" } }>("/autosearch", { body: { tvdbId, episodeIds: ids } });
       const look = r.results.filter((x) => x.outcome === "needs-look");
       const got = r.results.filter((x) => x.outcome === "grabbed" || x.outcome === "would-grab");
       const msg =
         r.results.length === 1
           ? `${r.results[0].label}: ${t(`auto.${r.results[0].outcome}` as I18nKey)}${r.results[0].release ? ` · ${r.results[0].release}` : ""} · ${r.results[0].why}`
-          : t("auto.summary", { got: got.length, look: look.length, other: r.results.length - got.length - look.length });
+          : t("auto.summary", { got: got.length, look: look.length, other: r.results.length - got.length - look.length }) + (r.queued ? ` · ${t(r.queued.where === "soon" ? "auto.queuedSoon" : "auto.queuedFillIn", { n: r.queued.n })}` : "");
       toast(msg, r.results.every((x) => x.outcome === "failed"), look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, look.flatMap((x) => x.episodeIds)) } : undefined, { kind: got.length ? "grab" : "success" });
       onDone();
     } catch (e) {
@@ -210,6 +210,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
           }}
         >
           <p>{t("auto.manyBody")}</p>
+          {episodes.length > 26 && <p className="muted small">{t("auto.manyQueued", { n: episodes.length - 26 })}</p>}
           {dryRun && <p className="warn-text">{t("ep.regrabDry")}</p>}
         </Confirm>
       )}
@@ -237,7 +238,7 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
     ui,
     open: dialog !== null,
     search: interactive,
-    auto: () => (episodes.length > 26 ? toast(t("auto.tooMany"), true) : episodes.length > 1 ? setDialog("autoMany") : void runAuto()),
+    auto: () => (episodes.length > 1 ? setDialog("autoMany") : void runAuto()),
     autoBusy,
     regrab: () => setDialog("regrab"),
     remove: () => setDialog("delete"),
