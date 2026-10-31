@@ -319,3 +319,12 @@ test("SABnzbd del_files quirk: AnimeArr removes the job's folder itself, never t
   assert.ok(removeJobFolder("/data/completed/animearr/Job A"));
   assert.equal(fs.existsSync(job), false);
 });
+
+test("season decision: a mixed season never loses its better files to a whole-season replace (Black Clover case)", () => {
+  // Mostly BiOMA WEB, with a few Blu-ray episodes from other groups; a SubsPlease WEB batch matches the typical file.
+  const existing = [...files(6, "BiOMA"), ...files(2, "iAHD", { source: "bluray" }).map((f, i) => ({ ...f, episodeId: 7 + i }))];
+  const d = decideSeason({ ...base, existing, batch: { group: "SubsPlease", resolution: 1080, source: "web" } });
+  assert.equal(d.mode, "missing");
+  assert.deepEqual(d.replaces, []);
+  assert.match(d.why, /would swap 2 better files \(Blu-ray\)/);
+});

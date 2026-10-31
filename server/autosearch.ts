@@ -68,6 +68,10 @@ async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: Search
 /** ⚡ for one or more episodes of a show. */
 /** ⚡ searches this many episodes at once; more would hit every indexer once per episode in one burst. */
 export const AUTO_NOW = 26;
+/** A torrent pack needs this many seeders to be picked over single releases. */
+const MIN_PACK_SEEDERS = 3;
+/** How far below the best single release a pack may rank and still be picked (one grab instead of many). */
+const PACK_SCORE_SLACK = 5;
 
 export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], deps: AutoDeps = realDeps): Promise<{ results: AutoOutcome[]; queued?: { n: number; where: "soon" | "fillin" } }> {
   const series = seriesByTvdb(tvdbId);
@@ -118,10 +122,15 @@ async function searchTargets(tvdbId: number, seriesTitle: string, targets: numbe
     const season = all.get(remaining[0])?.season ?? null;
     // Batches with episodes you already have count too (smart batch grabs: only the wanted files are downloaded or
     // imported, or the season decision replaces the whole season).
-    const packs = automaticPicks(res.results, tvdbId, season, { allowPacks: true, allowExtras: true })
+    // A pack has to be healthy (a torrent with a few seeders stalls) and rank at least as well as the single releases
+    // it would stand in for; otherwise the singles are the better grab.
+    const picks = automaticPicks(res.results, tvdbId, season, { allowPacks: true, allowExtras: true });
+    const bestSingle = Math.max(-Infinity, ...picks.filter((r) => r.episodeIds.length === 1 && remaining.includes(r.episodeIds[0])).map((r) => r.rank.score));
+    const packs = picks
+      .filter((r) => !(r.protocol === "torrent" && r.seeders !== null && r.seeders < MIN_PACK_SEEDERS) && r.rank.score >= bestSingle - PACK_SCORE_SLACK)
       .map((r) => ({ r, covers: r.episodeIds.filter((x) => remaining.includes(x)) }))
       .filter((x) => x.covers.length >= 2)
-      .sort((a, b) => b.covers.length - a.covers.length || a.r.episodeIds.length - b.r.episodeIds.length);
+      .sort((a, b) => b.covers.length - a.covers.length || b.r.rank.score - a.r.rank.score || a.r.episodeIds.length - b.r.episodeIds.length);
     let pack: (typeof packs)[number] | undefined = packs[0];
     // A worse batch from another group: single releases of the season's group fill the gaps first, when there are any.
     if (pack && deps.preferSingles) {

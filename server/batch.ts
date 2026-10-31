@@ -177,6 +177,12 @@ export function decideSeason(x: SeasonInput): SeasonDecision {
     const worse = cmp === null ? "can't tell its quality" : "lower quality than your files";
     return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: the batch is another group (${groupWords}) and ${worse}; the season stays mixed`, cmp !== null && !!seasonGroup);
   }
+  // The typical file can hide better ones (a mixed season of WEB and Blu-ray): never swap any file for a worse one.
+  const better = good.filter((f) => compareQuality(x.batch, f, x.profileResolution) === -1);
+  if (better.length) {
+    const kinds = [...new Set(better.map((f) => (f.source === "bluray" ? "Blu-ray" : f.source === "web" ? "WEB" : (f.source ?? "other"))))].join("/");
+    return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the whole season would swap ${better.length} better file${better.length === 1 ? "" : "s"} (${kinds}) for this batch`);
+  }
   if (!x.recycleBin) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the season would keep one group (${batchGroup ?? "?"}) but needs the recycling bin (Settings → Media management)`);
   return {
     mode: "replace",

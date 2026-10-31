@@ -99,3 +99,12 @@ test("more than 26 episodes: the first 26 are searched now, the rest queued (fil
   assert.ok(searched.every((id) => id < 6026), "only the first 26 are searched now");
   assert.ok(db.prepare("SELECT 1 FROM fill_queue WHERE tvdb_id = 700501").get(), "the show is in the fill-in queue");
 });
+
+test("⚡ prefers healthy single releases over a pack with too few seeders or a lower rank", async () => {
+  const single = (id: number, ep: number) => r(`Auto.Show.S01E0${ep}.1080p.WEB-DL.DUAL-BiOMA`, [id], { group: "BiOMA", protocol: "usenet" });
+  const weakPack = r("[SubsPlease] Auto Show - 01-05 (1080p)", [5001, 5002, 5003, 5004, 5005], { group: "SubsPlease", protocol: "torrent", seeders: 1 });
+  const { d, grabbed } = deps((ids) => (ids.length > 1 ? [weakPack, single(5001, 1), single(5002, 2)] : [single(ids[0], ids[0] - 5000)]));
+  await autoSearchEpisodes(700500, [5001, 5002], d);
+  assert.ok(grabbed.every((g) => !/SubsPlease/.test(g.title)), "the 1-seeder pack isn't taken");
+  assert.equal(grabbed.length, 2);
+});
