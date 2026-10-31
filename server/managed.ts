@@ -24,6 +24,9 @@ import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type Searc
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { burnedInFact, coverFor } from "./audit.js";
 import { profileFor } from "./profiles.js";
+import { newerVersionOf } from "./propers.js";
+import { CATEGORY_NAME, ladderRank, qualityScore } from "./core/quality.js";
+import { hintProper, recheckSoon, upgradeUnits, type Unit } from "./qualityUpgrade.js";
 import { missingScoped, scopedEpisodeIds } from "./scope.js";
 
 export interface ManagedRow {
@@ -454,21 +457,27 @@ export async function managedTick(now = Date.now()) {
 const rssSeen = new Map<string, number>(); // guid → first seen (each release is looked at once)
 
 /**
- * RSS-style new-release watch: Prowlarr's newest releases (every indexer, AnimeArr's categories). A release for a
- * wanted episode (managed show, any state that still wants a file) or a wanted movie brings that search forward at
- * once; the search then ranks every candidate, so RSS never grabs a release blindly.
+ * RSS-style new-release watch: the newest releases of every indexer (AnimeArr's categories, the newest N of each). A
+ * release for a wanted episode (managed show, any state that still wants a file) or a wanted movie brings that search
+ * forward at once; the search then ranks every candidate, so RSS never grabs a release blindly. An episode that already
+ * has a file is watched too: a newer version of it (v2, same group) or a better category than the file, in a season the
+ * quality watcher keeps, makes that season's next check come now. The watcher's guard rails still decide what is grabbed.
  */
 export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
   if (dbState.corrupt || !searchConfigured()) return { checked: 0, hits: 0 };
   const waiting = db.prepare("SELECT episode_id, tvdb_id FROM search_state WHERE state IN ('waiting', 'retry', 'replace', 'backlog', 'gave-up')").all() as { episode_id: number; tvdb_id: number }[];
   const movies = db.prepare("SELECT movie_id FROM movie_search WHERE state IN ('waiting', 'retry', 'unreleased')").all() as { movie_id: number }[];
-  if (!waiting.length && !movies.length) return { checked: 0, hits: 0 };
+  const upgrades = getSettings().qualityUpgrade.mode !== "off" ? new Set(listManaged().map((m) => m.tvdbId)) : new Set<number>();
+  if (!waiting.length && !movies.length && !upgrades.size) return { checked: 0, hits: 0 };
   const wanted = new Map(waiting.map((w) => [w.episode_id, w.tvdb_id]));
-  const recent = (await deps.search("", { limit: 300 })).filter((r) => !rssSeen.has(r.guid));
+  const recent = (await deps.search("", { limit: 100, perIndexer: true })).filter((r) => !rssSeen.has(r.guid));
   // Remembered releases: the newest 20,000 (insertion order).
   while (rssSeen.size > 20_000) rssSeen.delete(rssSeen.keys().next().value!);
   const ctx = identifyContext();
   let hits = 0;
+  let upgradeHits = 0;
+  let units: Unit[] | null = null; // seasons below their goal, worked out when a release for a file we have first needs them
+  const recycling = !!getSettings().media.recycleBin.trim(); // a replacement needs the recycling bin
   const parseAlt = (s: string) => {
     try {
       return JSON.parse(s) as string[];
@@ -487,6 +496,32 @@ export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
       // A given-up episode gets one more search when a new release for it shows up.
       hits += Number(db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, state = CASE state WHEN 'gave-up' THEN 'retry' ELSE state END WHERE episode_id = ? AND (next_at > ? OR state = 'gave-up')").run(now, `New release seen: ${r.title}`, e.id, now).changes);
     }
+    const tvdbId = id.candidate?.tvdbId;
+    if (tvdbId !== undefined && upgrades.has(tvdbId) && id.resolution?.ok) {
+      const owned = id.resolution.episodes.filter((e) => !wanted.has(e.id) && (cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(e.id) as { has_file: number } | undefined)?.has_file);
+      if (owned.length) {
+        const title = ctx.index.library(tvdbId)?.title ?? id.summary;
+        const seasons = [...new Set(owned.map((e) => e.season))];
+        const newer = recycling ? newerVersionOf(tvdbId, owned.map((e) => e.id), r.title) : { ok: false, why: "" };
+        if (newer.ok) {
+          // A newer version of a file we have: the watcher checks those episodes for one on its next pass.
+          hintProper(owned.map((e) => e.id), now);
+          for (const season of seasons) recheckSoon(tvdbId, season);
+          upgradeHits++;
+          logDecision("info", { tvdbId, title, episodeIds: owned.map((e) => e.id), release: r.title, why: `New release seen: ${r.title}, ${newer.why}. Checking for a newer version of ${owned.length > 1 ? `${owned.length} episodes` : `episode ${id.resolution.label}`} soon; nothing is grabbed from the feed` });
+        } else {
+          units ??= upgradeUnits(now);
+          const cat = qualityScore(r.title, {}).info.category;
+          for (const season of seasons) {
+            const unit = units.find((u) => u.tvdbId === tvdbId && u.season === season);
+            const below = unit?.files.filter((f) => !f.proper && owned.some((e) => e.id === f.episodeId) && ladderRank(cat) > ladderRank(f.q.info.category));
+            if (!unit || !below?.length || !recheckSoon(tvdbId, season)) continue;
+            upgradeHits++;
+            logDecision("info", { tvdbId, title, episodeIds: below.map((f) => f.episodeId), release: r.title, why: `New release seen: ${r.title} (${CATEGORY_NAME[cat]}), better than your ${CATEGORY_NAME[below[0].q.info.category]} files in season ${season}. Checking that season for an upgrade soon; nothing is grabbed from the feed` });
+          }
+        }
+      }
+    }
     if (movieRows.length && !id.resolution?.ok) {
       const p = parseRelease(r.title);
       if (p.episodes.length) continue; // an episode release, not a movie
@@ -498,8 +533,8 @@ export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
       }
     }
   }
-  setJob("rss", "done", `${recent.length} new releases checked, ${hits} for wanted episodes/movies`);
-  return { checked: recent.length, hits };
+  setJob("rss", "done", `${recent.length} new releases checked, ${hits} for wanted episodes/movies${upgradeHits ? `, ${upgradeHits} newer versions/upgrades for files you have (checked soon)` : ""}`);
+  return { checked: recent.length, hits, upgradeHits };
 }
 
 /** For the "Manage selected" confirm: how many in-scope missing episodes these shows would search live. */

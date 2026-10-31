@@ -10,7 +10,7 @@
  * - A candidate must beat each file it replaces: a higher quality category always does; inside the same category only
  *   when the file isn't already that category's best (no churn when SeaDex swaps between equal releases). The one
  *   exception is a newer version (v2, REPACK) from the same group as the file ("Propers and repacks", core/propers.ts):
- *   episodes aired in the last two weeks are also checked for one, even when they already meet the goal.
+ *   episodes aired in the last two weeks (or that a feed release just pointed at) are also checked for one, even when they already meet the goal.
  * - The swap is a Replace-season grab: each new file replaces its episode's file only after it passed the normal
  *   checks, and the old file goes to the recycling bin.
  * - Automatic from day one, with guard rails: the first run only lists its plan (grabs start a day later, or when the
@@ -101,6 +101,31 @@ export function capOf(st: Pick<StateRow, "best_seen" | "no_bd"> | undefined, yea
 /** Episodes aired this recently are checked for a v2 even when they meet the goal (groups re-release within days). */
 const PROPER_WINDOW = 14 * DAY;
 
+/** Episodes the RSS watch saw a newer release for: checked for a newer version for a few days, even past the window above. */
+const HINT_MS = 3 * DAY;
+const properHints = (now: number): Map<number, number> => {
+  try {
+    return new Map(Object.entries(JSON.parse(kvGet("qualityUpgrade.properHints") ?? "{}") as Record<string, number>).filter(([, at]) => now - at < HINT_MS).map(([id, at]) => [Number(id), at]));
+  } catch {
+    return new Map();
+  }
+};
+/** The RSS watch saw a newer version of these episodes' files; returns how many weren't already hinted. */
+export function hintProper(episodeIds: number[], now = Date.now()) {
+  const hints = properHints(now);
+  const fresh = episodeIds.filter((id) => !hints.has(id)).length;
+  for (const id of episodeIds) hints.set(id, now);
+  kvSet("qualityUpgrade.properHints", JSON.stringify(Object.fromEntries(hints)));
+  return fresh;
+}
+/**
+ * The RSS watch brings a season's next check forward (to the next pass). Only the check time moves: the plan wait, the
+ * pause switch, the seasons-a-day and size budgets still decide what happens. True when it was waiting out a recheck.
+ */
+export function recheckSoon(tvdbId: number, season: number) {
+  return Number(db.prepare("UPDATE quality_upgrade SET last_at = NULL WHERE tvdb_id = ? AND season = ? AND last_at IS NOT NULL AND state <> 'grabbed'").run(tvdbId, season).changes) > 0;
+}
+
 const heightOf = (res: string | null) => {
   const m = /(\d{3,4})\s*p?\s*$/i.exec(res ?? "") ?? /x(\d{3,4})/.exec(res ?? "");
   return m ? Number(m[1]) : null;
@@ -112,6 +137,7 @@ const heightOf = (res: string | null) => {
  */
 export function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {}): Unit[] {
   const checkPropers = !!opts.propers && properMode() === "preferAndUpgrade";
+  const hinted = checkPropers ? properHints(now) : new Map<number, number>();
   const tiers = animeTiers();
   const out: Unit[] = [];
   for (const m of listManaged()) {
@@ -141,7 +167,7 @@ export function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {})
         const rev = fileRevision(r.id, r);
         const label = `S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")}`;
         if (meetsGoal(q, goal, { profileResolution: prof.resolution, cap, seadexKnown: !!seadex && !seadex.incomplete })) {
-          if (checkPropers && r.air_utc !== null && now - r.air_utc <= PROPER_WINDOW) files.push({ episodeId: r.id, label, release, q, rev, proper: true });
+          if (checkPropers && ((r.air_utc !== null && now - r.air_utc <= PROPER_WINDOW) || hinted.has(r.id))) files.push({ episodeId: r.id, label, release, q, rev, proper: true });
           continue;
         }
         files.push({ episodeId: r.id, label, release, q, rev });
