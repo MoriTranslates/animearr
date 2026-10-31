@@ -17,6 +17,7 @@
  * below. Dual and Either watch modes prefer the dual-audio picks.
  */
 import { parseRelease, type ParsedRelease, type Source } from "./parser.js";
+import { isNewerRevision, type HaveRevision, type ProperMode, type Revision } from "./propers.js";
 
 export type Category = "unknown" | "sdtv" | "dvd" | "web-480" | "bluray-480" | "web-720" | "bluray-720" | "web-1080" | "bluray-1080" | "web-2160" | "bluray-2160";
 
@@ -271,15 +272,20 @@ export const isCategoryBest = (s: Pick<QualityScore, "seadex" | "tier">) => !!s.
  * category", the owner's no-churn rule):
  * - a higher category always qualifies;
  * - in the same category, only when the current file isn't already that category's best and the candidate scores
- *   higher on SeaDex/tiers (a SeaDex pick moving between two equally good releases never re-downloads).
+ *   higher on SeaDex/tiers (a SeaDex pick moving between two equally good releases never re-downloads);
+ * - exception: a newer version (v2, REPACK) of the same group's release, when `rev` is given and the setting allows it.
  */
-export function beatsCurrent(cand: QualityScore, cur: QualityScore): { ok: boolean; why: string } {
+export function beatsCurrent(cand: QualityScore, cur: QualityScore, rev?: { have: HaveRevision; cand: Revision; mode: ProperMode }): { ok: boolean; why: string } {
   const a = ladderRank(cand.info.category);
   const b = ladderRank(cur.info.category);
   const cn = CATEGORY_NAME[cand.info.category];
   const un = CATEGORY_NAME[cur.info.category];
   if (a > b) return { ok: true, why: `${cn} beats your ${un}` };
   if (a < b) return { ok: false, why: `${cn} is below your ${un}` };
+  // A newer version of the file you have (same group, same or better category) is an upgrade even when the file is already
+  // its category's best: this is the one exception to the no-churn rule (core/propers.ts; locks and the setting are honoured there).
+  const newer = rev ? isNewerRevision(rev.have, rev.cand, rev.mode) : null;
+  if (newer?.ok) return { ok: true, why: newer.why };
   if (isCategoryBest(cur)) return { ok: false, why: `your ${un} file is already the best of its category` };
   if (cand.points > cur.points) return { ok: true, why: `a better ${cn} release (${cand.why[0] ?? "higher group tier"})` };
   return { ok: false, why: `not better than your ${un} file` };

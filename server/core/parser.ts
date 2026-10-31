@@ -54,6 +54,7 @@ export interface ParsedRelease {
   special: SpecialKind;
   /** A creditless opening/ending ("NCOP2", "Creditless Ending 1", "Clean OP"): which one. */
   creditless: { kind: "op" | "ed"; n: number | null } | null;
+  /** Release version: 1, "09v2" → 2, and a scene PROPER / REPACK / RERIP / REAL counts as v2 ("REPACK2" → 3). */
   version: number;
   /** Season pack / batch (range, "Batch", "Complete", or a season with no episode). */
   batch: boolean;
@@ -465,6 +466,10 @@ export function parseRelease(input: string): ParsedRelease {
     if (mk.batch) batch = true;
     if (mk.fullSeason) fullSeason = true;
   }
+  // Scene-style re-releases after the title: PROPER / REPACK / RERIP (any case) and REAL (capitals only: "Real Girl" is a title).
+  const tail = s.slice(Math.min(titleEnd, s.length));
+  const scene = /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
+  if (scene) version = Math.max(version, Number(scene[1] ?? 1) + 1);
   // A dash number right after a fan "S6 - 01" is the same number; don't double-count.
   if (fan && absolute.length === 1 && episodes.length === 1 && absolute[0] === episodes[0]) absolute = [];
   // "S01E01-02 - 001-002" keeps both; SxxEyy plus a weak trailing number "S10E14 214" → absolute 214.

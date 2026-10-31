@@ -18,6 +18,7 @@ import { aliasIndex } from "./metadata.js";
 import { profileFor } from "./profiles.js";
 import { releaseRulesFor } from "./releaseRules.js";
 import { parseRelease, type Source } from "./core/parser.js";
+import { combineHave, haveRevisions, properMode } from "./propers.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
   const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
@@ -240,6 +241,9 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
   const ruleSet = releaseRulesFor("series", tvdbId);
   const targetIds = new Set(targets.map((t) => t.id));
   const runtimeOf = new Map(all.map((e) => [e.id, e.runtime]));
+  // The files the targets have now (group + version), for "newer version" upgrades; only when the setting looks at versions.
+  const propers = properMode();
+  const haveOf = haveRevisions(tvdbId, targets.filter((t) => t.hasFile).map((t) => t.id));
   const results: SearchResult[] = [];
   const skipped: Record<string, number> = {};
   const queries: string[] = [];
@@ -264,6 +268,8 @@ export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { e
     }
     const ss = eps[0]?.season ?? null;
     const known = knownFor(r, series, ss, !id.parsed.group, groups, ruleSet);
+    known.propers = propers;
+    known.have = combineHave(haveOf, eps.map((e) => e.id));
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
     const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length, runtimeMin: runtimeOf.get(eps[0]?.id) ?? null }, prof, learned, known);
     results.push({

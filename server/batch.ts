@@ -3,7 +3,8 @@
  *
  * 1. Season consistency (torrent AND Usenet): when a batch covers a season the library already partly has, does the
  *    grab want only the missing episodes, or the whole season as a Replace season (old files go to the recycle bin
- *    only after the new ones passed their check)? Same group → missing only. Different group, quality at least as good
+ *    only after the new ones passed their check)? Same group → missing only (except files the batch has a newer version
+ *    of: v2 / REPACK, "Propers and repacks"). Different group, quality at least as good
  *    → whole season. Different group, worse → missing only (single releases of the season's group are preferred for
  *    the gaps by the automatic search). Episodes whose file failed its check always count as missing. Consistency off
  *    → missing only.
@@ -19,8 +20,10 @@ import { logDecision } from "./activity.js";
 import type { ClientJob, DownloadClients } from "./arr/clients.js";
 import { fileForMovie } from "./core/movieTitle.js";
 import { parseRelease, type Source } from "./core/parser.js";
+import { isNewerRevision, type ProperMode } from "./core/propers.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { cache, db } from "./db.js";
+import { haveRevisions, properMode } from "./propers.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 
@@ -81,6 +84,9 @@ export interface ExistingFile {
   source: Source;
   /** The file failed its language check (e.g. no EN subs, wrong language): counts as missing. */
   failed: boolean;
+  /** The file's release version and whether it is locked ([Keep] / [Remaster], a locked show or season). */
+  version?: number;
+  locked?: boolean;
 }
 
 export interface SeasonInput {
@@ -90,7 +96,9 @@ export interface SeasonInput {
   batchEpisodes: number[];
   /** Episodes of the season the library has a file for. */
   existing: ExistingFile[];
-  batch: { group: string | null; resolution: number | null; source: Source };
+  batch: { group: string | null; resolution: number | null; source: Source; version?: number };
+  /** The "Propers and repacks" setting (off when missing). */
+  propers?: ProperMode;
   /** The profile's resolution (quality is ranked like the release ranking: the profile's resolution first). */
   profileResolution: number;
   /** A recycle bin is set (Replace season needs it, so old files can come back). */
@@ -160,15 +168,22 @@ export function decideSeason(x: SeasonInput): SeasonDecision {
   const seasonGroup = majorityGroup(x.existing.filter((f) => !f.failed));
   const s = `season ${x.season}`;
   const failedNote = failed.length ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} whose file failed its check count as missing` : "";
-  const missingOnly = (why: string, preferSingles = false): SeasonDecision => {
-    // Failed files are replaced through the Replace-season path (old file to the bin only after the new one passed); without a bin they stay.
-    const repl = x.recycleBin ? failed : [];
+  const missingOnly = (why: string, preferSingles = false, newer: number[] = []): SeasonDecision => {
+    // Failed files (and files the batch has a newer version of) are replaced through the Replace-season path (old file to the bin only after the new one passed); without a bin they stay.
+    const repl = x.recycleBin ? [...failed, ...newer] : [];
     const binNote = failed.length && !x.recycleBin ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} with a failed file stay as they are (Replace season needs the recycling bin)` : "";
     return { mode: "missing", want: [...missing, ...repl], replaces: repl, preferSingles, seasonGroup, why: `${why}${repl.length ? failedNote : ""}${binNote}` };
   };
   if (!good.length) return { mode: "missing", want: [...missing, ...(x.recycleBin ? failed : [])], replaces: x.recycleBin ? failed : [], preferSingles: false, seasonGroup, why: `Taking ${s}: you have none of its episodes${failed.length ? ` with a good file${x.recycleBin ? failedNote : ""}` : ""}` };
   if (x.consistency === "off") return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: keeping one group per season is off`);
   const batchGroup = x.batch.group;
+  if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) {
+    // The one exception to "same group → keep what you have": a higher version of the same release (never a different quality, never a locked file).
+    const newer = x.propers
+      ? good.filter((f) => f.version !== undefined && isNewerRevision({ group: f.group, version: f.version, locked: f.locked }, { group: batchGroup, version: x.batch.version ?? 1 }, x.propers!).ok && compareQuality(x.batch, f, x.profileResolution) !== -1).map((f) => f.episodeId)
+      : [];
+    if (newer.length && x.recycleBin) return missingOnly(`${newer.length} episode${newer.length === 1 ? "" : "s"} of ${s} get${newer.length === 1 ? "s" : ""} a newer version (v${x.batch.version}) from ${seasonGroup}, plus the ${missing.length} missing; the old files go to the recycling bin only after the new ones pass their check`, false, newer);
+  }
   if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: same group as your files (${seasonGroup})`);
   const existingQ = typicalQuality(good, seasonGroup);
   const cmp = compareQuality(x.batch, existingQ, x.profileResolution);
@@ -238,6 +253,8 @@ export function planBatch(input: {
   consistency: "off" | "prefer" | "strong";
   profileResolution: number;
   recycleBin: boolean;
+  /** The "Propers and repacks" setting; leave out to ignore versions. */
+  propers?: ProperMode;
   exclude: Set<number>;
   existingOf: (seriesId: number, season: number) => ExistingFile[];
 }): BatchPlan {
@@ -249,7 +266,7 @@ export function planBatch(input: {
   for (const season of seasons) {
     const batchEpisodes = eps.filter((e) => e.season === season && !input.exclude.has(e.id)).map((e) => e.id);
     if (batchEpisodes.length < 2) continue;
-    const d = decideSeason({ season, consistency: input.consistency, batchEpisodes, existing: input.existingOf(input.seriesId, season), batch: { group: input.group ?? parsed.group, resolution: parsed.resolution, source: parsed.source }, profileResolution: input.profileResolution, recycleBin: input.recycleBin });
+    const d = decideSeason({ season, consistency: input.consistency, batchEpisodes, existing: input.existingOf(input.seriesId, season), batch: { group: input.group ?? parsed.group, resolution: parsed.resolution, source: parsed.source, version: parsed.version }, propers: input.propers, profileResolution: input.profileResolution, recycleBin: input.recycleBin });
     decisions.push(d);
     for (const e of d.want) want.add(e);
   }
@@ -266,9 +283,12 @@ export function planBatch(input: {
 /** The season's files from the cache, with their language verdict (failed = the check says "no"). */
 export async function existingFiles(seriesId: number, season: number): Promise<ExistingFile[]> {
   const { episodeRows } = await import("./episodes.js");
+  const tvdbId = (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id;
   const hasFile = (id: number) => !!(cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
   const files = new Map((cache.prepare("SELECT id, source, scene_name, quality, resolution FROM files WHERE series_id = ?").all(seriesId) as { id: number; source: string | null; scene_name: string | null; quality: string | null; resolution: string | null }[]).map((f) => [f.id, f]));
-  return episodeRows(seriesId)
+  const rows = episodeRows(seriesId);
+  const revs = tvdbId ? haveRevisions(tvdbId, rows.filter((e) => e.season === season).map((e) => e.id)) : new Map();
+  return rows
     // An episode with a file but no file details yet (not synced) still has its file: never "missing".
     .filter((e) => e.season === season && (e.file || e.status === "have" || hasFile(e.id)))
     .map((e) => {
@@ -279,6 +299,8 @@ export async function existingFiles(seriesId: number, season: number): Promise<E
         resolution: heightOf(f?.resolution) ?? heightOf(f?.quality),
         source: sourceOf(f?.source ?? null, f?.scene_name ?? null, f?.quality ?? null),
         failed: e.file?.lang?.state === "no",
+        version: revs.get(e.id)?.version,
+        locked: revs.get(e.id)?.locked,
       };
     });
 }
