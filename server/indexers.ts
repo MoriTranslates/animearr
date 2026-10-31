@@ -8,7 +8,7 @@ import { ensureProwlarrSelection } from "./indexerPick.js";
 import { describeFetchError, noteSeen, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import crypto from "node:crypto";
 import { getSettings, type IndexerCfg } from "./settings.js";
-import { prowlarrConfigured, prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
+import { prowlarrConfigured, prowlarrIndexers, prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { redactUrl } from "./arr/http.js";
 
 /** A stable numeric id per direct indexer (health is tracked per numeric indexer id); far above Prowlarr's ids. */
@@ -206,15 +206,31 @@ export const directIndexers = () => (getSettings().indexers ?? []).filter((x) =>
 /** Something to search with: Prowlarr, or at least one direct indexer. */
 export const searchConfigured = () => prowlarrConfigured() || directIndexers().length > 0;
 
+/** Prowlarr's search once per used indexer (the selection in Settings, else every enabled one); one that fails is skipped. */
+async function prowlarrPerIndexer(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean }) {
+  const chosen = getSettings().prowlarr.indexerIds;
+  let ids: number[];
+  try {
+    ids = (await prowlarrIndexers()).filter((x) => x.enable && (!chosen.length || chosen.includes(x.id))).map((x) => x.id);
+  } catch {
+    return prowlarrSearch(query, opts); // no indexer list: one combined search still works
+  }
+  const settled = await Promise.allSettled(ids.map((id) => prowlarrSearch(query, { ...opts, indexerIds: [id] })));
+  const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
+  if (ids.length && !ok.length) throw (settled[0] as PromiseRejectedResult).reason;
+  return ok.flatMap((r) => r.value);
+}
+
 /**
  * Prowlarr's indexers and the direct ones, in parallel. A failing indexer doesn't fail the search (its error is
- * reported); only when every source fails does the search throw.
+ * reported); only when every source fails does the search throw. With `perIndexer`, `limit` holds for each Prowlarr
+ * indexer on its own (one request each), so a busy indexer can't push the others' newest releases out of the list.
  */
-export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean } = {}): Promise<ProwlarrRelease[]> {
+export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean } = {}): Promise<ProwlarrRelease[]> {
   const jobs: Promise<ProwlarrRelease[]>[] = [];
   if (prowlarrConfigured()) {
     await ensureProwlarrSelection();
-    jobs.push(prowlarrSearch(query, opts));
+    jobs.push(opts.perIndexer ? prowlarrPerIndexer(query, opts) : prowlarrSearch(query, opts));
   }
   for (const ix of directIndexers()) {
     // A search-URL template needs words; the empty "latest releases" poll skips it.

@@ -50,12 +50,12 @@ export async function prowlarrIndexers() {
 const queryCache = new Map<string, { at: number; rows: Promise<ProwlarrRelease[]> }>();
 const QUERY_TTL = 10 * 60_000;
 
-/** Free-text search across the configured indexers and categories. An empty query returns each indexer's recent feed. */
-export async function prowlarrSearch(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean } = {}): Promise<ProwlarrRelease[]> {
+/** Free-text search across the configured indexers and categories (`indexerIds` narrows it to those). An empty query returns each indexer's recent feed. */
+export async function prowlarrSearch(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; indexerIds?: number[] } = {}): Promise<ProwlarrRelease[]> {
   const s = getSettings().prowlarr;
   const qs = new URLSearchParams({ query, type: "search", limit: String(opts.limit ?? 200) });
   for (const c of opts.categories ?? s.categories) qs.append("categories", String(c));
-  for (const i of s.indexerIds) qs.append("indexerIds", String(i));
+  for (const i of opts.indexerIds ?? s.indexerIds) qs.append("indexerIds", String(i));
   const key = qs.toString();
   const now = Date.now();
   for (const [k, v] of queryCache) if (now - v.at > QUERY_TTL) queryCache.delete(k);
