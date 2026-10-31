@@ -34,7 +34,7 @@ function view(g: GrabRow) {
   const eps = JSON.parse(g.episode_ids) as number[];
   const rejected = verifyFailed(g);
   const fixes = g.error && (g.state === "needs-attention" || g.state === "failed") ? liveFixesFor(g.error, { grabId: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, episodeIds: eps, kind: rejected ? "verify-fail" : g.state === "failed" ? "fail" : "attention" }) : [];
-  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, summary: queueSummary(g.state, g.error, rejected), progress: g.progress ?? null, attempt: g.attempt ?? 1, origin: g.origin, fixes, ...art(g), clientName: clientName(g.client), batch: batchLine(readBatch(g.batch)) };
+  return { id: g.id, at: g.at, updatedAt: g.updated_at, tvdbId: g.tvdb_id, movieId: g.movie_id ?? null, series: g.movie_id ? movieTitle(g.movie_id) : seriesTitle(g.tvdb_id), episodes: eps.map(label), episodeIds: eps, release: g.release, protocol: g.protocol, client: g.client, state: g.state, dryRun: !!g.dry_run, why: g.why, error: g.error, summary: queueSummary(g.state, g.error, rejected), progress: g.progress ?? null, attempt: g.attempt ?? 1, strikes: g.strikes ?? 0, strikeLimit: getSettings().queueHealth.strikes, strikeWhy: g.strike_why ?? null, origin: g.origin, fixes, ...art(g), clientName: clientName(g.client), batch: batchLine(readBatch(g.batch)) };
 }
 
 /** A grab that failed the language check (its error is the blocklist reason the check wrote). */

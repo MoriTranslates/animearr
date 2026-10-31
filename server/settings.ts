@@ -175,7 +175,12 @@ export interface Settings {
    * torrent still without metadata after metadataMin, counts as failed (blocklist + next candidate). removeFailed
    * also takes failed downloads out of the download client (AnimeArr's own category only; never library files).
    */
-  queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean };
+  queueHealth: { stallHours: number; metadataMin: number; removeFailed: boolean; strikes: number };
+  /**
+   * Malware blocker (Cleanuparr-style): a download holding executables/scripts, fake double-extension videos or
+   * "videos" far too small for the episode is removed, blocklisted and never imported. extensions is the editable list.
+   */
+  malware: { enabled: boolean; extensions: string[] };
   /**
    * Unpack torrents that arrive as RAR/7z/ZIP archives (Unpackerr-style). Needs write access to the download folder
    * (the container's /data mount) and 7-Zip; off by default.
@@ -347,7 +352,8 @@ const DEFAULTS: Settings = {
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
   repair: { mode: "log", maxPerDay: 10 },
   backlog: { enabled: false, perHour: 4, retryDays: 7 },
-  queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true },
+  queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true, strikes: 3 },
+  malware: { enabled: true, extensions: ["exe", "scr", "bat", "cmd", "com", "msi", "lnk", "vbs", "js", "ps1", "jar", "apk"] },
   extraction: { enabled: false },
   dualUpgrade: { mode: "log", perHour: 4, recheckDays: 3, maxAgeDays: 365 },
   qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 3, gbPerDay: 100, perHour: 4, recheckDays: 21 },
@@ -415,7 +421,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -466,6 +472,7 @@ const RANGES: Record<string, [number, number]> = {
   "backlog.perHour": [1, 24],
   "backlog.retryDays": [1, 60],
   "queueHealth.stallHours": [1, 72],
+  "queueHealth.strikes": [1, 20],
   "dualUpgrade.perHour": [1, 24],
   "qualityUpgrade.seasonsPerDay": [1, 50],
   "qualityUpgrade.gbPerDay": [1, 100000],
