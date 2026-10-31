@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0" /></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.9.0--beta-d2561f" alt="Version 0.9.0-beta" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.10.0--beta-d2561f" alt="Version 0.10.0-beta" /></a>
   <a href="https://github.com/MoriTranslates/animearr/pkgs/container/animearr"><img src="https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&amp;logoColor=white" alt="Docker image on ghcr.io" /></a>
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-555" alt="amd64 and arm64" />
   <a href="https://ko-fi.com/moritranslates"><img src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&amp;logoColor=white" alt="Support on Ko-fi" /></a>
@@ -28,7 +28,7 @@
 </p>
 
 > [!NOTE]
-> **Public beta (v0.9.0-beta).** It runs a real library every day, but it's young: expect rough edges and keep
+> **Public beta (v0.10.0-beta).** It runs a real library every day, but it's young: expect rough edges and keep
 > backups. It starts in **practice mode** (dry run: it shows what it would download, and downloads nothing) until you
 > switch that off.
 
