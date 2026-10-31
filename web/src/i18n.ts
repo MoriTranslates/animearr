@@ -12,6 +12,7 @@ import { safetyStrings } from "./i18n.safety";
 import { rulesStrings } from "./i18n.rules";
 import { notifyStrings } from "./i18n.notify";
 import { listsStrings } from "./i18n.lists";
+import { searchStrings } from "./i18n.search";
 
 const en = {
   ...setupStrings,
@@ -22,6 +23,7 @@ const en = {
   ...rulesStrings,
   ...notifyStrings,
   ...listsStrings,
+  ...searchStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",

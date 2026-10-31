@@ -206,6 +206,12 @@ export interface Settings {
    * search), within perHour. Off by default: it grabs for real.
    */
   movieSearch: { enabled: boolean; delayHours: number; perHour: number; retryDays: number };
+  /**
+   * Indexer searches across the whole app (⚡, scheduled, backlog and upgrade searches, Find releases): at most
+   * maxQueries at once, shared fairly between the searches waiting; an indexer that takes longer than
+   * indexerTimeoutSec for one query is left out of it (and counts as a failed search for its health). 0 = no limit.
+   */
+  search: { maxQueries: number; indexerTimeoutSec: number };
   /** AnimeArr's own file records: scan the library roots and ffprobe every file (read-only). */
   /** scanConcurrency: ffprobe processes at once while scanning the library (0 = automatic: 1 below 4 CPU cores, else 2). */
   library: { scan: boolean; scanConcurrency: number };
@@ -371,6 +377,7 @@ const DEFAULTS: Settings = {
   qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 3, gbPerDay: 100, perHour: 4, recheckDays: 21 },
   qualityGoalAsked: false,
   movieSearch: { enabled: false, delayHours: 6, perHour: 2, retryDays: 7 },
+  search: { maxQueries: 6, indexerTimeoutSec: 20 },
   library: { scan: true, scanConcurrency: 0 },
   metadata: { anidbClient: "", anidbClientVer: 1, tmdbKey: "", tvdbKey: "" },
   plex: { url: "", token: "", enabled: false, pathMappings: [] },
@@ -434,7 +441,7 @@ const DEFAULTS: Settings = {
 
 const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken", "lists.malClientId"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "lists", "externalUrl", "urlBase", "ui"];
+const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "search", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "lists", "externalUrl", "urlBase", "ui"];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -493,6 +500,8 @@ const RANGES: Record<string, [number, number]> = {
   "qualityUpgrade.perHour": [1, 24],
   "qualityUpgrade.recheckDays": [1, 120],
   "movieSearch.delayHours": [0, 168],
+  "search.maxQueries": [1, 30],
+  "search.indexerTimeoutSec": [0, 300],
   "scope.ended.recentN": [1, 100],
   "scope.continuing.recentN": [1, 100],
   "fillIn.waveSize": [1, 50],

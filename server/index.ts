@@ -37,7 +37,7 @@ import fastifyStatic from "@fastify/static";
 import { authState, COOKIE, csrfOk, defaultLoginRefusal, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
-import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, testProwlarr } from "./arr/prowlarr.js";
+import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, prowlarrSearch, testProwlarr } from "./arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "./arr/radarr.js";
 import { getTags, sonarrConfigured, sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
@@ -72,7 +72,7 @@ import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason, seadexTick } 
 import { moviesForSeries, setLink } from "./franchise.js";
 import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
-import { autoSearchEpisodes, autoSearchMovie, searchMissingNow } from "./autosearch.js";
+import { autoJobs, autoSearchMovie, queueAutoSearch, queueAutoSearchMovie, searchMissingNow } from "./autosearch.js";
 import { rootRefusal } from "./roots.js";
 import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
@@ -361,6 +361,8 @@ const breakerDeps = {
   fetch: (r: Parameters<Fetcher>[0]) => fetchReleaseFile({ guid: r.guid, title: r.title, size: r.size ?? 0, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, downloadUrl: r.downloadUrl ?? undefined, magnetUrl: r.magnetUrl ?? undefined }),
   search: async (indexerId: number) => {
     const ix = (getSettings().indexers ?? []).find((x) => indexerNumId(x.id) === indexerId);
+    // A Prowlarr indexer that kept timing out: one small recent-releases search through Prowlarr.
+    if (!ix && prowlarrConfigured() && indexerId < 1_000_000) return (await prowlarrSearch("", { indexerIds: [indexerId], limit: 5, timeoutMs: 60_000 }), true);
     if (!ix) return false;
     await searchIndexer(ix, ix.kind === "rss" ? "anime" : "", { limit: 5 });
     return true;
@@ -1265,11 +1267,13 @@ app.put<{ Params: { tvdbId: string }; Body: { action?: string } }>("/api/fillin/
   editQueue(id(req.params.tvdbId), a as "up");
   return { ok: true };
 });
+// ⚡ answers at once: the search runs as a background job; its outcomes go to Activity, the bell and /api/autosearch/jobs.
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[] } }>("/api/autosearch", async (req) => {
   writable();
   if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
-  return autoSearchEpisodes(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
+  return queueAutoSearch(id(req.body?.tvdbId), (req.body?.episodeIds ?? []).map(id));
 });
+app.get("/api/autosearch/jobs", async () => autoJobs());
 app.post<{ Body: { movieIds?: number[]; wanted?: boolean } }>("/api/movies/wanted", async (req) => {
   writable();
   const r = setWanted((req.body?.movieIds ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0), req.body?.wanted !== false);
@@ -1280,7 +1284,7 @@ app.post<{ Params: { id: string }; Body: { replace?: boolean } }>("/api/movies/:
   writable();
   // The same indexers as "Pick a version…" (Prowlarr or AnimeArr's own), not Prowlarr only.
   if (!searchConfigured()) throw fail("No indexer is set up (Settings → Indexers)");
-  return autoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
+  return queueAutoSearchMovie(id(req.params.id), { replace: req.body?.replace === true });
 });
 app.get("/api/files/summary", async () => fileSummary());
 app.post<{ Body: { full?: boolean } }>("/api/files/scan", async (req) => {
