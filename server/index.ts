@@ -21,6 +21,7 @@ import { asciiJson } from "./json.js";
 import { anidbStatus, anidbTick, anidbView, fetchForTvdb, setAnidbOverride } from "./anidb.js";
 import { testTmdb } from "./catalog.js";
 import { bell, channelStatus, markRead, send, testChannel } from "./notify.js";
+import { getLogs, installLogCapture, logStream, logText } from "./logs.js";
 import { cleanChannels, maskChannel, CHANNEL_TYPES } from "./notifyChannels.js";
 import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
@@ -116,6 +117,7 @@ const URL_BASE = (() => {
   console.warn(`Ignoring the URL base "${v}": use something like /animearr (letters, digits, . _ ~ - only)`);
   return "";
 })();
+installLogCapture(); // the log viewer keeps what the server prints
 const app = Fastify({
   rewriteUrl: (req) => {
     const u = req.url ?? "/";
@@ -123,7 +125,7 @@ const app = Fastify({
     if (u === URL_BASE) return "/";
     return u.startsWith(`${URL_BASE}/`) ? u.slice(URL_BASE.length) : u;
   },
-  logger: { level: process.env.LOG_LEVEL ?? "info", serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
+  logger: { level: process.env.LOG_LEVEL ?? "info", stream: logStream, serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
   trustProxy: trustProxyOption() as string[] | false,
   bodyLimit: 1_000_000,
 });
@@ -1439,6 +1441,12 @@ app.get("/api/system", async () => ({
   backupDir: BACKUP_DIR,
   memoryMb: Math.round(process.memoryUsage().rss / 1e6),
 }));
+// Logs: the last lines (secrets already scrubbed), filtered; the download is plain text.
+app.get<{ Querystring: { level?: string; q?: string; limit?: string } }>("/api/system/logs", async (req) => getLogs({ level: req.query.level, q: req.query.q, limit: Number(req.query.limit) || 500 }));
+app.get("/api/system/logs/download", async (_req, reply) => {
+  reply.header("Content-Type", "text/plain; charset=utf-8").header("Content-Disposition", `attachment; filename="animearr-logs-${new Date().toISOString().slice(0, 10)}.txt"`);
+  return logText();
+});
 app.post("/api/system/metadata", async () => refreshMetadata(false));
 // Read-only: which release is newest on GitHub (offline → { offline: true }).
 app.get("/api/system/updates", async () => checkForUpdates());
