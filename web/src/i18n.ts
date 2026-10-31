@@ -9,6 +9,7 @@ import { dupStrings } from "./i18n.dup";
 import { qualityStrings } from "./i18n.quality";
 import { safetyStrings } from "./i18n.safety";
 import { rulesStrings } from "./i18n.rules";
+import { listsStrings } from "./i18n.lists";
 
 const en = {
   ...setupStrings,
@@ -16,6 +17,7 @@ const en = {
   ...dupStrings,
   ...safetyStrings,
   ...rulesStrings,
+  ...listsStrings,
   "app.name": "AnimeArr",
   "app.loading": "Loading…",
   "app.unreachable": "Can't reach AnimeArr: {error}",

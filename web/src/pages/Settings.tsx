@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, Tags as TagsIcon, ListFilter, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, Tags as TagsIcon, ListFilter, ListPlus, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUnsaved } from "../unsaved";
 import { copyText, rememberDetail } from "../errors";
@@ -12,6 +12,7 @@ import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type 
 import { NotifyCard } from "../notify";
 import { DownloadRules } from "../downloads";
 import { LibraryFolders } from "../folders";
+import { ImportLists } from "../lists";
 import { ImportFolders } from "../importFolders";
 import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
@@ -19,12 +20,12 @@ import { RulesEditor, TagsEditor } from "../rules";
 import { ScopeFields } from "../scope";
 import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "rules" | "tags" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
+type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "rules" | "tags" | "lists" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
 /** Settings, grouped like Sonarr's: a left sub-nav on desktop, a list on phones. */
 const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: LucideIcon }[] }[] = [
   { label: "settings.group.connect", tabs: [{ id: "indexers", icon: SearchIcon }, { id: "clients", icon: Download }, { id: "mediaservers", icon: MonitorPlay }, { id: "notifications", icon: BellIcon }, { id: "migration", icon: ArrowLeftRight }] },
-  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "rules", icon: ListFilter }, { id: "tags", icon: TagsIcon }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
+  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "rules", icon: ListFilter }, { id: "tags", icon: TagsIcon }, { id: "lists", icon: ListPlus }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
   { label: "settings.group.automation", tabs: [{ id: "safety", icon: ShieldCheck }, { id: "downloads", icon: HardDrive }] },
   { label: "settings.group.general", tabs: [{ id: "appearance", icon: Palette }, { id: "security", icon: Lock }, { id: "system", icon: Cog }] },
 ];
@@ -32,7 +33,7 @@ const TABS = SECTIONS.flatMap((x) => x.tabs.map((y) => y.id));
 /** Old links (?tab=connections, ?tab=cutover) still land in the right place. */
 const ALIAS: Record<string, Tab> = { connections: "indexers", cutover: "migration", plex: "mediaservers" };
 /** Tabs whose fields save with the page's Save button (the connection tabs save in their own dialogs). */
-const FORM_TABS: Tab[] = ["notifications", "media", "downloads", "safety", "paths", "metadata"];
+const FORM_TABS: Tab[] = ["lists", "notifications", "media", "downloads", "safety", "paths", "metadata"];
 
 export type SettingsTab = Tab;
 
@@ -140,6 +141,7 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
           {x === "profile" && <ProfilesEditor />}
           {x === "rules" && <RulesEditor />}
           {x === "tags" && <TagsEditor />}
+          {x === "lists" && <ImportLists s={s} upd={upd} />}
           {x === "media" && <MediaManagement s={s} upd={upd} />}
           {x === "downloads" && <DownloadRules s={s} upd={upd} />}
           {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}
