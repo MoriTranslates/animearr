@@ -28,6 +28,8 @@ import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
+import { releaseRulesFor } from "./releaseRules.js";
+import { tagsOf } from "./tags.js";
 import { seriesForMovie } from "./franchise.js";
 import type { SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
@@ -197,6 +199,7 @@ export function movieDetail(id: number) {
     dates: { inCinemas: m.in_cinemas ?? null, digital: m.digital_release ?? null, physical: m.physical_release ?? null },
     series: seriesForMovie(m.id),
     prefs: moviePrefs(m.id),
+    tags: tagsOf("movie", m.id),
     profile: (({ name, watchMode, profileMode }) => ({ name, watchMode, profileMode }))(profileForMovie(m.id)),
     search: db.prepare("SELECT state, next_at AS nextAt, last_at AS lastAt, attempts, last_why AS why FROM movie_search WHERE movie_id = ?").get(m.id) ?? null,
     upgrade: db.prepare("SELECT state, last_at AS lastAt, why, release FROM movie_upgrade WHERE movie_id = ?").get(m.id) ?? null,
@@ -325,6 +328,7 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
   // TV season (which may bundle the special): still a candidate, but ranked below releases that name it.
   const subtitles = movieSubtitles([info.title, info.original_title ?? "", ...info.alt_titles], seriesForMovie(id).map((x) => x.title));
   const unnamed = new Set<string>();
+  const movieRules = releaseRulesFor("movie", id);
   for (const r of raw.values()) {
     const p = parseRelease(r.title);
     const match = matchMovie(p, info, seriesTitles);
@@ -352,7 +356,7 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
     const learned = learnedFor(p.group, p.platform ?? sourceKey(r.title, null, p.source));
     const blocked = isBlocked({ guid: r.guid, title: r.title });
     // Size sanity: a movie is worth several episodes.
-    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime || 100) / 24)), runtimeMin: (m.runtime || 100) / Math.max(1, Math.round((m.runtime || 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId), tiers: animeTiers() });
+    const rank = rankRelease(p, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: Math.max(1, Math.round((m.runtime || 100) / 24)), runtimeMin: (m.runtime || 100) / Math.max(1, Math.round((m.runtime || 100) / 24)) }, prof, learned, { inLibrary: !!fileScene && fileScene === r.title, blocklisted: blocked ? "blocklisted" : null, indexerHealth: indexerHealth(r.indexerId), tiers: animeTiers(), rules: movieRules });
     if (subtitles.length && !namesSubtitle(r.title, subtitles)) unnamed.add(r.guid);
     const pub = r.publishDate ? Date.parse(r.publishDate) : null;
     results.push({

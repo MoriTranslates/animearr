@@ -40,6 +40,8 @@ import { getTags, sonarrConfigured, sonarrOptions, testSonarr } from "./arr/sona
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
 import { gaps, listFacts, missingLanguage, specials, coverFor } from "./audit.js";
+import { deleteRule, listRules, saveRule, testRules } from "./releaseRules.js";
+import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "./tags.js";
 import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs, setMoviePrefs } from "./profiles.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
@@ -543,6 +545,7 @@ app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId", async (req) => {
     schedule: scheduleFor(tvdbId),
     header: seriesHeader(tvdbId),
     prefs: seriesPrefs(tvdbId),
+    tags: tagsOf("series", tvdbId),
     rows: episodeRows(s.id),
     movies: moviesForSeries(tvdbId),
   };
@@ -574,6 +577,45 @@ app.put<{ Params: { tvdbId: string }; Body: { profileId?: string | null; watchMo
   const tvdbId = id(req.params.tvdbId);
   if (!seriesByTvdb(tvdbId)) throw fail("Unknown series", 404);
   return setSeriesPrefs(tvdbId, req.body?.profileId || null, (req.body?.watchMode || null) as Parameters<typeof setSeriesPrefs>[2], req.body?.sizePreset === undefined ? undefined : ((req.body.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]));
+});
+
+// ---------------------------------------------------------------- tags + release rules
+
+app.get("/api/tags", async () => ({ tags: listTags() }));
+app.post<{ Body: { label?: string } }>("/api/tags", async (req) => (writable(), createTag(req.body?.label)));
+app.put<{ Params: { id: string }; Body: { label?: string } }>("/api/tags/:id", async (req) => (writable(), renameTag(id(req.params.id), req.body?.label)));
+app.delete<{ Params: { id: string } }>("/api/tags/:id", async (req) => (writable(), { ok: true, unlinked: deleteTag(id(req.params.id)) }));
+app.put<{ Params: { tvdbId: string }; Body: { tags?: number[] } }>("/api/series/:tvdbId/tags", async (req) => {
+  writable();
+  const tvdbId = id(req.params.tvdbId);
+  if (!seriesByTvdb(tvdbId)) throw fail("Unknown series", 404);
+  return { tags: setTags("series", tvdbId, req.body?.tags) };
+});
+app.put<{ Params: { id: string }; Body: { tags?: number[] } }>("/api/movies/:id/tags", async (req) => {
+  writable();
+  const movieId = id(req.params.id);
+  movieDetail(movieId); // 404 when unknown
+  return { tags: setTags("movie", movieId, req.body?.tags) };
+});
+/** Add and/or remove tags on the selected shows (Shows page) or movies. */
+app.post<{ Body: { kind?: string; ids?: number[]; add?: number[]; remove?: number[] } }>("/api/tags/bulk", async (req) => {
+  writable();
+  const b = req.body ?? {};
+  if (b.kind !== "series" && b.kind !== "movie") throw fail("kind must be series or movie");
+  const nums = (v: unknown) => (Array.isArray(v) ? v.map(Number).filter(Number.isInteger).slice(0, 2000) : []);
+  return bulkTags(b.kind, nums(b.ids), nums(b.add), nums(b.remove));
+});
+
+app.get("/api/release-rules", async () => ({ rules: listRules() }));
+app.post<{ Body: Record<string, unknown> }>("/api/release-rules", async (req) => (writable(), saveRule(null, (req.body ?? {}) as never)));
+app.put<{ Params: { id: string }; Body: Record<string, unknown> }>("/api/release-rules/:id", async (req) => (writable(), saveRule(String(req.params.id), (req.body ?? {}) as never)));
+app.delete<{ Params: { id: string } }>("/api/release-rules/:id", async (req) => (writable(), deleteRule(String(req.params.id)), { ok: true }));
+/** "Test against a title": which rules match or block a sample release name. */
+app.post<{ Body: { title?: string; tvdbId?: number; movieId?: number } }>("/api/release-rules/test", async (req) => {
+  const title = String(req.body?.title ?? "").trim().slice(0, 500);
+  if (!title) throw fail("Type a release name to test");
+  const scope = req.body?.tvdbId ? { kind: "series" as const, ref: id(req.body.tvdbId) } : req.body?.movieId ? { kind: "movie" as const, ref: id(req.body.movieId) } : undefined;
+  return testRules(title, scope);
 });
 
 // ---------------------------------------------------------------- episodes: detail, delete, re-grab, calendar

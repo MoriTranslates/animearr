@@ -29,6 +29,7 @@ import { profileFor, setSeriesPrefs } from "./profiles.js";
 import { queueView } from "./queue.js";
 import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "./scope.js";
 import { getSettings, type LanguageProfile } from "./settings.js";
+import { clearTags, createTag, deleteTag, renameTag, setTags, tagRows, tagsOf } from "./tags.js";
 import { VERSION } from "./version.js";
 
 /** What the API reaches outside the database (tests swap these). */
@@ -118,17 +119,9 @@ const profileByApiId = (id: unknown) => {
 
 // ---------------------------------------------------------------- tags
 
-const normLabel = (v: unknown) => String(v ?? "").trim().toLowerCase();
-const tagRows = () => db.prepare("SELECT id, label FROM api_tags ORDER BY id").all() as { id: number; label: string }[];
-const seriesTags = (tvdbId: number) => (db.prepare("SELECT tag_id FROM api_series_tags WHERE tvdb_id = ? ORDER BY tag_id").all(tvdbId) as { tag_id: number }[]).map((r) => r.tag_id);
-function setSeriesTags(tvdbId: number, tags: unknown) {
-  if (!Array.isArray(tags)) return;
-  const known = new Set(tagRows().map((t) => t.id));
-  tx(db, () => {
-    db.prepare("DELETE FROM api_series_tags WHERE tvdb_id = ?").run(tvdbId);
-    for (const t of new Set(tags.map(Number))) if (known.has(t)) db.prepare("INSERT INTO api_series_tags (tvdb_id, tag_id) VALUES (?, ?)").run(tvdbId, t);
-  });
-}
+// The real tags (server/tags.ts): the ones set in Settings → Tags are what request apps see.
+const seriesTags = (tvdbId: number) => tagsOf("series", tvdbId);
+const setSeriesTags = (tvdbId: number, tags: unknown) => void setTags("series", tvdbId, tags);
 
 // ---------------------------------------------------------------- shows
 
@@ -414,27 +407,17 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
   app.get<{ Params: { id: string } }>(`${V}/tag/:id`, async (req) => tagRows().find((t) => t.id === int(req.params.id)) ?? (() => { throw fail("Tag not found", 404); })());
   app.post<{ Body: { label?: string } }>(`${V}/tag`, async (req, reply) => {
     writable();
-    const label = normLabel(req.body?.label);
-    if (!label) throw fail("A tag needs a label");
-    db.prepare("INSERT OR IGNORE INTO api_tags (label) VALUES (?)").run(label);
     reply.code(201);
-    return db.prepare("SELECT id, label FROM api_tags WHERE label = ?").get(label);
+    return createTag(req.body?.label);
   });
   app.put<{ Params: { id: string }; Body: { label?: string } }>(`${V}/tag/:id`, async (req, reply) => {
     writable();
-    const label = normLabel(req.body?.label);
-    if (!label) throw fail("A tag needs a label");
-    const r = db.prepare("UPDATE api_tags SET label = ? WHERE id = ?").run(label, int(req.params.id));
-    if (!r.changes) throw fail("Tag not found", 404);
     reply.code(202);
-    return { id: int(req.params.id), label };
+    return renameTag(int(req.params.id), req.body?.label);
   });
   app.delete<{ Params: { id: string } }>(`${V}/tag/:id`, async (req) => {
     writable();
-    tx(db, () => {
-      db.prepare("DELETE FROM api_series_tags WHERE tag_id = ?").run(int(req.params.id));
-      db.prepare("DELETE FROM api_tags WHERE id = ?").run(int(req.params.id));
-    });
+    if (tagRows().some((t) => t.id === int(req.params.id))) deleteTag(int(req.params.id));
     return {};
   });
 
@@ -495,7 +478,7 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     const s = mustSeries(int(req.params.id));
     if (s.id < NATIVE_BASE) throw fail("This show still belongs to Sonarr (AnimeArr runs next to it); remove it in Sonarr", 409);
     removeShow(s.tvdb_id);
-    db.prepare("DELETE FROM api_series_tags WHERE tvdb_id = ?").run(s.tvdb_id);
+    clearTags("series", s.tvdb_id);
     return {};
   });
 

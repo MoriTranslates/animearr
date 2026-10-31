@@ -13,6 +13,7 @@
  * without the original audio (sub mode), releases without a dub (dub mode).
  */
 import { EN_GROUPS, type ParsedRelease } from "./parser.js";
+import { applyRules, type ReleaseRule } from "./rules.js";
 import { qualityScore, type CompiledTiers, type GoalId, type SeadexEntry } from "./quality.js";
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
@@ -73,6 +74,8 @@ export interface Known {
   seadex?: SeadexEntry | null;
   /** TRaSH anime group tiers (catalog/anime-tiers.json). */
   tiers?: CompiledTiers | null;
+  /** The release rules that fall under this show (core/rules.ts): must / must-not terms reject, preferred terms nudge the score. */
+  rules?: ReleaseRule[];
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -209,6 +212,13 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     flags.push({ key: "blocklisted", label: "Blocklisted", tone: "bad" });
   }
 
+  // Release rules: a block is a hard rejection like the others (shown with its reason, never hidden).
+  const ruled = known.rules?.length ? applyRules(p.raw, known.rules) : null;
+  if (ruled?.reject) {
+    reject = reject ?? ruled.reject;
+    flags.push({ key: "rule", label: "Blocked by a release rule", tone: "bad" });
+  }
+
   const pct = Math.round(best.p * 100);
   const isDub = best === dub;
   const L = `${langName(best.lang)}${isDub ? " dub" : ""}`;
@@ -264,6 +274,12 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   score += q.points;
   why.push(...q.why);
   flags.push(...q.flags);
+  // Preferred terms of the release rules come after SeaDex and tiers, and are capped small: a tiebreaker, so they can't
+  // outweigh the language fit or the quality category.
+  if (ruled && ruled.score) {
+    score += ruled.score;
+    why.push(...ruled.why);
+  }
   const perEp = info.size / Math.max(1, info.episodeCount);
   if (info.size > 0 && perEp < 90e6) {
     score -= 30;
