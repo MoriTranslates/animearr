@@ -128,7 +128,7 @@ The stable operations:
 | Status and health | `GET /ping`, `GET /api/status`, `GET /api/connections` |
 | Library | `GET /api/shows`, `GET /api/series`, `GET /api/series/{tvdbId}`, `GET /api/rootfolders` |
 | Add | `GET /api/add/search`, `POST /api/add` |
-| Search and grab | `POST /api/autosearch`, `POST /api/search`, `POST /api/grab` |
+| Search and grab | `POST /api/autosearch`, `GET /api/autosearch/jobs`, `POST /api/search`, `POST /api/grab` |
 | Queue and history | `GET /api/queue`, `GET /api/history`, `POST /api/queue/{id}/remove` |
 | Calendar and wanted | `GET /api/calendar`, `GET /feed/calendar/animearr.ics`, `GET /api/wanted` |
 | Activity | `GET /api/activity` |
@@ -286,9 +286,21 @@ IDS=$(aa $ANIMEARR/api/series/424536 | jq -c '[.episodes[] | select(.season==1 a
 aa -X POST $ANIMEARR/api/autosearch -d "{\"tvdbId\": 424536, \"episodeIds\": $IDS}"
 ```
 
-The answer lists an outcome per episode group: `grabbed`, `would-grab` (practice mode), `needs-look`, `skipped` or
-`failed`, each with a `why`. Up to 26 episodes are searched at once; for more, the rest are queued and the response
-says so in `queued`. The grab then shows up in `/api/queue`.
+The answer comes at once: `{ "queued": true, "jobId": "…", "episodes": 3, "position": 0 }`. The search runs in the
+background as a job; `episodes` is how many episodes it searches (one already being searched by an earlier call is
+skipped), and `position` is how many jobs are waiting ahead of it (0 = it started). Follow it with
+`GET /api/autosearch/jobs`:
+
+```sh
+aa $ANIMEARR/api/autosearch/jobs | jq '.jobs[] | select(.id == "JOB_ID") | {state, results}'
+```
+
+`state` goes `queued` → `running` → `done` (or `failed`, with `error`). When done, `results` lists an outcome per
+episode group: `grabbed`, `would-grab` (practice mode), `needs-look`, `skipped` or `failed`, each with a `why`. Up to 26
+episodes are searched per call; for more, the rest are handed to the scheduled searches and the job says so in
+`queued`. Each job also leaves a line in `/api/activity`, and a grab shows up in `/api/queue`. Jobs are kept in memory:
+a restart drops the ones not finished yet (Activity notes it). Poll every few seconds at most; finished jobs stay
+listed for an hour.
 
 ### Interactive search, then grab a specific release
 
@@ -473,7 +485,7 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 |  | `PUT /api/movies/{id}/prefs` | Set a movie's language profile |
 |  | `PUT /api/movies/{id}/tags` | Set a movie's tags |
 |  | `POST /api/movies/wanted` | Mark movies wanted or not |
-|  | `POST /api/movies/{id}/autosearch` | Search for a movie and grab the best release |
+|  | `POST /api/movies/{id}/autosearch` | Search for a movie and grab the best release (a background job, like `POST /api/autosearch`) |
 |  | `POST /api/movies/{id}/search` | Interactive search for a movie |
 |  | `POST /api/movies/{id}/grab` | Grab a release from the last movie search |
 |  | `POST /api/movies/{id}/scan` | Rescan a movie's file |
@@ -495,7 +507,8 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 
 | | Operation | What it does |
 | --- | --- | --- |
-| * | `POST /api/autosearch` | Search for episodes and grab the best release automatically |
+| * | `POST /api/autosearch` | Search for episodes and grab the best release automatically (answers at once; runs as a job) |
+| * | `GET /api/autosearch/jobs` | Automatic-search jobs: running, waiting and finished in the last hour, with each episode's outcome |
 | * | `POST /api/search` | Interactive search: list releases with scores and reasons |
 |  | `POST /api/search/start` | Start an interactive search as a job |
 |  | `GET /api/search/job/{id}` | Progress and results of a search job |

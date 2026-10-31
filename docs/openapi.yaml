@@ -2257,6 +2257,7 @@ paths:
       tags:
         - Movies
       summary: "Search for a movie and grab the best release"
+      description: "Answers at once with the same shape as `POST /api/autosearch` (`episodes` is 0); the search runs as a job listed by `GET /api/autosearch/jobs`. 409 when the movie has a file and `replace` isn't true."
       x-stability: internal
       parameters:
         - name: id
@@ -2616,7 +2617,7 @@ paths:
       tags:
         - Search
       summary: "Search for episodes and grab the best release automatically"
-      description: "The same decision the scheduler makes: rank the indexers' results and grab the best acceptable one, or report why none qualified. In practice mode `outcome` is `would-grab` and nothing is downloaded. 403 when the show is outside the allowed root folders. 400 if no indexer is configured."
+      description: "The same decision the scheduler makes: rank the indexers' results and grab the best acceptable one, or report why none qualified. Answers at once: the search runs in the background as a job; follow it with `GET /api/autosearch/jobs` (its outcomes also go to `/api/activity`). An episode already being searched by an earlier call is skipped (`already being searched`). Up to 26 episodes per call; the rest are handed to the scheduled searches. In practice mode the outcome is `would-grab` and nothing is downloaded. 403 when the show is outside the allowed root folders, 404 for an unknown show. 400 if no indexer is configured."
       x-stability: stable
       requestBody:
         required: true
@@ -2641,7 +2642,26 @@ paths:
           content:
             "application/json":
               schema:
-                "$ref": "#/components/schemas/AutoSearchResult"
+                "$ref": "#/components/schemas/AutoSearchQueued"
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/api/autosearch/jobs":
+    get:
+      operationId: getAutosearchJobs
+      tags:
+        - Search
+      summary: "Automatic-search jobs and their outcomes"
+      description: "Jobs started by `POST /api/autosearch` and `POST /api/movies/{id}/autosearch`: running first, then waiting, then the ones that finished in the last hour (newest first, at most 30). `searching` lists the episode ids being searched right now. Jobs are kept in memory: a restart drops unfinished ones. Poll every few seconds at most, and only while a job is `queued` or `running`."
+      x-stability: stable
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/AutoSearchJobs"
         "401":
           "$ref": "#/components/responses/Unauthorized"
         default:
@@ -7731,11 +7751,78 @@ components:
         - episodeIds
         - outcome
         - why
-    AutoSearchResult:
+    AutoSearchQueued:
       type: object
       properties:
+        queued:
+          type: boolean
+          description: "Always true: the search was queued as a job."
+        jobId:
+          type: string
+          description: "The job's id in `GET /api/autosearch/jobs`."
+        episodes:
+          type: integer
+          description: "Episodes this job searches (ones already being searched are skipped)."
+        position:
+          type: integer
+          description: "Jobs waiting ahead of this one; 0 = it started (or had nothing to search)."
+      required:
+        - queued
+        - jobId
+        - episodes
+        - position
+    AutoSearchJob:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - episodes
+            - movie
+        tvdbId:
+          type:
+            - integer
+            - "null"
+        movieId:
+          type:
+            - integer
+            - "null"
+        title:
+          type: string
+        episodeIds:
+          type: array
+          items:
+            type: integer
+          description: "The episodes this job searches."
+        state:
+          type: string
+          enum:
+            - queued
+            - running
+            - done
+            - failed
+        position:
+          type: integer
+          description: "Place in line while `queued` (1 = next); 0 otherwise."
+        queuedAt:
+          type: integer
+          format: int64
+          description: "Milliseconds since the Unix epoch, UTC."
+        startedAt:
+          type:
+            - integer
+            - "null"
+          format: int64
+        finishedAt:
+          type:
+            - integer
+            - "null"
+          format: int64
         results:
           type: array
+          description: "One outcome per episode group once done (skips found when the job was queued are there from the start)."
           items:
             "$ref": "#/components/schemas/AutoOutcome"
         queued:
@@ -7749,8 +7836,40 @@ components:
                 - soon
                 - fillin
           description: "Present when more episodes were asked for than are searched at once; the rest wait their turn."
+        error:
+          type:
+            - string
+            - "null"
+          description: "Why the job failed (state `failed`)."
       required:
+        - id
+        - kind
+        - title
+        - episodeIds
+        - state
+        - position
+        - queuedAt
         - results
+    AutoSearchJobs:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AutoSearchJob"
+        searching:
+          type: array
+          items:
+            type: integer
+          description: "Episode ids being searched right now."
+        searchingMovies:
+          type: array
+          items:
+            type: integer
+          description: "Movie ids being searched right now."
+      required:
+        - jobs
+        - searching
     ActivityEntry:
       type: object
       properties:

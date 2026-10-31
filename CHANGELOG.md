@@ -77,6 +77,21 @@ All notable changes, newest first. The commit history has the crew's version of 
   on a show or movie from its page, or on many shows at once with Library → Shows → Select → Tags. Request apps like
   Jellyseerr see the same tags through the Sonarr-compatible API, and tags they set are real tags in AnimeArr.
 
+### Changed
+- **⚡ no longer makes you wait.** Tapping ⚡ (Download automatically) answers at once with "Searching N episodes…
+  (results in Activity)"; the search runs in the background. The episodes show "Searching…" until it's done, then a
+  message says what happened (download started, needs a look, skipped and why), the same as before. Activity has one
+  line per search with the outcome of each episode, and grabs and failures still reach the bell. Tapping ⚡ again on an
+  episode that is still being searched skips it ("already being searched"). Movies work the same way. A search that
+  hadn't finished when AnimeArr restarts is noted in Activity; the scheduled searches pick those episodes up again.
+- **Faster searches.** All searches in AnimeArr now share one limit of 6 indexer queries at a time and take turns, so
+  one big ⚡ doesn't hold up the next one and your indexers aren't flooded. An indexer that takes longer than 20 seconds
+  to answer a query is left out of that query instead of holding everything up (it counts as a failed search for its
+  health, so one that keeps timing out is flagged as before). The same query asked again within 10 minutes reuses the
+  answer, so ⚡ right after "Pick a version…" or two ⚡ on the same show don't ask the indexers twice. And when ⚡ has
+  already found SeaDex's best release for an episode, with the right language, from your preferred protocol and with
+  nothing to warn about, it stops searching for that episode early (Activity says "stopped early").
+
 ## 0.10.0-beta (2026-10-31): works with your apps, aims for the best
 
 ### Added
