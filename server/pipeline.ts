@@ -35,6 +35,7 @@ import { learnFromVerify, refreshSeriesEpisodes, sourceKey } from "./library.js"
 import { clientToSonarr, localPath as realLocalPath } from "./paths.js";
 import { episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
 import { profileFor } from "./profiles.js";
+import { properMode } from "./propers.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { ffprobe, judge, type ProbeResult } from "./verify.js";
 import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
@@ -248,7 +249,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     const seasons = [...new Set(all.filter((e) => inBatch.includes(e.id)).map((e) => e.season))];
     const existing = new Map<number, ExistingFile[]>();
     for (const s of seasons) existing.set(s, await existingFiles(series.id, s));
-    const plan = planBatch({ seriesId: series.id, candidateEpisodeIds: c.episodeIds, baseIds: importIds, release: c.title, group: c.group ?? null, consistency: prof.groupConsistency ?? "prefer", profileResolution: prof.resolution, recycleBin: !!getSettings().media.recycleBin.trim(), exclude: new Set(asMovie.keys()), existingOf: (_sid, s) => existing.get(s) ?? [] });
+    const plan = planBatch({ seriesId: series.id, candidateEpisodeIds: c.episodeIds, baseIds: importIds, release: c.title, group: c.group ?? null, consistency: prof.groupConsistency ?? "prefer", profileResolution: prof.resolution, recycleBin: !!getSettings().media.recycleBin.trim(), propers: properMode(), exclude: new Set(asMovie.keys()), existingOf: (_sid, s) => existing.get(s) ?? [] });
     importIds = plan.importIds;
     purpose = plan.purpose;
     seasonWhy = plan.why;

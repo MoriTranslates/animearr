@@ -13,6 +13,7 @@
  * without the original audio (sub mode), releases without a dub (dub mode).
  */
 import { EN_GROUPS, type ParsedRelease } from "./parser.js";
+import { isNewerRevision, versionPoints, type HaveRevision, type ProperMode } from "./propers.js";
 import { applyRules, type ReleaseRule } from "./rules.js";
 import { qualityScore, type CompiledTiers, type GoalId, type SeadexEntry } from "./quality.js";
 
@@ -76,6 +77,9 @@ export interface Known {
   tiers?: CompiledTiers | null;
   /** The release rules that fall under this show (core/rules.ts): must / must-not terms reject, preferred terms nudge the score. */
   rules?: ReleaseRule[];
+  /** The file the library has for the release's episodes (group, version, locked) and the "Propers and repacks" setting (core/propers.ts). */
+  have?: HaveRevision | null;
+  propers?: ProperMode;
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
@@ -268,7 +272,17 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     else if (p.resolution < profile.resolution) score -= p.resolution >= 720 ? 8 : 20;
     else score -= 3;
   }
-  if (p.version > 1) score += 2;
+  // Propers and repacks: a higher version scores a little more (none when the setting ignores versions); a newer version of the
+  // file you have, from the same group, is an upgrade and says so.
+  const propers = known.propers ?? "preferAndUpgrade";
+  const vp = versionPoints(p.version, propers);
+  if (vp) score += vp;
+  const newer = known.have ? isNewerRevision(known.have, { group: p.group, version: p.version }, propers) : null;
+  if (newer?.ok) {
+    score += 5;
+    flags.push({ key: "newerVersion", label: "Newer version", tone: "good" });
+    why.push(newer.why);
+  } else if (vp) why.push(`v${p.version}`);
   // ---- quality inside the category: SeaDex first, then group tiers; HDTV captures and 4K upscales lose a little
   const q = qualityScore(p, { tiers: known.tiers, seadex: known.seadex, mode, goal: profile.qualityGoal });
   score += q.points;

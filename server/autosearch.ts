@@ -6,6 +6,9 @@
  *
  * Several episodes: a season pack that covers the missing set better is preferred (one grab), the rest are searched
  * one by one. Respects dry-run, allowed roots, the in-flight guard, blocklists and the movie-special guard.
+ *
+ * An episode that already has a file is only looked at for a newer version of it (v2, REPACK from the same group, when
+ * "Propers and repacks" allows upgrades, the file isn't locked and a recycling bin is set): that one is replaced, nothing else.
  */
 import { logDecision } from "./activity.js";
 import { cache, db } from "./db.js";
@@ -22,6 +25,7 @@ import { searchAgainSoon } from "./episodes.js";
 import { listManaged } from "./managed.js";
 import { scopedEpisodeIds } from "./scope.js";
 import { ownedElsewhere, ownedWhy } from "./duplicates.js";
+import { properMode } from "./propers.js";
 
 export interface AutoDeps {
   search: typeof deepSearch;
@@ -55,10 +59,10 @@ function gateWhy(results: SearchResult[], minConf: number) {
   return "no result passes the automatic rules";
 }
 
-async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: SearchResult[], label: string): Promise<AutoOutcome> {
+async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: SearchResult[], label: string, purpose?: "replace"): Promise<AutoOutcome> {
   const best = ok[0];
   try {
-    const out = await deps.grab({ tvdbId, episodeIds: ids, candidate: toCandidate(best), fallbacks: ok.slice(1, 6).map(toCandidate), origin: "manual", automatic: true });
+    const out = await deps.grab({ tvdbId, episodeIds: ids, candidate: toCandidate(best), fallbacks: ok.slice(1, 6).map(toCandidate), origin: "manual", automatic: true, ...(purpose ? { purpose } : {}) });
     const outcome = out.dryRun ? "would-grab" : out.failed ? "failed" : "grabbed";
     return { episodeIds: ids, label, outcome, release: best.title, why: `${best.label} · ${best.rank.why}${out.failed ? ` (${out.message})` : ""}` };
   } catch (e) {
@@ -69,6 +73,8 @@ async function grabOne(deps: AutoDeps, tvdbId: number, ids: number[], ok: Search
 /** ⚡ for one or more episodes of a show. */
 /** ⚡ searches this many episodes at once; more would hit every indexer once per episode in one burst. */
 export const AUTO_NOW = 26;
+/** ⚡ checks at most this many episodes that already have a file for a newer version per tap (each is one search). */
+const MAX_VERSION_CHECKS = 6;
 /** A torrent pack needs this many seeders to be picked over single releases. */
 const MIN_PACK_SEEDERS = 3;
 /** How far below the best single release a pack may rank and still be picked (one grab instead of many). */
@@ -97,6 +103,8 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
   const out: AutoOutcome[] = [];
   const targets: number[] = [];
   const owned = ownedElsewhere(tvdbId);
+  const versionChecks: number[] = [];
+  const checkVersions = properMode() === "preferAndUpgrade" && !!getSettings().media.recycleBin.trim();
   for (const id of episodeIds) {
     const e = all.get(id);
     if (!e) continue;
@@ -107,14 +115,33 @@ export async function autoSearchEpisodes(tvdbId: number, episodeIds: number[], d
       logDecision("info", { tvdbId, title: series.title, episodeIds: [id], why: `Automatic search for ${series.title} ${label} skipped: ${ownedWhy(owned.get(id)!)}. Nothing was searched or grabbed.` });
     } else if (inFlight(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already downloading" });
     else if (searching.has(id)) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already being searched" });
+    else if (e.hasFile && checkVersions && versionChecks.length < MAX_VERSION_CHECKS) versionChecks.push(id);
     else if (e.hasFile) out.push({ episodeIds: [id], label, outcome: "skipped", why: "already has a file (use Download again to replace it)" });
     else targets.push(id);
   }
-  for (const id of targets) searching.add(id);
+  for (const id of [...targets, ...versionChecks]) searching.add(id);
   try {
-    return { ...(await searchTargets(tvdbId, series.title, targets, all, out, minConf, deps)), queued };
+    const res = await searchTargets(tvdbId, series.title, targets, all, out, minConf, deps);
+    for (const id of versionChecks) res.results.push(await checkVersion(tvdbId, series.title, id, all.get(id)!, deps));
+    return { ...res, queued };
   } finally {
-    for (const id of targets) searching.delete(id);
+    for (const id of [...targets, ...versionChecks]) searching.delete(id);
+  }
+}
+
+/** An episode with a file: grabs a newer version of it (same group, higher version) as a Replace grab, or leaves it alone. */
+async function checkVersion(tvdbId: number, seriesTitle: string, id: number, e: ReturnType<typeof episodesFor>[number], deps: AutoDeps): Promise<AutoOutcome> {
+  const label = epLabel(e);
+  const none = (why: string): AutoOutcome => ({ episodeIds: [id], label, outcome: "skipped", why });
+  try {
+    const res = await deps.search(tvdbId, [id], { budget: 12 });
+    const ok = automaticPicks(res.results, tvdbId, e.season).filter((r) => r.rank.flags.some((f) => f.key === "newerVersion"));
+    if (!ok.length) return none("already has a file (no newer version found)");
+    const o = await grabOne(deps, tvdbId, [id], ok, label, "replace");
+    logDecision("info", { tvdbId, title: seriesTitle, episodeIds: [id], release: ok[0].title, why: `Automatic search for ${seriesTitle} ${label}: ${ok[0].rank.why}. ${o.outcome === "would-grab" ? "Dry-run: nothing grabbed" : o.outcome === "failed" ? "Couldn't grab it" : "Grabbed; the old file goes to the recycling bin only after the new one passes the checks"}` });
+    return o;
+  } catch (err) {
+    return { episodeIds: [id], label, outcome: "failed", why: (err as Error).message };
   }
 }
 

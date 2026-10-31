@@ -112,7 +112,7 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="card pad form">
         <h2>{t("media.folders")}</h2>
         <Toggle checked={m.createEmptyFolders} onChange={(v) => set({ createEmptyFolders: v })} label={t("media.createEmpty")} />
-        <Toggle checked={m.deleteEmptyFolders} onChange={(v) => set({ deleteEmptyFolders: v })} label={t("media.deleteEmpty")} />
+        <Toggle checked={m.deleteEmptyFolders} onChange={(v) => set({ deleteEmptyFolders: v })} label={t("media.deleteEmpty")} help={t("media.deleteEmptyHelp")} />
       </div>
 
       <div className="card pad form">
@@ -134,13 +134,26 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
           </label>
         )}
         {sel("propers", "media.propers", ["preferAndUpgrade", "doNotUpgrade", "doNotPrefer"])}
+        <p className="muted small">{t("media.propersHelp")}</p>
         <Toggle checked={m.renameAfterReencode} onChange={(v) => set({ renameAfterReencode: v })} label={t("media.renameAfterReencode")} help={t("media.renameAfterReencodeHelp")} />
       </div>
 
       <div className="card pad form">
         <h2>{t("media.fileManagement")}</h2>
-        {/* Sonarr's "unmonitor deleted episodes", "change file date", "rescan after refresh" and "analyse video files"
-            are kept in the settings (Copy from Sonarr fills them) but hidden: AnimeArr doesn't use them. */}
+        {/* Sonarr's "unmonitor deleted episodes", "rescan after refresh" and "analyse video files" are kept in the settings
+            (Copy from Sonarr fills them) but hidden: AnimeArr doesn't detect files deleted outside it or run a per-show
+            refresh, and it always probes imported files (languages and verification depend on that), so none can be switched. */}
+        <label>
+          {t("media.fileDate")}
+          <select value={m.fileDate} onChange={(e) => set({ fileDate: e.target.value as MediaSettings["fileDate"] })}>
+            {(["none", "localAirDate", "utcAirDate"] as const).map((o) => (
+              <option key={o} value={o}>
+                {t(`media.opt.${o}` as I18nKey)}
+              </option>
+            ))}
+          </select>
+          <span className="muted small">{t("media.fileDateHelp")}</span>
+        </label>
         <label>
           {t("media.recycleBin")}
           <input value={m.recycleBin} onChange={(e) => set({ recycleBin: e.target.value })} placeholder="/media/Recycle/animearr/" />

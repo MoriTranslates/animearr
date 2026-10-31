@@ -44,6 +44,13 @@ AnimeArr fully replaces Sonarr AND Radarr for anime (searching, importing, libra
 - [ ] "Language coverage beats quality" upgrades
 - [ ] LLM fallback parser for names no rule parses
 
+### Propers and media management
+- [x] v2 / REPACK / PROPER upgrades from the same group; change file date; delete empty folders
+- [ ] RSS grabbing should call the same newer-version check (`newerVersionOf` in `server/propers.ts`) so a v2 is taken the moment it is posted
+- [ ] The quality watcher grabs one episode's v2 per season pass; several v2s in one season wait for the next pass
+- [ ] Unmonitor deleted episodes: needs a rescan that notices a file has gone (today the library is rebuilt from Sonarr or the media scan, so the change is not seen)
+- [ ] Rescan after refresh: needs a per-show metadata refresh job to hang a disk rescan on
+
 ### Downloads
 - [x] Missing-episode search for managed shows (rate-limited) · [x] queue health (stalls, metadata, client errors, Sonarr queue report)
 - [x] RAR unpacking: decided against. Anime releases rarely use RAR, and a RAR-capable unpacker costs licence and image size; 7z/ZIP unpacking stays and RAR downloads are flagged

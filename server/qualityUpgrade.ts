@@ -8,7 +8,9 @@
  *   Tdarr re-encoded later still counts as the Blu-ray it came from, never as a downgrade to re-grab.
  * - Never touched: shows/seasons locked "keep as is", profiles that keep originals, files named [Keep] or [Remaster].
  * - A candidate must beat each file it replaces: a higher quality category always does; inside the same category only
- *   when the file isn't already that category's best (no churn when SeaDex swaps between equal releases).
+ *   when the file isn't already that category's best (no churn when SeaDex swaps between equal releases). The one
+ *   exception is a newer version (v2, REPACK) from the same group as the file ("Propers and repacks", core/propers.ts):
+ *   episodes aired in the last two weeks are also checked for one, even when they already meet the goal.
  * - The swap is a Replace-season grab: each new file replaces its episode's file only after it passed the normal
  *   checks, and the old file goes to the recycling bin.
  * - Automatic from day one, with guard rails: the first run only lists its plan (grabs start a day later, or when the
@@ -20,11 +22,13 @@
 import { logDecision } from "./activity.js";
 import { CATEGORY_NAME, beatsCurrent, goalCategory, goalLabel, ladderRank, LOCK_TAG, meetsGoal, qualityScore, type Category, type GoalId, type QualityScore, type SeadexEntry } from "./core/quality.js";
 import { cache, db, dbState, setJob } from "./db.js";
+import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "./core/propers.js";
 import { ownedElsewhere } from "./duplicates.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged, toCandidate } from "./managed.js";
 import { startGrab } from "./pipeline.js";
 import { profileFor } from "./profiles.js";
+import { fileRevision, properMode } from "./propers.js";
 import { isLocked } from "./qualityLocks.js";
 import { animeTiers, seadexForSeason } from "./seadex.js";
 import { releaseOf } from "./seadexFiles.js";
@@ -45,7 +49,8 @@ const realDeps: QualityDeps = { search: deepSearch, grab: startGrab };
 const kvGet = (k: string) => (db.prepare("SELECT value FROM kv WHERE key = ?").get(k) as { value: string } | undefined)?.value;
 const kvSet = (k: string, v: string) => db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
 
-export interface FileNow { episodeId: number; label: string; release: string; q: QualityScore }
+/** `rev` = the file's group and version; `proper` = it already meets the goal and is only checked for a newer version. */
+export interface FileNow { episodeId: number; label: string; release: string; q: QualityScore; rev?: HaveRevision; proper?: boolean }
 export interface Unit {
   tvdbId: number;
   title: string;
@@ -58,6 +63,8 @@ export interface Unit {
   /** Last air date of the season (for the Blu-ray window). */
   endedAt: number | null;
   why: string;
+  /** Every file is only checked for a newer version (the season is at its goal). */
+  properOnly?: boolean;
 }
 
 interface StateRow { tvdb_id: number; season: number; state: string; last_at: number | null; attempts: number; why: string; release: string | null; grab_id: number | null; best_seen: string | null; no_bd: number; updated_at: number }
@@ -91,13 +98,20 @@ export function capOf(st: Pick<StateRow, "best_seen" | "no_bd"> | undefined, yea
   return null;
 }
 
+/** Episodes aired this recently are checked for a v2 even when they meet the goal (groups re-release within days). */
+const PROPER_WINDOW = 14 * DAY;
+
 const heightOf = (res: string | null) => {
   const m = /(\d{3,4})\s*p?\s*$/i.exec(res ?? "") ?? /x(\d{3,4})/.exec(res ?? "");
   return m ? Number(m[1]) : null;
 };
 
-/** Seasons of managed shows with files below their profile's goal (locked shows/seasons/files left out). */
-export function upgradeUnits(now = Date.now()): Unit[] {
+/**
+ * Seasons of managed shows with files below their profile's goal (locked shows/seasons/files left out). With `propers`,
+ * recently aired files that meet the goal count too, to be checked for a newer version of the same release.
+ */
+export function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {}): Unit[] {
+  const checkPropers = !!opts.propers && properMode() === "preferAndUpgrade";
   const tiers = animeTiers();
   const out: Unit[] = [];
   for (const m of listManaged()) {
@@ -108,8 +122,8 @@ export function upgradeUnits(now = Date.now()): Unit[] {
     const goal = prof.qualityGoal ?? "high";
     const owned = ownedElsewhere(m.tvdbId); // a duplicate listing's copy: the real files are upgraded under the show that holds them
     let rows = cache
-      .prepare("SELECT e.id, e.season, e.episode, e.air_utc, f.path, f.scene_name, f.resolution FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season > 0 AND e.monitored = 1 AND e.has_file = 1 ORDER BY e.season, e.episode")
-      .all(m.seriesId) as { id: number; season: number; episode: number; air_utc: number | null; path: string; scene_name: string | null; resolution: string | null }[];
+      .prepare("SELECT e.id, e.season, e.episode, e.air_utc, f.path, f.scene_name, f.release_group, f.revision, f.resolution FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season > 0 AND e.monitored = 1 AND e.has_file = 1 ORDER BY e.season, e.episode")
+      .all(m.seriesId) as { id: number; season: number; episode: number; air_utc: number | null; path: string; scene_name: string | null; release_group: string | null; revision: string | null; resolution: string | null }[];
     rows = rows.filter((r) => !owned.has(r.id));
     const seasons = [...new Set(rows.map((r) => r.season))];
     for (const season of seasons) {
@@ -124,13 +138,22 @@ export function upgradeUnits(now = Date.now()): Unit[] {
         const release = releaseOf(r);
         if (LOCK_TAG.test(r.path) || LOCK_TAG.test(release)) continue;
         const q = qualityScore(release, { tiers, seadex, mode: prof.watchMode }, heightOf(r.resolution));
-        if (meetsGoal(q, goal, { profileResolution: prof.resolution, cap, seadexKnown: !!seadex && !seadex.incomplete })) continue;
-        files.push({ episodeId: r.id, label: `S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")}`, release, q });
+        const rev = fileRevision(r.id, r);
+        const label = `S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")}`;
+        if (meetsGoal(q, goal, { profileResolution: prof.resolution, cap, seadexKnown: !!seadex && !seadex.incomplete })) {
+          if (checkPropers && r.air_utc !== null && now - r.air_utc <= PROPER_WINDOW) files.push({ episodeId: r.id, label, release, q, rev, proper: true });
+          continue;
+        }
+        files.push({ episodeId: r.id, label, release, q, rev });
       }
       if (!files.length) continue;
-      const worst = files.reduce((a, b) => (ladderRank(b.q.info.category) < ladderRank(a.q.info.category) ? b : a));
-      const why = `${files.length} episode${files.length > 1 ? "s" : ""} below ${goalLabel(goal)}${cap ? ` (capped at ${CATEGORY_NAME[cap]}: no Blu-ray release seen)` : ""}; worst ${CATEGORY_NAME[worst.q.info.category]}`;
-      out.push({ tvdbId: m.tvdbId, title: m.title, season, goal, target, files, endedAt, why });
+      const below = files.filter((f) => !f.proper);
+      const worst = below.reduce<FileNow | null>((a, b) => (!a || ladderRank(b.q.info.category) < ladderRank(a.q.info.category) ? b : a), null);
+      const checks = files.length - below.length;
+      const why = worst
+        ? `${below.length} episode${below.length > 1 ? "s" : ""} below ${goalLabel(goal)}${cap ? ` (capped at ${CATEGORY_NAME[cap]}: no Blu-ray release seen)` : ""}; worst ${CATEGORY_NAME[worst.q.info.category]}${checks ? `; ${checks} recent episode${checks > 1 ? "s" : ""} checked for a newer version` : ""}`
+        : `${checks} recently aired episode${checks > 1 ? "s" : ""} checked for a newer version (v2, REPACK)`;
+      out.push({ tvdbId: m.tvdbId, title: m.title, season, goal, target, files, endedAt, why, properOnly: !below.length });
     }
   }
   return out;
@@ -176,8 +199,9 @@ export interface UpgradePick {
  * The best upgrade among search results: it must beat every file it would replace (category first, then SeaDex/tiers)
  * and be a confident, acceptable, alive release without burned-in subs. Whole-season packs win over single episodes.
  */
-export function pickUpgrade(results: SearchResult[], unit: Pick<Unit, "files" | "goal">, ctx: { seadex: SeadexEntry | null; mode: "sub" | "dub" | "dual" | "either"; minConfidence: number }): UpgradePick | null {
+export function pickUpgrade(results: SearchResult[], unit: Pick<Unit, "files" | "goal">, ctx: { seadex: SeadexEntry | null; mode: "sub" | "dub" | "dual" | "either"; minConfidence: number; propers?: ProperMode }): UpgradePick | null {
   const tiers = animeTiers();
+  const propers = ctx.propers ?? properMode();
   const byEp = new Map(unit.files.map((f) => [f.episodeId, f]));
   const picks: UpgradePick[] = [];
   for (const r of results) {
@@ -185,7 +209,14 @@ export function pickUpgrade(results: SearchResult[], unit: Pick<Unit, "files" | 
     const covered = r.episodeIds.filter((id) => byEp.has(id));
     if (!covered.length) continue;
     const q = qualityScore(r.title, { tiers, seadex: ctx.seadex, mode: ctx.mode, goal: unit.goal });
-    const verdicts = covered.map((id) => beatsCurrent(q, byEp.get(id)!.q));
+    const cand = revisionOf(r.title);
+    const verdicts = covered.map((id) => {
+      const f = byEp.get(id)!;
+      if (!f.proper) return beatsCurrent(q, f.q, f.rev && { have: f.rev, cand, mode: propers });
+      // At the goal already: only a newer version of the same release qualifies, never a different quality.
+      if (ladderRank(q.info.category) < ladderRank(f.q.info.category)) return { ok: false, why: `${CATEGORY_NAME[q.info.category]} is below your ${CATEGORY_NAME[f.q.info.category]}` };
+      return f.rev ? isNewerRevision(f.rev, cand, propers) : { ok: false, why: "unknown version of your file" };
+    });
     if (!verdicts.every((v) => v.ok)) continue;
     picks.push({ result: r, covered, q, why: verdicts[0].why });
   }
@@ -220,7 +251,8 @@ function analyse(results: SearchResult[], u: Unit, st: StateRow | undefined, min
   const cats = results.filter((r) => r.rank.accept).map((r) => qualityScore(r.title, {}).info.category);
   const bestSeen = cats.reduce<Category | null>((a, c) => (!a || ladderRank(c) > ladderRank(a) ? c : a), (st?.best_seen as Category | null) ?? null);
   const sawBd = cats.some((c) => c.startsWith("bluray"));
-  const noBd = sawBd ? 0 : (st?.no_bd ?? 0) + 1;
+  // A season only checked for a newer version is at its goal: a search without Blu-rays says nothing about the "no Blu-ray exists" cap.
+  const noBd = sawBd ? 0 : (st?.no_bd ?? 0) + (u.properOnly ? 0 : 1);
   const prof = profileFor(u.tvdbId);
   const seadex = seadexForSeason(u.tvdbId, u.season);
   const pick = pickUpgrade(results, u, { seadex, mode: prof.watchMode, minConfidence });
@@ -255,7 +287,7 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     else save(r.tvdb_id, r.season, { state: "waiting", why: g ? `the upgrade didn't work out (${g.release}: ${g.state}); the old files stayed` : "the upgrade grab is gone", now, grabId: null, release: null });
   }
 
-  const units = upgradeUnits(now);
+  const units = upgradeUnits(now, { propers: true });
   res.units = units.length;
   // 2. The first run lists its plan and stops there.
   const plan = planState(now);
