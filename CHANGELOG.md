@@ -2,6 +2,8 @@
 
 All notable changes, newest first. The commit history has the crew's version of events; this is the Captain's log.
 
+## Unreleased
+
 ## 0.10.0-beta (2026-10-31): works with your apps, aims for the best
 
 ### Added
