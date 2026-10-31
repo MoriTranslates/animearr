@@ -131,6 +131,8 @@ const app = Fastify({
   logger: { level: process.env.LOG_LEVEL ?? "info", stream: logStream, serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
   trustProxy: trustProxyOption() as string[] | false,
   bodyLimit: 1_000_000,
+  // Sonarr matches paths regardless of case and its clients rely on it (nzb360 asks for /api/v3/episodeFile).
+  routerOptions: { caseSensitive: false },
 });
 await app.register(fastifyCookie);
 // JSON goes out as plain ASCII (non-ASCII as \uXXXX escapes): a client that decodes the body as Latin-1/cp1252 instead
