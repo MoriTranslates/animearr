@@ -128,7 +128,7 @@ const app = Fastify({
     if (u === URL_BASE) return "/";
     return u.startsWith(`${URL_BASE}/`) ? u.slice(URL_BASE.length) : u;
   },
-  logger: { level: process.env.LOG_LEVEL ?? "info", stream: logStream, serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.split("?")[0]), remoteAddress: r.ip }) } },
+  logger: { level: process.env.LOG_LEVEL ?? "info", stream: logStream, serializers: { req: (r) => ({ method: r.method, url: redactUrl(r.url.startsWith("/api/v3/") ? r.url : r.url.split("?")[0]), remoteAddress: r.ip }) } }, // Sonarr-API queries kept (keys redacted) to debug clients
   trustProxy: trustProxyOption() as string[] | false,
   bodyLimit: 1_000_000,
   // Sonarr matches paths regardless of case and its clients rely on it (nzb360 asks for /api/v3/episodeFile).
