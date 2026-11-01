@@ -14,13 +14,34 @@ import { getSettings } from "./settings.js";
 
 export const properMode = (): ProperMode => getSettings().media.propers ?? "preferAndUpgrade";
 
+/**
+ * Episode id → the release of its newest finished grab. Built once and rebuilt when the grabs change: looking it up per
+ * file scanned the whole grabs table for every episode of the library (seconds, with the app frozen meanwhile).
+ */
+let doneReleases: { key: string; map: Map<number, string> } | null = null;
+function doneReleaseOf(episodeId: number): string | undefined {
+  const k = db.prepare("SELECT COUNT(*) AS n, MAX(id) AS id, MAX(updated_at) AS at FROM grabs WHERE state = 'done' AND dry_run = 0").get() as { n: number; id: number | null; at: number | null };
+  const key = `${k.n}|${k.id}|${k.at}`;
+  if (doneReleases?.key !== key) {
+    const map = new Map<number, string>();
+    for (const g of db.prepare("SELECT episode_ids, release FROM grabs WHERE state = 'done' AND dry_run = 0 ORDER BY id").all() as { episode_ids: string; release: string }[]) {
+      try {
+        for (const e of JSON.parse(g.episode_ids) as number[]) map.set(e, g.release); // ascending ids: the newest grab wins
+      } catch {
+        /* unreadable row */
+      }
+    }
+    doneReleases = { key, map };
+  }
+  return doneReleases.map.get(episodeId);
+}
+
 /** The release name a file came from: its scene name, else the newest finished grab of the episode, else its file name. */
 function releaseOfFile(episodeId: number, f: { path: string; scene_name: string | null }): string {
   if (f.scene_name?.trim()) return f.scene_name.trim();
   const meta = db.prepare("SELECT scene_name FROM file_meta WHERE path = ?").get(f.path) as { scene_name: string | null } | undefined;
   if (meta?.scene_name?.trim()) return meta.scene_name.trim();
-  const grab = db.prepare("SELECT release FROM grabs WHERE state = 'done' AND dry_run = 0 AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1").get(episodeId) as { release: string } | undefined;
-  return grab?.release ?? f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
+  return doneReleaseOf(episodeId) ?? f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
 }
 
 /** Group and version of one library file (pure given its row; the episode id finds the grab history). */

@@ -715,10 +715,12 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
   const items: RenameItem[] = [];
   const taken = new Set<string>();
   const listing = new Map<string, string[]>();
+  const epsOf = cache.prepare("SELECT id, season, episode, absolute, title, air_date, file_id FROM episodes WHERE file_id = ? ORDER BY season, episode");
+  const recOf = db.prepare("SELECT video, audio, subs FROM media_files WHERE path = ?");
   for (const f of files) {
-    const eps = cache.prepare("SELECT id, season, episode, absolute, title, air_date, file_id FROM episodes WHERE file_id = ? ORDER BY season, episode").all(f.id) as unknown as Ep[];
+    const eps = epsOf.all(f.id) as unknown as Ep[];
     if (!eps.length) continue;
-    const rec = (db.prepare("SELECT video, audio, subs FROM media_files WHERE path = ?").get(f.path) as { video: string; audio: string; subs: string } | undefined) ?? null;
+    const rec = (recOf.get(f.path) as { video: string; audio: string; subs: string } | undefined) ?? null;
     const probe: Probe | null = rec ? { video: JSON.parse(rec.video), audio: JSON.parse(rec.audio), subs: JSON.parse(rec.subs) } : null;
     let to: string;
     try {

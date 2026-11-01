@@ -484,13 +484,13 @@ function batchLeftovers(grabId: number) {
  * the clean-up's rules (deleting switched on; only inside AnimeArr's own Usenet download folder, never the folder
  * itself, never a library or allowed root; only this job's storage path). Returns what it did, or null.
  */
-export function removeJobFolder(storage: string | null | undefined): string | null {
+export async function removeJobFolder(storage: string | null | undefined): Promise<string | null> {
   if (!storage || !getSettings().downloads.allowDelete) return null;
   const local = mappedPath(clientToSonarr(storage)).replace(/[\/]+$/, "");
   const rootsLocal = roots().filter((r) => r.client === "sabnzbd").map((r) => path.resolve(r.local));
   if (!rootsLocal.some((r) => path.resolve(local).startsWith(r + path.sep)) || inProtected(local)) return null;
   if (!fs.existsSync(local)) return null;
-  fs.rmSync(local, { recursive: true, force: true });
+  await fs.promises.rm(local, { recursive: true, force: true }); // a batch of 170 big files: the UI keeps answering
   last = null;
   return local;
 }
@@ -500,13 +500,13 @@ export function removeJobFolder(storage: string | null | undefined): string | nu
  * same rules (deleting switched on; only inside one of the importer's source roots, never a root itself, never a
  * library or allowed root). `arrPath` is the path as AnimeArr/Sonarr see it.
  */
-export function removeDownloadPath(arrPath: string | null | undefined): string | null {
+export async function removeDownloadPath(arrPath: string | null | undefined): Promise<string | null> {
   if (!arrPath || !getSettings().downloads.allowDelete) return null;
   const local = mappedPath(arrPath.replace(/\/+$/, ""));
   const rootsLocal = (getSettings().importer.sourceRoots ?? []).map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
   if (!rootsLocal.some((r) => path.resolve(local).startsWith(r + path.sep)) || inProtected(local)) return null;
   if (!fs.existsSync(local)) return null;
-  fs.rmSync(local, { recursive: true, force: true });
+  await fs.promises.rm(local, { recursive: true, force: true }); // a batch of 170 big files: the UI keeps answering
   last = null;
   return local;
 }
@@ -549,7 +549,7 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
       const there = fs.existsSync(local);
       const leftovers = there && batchLeftovers(g.id);
       if (there && !leftovers && listVideos(local).length) return null;
-      if (there && deleteOk && !removeDownloadPath(arr)) return null; // not inside AnimeArr's own download folders: left alone
+      if (there && deleteOk && !(await removeDownloadPath(arr))) return null; // not inside AnimeArr's own download folders: left alone
       await deps.remove({ client: g.client, ref: g.client_ref });
       did = there && deleteOk ? (leftovers ? "deleted the download folder with the batch's unneeded files and removed the job from NZBGet" : "deleted the download folder and removed the job from NZBGet") : "removed the finished job from NZBGet";
     } else if (getSettings().extraClients?.find((x) => x.id === g.client)?.type === "blackhole-usenet") {
@@ -561,7 +561,7 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
       const local = arr ? mappedPath(arr) : null;
       if (!local || !fs.existsSync(local) || !fs.statSync(local).isDirectory()) return null;
       const leftovers = batchLeftovers(g.id);
-      if ((leftovers || !listVideos(local).length) && removeDownloadPath(arr)) did = leftovers ? "deleted the download folder with the batch's unneeded files" : "deleted the download folder";
+      if ((leftovers || !listVideos(local).length) && (await removeDownloadPath(arr))) did = leftovers ? "deleted the download folder with the batch's unneeded files" : "deleted the download folder";
     } else if (g.client === "sabnzbd") {
       const h = (await deps.sab()).find((x) => x.nzoId === g.client_ref);
       if (!h?.storage) return null;
@@ -572,7 +572,7 @@ export async function cleanupGrab(grabId: number, outcome: "imported" | "rejecte
       // other files were never wanted (only some episodes, or the movie from a season batch) goes with its leftovers.
       const leftovers = batchLeftovers(g.id);
       if (fs.existsSync(local) && (leftovers || !listVideos(local).length)) {
-        fs.rmSync(local, { recursive: true, force: true });
+        await fs.promises.rm(local, { recursive: true, force: true });
         did = leftovers ? "deleted the download folder with the batch's unneeded files" : "deleted the download folder";
       }
     }

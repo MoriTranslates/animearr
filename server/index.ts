@@ -1209,6 +1209,7 @@ app.get("/api/media/rename-all", async () => {
   const rows = cache.prepare("SELECT tvdb_id, title FROM series ORDER BY sort_title").all() as { tvdb_id: number; title: string }[];
   const out: { tvdbId: number; title: string; count: number }[] = [];
   for (const r of rows) {
+    await new Promise((res) => setImmediate(res)); // one show at a time: other requests are answered in between
     try {
       const n = planRename(r.tvdb_id).items.length;
       if (n) out.push({ tvdbId: r.tvdb_id, title: r.title, count: n });

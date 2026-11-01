@@ -14,7 +14,7 @@
     "dev:web": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "start": "node --no-warnings=ExperimentalWarning dist/server/index.js",
-    "test": "node --no-warnings --import tsx --test \"test/**/*.test.ts\"",
+    "test": "node scripts/test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
   },
   "dependencies": {

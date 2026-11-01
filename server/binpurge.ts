@@ -60,7 +60,7 @@ function removeEmptyDirs(dir: string, root: string) {
 }
 
 /** Deletes what's older than the retention (or everything, for "Empty bin now"). */
-export function purgeBin(opts: { all?: boolean; now?: number } = {}) {
+export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
   const now = opts.now ?? Date.now();
   const days = getSettings().media.recycleBinCleanupDays ?? 0;
   const bin = binFolder();
@@ -82,7 +82,7 @@ export function purgeBin(opts: { all?: boolean; now?: number } = {}) {
     if (!opts.all && now - at < days * DAY) continue;
     try {
       const size = fs.statSync(p).size;
-      fs.rmSync(p, { force: true });
+      await fs.promises.rm(p, { force: true });
       db.prepare("DELETE FROM recycle_log WHERE path = ?").run(p);
       deleted++;
       bytes += size;
@@ -126,5 +126,5 @@ let lastRun = 0;
 export function binTick(now = Date.now()) {
   if (now - lastRun < DAY - 60_000) return;
   lastRun = now;
-  purgeBin({ now });
+  void purgeBin({ now }).catch(() => undefined);
 }
