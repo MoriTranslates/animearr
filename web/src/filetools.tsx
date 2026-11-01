@@ -86,7 +86,7 @@ export function WatchIn({ path, title, kind }: { path: string; title: string; ki
 }
 
 /** For a file without (or with unknown) subtitles in the profile's language: two quick answers. */
-export function Verdicts({ tvdbId, season, lang, onFind, onDone }: { tvdbId: number; season: number; lang: string; onFind: () => void; onDone: () => void }) {
+export function Verdicts({ tvdbId, season, lang, path, onFind, onDone }: { tvdbId: number; season: number; lang: string; path?: string; onFind: () => void; onDone: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const L = lang.toUpperCase();
@@ -113,6 +113,28 @@ export function Verdicts({ tvdbId, season, lang, onFind, onDone }: { tvdbId: num
         >
           {t("verdict.burned", { lang: L })}
         </button>
+        {path && (
+          <button
+            type="button"
+            className="small"
+            disabled={busy}
+            title={t("ep.burnedInHelp", { lang: L })}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await api("/files/burned-in", { body: { path, lang } });
+                toast(t("ep.burnedInSaved", { lang: L }));
+                onDone();
+              } catch (e) {
+                toast((e as Error).message, true);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {t("ep.burnedIn")}
+          </button>
+        )}
         <button type="button" className="small" disabled={busy} onClick={onFind}>
           {t("verdict.replace", { lang: L })}
         </button>

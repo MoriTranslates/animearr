@@ -61,6 +61,11 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
     if (rule && !/free/i.test(why)) add({ action: "resumeRule", label: "Turn rule off", params: { name: rule } });
   }
   if (/importer is paused|real (?:movie )?imports by AnimeArr's importer are switched off|aren't switched on yet/i.test(why)) add({ action: "resumeImports", label: "Resume imports", params: { movies: !!ctx.movieId || /\bmovie/i.test(why) } });
+  // Replace season stopped (the download was one episode, or nothing could be swapped): another version, or pick one.
+  if (ctx.grabId && /replace stopped/i.test(why)) {
+    add({ action: "tryNext", label: "Try another version", params: { grabId: ctx.grabId } });
+    if (ctx.tvdbId) add({ action: "interactiveSearch", label: "Pick a version…", params: target });
+  }
   // "No more candidates" means the automatic next already ran out: only the interactive search helps then.
   if (ctx.grabId && /fail|couldn't send|SABnzbd:|download (?:failed|error)|stalled|missing from/i.test(why) && !/verification|no more candidates/i.test(why)) add({ action: "tryNext", label: "Try another version", params: { grabId: ctx.grabId } });
   if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Pick a version…", params: target });

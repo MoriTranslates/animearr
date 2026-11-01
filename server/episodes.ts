@@ -28,10 +28,15 @@ import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./sear
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
-import { summarize } from "./summary.js";
+import { attentionSummary, summarize } from "./summary.js";
+import { burnedInFiles } from "./fileMarks.js";
+import { isLocked } from "./qualityLocks.js";
+import { LOCK_TAG } from "./core/quality.js";
+import { liveFixesFor, type Fix } from "./fixes.js";
 import { afterLibraryChange } from "./mediaout.js";
 
-export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
+/** "wrong-lang": a managed show's file that fails the language check (and isn't kept as is): wanted like a missing one. */
+export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang";
 
 export interface FileInfo {
   id: number;
@@ -61,6 +66,8 @@ export interface FileInfo {
    * says it doesn't; unknown = not checked by AnimeArr yet, or tracks without a language tag.
    */
   lang?: LangState;
+  /** You marked this file as having burned-in subtitles in this language. */
+  burnedIn?: string | null;
 }
 export interface LangState { state: "ok" | "no" | "unknown"; why: string; code?: string }
 
@@ -140,10 +147,30 @@ const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e
 /** Active grabs by episode id (for "downloading 45%" / "needs attention"). */
 function grabStates() {
   const stages = grabStages();
-  const out = new Map<number, { state: string; progress: number | null; grabId: number; release: string; stage?: string; ahead?: number }>();
-  const rows = db.prepare("SELECT id, episode_ids, state, progress, release FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; episode_ids: string; state: string; progress: number | null; release: string }[];
-  for (const r of rows) for (const e of JSON.parse(r.episode_ids) as number[]) out.set(e, { state: r.state, progress: r.progress, grabId: r.id, release: r.release, stage: stages.get(r.id)?.stage, ahead: stages.get(r.id)?.ahead });
+  const out = new Map<number, { state: string; progress: number | null; grabId: number; release: string; error: string | null; tvdbId: number; episodeIds: number[]; stage?: string; ahead?: number }>();
+  const rows = db.prepare("SELECT id, tvdb_id, episode_ids, state, progress, release, error FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; tvdb_id: number; episode_ids: string; state: string; progress: number | null; release: string; error: string | null }[];
+  for (const r of rows) {
+    const ids = JSON.parse(r.episode_ids) as number[];
+    for (const e of ids) out.set(e, { state: r.state, progress: r.progress, grabId: r.id, release: r.release, error: r.error, tvdbId: r.tvdb_id, episodeIds: ids, stage: stages.get(r.id)?.stage, ahead: stages.get(r.id)?.ahead });
+  }
   return out;
+}
+
+/** A grab that needs the user, in plain words, with what can be done about it (the episode row, the sheet). */
+export interface AttentionNote { grabId: number; release: string; summary: string; fixes: Fix[] }
+function attentionNote(g: NonNullable<ReturnType<ReturnType<typeof grabStates>["get"]>>): AttentionNote {
+  return { grabId: g.grabId, release: g.release, summary: attentionSummary(g.error), fixes: liveFixesFor(g.error ?? "", { grabId: g.grabId, tvdbId: g.tvdbId, episodeIds: g.episodeIds, kind: "attention" }) };
+}
+
+/**
+ * An episode's status with a grab in flight. A grab that needs attention only makes an episode "attention" when it
+ * left that episode without a usable file: one that keeps its good file stays "have" (the note says a replacement
+ * didn't finish), one that hasn't aired stays "unaired".
+ */
+export function statusWithGrab(base: EpisodeStatus, g: { state: string } | undefined): EpisodeStatus {
+  if (!g) return base;
+  if (g.state !== "needs-attention") return "downloading";
+  return base === "have" || base === "unaired" ? base : "attention";
 }
 
 export interface EpisodeRow {
@@ -167,6 +194,21 @@ export interface EpisodeRow {
   special?: { type: string; cls: string } | null;
   /** Missing: the last automatic search's outcome ("nothing with EN subs", …), when there was one. */
   missingWhy?: string | null;
+  /** A download for this episode needs the user: why, in plain words, and the fixes. */
+  attention?: AttentionNote | null;
+  /** The file fails the language check but is kept as is (never replaced automatically): why. */
+  keptWhy?: string | null;
+}
+
+/**
+ * Why a file must never be replaced automatically, or null: "[Keep]"/"[Remaster]" in its name, a "keep as is" lock on
+ * the show or season, or you chose "Keep anyway" for the download it came from.
+ */
+export function keptWhy(tvdbId: number, season: number, episodeId: number, filePath: string): string | null {
+  if (LOCK_TAG.test(path.posix.basename(filePath))) return "its name carries [Keep] or [Remaster]";
+  if (isLocked(tvdbId, season)) return "the show or season is kept as is";
+  const g = db.prepare("SELECT keep FROM grabs WHERE state = 'done' AND movie_id IS NULL AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1").get(episodeId) as { keep: number } | undefined;
+  return g?.keep ? "you chose to keep this download despite the language check" : null;
 }
 
 const tvdbOf = (seriesId: number) => (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id ?? 0;
@@ -201,16 +243,28 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
   const prof = profileFor(tvdb);
   const burned = new Map<number, string | null>();
   const burnedFor = (season: number) => (burned.has(season) ? burned.get(season)! : (burned.set(season, prof.subLangs.find((l) => !!burnedInFact(tvdb, season, l)) ?? null), burned.get(season)!));
-  const judgeFor = (season: number): Judge => (p) => judge(p, prof, null, burnedFor(season));
+  // A file the user marked as hardsubbed counts as having that language (per file; the season fact covers a whole season).
+  const marks = burnedInFiles(tvdb);
+  const judgeFor = (season: number, filePath: string): Judge => (p) => {
+    const mark = marks.get(filePath) ?? null;
+    const v = judge(p, prof, null, burnedFor(season) ?? mark);
+    return v.ok && mark && !burnedFor(season) && /burned-in/.test(v.why) ? { ...v, why: `no subtitle track, accepted because you marked this file as having burned-in ${mark} subtitles` } : v;
+  };
+  const managedShow = listManaged().some((m) => m.tvdbId === tvdb);
   // Why a missing episode is still missing: the scheduler's last word on it (no dead end on the row).
   const lastWhy = new Map((db.prepare("SELECT episode_id, last_why FROM search_state WHERE tvdb_id = ? AND last_why != ''").all(tvdb) as { episode_id: number; last_why: string }[]).map((r) => [r.episode_id, r.last_why]));
   return eps.map((e) => {
     const g = active.get(e.id);
     const f = e.file_id ? files.get(e.file_id) : undefined;
-    let status: EpisodeStatus = e.has_file || extraLinks.has(e.id) ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
-    if (g) status = g.state === "needs-attention" ? "attention" : "downloading";
+    const file = f ? { ...fileInfo(f, byFile.get(f.id), judgeFor(e.season, f.path)), burnedIn: marks.get(f.path) ?? null } : null;
+    let base: EpisodeStatus = e.has_file || extraLinks.has(e.id) ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
+    // Managed shows: a file in the wrong language is wanted again (unless it is kept as is).
+    const kept = file?.lang?.state === "no" ? keptWhy(tvdb, e.season, e.id, file.path) : null;
+    if (base === "have" && managedShow && file?.lang?.state === "no" && !kept) base = "wrong-lang";
+    const status = statusWithGrab(base, g);
     const fallback = !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, file: f ? fileInfo(f, byFile.get(f.id), judgeFor(e.season)) : null, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null, missingWhy: status === "missing" ? (lastWhy.get(e.id) ?? null) : null };
+    const attention = g?.state === "needs-attention" ? attentionNote(g) : null;
+    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g && status === "downloading" ? g.progress : null, stage: g && status === "downloading" ? (g.stage ?? null) : null, ahead: g && status === "downloading" ? (g.ahead ?? null) : null, file, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null, missingWhy: status === "missing" || status === "wrong-lang" ? (lastWhy.get(e.id) ?? null) : null, attention, keptWhy: kept };
   });
 }
 
@@ -223,12 +277,14 @@ export function seriesHeader(tvdbId: number) {
   const rows = episodeRows(s.id).filter((e) => e.season > 0);
   const aired = rows.filter((e) => e.status !== "unaired");
   const have = rows.filter((e) => e.status === "have");
+  const wrongLang = rows.filter((e) => e.status === "wrong-lang");
   const prof = profileFor(tvdbId);
-  // The same per-file verdict as the season tags and the episode dots.
+  // The same per-file verdict as the season tags and the episode dots (files in the wrong language included).
   const langOf = (e: EpisodeRow) => e.file?.lang?.state ?? "unknown";
-  const withLang = have.filter((e) => langOf(e) === "ok");
-  const noLang = have.filter((e) => langOf(e) === "no");
-  const unknownLang = have.filter((e) => langOf(e) === "unknown");
+  const withFile = [...have, ...wrongLang];
+  const withLang = withFile.filter((e) => langOf(e) === "ok");
+  const noLang = withFile.filter((e) => langOf(e) === "no");
+  const unknownLang = withFile.filter((e) => langOf(e) === "unknown");
   const untagged = unknownLang.filter((e) => e.file?.lang?.code === "untagged");
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
   const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
@@ -262,8 +318,8 @@ export function seriesHeader(tvdbId: number) {
     catalog,
     color: cov[0]?.color ?? null,
     nextEpisode: next ? { id: next.id, season: next.season, episode: next.episode, title: next.title, airUtc: next.airUtc } : null,
-    counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing").length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
-    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, noLang: noLang.length, unknown: unknownLang.length - untagged.length, untagged: untagged.length, have: have.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
+    counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing" || e.status === "wrong-lang").length, wrongLang: wrongLang.length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
+    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, noLang: noLang.length, unknown: unknownLang.length - untagged.length, untagged: untagged.length, have: withFile.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
     profile: { id: prof.id, name: prof.name, watchMode: prof.watchMode, profileMode: prof.profileMode ?? prof.watchMode, source: prof.source, original: prof.originalLangs },
     links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : s.tvdb_id >= NATIVE_BASE ? `https://anilist.co/anime/${s.tvdb_id - NATIVE_BASE}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: s.tvdb_id >= NATIVE_BASE ? null : `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
     native: s.id >= NATIVE_BASE,
@@ -383,6 +439,41 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
   return { deleted, skipped, affected, askSearch: !!m && !isDryRun(m.dryRun) && deleted.length > 0 };
 }
 
+/** Episodes of a managed show whose file is in the wrong language (not kept as is): id → why. */
+export function wrongLanguageEpisodes(tvdbId: number): Map<number, string> {
+  const s = seriesByTvdb(tvdbId);
+  if (!s) return new Map();
+  return new Map(episodeRows(s.id).filter((e) => e.status === "wrong-lang").map((e) => [e.id, e.file?.lang?.why ?? "wrong language"]));
+}
+
+/** search_state reason of a wrong-language replacement (also how its rows are recognised). */
+export const WRONG_LANG_WHY = "the file is in the wrong language";
+
+/**
+ * Wrong-language files of managed shows join the normal search as replacements ('replace': the episode has a file
+ * by design). A file that is fixed, kept or marked meanwhile leaves it. One search per episode, then again after the
+ * missing-episode search's retry days (a failed replacement doesn't search every tick).
+ */
+export function planWrongLanguage(now = Date.now()) {
+  // The old file goes to the recycling bin only after the new one passed its check: no bin, no replacement.
+  if (!getSettings().media.recycleBin.trim()) return 0;
+  const retry = getSettings().backlog.retryDays * 86_400_000;
+  let added = 0;
+  for (const m of listManaged()) {
+    const wrong = wrongLanguageEpisodes(m.tvdbId);
+    for (const [id, why] of wrong) {
+      const st = db.prepare("SELECT state, last_at FROM search_state WHERE episode_id = ?").get(id) as { state: string; last_at: number | null } | undefined;
+      const lastWhy = `${WRONG_LANG_WHY} (${why}); searching for a replacement`;
+      if (!st) added += Number(db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state, last_why) VALUES (?, ?, ?, 'replace', ?)").run(id, m.tvdbId, now, lastWhy).changes);
+      else if (st.state === "done" && (st.last_at ?? 0) < now - retry) added += Number(db.prepare("UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, next_at = ?, last_why = ? WHERE episode_id = ?").run(now, lastWhy, id).changes);
+    }
+    // Fixed, kept or marked meanwhile: no replacement needed any more.
+    for (const r of db.prepare("SELECT episode_id FROM search_state WHERE tvdb_id = ? AND state = 'replace' AND last_why LIKE ?").all(m.tvdbId, `${WRONG_LANG_WHY}%`) as { episode_id: number }[])
+      if (!wrong.has(r.episode_id)) db.prepare("UPDATE search_state SET state = 'done', last_why = 'the file is fine now' WHERE episode_id = ?").run(r.episode_id);
+  }
+  return added;
+}
+
 /** Puts episodes of a managed show back on the search schedule, due now. */
 export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { why?: string; replace?: boolean } = {}) {
   const s = guard(tvdbId);
@@ -459,7 +550,7 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
     .map((r) => {
       if (!covers.has(r.tvdb_id)) covers.set(r.tvdb_id, coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }));
       const g = active.get(r.id);
-      const status: EpisodeStatus = g ? (g.state === "needs-attention" ? "attention" : "downloading") : r.has_file ? "have" : r.air_utc > now ? "unaired" : "missing";
+      const status = statusWithGrab(r.has_file ? "have" : r.air_utc > now ? "unaired" : "missing", g);
       return { episodeId: r.id, tvdbId: r.tvdb_id, series: r.series, cover: covers.get(r.tvdb_id) ?? null, season: r.season, episode: r.episode, title: r.title, airUtc: r.air_utc, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, managed: managed.has(r.tvdb_id) };
     });
 }

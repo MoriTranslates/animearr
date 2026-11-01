@@ -59,6 +59,7 @@ import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./
 import { summarize } from "./summary.js";
 import { finishGrabByHand, grabDownloadPath, keepGrab, listGrabs, nextForGrab, pipelineTick, recoverGrabs, removeGrab, retryImport, startGrab, type Candidate } from "./pipeline.js";
 import { registerBlocklistApi } from "./blocklist.js";
+import { registerFileMarksApi } from "./fileMarks.js";
 import { registerMetaOverrideApi } from "./metaoverride.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "./queue.js";
 import { recentChecks, repairTick } from "./repair.js";
@@ -1428,6 +1429,7 @@ function withArt<T extends { tvdbId: number | null; episodeIds: number[]; detail
   });
 }
 registerBlocklistApi(app);
+registerFileMarksApi(app, { writable });
 registerMetaOverrideApi(app, { fetch, key: () => getSettings().metadata.tmdbKey, writable });
 app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
   writable();
@@ -1454,6 +1456,9 @@ app.post<{ Params: { id: string } }>("/api/activity/:id/undo", async (req) => {
       break;
     case "delete-fact":
       db.prepare("DELETE FROM facts WHERE id = ?").run(Number(a.id));
+      break;
+    case "unmark-burned":
+      db.prepare("DELETE FROM file_marks WHERE path = ?").run(String(a.path));
       break;
     case "unblock":
       if (a.id) db.prepare("DELETE FROM blocklist WHERE id = ?").run(Number(a.id));

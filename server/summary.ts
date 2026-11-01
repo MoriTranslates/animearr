@@ -39,6 +39,10 @@ const langs = (s: string) => s.replace(/\b([a-z]{2,3})\b(?= (?:subtitles?|audio|
 export function plainReason(raw: string): string | null {
   const r = raw.replace(/\s+/g, " ");
   const rules: [RegExp, string | ((m: RegExpExecArray) => string)][] = [
+    // Replace season: these messages are written plainly already (the reasons inside them are details).
+    [/replace stopped: the download was only (episode \d+|one episode), not the whole season/i, (m) => `the download was only ${m[1]}, not the whole season; nothing in your library changed`],
+    [/replace stopped: no episode could be swapped/i, "none of the new files could replace the old ones; nothing in your library changed"],
+    [/(\d+) episodes? kept (?:their|its) old file/i, (m) => `${m[1] === "1" ? "1 episode" : `${m[1]} episodes`} kept the old file, the others were replaced`],
     [/no space left|ENOSPC|disk (?:is )?full/i, "the disk is full"],
     [/not found \(DNS\)|ENOTFOUND|EAI_AGAIN|getaddrinfo/i, "a download source is offline"],
     [/HTTP 410|HTTP 404|Download link failed|link (?:has )?expired/i, "the download link no longer works"],
@@ -94,6 +98,18 @@ export function queueSummary(state: string, error: string | null, verifyFailed: 
   const r = plainReason(error);
   const lead = verifyFailed ? "Turned down" : state === "failed" ? "Failed" : "Needs you";
   return r ? `${lead}: ${r}.` : verifyFailed ? "Turned down: it didn't pass the language check." : null;
+}
+
+/**
+ * What a download that needs you is about, for the episode rows and sheets: why, in plain words, and what can be
+ * done (the buttons sit next to it). Never just "needs attention".
+ */
+export function attentionSummary(error: string | null): string {
+  if (!error) return "A download for this episode stopped and needs you. Open the Queue to retry it, try another version or remove it.";
+  const r = plainReason(error);
+  const first = error.replace(/\s+/g, " ").split(/(?<=[.;])\s/)[0].replace(/[;.]$/, "");
+  const line = r ?? first;
+  return `${line[0].toUpperCase()}${line.slice(1)}.`;
 }
 
 export function summarize(x: SummaryInput): string | null {

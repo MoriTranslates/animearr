@@ -315,7 +315,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         <>
           {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
       {seasons.map(([season, rows], i) => {
-        const missing = rows.filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
+        // A file in the wrong language (managed shows) is wanted like a missing one: ⚡ searches for a replacement.
+        const missing = rows.filter((r) => (r.status === "missing" || r.status === "wrong-lang") && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
+        const wrongLang = rows.filter((r) => r.status === "wrong-lang");
         const openings = season === 0 ? rows.filter((r) => r.special?.cls === "creditless").sort((a, b) => a.episode - b.episode) : [];
         const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
         const aired = rows.filter((r) => r.status !== "unaired");
@@ -327,7 +329,8 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         const quietLang = noLang.length >= Math.max(3, have.length * 0.6);
         const dl = rows.filter((r) => r.status === "downloading");
         const attention = rows.filter((r) => r.status === "attention");
-        const quiet = !missing.length && !noLang.length && !unknownLang.length && !untaggedLang.length && !dl.length && !attention.length && have.length === aired.length;
+        const attentionWhy = [...new Set(attention.map((r) => r.attention?.summary).filter(Boolean))].join(" · ");
+        const quiet = !missing.length && !noLang.length && !unknownLang.length && !untaggedLang.length && !dl.length && !attention.length && !wrongLang.length && have.length === aired.length;
         const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
         const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
         // The latest season that has aired opens by default (older seasons show their issues as header tags).
@@ -382,18 +385,27 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   <Download className="lucide" aria-hidden="true" /> {t("show.dlCount", { n: dl.length })}
                 </span>
               )}
-              {!!attention.length && <span className="tag bad">{t("show.attentionCount", { n: attention.length })}</span>}
+              {!!wrongLang.length && (
+                <span className="tag warn" title={wrongLang[0].file?.lang?.why}>
+                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.wrongLangCount", { n: wrongLang.length })}
+                </span>
+              )}
+              {!!attention.length && (
+                <span className="tag bad" title={attentionWhy || undefined}>
+                  {t("show.attentionCount", { n: attention.length })}
+                </span>
+              )}
             </summary>
             {grid ? (
               <div className="ep-grid">
                 {[...rows].reverse().map((r) => (
-                  <button key={r.id} className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`} onClick={() => (selecting ? toggle(r.id) : openEp(r.id))} aria-pressed={selecting ? sel.has(r.id) : undefined} title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}`}>
+                  <button key={r.id} className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`} onClick={() => (selecting ? toggle(r.id) : openEp(r.id))} aria-pressed={selecting ? sel.has(r.id) : undefined} title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}${r.status === "attention" && r.attention ? ` · ${r.attention.summary}` : ""}`}>
                     {r.episode}
                     <span className="sr-only"> {t(`ep.status.${r.status}`)}</span>
                   </button>
                 ))}
                 <p className="legend small muted">
-                  ✓ {t("ep.status.have")} · ! {t("ep.status.missing")} · ↓ {t("ep.status.downloading")} · ◷ {t("ep.status.unaired")} · ⚠ {t("ep.status.attention")}
+                  ✓ {t("ep.status.have")} · ! {t("ep.status.missing")} · ↓ {t("ep.status.downloading")} · ◷ {t("ep.status.unaired")} · ⚠ {t("ep.status.attention")} · ! {t("ep.status.wrong-lang")}
                 </p>
               </div>
             ) : (
@@ -528,7 +540,7 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
   const toast = useToast();
   const ls = r.status === "have" && r.file ? langOf(r.file, lang) : "ok";
   const noLang = ls !== "ok";
-  const dot = r.status === "have" ? (ls === "no" ? "warn" : ls === "unknown" ? "off" : "good") : r.status === "downloading" ? "info" : r.status === "missing" ? "bad" : r.status === "attention" ? "warn" : "off";
+  const dot = r.status === "have" ? (ls === "no" ? "warn" : ls === "unknown" ? "off" : "good") : r.status === "downloading" ? "info" : r.status === "missing" ? "bad" : r.status === "attention" || r.status === "wrong-lang" ? "warn" : "off";
   const quality = r.file ? (r.file.resolution ? resLabel(r.file.resolution) : r.file.quality) ?? "" : "";
   return (
     <li className={`ep-row${next ? " next" : ""}${selected ? " selected" : ""}`}>
@@ -549,6 +561,10 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
             {r.file && r.airUtc && r.airUtc > Date.now() ? <span title={t("ep.outEarlyHelp")}>{t("ep.outEarlyShort")}</span> : airLabel(r.airUtc)}
             {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
             {r.status === "missing" && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
+            {/* Why it needs you, right on the row (the sheet has the buttons); a good file only gets a quiet note. */}
+            {r.status === "attention" && r.attention ? <span className="miss-why" title={r.attention.summary}> · {r.attention.summary}</span> : ""}
+            {r.status === "have" && r.attention ? <span className="muted" title={r.attention.summary}> · {t("ep.replaceNote")}</span> : ""}
+            {r.status === "wrong-lang" && r.file?.lang ? <span className="miss-why" title={t("ep.wrongLangHelp", { why: r.file.lang.why })}> · {r.file.lang.why}</span> : ""}
             <span className="phone-meta">
               {quality ? ` · ${quality}` : ""}
               {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}

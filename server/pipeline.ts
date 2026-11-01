@@ -885,7 +885,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       // Episodes that kept their old file may still need this download: it stays, and the grab waits in "needs
       // attention" so Retry import can finish them once the cause is fixed.
       await finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
-      if (kept.length) setState(row.id, "needs-attention", `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then retry the import`);
+      if (kept.length) setState(row.id, "needs-attention", `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`);
       return;
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);

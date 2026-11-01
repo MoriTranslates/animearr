@@ -5,7 +5,7 @@ import { showVars } from "./season";
 import { t } from "./i18n";
 import { thumbUrl } from "./ui";
 
-export type PosterStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | null;
+export type PosterStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang" | null;
 
 /** The status ring in a poster's corner: ✓ have, ! missing, progress % downloading, clock upcoming. Shape + words, not colour alone. */
 export function StatusRing({ status, progress }: { status: PosterStatus; progress?: number | null }) {
@@ -20,7 +20,7 @@ export function StatusRing({ status, progress }: { status: PosterStatus; progres
     );
   return (
     <span className={`st ${status}`} title={label}>
-      {status === "have" ? <Check className="lucide" aria-hidden="true" /> : status === "missing" ? <b aria-hidden="true">!</b> : status === "attention" ? <TriangleAlert className="lucide" aria-hidden="true" /> : <Clock className="lucide" aria-hidden="true" />}
+      {status === "have" ? <Check className="lucide" aria-hidden="true" /> : status === "missing" || status === "wrong-lang" ? <b aria-hidden="true">!</b> : status === "attention" ? <TriangleAlert className="lucide" aria-hidden="true" /> : <Clock className="lucide" aria-hidden="true" />}
       <span className="sr-only">{label}</span>
     </span>
   );

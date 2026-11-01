@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FixDetection, Peek, Verdicts, WatchIn } from "./filetools";
 import { CaptionsOff } from "lucide-react";
-import { api, fmtSize, sxe } from "./api";
+import { api, fmtSize, sxe, type Fix } from "./api";
+import { FixButtons } from "./fixes";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why, ReleaseName } from "./ui";
@@ -10,14 +11,16 @@ import { languageList, languageName } from "./lang";
 import { kindLabel } from "./pages/Activity";
 import { followAutoJob, outcomeMessage, queuedMessage, useAutoSearching, type AutoQueued } from "./autojobs";
 
-export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention";
+export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang";
 
-export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string }; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
+export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string }; burnedIn?: string | null; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
 export interface EpisodeRow {
-  missingWhy?: string | null; id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null }
+  missingWhy?: string | null; id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null; attention?: AttentionNote | null; keptWhy?: string | null }
+/** A download that needs you: why, in plain words, and the fixes (server/episodes.ts). */
+export interface AttentionNote { grabId: number; release: string; summary: string; fixes: Fix[] }
 
-const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn" };
-const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠" };
+const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn", "wrong-lang": "warn" };
+const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠", "wrong-lang": "!" };
 
 export const resLabel = (r: string | null) => {
   const h = r ? Number(r.split("x")[1]) : NaN;
@@ -32,7 +35,7 @@ export function langOf(f: Pick<FileInfo, "subs" | "audio" | "lang"> | null | und
   return f.lang?.state ?? "unknown";
 }
 
-export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { id?: number; stage?: string | null; ahead?: number | null }; lang?: string }) {
+export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { id?: number; stage?: string | null; ahead?: number | null; attention?: AttentionNote | null }; lang?: string }) {
   // ⚡ runs in the background: the row says so until its result is in.
   const busy = useAutoSearching().episodes;
   if (e.id !== undefined && busy.has(e.id))
@@ -82,8 +85,14 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
       </span>
     );
   }
+  if (e.status === "wrong-lang")
+    return (
+      <span className="tag warn" title={t("ep.wrongLangHelp", { why: e.file?.lang?.why ?? "" })}>
+        <CaptionsOff className="lucide" aria-hidden="true" /> {label}
+      </span>
+    );
   return (
-    <Chip tone={TONE[e.status]}>
+    <Chip tone={TONE[e.status]} title={e.status === "attention" ? e.attention?.summary : undefined}>
       <span aria-hidden="true">{ICON[e.status]} </span>
       {label}
     </Chip>
@@ -350,6 +359,7 @@ interface Detail extends EpisodeRow {
 }
 
 export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = false, dryRun = true, lang = "en", focus }: { episodeId: number; onClose: () => void; onChanged?: () => void; managedLive?: boolean; dryRun?: boolean; lang?: string; focus?: "fix" }) {
+  const toast = useToast();
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -431,6 +441,24 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 {d.airUtc && d.airUtc > Date.now() ? (d.file ? t("ep.outEarly", { when: dateTime(d.airUtc) }) : `${t("ep.airs")} ${dateTime(d.airUtc)}`) : `${t("ep.aired")} ${d.airUtc ? dateTime(d.airUtc) : "—"}`}
               </span>
             </div>
+            {d.attention && (
+              <div className={`banner ${d.status === "attention" ? "warn" : "info"} stack`}>
+                <p>
+                  <b>{d.status === "attention" ? t("ep.attentionTitle") : t("ep.replaceNote")}</b>: {d.attention.summary}
+                </p>
+                <p className="small muted">{t("ep.attentionActions")}</p>
+                <div className="row">
+                  <FixButtons fixes={d.attention.fixes} />
+                  <span onClick={onClose}>
+                    <Link to="/queue" className="small">
+                      {t("ep.attentionQueue")} →
+                    </Link>
+                  </span>
+                </div>
+              </div>
+            )}
+            {d.status === "wrong-lang" && <p className="banner warn small">{t("ep.wrongLangHelp", { why: d.file?.lang?.why ?? "" })}</p>}
+            {d.keptWhy && <p className="muted small">{t("ep.keptWrongLang", { why: d.keptWhy })}</p>}
             {d.movie && (
               <p className="banner info">
                 🎬 {t("ep.isMovie", { title: d.movie.title })} {d.movie.movieId ? <Link to={`/movie/${d.movie.movieId}`}>{t("ep.openMovie")} →</Link> : t("ep.addInRadarr")}
@@ -492,7 +520,27 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                   <WatchIn path={d.file.path} title={d.seriesTitle} kind="episode" />
                   <Peek path={d.file.path} />
                 </div>
-                {d.file.lang && ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) || d.file.lang.code === "untagged") && <Verdicts tvdbId={d.tvdbId} season={d.season} lang={lang} onFind={actions.search} onDone={() => (load(), onChanged?.())} />}
+                {d.file.lang && ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) || d.file.lang.code === "untagged") && <Verdicts tvdbId={d.tvdbId} season={d.season} lang={lang} path={d.file.path} onFind={actions.search} onDone={() => (load(), onChanged?.())} />}
+                {d.file.burnedIn && (
+                  <p className="row small">
+                    <span className="muted">{t("ep.burnedInOn", { lang: d.file.burnedIn.toUpperCase() })}</span>
+                    <button
+                      type="button"
+                      className="small ghost"
+                      onClick={async () => {
+                        try {
+                          await api("/files/burned-in", { body: { path: d.file!.path, lang: null } });
+                          load();
+                          onChanged?.();
+                        } catch (e) {
+                          toast((e as Error).message, true);
+                        }
+                      }}
+                    >
+                      {t("ep.burnedInUndo")}
+                    </button>
+                  </p>
+                )}
                 <FixDetection
                   path={d.file.path}
                   tvdbId={d.tvdbId}
