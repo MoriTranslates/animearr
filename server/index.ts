@@ -882,7 +882,7 @@ app.put<{ Body: { goal?: string } }>("/api/quality/goal", async (req) => {
   patchSettings((x) => ({ ...x, qualityGoalAsked: true }));
   return { goal, label: goalLabel(goal) };
 });
-app.get("/api/quality/upgrades", async () => qualityUpgradeView());
+app.get("/api/quality/upgrades", async () => await qualityUpgradeView());
 app.post("/api/quality/upgrades/start", async () => {
   writable();
   startNow();

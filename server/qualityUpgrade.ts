@@ -135,12 +135,14 @@ const heightOf = (res: string | null) => {
  * Seasons of managed shows with files below their profile's goal (locked shows/seasons/files left out). With `propers`,
  * recently aired files that meet the goal count too, to be checked for a newer version of the same release.
  */
-export function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {}): Unit[] {
+export async function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {}): Promise<Unit[]> {
   const checkPropers = !!opts.propers && properMode() === "preferAndUpgrade";
   const hinted = checkPropers ? properHints(now) : new Map<number, number>();
   const tiers = animeTiers();
   const out: Unit[] = [];
   for (const m of listManaged()) {
+    // Scoring every file of the library takes a second or more: other requests are answered between shows.
+    await new Promise((res) => setImmediate(res));
     const prof = profileFor(m.tvdbId);
     if (prof.reencode === "keep") continue; // keep-original profiles are locked by definition
     const series = cache.prepare("SELECT path, year FROM series WHERE tvdb_id = ?").get(m.tvdbId) as { path: string; year: number | null } | undefined;
@@ -313,7 +315,7 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     else save(r.tvdb_id, r.season, { state: "waiting", why: g ? `the upgrade didn't work out (${g.release}: ${g.state}); the old files stayed` : "the upgrade grab is gone", now, grabId: null, release: null });
   }
 
-  const units = upgradeUnits(now, { propers: true });
+  const units = await upgradeUnits(now, { propers: true });
   res.units = units.length;
   // 2. The first run lists its plan and stops there.
   const plan = planState(now);
@@ -400,7 +402,7 @@ export async function upgradeSeasonNow(tvdbId: number, season: number, opts: { c
   for (const [k, v] of previews) if (now - v.at > 10 * 60_000) previews.delete(k);
   let { unit, pick, results, bestSeen, noBd } = hit && now - hit.at <= 10 * 60_000 ? hit : ({} as Partial<NonNullable<typeof hit>>);
   if (!unit || !pick || !results) {
-    unit = upgradeUnits(now).find((x) => x.tvdbId === tvdbId && x.season === season);
+    unit = (await upgradeUnits(now)).find((x) => x.tvdbId === tvdbId && x.season === season);
     if (!unit) return refuse("Nothing in this season is below the quality goal, or its files are protected ([Keep] / [Remaster])");
     const ids = unit.files.map((f) => f.episodeId);
     if (db.prepare("SELECT 1 FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value IN (SELECT value FROM json_each(?)))").get(JSON.stringify(ids))) return refuse("These episodes are already downloading");
@@ -445,9 +447,9 @@ export async function qualityUpgradeTick() {
 }
 
 /** For the Audit tab: the plan / seasons below their goal with their state, budgets and switches. */
-export function qualityUpgradeView(now = Date.now()) {
+export async function qualityUpgradeView(now = Date.now()) {
   const s = getSettings().qualityUpgrade;
-  const units = upgradeUnits(now);
+  const units = await upgradeUnits(now);
   const items = units.map((u) => {
     const st = stateOf(u.tvdbId, u.season);
     return { tvdbId: u.tvdbId, title: u.title, season: u.season, goal: goalLabel(u.goal), target: CATEGORY_NAME[u.target], episodes: u.files.length, now: [...new Set(u.files.map((f) => CATEGORY_NAME[f.q.info.category]))], why: u.why, state: st?.state ?? "waiting", stateWhy: st?.why ?? "not searched yet", release: st?.release ?? null, lastAt: st?.last_at ?? null };

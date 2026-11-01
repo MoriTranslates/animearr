@@ -74,8 +74,8 @@ test("the default goal is Aim high and the goal question starts unanswered", () 
   saveProfile(defaultProfile().id, { qualityGoal: "high" });
 });
 
-test("units: files below the goal; [Keep]/[Remaster] files skipped; a Tdarr re-encode judged by its original release", () => {
-  const units = upgradeUnits(now);
+test("units: files below the goal; [Keep]/[Remaster] files skipped; a Tdarr re-encode judged by its original release", async () => {
+  const units = (await upgradeUnits(now));
   const web = units.find((u) => u.tvdbId === 700001);
   assert.ok(web);
   assert.equal(web.season, 1, "season 2's only file is tagged [Keep]");
@@ -84,24 +84,24 @@ test("units: files below the goal; [Keep]/[Remaster] files skipped; a Tdarr re-e
   assert.ok(units.some((u) => u.tvdbId === 700003), "the DVD show is below Blu-ray until the cap kicks in");
 });
 
-test("locks: a locked season leaves the plan, and its files get the {Keep Tag}", () => {
+test("locks: a locked season leaves the plan, and its files get the {Keep Tag}", async () => {
   assert.equal(keepTagFor(700001, 1), false);
   setLock(700001, 1, true);
   assert.deepEqual(locksFor(700001), { show: false, seasons: [1] });
   assert.equal(keepTagFor(700001, 1), true);
-  assert.ok(!upgradeUnits(now).some((u) => u.tvdbId === 700001));
+  assert.ok(!(await upgradeUnits(now)).some((u) => u.tvdbId === 700001));
   setLock(700001, 1, false);
   setLock(700001, null, true);
-  assert.ok(!upgradeUnits(now).some((u) => u.tvdbId === 700001), "the whole show locked");
+  assert.ok(!(await upgradeUnits(now)).some((u) => u.tvdbId === 700001), "the whole show locked");
   setLock(700001, null, false);
-  assert.ok(upgradeUnits(now).some((u) => u.tvdbId === 700001));
+  assert.ok((await upgradeUnits(now)).some((u) => u.tvdbId === 700001));
 });
 
-test("a keep-original profile is locked by definition (Tdarr skips its [Keep] files too)", () => {
+test("a keep-original profile is locked by definition (Tdarr skips its [Keep] files too)", async () => {
   const p = saveProfile(null, { name: "Originals", reencode: "keep" });
   db.prepare("INSERT INTO series_prefs (tvdb_id, profile_id, updated_at) VALUES (700003, ?, 0)").run(p.id);
   assert.equal(keepTagFor(700003, 1), true);
-  assert.ok(!upgradeUnits(now).some((u) => u.tvdbId === 700003));
+  assert.ok(!(await upgradeUnits(now)).some((u) => u.tvdbId === 700003));
   db.prepare("DELETE FROM series_prefs WHERE tvdb_id = 700003").run();
 });
 
@@ -112,8 +112,8 @@ test("no Blu-ray exists: a DVD-era show caps at the best seen after two searches
   assert.equal(capOf({ best_seen: "web-1080", no_bd: 6 }, 2015, now - 400 * DAY, now), "web-1080");
 });
 
-test("pickUpgrade: must beat every file it replaces; packs first; no burn-ins or dead torrents", () => {
-  const unit = upgradeUnits(now).find((u) => u.tvdbId === 700001)!;
+test("pickUpgrade: must beat every file it replaces; packs first; no burn-ins or dead torrents", async () => {
+  const unit = (await upgradeUnits(now)).find((u) => u.tvdbId === 700001)!;
   const ctx = { seadex: null, mode: "sub" as const, minConfidence: 80 };
   const pack = result("[SomeBD] Web Show (BD 1080p)", [4001, 4002]);
   const single = result("[SomeBD] Web Show - 01 (BD 1080p)", [4001]);

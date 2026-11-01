@@ -207,22 +207,22 @@ function deps(results: SR[]) {
 }
 const resetState = () => db.prepare("DELETE FROM quality_upgrade").run();
 
-test("units: recent files at their goal are checked for a newer version, only under preferAndUpgrade", () => {
-  assert.equal(upgradeUnits(now).length, 0, "all files meet the goal: nothing below it");
-  const u = upgradeUnits(now, { propers: true }).find((x) => x.tvdbId === 800001);
+test("units: recent files at their goal are checked for a newer version, only under preferAndUpgrade", async () => {
+  assert.equal((await upgradeUnits(now)).length, 0, "all files meet the goal: nothing below it");
+  const u = (await upgradeUnits(now, { propers: true })).find((x) => x.tvdbId === 800001);
   assert.ok(u?.properOnly);
   assert.deepEqual(u.files.map((f) => f.episodeId).sort(), [6001, 6002, 6004], "the [Remaster] file is skipped");
   patchSettings((s) => ({ ...s, media: { ...s.media, propers: "doNotUpgrade" } }));
-  assert.equal(upgradeUnits(now, { propers: true }).length, 0);
+  assert.equal((await upgradeUnits(now, { propers: true })).length, 0);
   patchSettings((s) => ({ ...s, media: { ...s.media, propers: "preferAndUpgrade" } }));
   // Old episodes aren't chased.
   cache.prepare("UPDATE episodes SET air_utc = ?").run(now - 60 * DAY);
-  assert.equal(upgradeUnits(now, { propers: true }).length, 0);
+  assert.equal((await upgradeUnits(now, { propers: true })).length, 0);
   cache.prepare("UPDATE episodes SET air_utc = ?").run(now - 3 * DAY);
 });
 
-test("pickUpgrade: a same-group v2 of a recent file qualifies; another group, the same version or a lower quality do not", () => {
-  const unit = upgradeUnits(now, { propers: true }).find((x) => x.tvdbId === 800001)!;
+test("pickUpgrade: a same-group v2 of a recent file qualifies; another group, the same version or a lower quality do not", async () => {
+  const unit = (await upgradeUnits(now, { propers: true })).find((x) => x.tvdbId === 800001)!;
   const ctx = { seadex: null, mode: "sub" as const, minConfidence: 80, propers: "preferAndUpgrade" as const };
   const v2 = result("[Grp] Prop Show - 01v2 (BD 1080p) [EEEE5555]", [6001]);
   assert.equal(pickUpgrade([v2], unit, ctx)?.result.title, v2.title);

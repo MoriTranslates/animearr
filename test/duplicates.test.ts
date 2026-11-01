@@ -106,13 +106,13 @@ test("the grab chokepoint refuses automatic and managed grabs (upgrades and pack
   await assert.rejects(startGrab({ tvdbId: SPELLS, episodeIds: ids.spells, candidate, fallbacks: [], origin: "manual", automatic: true }), /owned elsewhere/);
 });
 
-test("the upgrade watcher leaves the duplicate's own files alone", () => {
+test("the upgrade watcher leaves the duplicate's own files alone", async () => {
   // A DVD copy of one episode sits in the standalone: the Blu-ray under Slayers is the one that counts.
   const e = ids.spells[0];
   cache.prepare("INSERT INTO files (id, series_id, season, path, scene_name, resolution) VALUES (777, 2, 1, '/media/AnimeArr/Spells/E1.mkv', '[Grp] Slayers Spells DVD 480p', '720x480')").run();
   cache.prepare("UPDATE episodes SET has_file = 1, file_id = 777 WHERE id = ?").run(e);
   try {
-    assert.ok(!upgradeUnits(now).some((u) => u.tvdbId === SPELLS));
+    assert.ok(!(await upgradeUnits(now)).some((u) => u.tvdbId === SPELLS));
   } finally {
     cache.prepare("UPDATE episodes SET has_file = 0, file_id = NULL WHERE id = ?").run(e);
   }

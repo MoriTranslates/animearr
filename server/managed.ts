@@ -513,7 +513,7 @@ export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
           upgradeHits++;
           logDecision("info", { tvdbId, title, episodeIds: owned.map((e) => e.id), release: r.title, why: `New release seen: ${r.title}, ${newer.why}. Checking for a newer version of ${owned.length > 1 ? `${owned.length} episodes` : `episode ${id.resolution.label}`} soon; nothing is grabbed from the feed` });
         } else {
-          units ??= upgradeUnits(now);
+          units ??= await upgradeUnits(now);
           const cat = qualityScore(r.title, {}).info.category;
           for (const season of seasons) {
             const unit = units.find((u) => u.tvdbId === tvdbId && u.season === season);
