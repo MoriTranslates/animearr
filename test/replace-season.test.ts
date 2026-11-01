@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { sparseFile } from "./sparse.js";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-replace-"));
 process.env.ANIMEARR_NO_LOCK = "1";
@@ -23,7 +24,7 @@ const DL = path.join(tmp, "dl");
 const BIN = path.join(tmp, "recycle");
 const write = (p: string, s = "x") => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, s));
 /** A sparse 31 MB file (big enough to count as an episode, no real disk use). */
-const big = (p: string) => (write(p), fs.truncateSync(p, 31e6));
+const big = (p: string) => sparseFile(p, 31e6);
 const TVDB = 283963;
 
 test("Replace season: verified episodes swap (old file → recycle bin), a failing or missing one keeps its old file", async () => {

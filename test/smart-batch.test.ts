@@ -307,16 +307,16 @@ test("Usenet leftovers: after a confirmed import the batch's folder goes, only i
   assert.ok(fs.existsSync(outside));
 });
 
-test("SABnzbd del_files quirk: AnimeArr removes the job's folder itself, never the root, never outside, never with deleting off", () => {
+test("SABnzbd del_files quirk: AnimeArr removes the job's folder itself, never the root, never outside, never with deleting off", async () => {
   const job = path.join(tmp, "completed", "animearr", "Job A");
   fs.mkdirSync(job, { recursive: true });
   fs.writeFileSync(path.join(job, "a.mkv"), "x");
-  assert.equal(removeJobFolder("/data/completed/animearr"), null, "the category folder itself");
-  assert.equal(removeJobFolder("/data/elsewhere/Job A"), null, "outside the source roots");
+  assert.equal(await removeJobFolder("/data/completed/animearr"), null, "the category folder itself");
+  assert.equal(await removeJobFolder("/data/elsewhere/Job A"), null, "outside the source roots");
   patchSettings((s) => ({ ...s, downloads: { ...s.downloads, allowDelete: false } }));
-  assert.equal(removeJobFolder("/data/completed/animearr/Job A"), null, "deleting is off");
+  assert.equal(await removeJobFolder("/data/completed/animearr/Job A"), null, "deleting is off");
   patchSettings((s) => ({ ...s, downloads: { ...s.downloads, allowDelete: true } }));
-  assert.ok(removeJobFolder("/data/completed/animearr/Job A"));
+  assert.ok(await removeJobFolder("/data/completed/animearr/Job A"));
   assert.equal(fs.existsSync(job), false);
 });
 
