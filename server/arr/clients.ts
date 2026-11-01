@@ -207,12 +207,21 @@ const primary = {
     await qbit("/torrents/add", { method: "POST", body: form });
     const known = infoHash(src);
     const extra = opts.paused ? { paused: true, select: true } : {};
-    if (known) return { client: "qbittorrent", ref: known, ...extra };
+    // The tag only finds the new torrent's hash; drop it afterwards so qBittorrent's tag list doesn't fill with them.
+    const dropTag = () => qbit("/torrents/deleteTags", formBody({ tags: tag })).catch(() => undefined);
+    if (known) {
+      await dropTag();
+      return { client: "qbittorrent", ref: known, ...extra };
+    }
     for (let i = 0; i < 10; i++) {
       const list = (await (await qbit(`/torrents/info?tag=${encodeURIComponent(tag)}`)).json()) as { hash: string }[];
-      if (list[0]) return { client: "qbittorrent", ref: list[0].hash, ...extra };
+      if (list[0]) {
+        await dropTag();
+        return { client: "qbittorrent", ref: list[0].hash, ...extra };
+      }
       await new Promise((r) => setTimeout(r, 1500));
     }
+    await dropTag();
     throw new Error("qBittorrent accepted the torrent but it did not appear");
   },
   async status(job: ClientJob): Promise<ClientStatus> {
