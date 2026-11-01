@@ -162,9 +162,9 @@ function missingRows(monitoredOnly: boolean, now: number): EpRow[] {
 }
 
 /** Episodes whose file is below the quality goal of the show's profile (what the quality upgrade would replace). */
-function cutoffRows(now: number): EpRow[] {
+async function cutoffRows(now: number): Promise<EpRow[]> {
   const want = new Set<number>();
-  for (const u of upgradeUnits(now)) for (const f of u.files) if (!f.proper) want.add(f.episodeId);
+  for (const u of await upgradeUnits(now)) for (const f of u.files) if (!f.proper) want.add(f.episodeId);
   if (!want.size) return [];
   return cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${[...want].map(() => "?").join(",")})`).all(...want) as unknown as EpRow[];
 }
@@ -392,7 +392,7 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
   });
   app.get<{ Querystring: Record<string, string> }>(`${V}/wanted/cutoff`, async (req) => {
     const now = Date.now();
-    return wantedPage(req.query, cutoffRows(now), now);
+    return wantedPage(req.query, await cutoffRows(now), now);
   });
 
   // Episode files (read only).
