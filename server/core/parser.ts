@@ -174,6 +174,10 @@ function detectHints(raw: string, group: string | null, platform: string | null)
   // A bare "Dubbed" means an English dub only when no other dub language is named ("German Dubbed" is German).
   if (!audio.size && /\bDubbed\b/i.test(raw)) audio.add("en");
   const multiSubs = /\bmulti[ ._-]?subs?\b|\bmultiple[ ._-]?subtitles?\b|\bmultisubs?\b|\bmulti[ ._-]?sub\b/i.test(raw) || /\bMULTi\b/.test(raw);
+  // A run of bracketed language codes next to a subtitle note is a subtitle list ("[Multiple Subtitle] [ENG][SPA][ITA][RUS]"):
+  // its "[ITA]" names Italian subtitles, not an Italian dub.
+  const subTagList = /(?:\[[A-Z]{2,3}(?:-[A-Z]{2})?\]\s*){3,}/.test(raw);
+  if ((subTagList || multiSubs) && /\[ITA\]/.test(raw) && !/\bItalian\b|\bITA[ ._-]?DUB\b/i.test(raw)) audio.delete("it");
   const dualAudio = /\bdual[ ._-]?audio\b|\bDUAL\b|\b(?:JP|JPN|JAP)[ ._+&-]+(?:EN|ENG)\b|\bMulti[ ._-]?Audio\b/i.test(raw);
   if (dualAudio) {
     audio.add("ja");
