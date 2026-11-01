@@ -18,10 +18,10 @@ export const properMode = (): ProperMode => getSettings().media.propers ?? "pref
  * Episode id → the release of its newest finished grab. Built once and rebuilt when the grabs change: looking it up per
  * file scanned the whole grabs table for every episode of the library (seconds, with the app frozen meanwhile).
  */
-let doneReleases: { key: string; map: Map<number, string> } | null = null;
+let doneReleases: { key: number; map: Map<number, string> } | null = null;
 function doneReleaseOf(episodeId: number): string | undefined {
-  const k = db.prepare("SELECT COUNT(*) AS n, MAX(id) AS id, MAX(updated_at) AS at FROM grabs WHERE state = 'done' AND dry_run = 0").get() as { n: number; id: number | null; at: number | null };
-  const key = `${k.n}|${k.id}|${k.at}`;
+  // total_changes(): this connection's write counter, free to read; any write may have touched the grabs.
+  const key = (db.prepare("SELECT total_changes() AS c").get() as { c: number }).c;
   if (doneReleases?.key !== key) {
     const map = new Map<number, string>();
     for (const g of db.prepare("SELECT episode_ids, release FROM grabs WHERE state = 'done' AND dry_run = 0 ORDER BY id").all() as { episode_ids: string; release: string }[]) {
@@ -36,10 +36,11 @@ function doneReleaseOf(episodeId: number): string | undefined {
   return doneReleases.map.get(episodeId);
 }
 
+let metaOf: ReturnType<typeof db.prepare> | null = null;
 /** The release name a file came from: its scene name, else the newest finished grab of the episode, else its file name. */
 function releaseOfFile(episodeId: number, f: { path: string; scene_name: string | null }): string {
   if (f.scene_name?.trim()) return f.scene_name.trim();
-  const meta = db.prepare("SELECT scene_name FROM file_meta WHERE path = ?").get(f.path) as { scene_name: string | null } | undefined;
+  const meta = (metaOf ??= db.prepare("SELECT scene_name FROM file_meta WHERE path = ?")).get(f.path) as { scene_name: string | null } | undefined;
   if (meta?.scene_name?.trim()) return meta.scene_name.trim();
   return doneReleaseOf(episodeId) ?? f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
 }
@@ -48,7 +49,8 @@ function releaseOfFile(episodeId: number, f: { path: string; scene_name: string 
 export function fileRevision(episodeId: number, f: { path: string; scene_name: string | null; release_group: string | null; revision: string | null }): Revision & { release: string } {
   const release = releaseOfFile(episodeId, f);
   const p = parseRelease(release);
-  const named = parseRelease(f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, ""));
+  const base = f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
+  const named = base === release ? p : parseRelease(base);
   let version = Math.max(p.version, named.version);
   try {
     const r = f.revision ? (JSON.parse(f.revision) as { version?: number; real?: number }) : null;
