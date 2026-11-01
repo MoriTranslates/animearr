@@ -51,6 +51,11 @@ export const realRepairDeps: RepairDeps = {
 };
 
 const DAY = 86_400_000;
+/** Reasons of "skipped" rows that are looked at again (they are recorded so no import vanishes without a trace). */
+export const OUTSIDE_ROOTS = "outside the allowed root folders, so not AnimeArr's business";
+export const NOT_SYNCED = "the show or episode wasn't in AnimeArr's library yet; checked again after the next library sync";
+/** How long an import waiting for the library sync stays on the list to check. */
+const PENDING_DAYS = 7;
 const OVERLAP = 2 * 3_600_000; // re-read 2 h before the watermark (clock skew); history ids dedupe the overlap
 const MAX_PER_EPISODE = 3;
 const EXPLICIT: VerifyVerdict["code"][] = ["forced-only", "dub-only"];
@@ -77,7 +82,9 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
   const mode = settings.repair.mode;
   if (mode === "off" || dbState.corrupt) return [];
   const wm = Number(kvGet("repair-watermark") ?? 0);
-  const since = new Date(Math.max(wm ? wm - OVERLAP : 0, now - DAY));
+  // Imports still waiting for the library sync are read again (up to a week), whatever the watermark says.
+  const pending = (db.prepare("SELECT MIN(imported_at) AS t FROM checked_imports WHERE action = 'skipped' AND why = ? AND imported_at > ?").get(NOT_SYNCED, now - PENDING_DAYS * DAY) as { t: number | null }).t;
+  const since = new Date(Math.min(Math.max(wm ? wm - OVERLAP : 0, now - DAY), pending ? pending - 1 : Infinity));
   const items = (await deps.history(since)).sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id - b.id);
   const out: CheckOutcome[] = [];
   // The daily budget counts releases, not episodes (a bad season pack is one repair).
@@ -88,20 +95,32 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
   let oldestUnresolved = Infinity;
   for (const h of items) {
     const importedAt = Date.parse(h.date) || now;
-    if (db.prepare("SELECT 1 FROM checked_imports WHERE history_id = ?").get(h.id)) {
-      maxSeen = Math.max(maxSeen, importedAt);
-      continue;
-    }
     const imported = h.data.importedPath ?? "";
     const series = cache.prepare("SELECT id, tvdb_id, title, path FROM series WHERE id = ?").get(h.seriesId) as { id: number; tvdb_id: number; title: string; path: string } | undefined;
+    const ep = cache.prepare("SELECT season, episode, runtime FROM episodes WHERE id = ?").get(h.episodeId) as { season: number; episode: number; runtime: number | null } | undefined;
+    const allowed = underAllowedRoot(imported || series?.path);
+    // Checked already: only a row skipped for a reason that has gone since (the library caught up, the folder is
+    // allowed now) is looked at again.
+    const prev = db.prepare("SELECT action, why FROM checked_imports WHERE history_id = ?").get(h.id) as { action: string; why: string } | undefined;
+    if (prev && !(prev.action === "skipped" && ((prev.why === NOT_SYNCED && series && ep) || (prev.why === OUTSIDE_ROOTS && allowed)))) {
+      if (prev.why !== NOT_SYNCED) maxSeen = Math.max(maxSeen, importedAt);
+      continue;
+    }
+    // Skipped, but never without a trace: a row says why (the Activity → after-import checks list shows it).
+    const skip = (why: string) => {
+      db.prepare("INSERT OR REPLACE INTO checked_imports (history_id, tvdb_id, episode_id, release, ok, action, why, at, download_id, title, label, imported_at) VALUES (?, ?, ?, ?, 1, 'skipped', ?, ?, ?, ?, ?, ?)").run(
+        h.id, series?.tvdb_id ?? null, h.episodeId, h.sourceTitle, why, now, h.downloadId ?? null, series?.title ?? null, ep ? `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}` : null, importedAt,
+      );
+    };
     // Only files in the allowed root folders are AnimeArr's business.
-    if (!underAllowedRoot(imported || series?.path)) {
+    if (!allowed && (series || imported)) {
+      skip(OUTSIDE_ROOTS);
       maxSeen = Math.max(maxSeen, importedAt);
       continue;
     }
-    const ep = cache.prepare("SELECT season, episode, runtime FROM episodes WHERE id = ?").get(h.episodeId) as { season: number; episode: number; runtime: number | null } | undefined;
     if (!series || !ep) {
-      // A show (or episode) added since the last sync: keep it for the next run instead of skipping it forever.
+      // A show (or episode) added since the last sync: recorded, and kept for the next runs instead of skipped forever.
+      skip(NOT_SYNCED);
       oldestUnresolved = Math.min(oldestUnresolved, importedAt);
       continue;
     }
