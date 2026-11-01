@@ -370,7 +370,7 @@ function freeSpaceOk(dest: string, size: number) {
 // ---------------------------------------------------------------- file operations that never overwrite
 
 /** Renames a → b; fails if b exists (link + unlink; exclusive copy across disks). */
-export function moveNoClobber(a: string, b: string) {
+export async function moveNoClobber(a: string, b: string) {
   fs.mkdirSync(path.dirname(b), { recursive: true });
   try {
     fs.linkSync(a, b); // EEXIST if b exists: never overwritten
@@ -381,15 +381,18 @@ export function moveNoClobber(a: string, b: string) {
     if (code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
     if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") throw e;
   }
-  copyNoClobber(a, b);
+  await copyNoClobber(a, b);
   fs.unlinkSync(a);
 }
 
-/** Copies a → b; fails if b exists; a failed copy leaves nothing behind. */
-function copyNoClobber(a: string, b: string) {
+/**
+ * Copies a → b; fails if b exists; a failed copy leaves nothing behind. Asynchronous: a 1.5 GB copy between shares
+ * takes ~20 s, and the web UI must keep answering meanwhile.
+ */
+async function copyNoClobber(a: string, b: string) {
   fs.mkdirSync(path.dirname(b), { recursive: true });
   try {
-    fs.copyFileSync(a, b, fs.constants.COPYFILE_EXCL);
+    await fs.promises.copyFile(a, b, fs.constants.COPYFILE_EXCL);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
     fs.rmSync(b, { force: true }); // ours: COPYFILE_EXCL created it
@@ -398,10 +401,10 @@ function copyNoClobber(a: string, b: string) {
 }
 
 /** Places a file; returns what was actually done (a hardlink across disks becomes a copy). */
-function placeFile(action: PlanItem["action"], a: string, b: string): PlanItem["action"] {
+async function placeFile(action: PlanItem["action"], a: string, b: string): Promise<PlanItem["action"]> {
   fs.mkdirSync(path.dirname(b), { recursive: true });
   if (action === "move") {
-    moveNoClobber(a, b);
+    await moveNoClobber(a, b);
     return "move";
   }
   if (action === "hardlink") {
@@ -412,7 +415,7 @@ function placeFile(action: PlanItem["action"], a: string, b: string): PlanItem["
       if ((e as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
     }
   }
-  copyNoClobber(a, b);
+  await copyNoClobber(a, b);
   return "copy";
 }
 
@@ -420,7 +423,7 @@ function placeFile(action: PlanItem["action"], a: string, b: string): PlanItem["
  * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set (never
  * deletes). Returns where each file went, so it can be put back.
  */
-export function recycle(localFile: string, seriesLocal: string) {
+export async function recycle(localFile: string, seriesLocal: string) {
   const bin = getSettings().media.recycleBin.trim();
   if (!bin) throw new Error("no recycling bin is set; nothing was replaced");
   const binLocal = mappedPath(bin.replace(/\/+$/, ""));
@@ -432,7 +435,7 @@ export function recycle(localFile: string, seriesLocal: string) {
     const r = f === localFile ? rel : path.join(path.dirname(rel), path.basename(f));
     let target = path.join(binLocal, r);
     if (fs.existsSync(target)) target = target.replace(/(\.[^.]+)$/, `.${stamp}$1`);
-    moveNoClobber(f, target);
+    await moveNoClobber(f, target);
     try {
       noteBinned(target, fs.statSync(target).size); // the bin's retention counts from now
     } catch {
@@ -536,14 +539,14 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
     try {
       if (fs.existsSync(it.dest) && path.resolve(it.dest) !== path.resolve(it.replaces ?? "")) throw new Error("a file with that name appeared meanwhile: not overwritten");
       clearStalePart(tmp, it.source);
-      did = placeFile(it.action, it.source, tmp);
-      if (it.replaces && fs.existsSync(it.replaces)) binned = recycle(it.replaces, rootLocal);
+      did = await placeFile(it.action, it.source, tmp);
+      if (it.replaces && fs.existsSync(it.replaces)) binned = await recycle(it.replaces, rootLocal);
       try {
-        moveNoClobber(tmp, it.dest);
+        await moveNoClobber(tmp, it.dest);
       } catch (e) {
         for (const b of binned.reverse()) {
           try {
-            moveNoClobber(b.to, b.from);
+            await moveNoClobber(b.to, b.from);
           } catch {
             /* reported below */
           }
@@ -553,7 +556,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
       }
       for (const s of it.sidecars) {
         try {
-          placeFile(it.action === "move" ? "move" : "copy", s.source, s.dest);
+          await placeFile(it.action === "move" ? "move" : "copy", s.source, s.dest);
         } catch {
           /* a subtitle that can't be placed doesn't undo the video */
         }
@@ -575,7 +578,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).
       if (did && fs.existsSync(tmp)) {
         try {
-          if (did === "move") moveNoClobber(tmp, it.source);
+          if (did === "move") await moveNoClobber(tmp, it.source);
           else fs.rmSync(tmp, { force: true });
         } catch {
           /* left as *.animearr-part for a look */
@@ -811,13 +814,13 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
       const a = localPath(it.from)!;
       const b = mappedPath(it.to);
       if (!under(a, seriesLocal) || !under(b, seriesLocal)) throw new Error("outside the show's folder");
-      moveNoClobber(a, b);
+      await moveNoClobber(a, b);
       applyFileDate(b, (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id)); // "Change file date"
       const st = fs.statSync(b);
       const sides: { from: string; to: string }[] = [];
       for (const x of it.sidecars) {
         try {
-          moveNoClobber(x.from, x.to);
+          await moveNoClobber(x.from, x.to);
           sides.push({ from: x.to, to: x.from });
         } catch {
           /* a subtitle that can't be renamed keeps its name */
@@ -848,10 +851,10 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
   if (all.some((x) => !under(x.from, root) || !under(x.to, root))) throw new Error("outside the show's folder; not renamed back");
   const st = fs.statSync(args.from);
   if (args.size !== undefined && st.size !== args.size) throw new Error("the file changed since the rename; not renamed back");
-  moveNoClobber(args.from, args.to);
+  await moveNoClobber(args.from, args.to);
   for (const x of args.sidecars ?? []) {
     try {
-      if (fs.existsSync(x.from)) moveNoClobber(x.from, x.to);
+      if (fs.existsSync(x.from)) await moveNoClobber(x.from, x.to);
     } catch {
       /* keep going */
     }
