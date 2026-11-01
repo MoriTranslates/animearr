@@ -1057,6 +1057,8 @@ const en = {
   "backlog.confirmBody": "{live} managed shows are not in dry-run; they have {missing} missing older episodes. AnimeArr will search up to {perHour} per hour and grab what meets the profile, for real, over the coming days. Shows in dry-run only log what they would grab.",
   "backlog.confirmSave": "Takes effect when you save.",
   "backlog.retryDays": "Search again after (days)",
+  "backlog.wrongLanguage": "Replace files in the wrong language",
+  "backlog.wrongLanguageHelp": "Also searches for a better version of episodes whose file has no subtitles in your language (raws, other-language subtitles). The old file goes to the recycling bin only after the new one passes its check.",
   "managed.nextAt": "next check {when}",
   "managed.grabs": "Recent grabs",
   "managed.noGrabs": "No grabs yet.",
