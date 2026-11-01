@@ -808,7 +808,8 @@ async function runSearch(tvdbId: number, eps: number[], full: boolean, onProgres
   return { ...r, results: publicResults(r.results), dryRun: getSettings().managed.dryRun, ownedElsewhere: eps.filter((e) => owned.has(e)).map((e) => ({ episodeId: e, why: ownedWhy(owned.get(e)!) })) };
 }
 
-const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean; packs?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, 50), full: b?.full === true, packs: b?.packs === true });
+// A season-pack search (Replace season) covers the whole season, however long: Black Clover S1 has 170 episodes.
+const searchBody = (b: { tvdbId?: number; episodeIds?: number[]; full?: boolean; packs?: boolean } | undefined) => ({ tvdbId: id(b?.tvdbId), eps: (b?.episodeIds ?? []).map(id).slice(0, b?.packs === true ? 500 : 50), full: b?.full === true, packs: b?.packs === true });
 
 /** Blocking search (scripts, acceptance tests). */
 app.post<{ Body: { tvdbId?: number; episodeIds?: number[]; full?: boolean } }>("/api/search", async (req) => {
