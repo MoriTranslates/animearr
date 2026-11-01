@@ -411,6 +411,10 @@ const USER_MIGRATIONS: string[] = [
   // syncs; a removed show's rows stay (tiny, harmless), so adding the show back keeps the choice.
   `CREATE TABLE meta_overrides (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, tmdb_tv INTEGER NOT NULL, tmdb_season INTEGER NOT NULL, tmdb_offset INTEGER NOT NULL DEFAULT 0,
      set_at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));`,
+  // ---- per-file marks ----
+  // 40: a file the user marked as having burned-in subtitles in a language (e.g. a hardsubbed release with no subtitle
+  // tracks): it counts as having that language, like the per-season burned-in fact but for this one file (by its path)
+  `CREATE TABLE file_marks (path TEXT PRIMARY KEY, tvdb_id INTEGER, burned_lang TEXT NOT NULL, at INTEGER NOT NULL);`,
 ];
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */

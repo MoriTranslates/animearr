@@ -582,6 +582,7 @@ function Backlog({ s, upd }: { s: S; upd: Upd }) {
           <p className="muted small">{t("backlog.confirmSave")}</p>
         </Confirm>
       )}
+      <Toggle checked={!!b.wrongLanguage} onChange={(v) => setB((x) => ({ ...x, wrongLanguage: v }))} label={t("backlog.wrongLanguage")} help={t("backlog.wrongLanguageHelp")} />
       {sum.data && (
         <p className="small">
           {t("backlog.summary", { all: sum.data.missingAll ?? sum.data.missing, missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}

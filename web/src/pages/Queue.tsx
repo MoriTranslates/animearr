@@ -144,6 +144,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
                 <FileX className="lucide" aria-hidden="true" /> {g.summary ?? g.error}
               </p>
             )}
+            {g.state === "needs-attention" && <p className="muted small">{t("queue.attentionActions")}</p>}
             <Why summary={t("activity.detailsShort")} lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
             <div className="row">
               <FixButtons fixes={g.fixes} />

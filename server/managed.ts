@@ -28,6 +28,7 @@ import { newerVersionOf } from "./propers.js";
 import { CATEGORY_NAME, ladderRank, qualityScore } from "./core/quality.js";
 import { hintProper, recheckSoon, upgradeUnits, type Unit } from "./qualityUpgrade.js";
 import { missingScoped, scopedEpisodeIds } from "./scope.js";
+import { planWrongLanguage } from "./episodes.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -404,6 +405,8 @@ export async function backlogPass(now = Date.now(), opts: { plan?: boolean } = {
   if (opts.plan ?? now - lastPlan >= 30 * 60_000) {
     lastPlan = now;
     planBacklog(now);
+    // Off by default: a library imported before AnimeArr can hold thousands of raw or wrong-language files.
+    if (getSettings().backlog.wrongLanguage) planWrongLanguage(now);
   }
   const b = getSettings().backlog;
   if (!b.enabled) return 0;

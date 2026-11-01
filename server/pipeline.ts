@@ -27,6 +27,7 @@ import { scopeFor } from "./scope.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
+import { inExtrasFolder } from "./core/resolver.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -106,6 +107,8 @@ export interface GrabRequest {
   purpose?: "dual-upgrade" | "replace" | null;
   /** ⚡ automatic search: also honour the show's own dry-run (interactive grabs only follow the global switch). */
   automatic?: boolean;
+  /** The next try of a whole-season Replace season: only a season pack may take over (never a single episode). */
+  packsOnly?: boolean;
 }
 
 export interface GrabRow {
@@ -211,6 +214,19 @@ export function remainingFallbacks(fallbacks: Candidate[], failed?: unknown) {
   return fallbacks.filter((f) => !isBlocked(f) && !indexerOff(f.indexerId) && !(badIndexer && f.indexerId === badIndexer));
 }
 
+/**
+ * A release that can stand in for a whole season: it maps to more than one episode AND its name isn't one episode
+ * (a name the parser once misread as a pack, e.g. "2nd.Season.03", must not replace a season).
+ */
+export function isSeasonPack(c: Pick<Candidate, "title" | "episodeIds">) {
+  if (c.episodeIds.length < 2) return false;
+  const p = parseRelease(c.title);
+  return !((p.episodes.length === 1 && p.absolute.length <= 1) || (p.absolute.length === 1 && !p.episodes.length));
+}
+
+/** A grab that replaces a whole season (the user's Replace season, or the season decision's): packs only. */
+const replacesSeason = (req: Pick<GrabRequest, "purpose" | "packsOnly" | "episodeIds">) => (req.purpose === "replace" || !!req.packsOnly) && req.episodeIds.length > 1;
+
 /** Starts a grab (or records what it would do in dry-run). */
 export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps): Promise<{ id: number; dryRun: boolean; message: string; failed?: boolean }> {
   if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
@@ -222,6 +238,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you chose in Settings → Automation & safety → Library folders.`), { statusCode: 403 });
   }
   const c = req.candidate;
+  if (replacesSeason(req) && !isSeasonPack(c)) throw Object.assign(new Error(`Replace season needs a season pack; ${c.title} is a single episode`), { statusCode: 400 });
   const dryRun = req.origin === "manual" ? getSettings().managed.dryRun || (!!req.automatic && managedDryRun(req.tvdbId) === true) : isDryRun(managedDryRun(req.tvdbId));
   // Import only what was asked for, plus episodes of the release that have no file yet: a pack must never replace
   // files the library already has (the user's rule: never delete library files).
@@ -277,14 +294,16 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const batch: BatchInfo | null =
     inBatch.length > 1 ? { mode: select ? "pending" : "whole", total: inBatch.length, wanted: importIds.length, skippedEpisodes: skippedEps, skippedFiles: 0, leftovers: skippedEps.length > 0, note: null, autoReplace: purpose === "replace" && !req.purpose, since: now } : null;
   const why = seasonWhy ? `${c.why}. ${seasonWhy}` : c.why;
+  // A whole-season replace only ever falls back to another season pack (a single episode can't replace a season).
+  const fallbacks = replacesSeason({ purpose, packsOnly: req.packsOnly, episodeIds: importIds.length > 1 ? importIds : req.episodeIds }) ? req.fallbacks.filter(isSeasonPack) : req.fallbacks;
   const ins = db
     .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(req.fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null, c.indexer ?? null);
+    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null, c.indexer ?? null);
   const id = Number(ins.lastInsertRowid);
   const line = batchLine(batch);
   if (dryRun) {
     const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import it as ${target}.`;
-    logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: req.fallbacks.length } });
+    logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: fallbacks.length } });
     // The toast says it plainly; the release, indexer and episode ids stay in the activity log.
     return { id, dryRun: true, message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).` };
   }
@@ -307,7 +326,7 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     setState(id, "failed", (e as Error).message);
     logDecision("fail", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Couldn't send ${c.title}: ${(e as Error).message}`, detail: { grabId: id } });
     // A fetch failure doesn't use up an attempt: the next candidate (from another indexer) gets a full try.
-    const next = await tryNext(id, { ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
+    const next = await tryNext(id, { ...req, fallbacks, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
   }
 }
@@ -316,9 +335,12 @@ async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, rea
   const attempt = (req.attempt ?? 1) + 1;
   // Skip fallbacks that got blocklisted meanwhile (e.g. the same release cross-posted on another indexer), and those
   // from an indexer that is off or whose download link just failed.
-  const [next, ...rest] = remainingFallbacks(req.fallbacks, cause);
+  // A whole-season replace moves on to another season pack only (never a single episode under the season's ids).
+  const packs = replacesSeason(req);
+  const [next, ...rest] = remainingFallbacks(packs ? req.fallbacks.filter(isSeasonPack) : req.fallbacks, cause);
   if (!next || attempt > MAX_ATTEMPTS) {
-    logDecision("skip", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : ""}`, detail: { grabId } });
+    const none = packs && !next ? "; no other season pack to try, so the season is left as it is" : "";
+    logDecision("skip", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : none}`, detail: { grabId } });
     scheduleAfter(req.episodeIds, "retry", `last grab failed: ${reason}`);
     return null;
   }
@@ -606,7 +628,10 @@ function rowRequest(row: GrabRow): GrabRequest {
   const fallbacks = JSON.parse(row.candidates) as Candidate[];
   // A Replace season the season decision chose (not the user): the next candidate is decided afresh.
   const auto = readBatch(row.batch)?.autoReplace;
-  return { tvdbId: row.tvdb_id, episodeIds: JSON.parse(row.episode_ids), candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: auto ? null : (row.purpose ?? null) };
+  const episodeIds = JSON.parse(row.episode_ids) as number[];
+  // ...but a whole-season replace still only moves on to another season pack.
+  const packsOnly = row.purpose === "replace" && episodeIds.length > 1;
+  return { tvdbId: row.tvdb_id, episodeIds, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: auto ? null : (row.purpose ?? null), ...(packsOnly ? { packsOnly } : {}) };
 }
 
 /** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */
@@ -740,13 +765,29 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     for (const it of inThis) {
       const id = identify(path.posix.basename(it.path), ctx, { tvdbId: row.tvdb_id });
       if (!id.resolution?.ok || id.resolution.confidence < minConf) continue;
+      // Files in the download's extras folder ("NCED & NCOP", "Extras", …) are never regular episodes.
+      if (inExtrasFolder(it.path.slice(folder.length + 1)) && id.resolution.episodes.some((e) => e.season > 0)) continue;
       const ids = id.resolution.episodes.map((e) => e.id).filter((x) => wanted.includes(x));
       if (ids.length) plan.push({ item: it, episodeIds: ids });
     }
   const mapped = plan.flatMap((p) => p.episodeIds);
   if (!plan.length) return attention("couldn't tell which file is which episode");
-  if (new Set(mapped).size !== mapped.length) return attention("two files look like the same episode; import them by hand");
+  const dup = mapped.find((e, i) => mapped.indexOf(e) !== i);
+  if (dup !== undefined) {
+    // Say which episode, and whether a creditless opening/ending is one of them; the fix opens the whole download.
+    const n = episodesFor(row.tvdb_id).find((e) => e.id === dup)?.episode;
+    const cl = plan.filter((p) => p.episodeIds.includes(dup)).map((p) => parseRelease(path.posix.basename(p.item.path)).creditless).find(Boolean);
+    return attention(`two files in this download look like ${n !== undefined ? `episode ${n}` : "the same episode"}${cl ? ` (one is a creditless ${cl.kind === "op" ? "opening" : "ending"})` : ""}; review the files to import`);
+  }
   const replacing = row.purpose === "replace";
+  const seasonNo = episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.season ?? null;
+  const replaceLabel = seasonNo === null ? "Replace season" : seasonNo === 0 ? "Specials replace" : `Season ${seasonNo} replace`;
+  // A whole-season replace whose download turned out to be one episode: stop before anything is touched.
+  if (replacing && wanted.length > 1 && ((inThis.length === 1 && new Set(mapped).size === 1) || !isSeasonPack({ title: row.release, episodeIds: wanted }))) {
+    const one = episodesFor(row.tvdb_id).find((e) => e.id === mapped[0]);
+    const n = one?.episode ?? parseRelease(row.release).absolute[0] ?? parseRelease(row.release).episodes[0];
+    return attention(`${replaceLabel} stopped: the download was only ${n ? `episode ${n}` : "one episode"}, not the whole season. Nothing in your library changed.`);
+  }
   /** Replace season: episodes that keep their old file (new one failed its check, or isn't in the pack). */
   const kept: { id: number; why: string }[] = replacing ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" })) : [];
 
@@ -839,7 +880,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
     }
-    if (replacing && !swapped) return attention(`Replace season: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}); every old file stays`);
+    if (replacing && !swapped) return attention(`${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`);
     if (replacing) {
       db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
       if (kept.length) {
@@ -853,7 +894,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       // Episodes that kept their old file may still need this download: it stays, and the grab waits in "needs
       // attention" so Retry import can finish them once the cause is fixed.
       await finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
-      if (kept.length) setState(row.id, "needs-attention", `Replace season: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}); fix the cause, then Retry import`);
+      if (kept.length) setState(row.id, "needs-attention", `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`);
       return;
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);

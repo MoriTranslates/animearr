@@ -17,7 +17,7 @@
  * under a temporary name, and comes back if the swap fails.
  */
 import { noteBinned } from "./binpurge.js";
-import { isCreditlessTitle } from "./core/resolver.js";
+import { inExtrasFolder, isCreditlessTitle } from "./core/resolver.js";
 import { isTorrentClient } from "./arr/clients.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -252,7 +252,7 @@ function videosIn(dir: string, minBytes: number) {
  * Plans an import of a folder (or single file) for a show: which file is which episode (explicit ids when given, else
  * identified from the names), where it goes, how, and what it replaces. Nothing is changed.
  */
-export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<ImportPlan> {
+export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; only?: string[]; assign?: Record<string, number[]> }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<ImportPlan> {
   const series = seriesByTvdb(input.tvdbId);
   if (!series) throw err("Unknown series", 404);
   const minBytes = deps.minBytes ?? 30e6;
@@ -286,12 +286,18 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
   const binSet = !!m.recycleBin.trim();
   const items: PlanItem[] = [];
   const taken = new Set<string>();
+  // Files the user picked (the hand import): only those count for "two files would get the same name".
+  const picked = (f: string) => !input.only || input.only.includes(f);
   for (const f of files) {
     let ids: number[] = [];
-    if (files.length === 1 && input.episodeIds?.length) ids = input.episodeIds;
+    const assigned = input.assign?.[f];
+    if (assigned) ids = assigned; // the user's own choice for this file (the hand import)
+    else if (files.length === 1 && input.episodeIds?.length) ids = input.episodeIds;
     else {
       const id = identify(path.basename(f), ctx, { tvdbId: input.tvdbId });
-      if (id.resolution?.ok && id.resolution.confidence >= minConf) ids = id.resolution.episodes.map((e) => e.id).filter((x) => !input.episodeIds || input.episodeIds.includes(x));
+      // A file in the download's extras folder ("NCED & NCOP", "Extras", …) is never a regular episode.
+      const extra = st.isDirectory() && inExtrasFolder(path.relative(real, f)) && !!id.resolution?.ok && id.resolution.episodes.some((e) => e.season > 0);
+      if (!extra && id.resolution?.ok && id.resolution.confidence >= minConf) ids = id.resolution.episodes.map((e) => e.id).filter((x) => !input.episodeIds || input.episodeIds.includes(x));
     }
     const list = ids.map((i) => byId.get(i)).filter((x): x is Ep => !!x).sort((a, b) => a.season - b.season || a.episode - b.episode);
     const label = list.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`).join("+") || path.basename(f);
@@ -330,10 +336,10 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     else if (others) problem = "the current file also holds other episodes: import this one by hand";
     else if (current && !currentLocal) problem = "AnimeArr can't reach the episode's current file, so it can't replace it";
     else if (currentLocal && !binSet) problem = "no recycling bin is set, so the current file can't be replaced safely";
-    else if (taken.has(dest)) problem = "two files would get the same name";
+    else if (picked(f) && taken.has(dest)) problem = "two files would get the same name";
     else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
     else if (!freeSpaceOk(dest, size)) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
-    taken.add(dest);
+    if (picked(f)) taken.add(dest);
     items.push({
       ...base,
       dest,

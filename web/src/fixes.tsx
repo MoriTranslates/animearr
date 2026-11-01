@@ -24,12 +24,12 @@ export function FixButtons({ fixes, small = true }: { fixes?: Fix[] | null; smal
 }
 
 interface Ep { id: number; season: number; episode: number; title: string | null }
-interface PlanItem { source: string; destArr: string; label: string; action: string; replaces: string | null; problem: string | null }
+interface PlanItem { source: string; destArr: string; label: string; action: string; replaces: string | null; problem: string | null; episodeIds?: number[] }
 
 /** Carries out fix actions (mounted once, in the app shell): navigation, one-click calls, the import dialog. */
 export function FixHost() {
   const toast = useToast();
-  const [dialog, setDialog] = useState<null | { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null }>(null);
+  const [dialog, setDialog] = useState<null | { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null; review?: boolean }>(null);
   useEffect(() => {
     const call = async (path: string, body: unknown, ok: string, method = "POST") => {
       try {
@@ -49,12 +49,12 @@ export function FixHost() {
     };
     const on = (e: Event) => {
       const f = (e as CustomEvent<Fix>).detail;
-      const p = (f.params ?? {}) as { tvdbId?: number; movieId?: number; episodeIds?: number[]; path?: string | null; grabId?: number; service?: string; name?: string };
+      const p = (f.params ?? {}) as { tvdbId?: number; movieId?: number; episodeIds?: number[]; path?: string | null; grabId?: number; service?: string; name?: string; review?: boolean };
       switch (f.action) {
         case "importManual":
-          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: p.episodeIds, grabId: p.grabId ?? null });
+          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: p.review ? undefined : p.episodeIds, grabId: p.grabId ?? null, review: !!p.review });
         case "pickEpisode":
-          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: p.episodeIds, pick: true, grabId: p.grabId ?? null });
+          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: (p.episodeIds?.length ?? 0) > 1 ? undefined : p.episodeIds, pick: true, grabId: p.grabId ?? null });
         case "regrab":
           return p.movieId ? void call(`/movies/${p.movieId}/autosearch`, { replace: false }, t("fix.searching")) : void call("/autosearch", { tvdbId: p.tvdbId, episodeIds: p.episodeIds }, t("fix.searching"));
         case "keepAnyway":
@@ -97,7 +97,7 @@ export function FixHost() {
  * "Import manually…" / "Pick episode…" / the movie page's "Manual import…": browse AnimeArr's download folders (starting
  * in the grab's own download), pick a file or folder, preview, import. The typed path stays as an advanced fallback.
  */
-export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, pick, grabId, onClose, onDone }: { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null; onClose: () => void; onDone?: () => void }) {
+export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, pick, grabId, review, onClose, onDone }: { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null; review?: boolean; onClose: () => void; onDone?: () => void }) {
   const toast = useToast();
   const [path, setPath] = useState(initialPath ?? "");
   const [eps, setEps] = useState<Ep[] | null>(null);
@@ -106,17 +106,24 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
   const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [place, setPlace] = useState("");
+  // Several files (a season, a batch): each one is ticked or not, and can be given another episode.
+  const [ticked, setTicked] = useState<Set<string> | null>(null);
+  const [assign, setAssign] = useState<Record<string, number[]>>({});
   useEffect(() => {
     if (tvdbId) void api<{ episodes: Ep[] }>(`/series/${tvdbId}`).then((s) => setEps(s.episodes), () => setEps([]));
   }, [tvdbId]);
-  const plan = async (p = path) => {
+  const plan = async (p = path, opts: { ticked?: Set<string> | null; assign?: Record<string, number[]> } = {}) => {
     if (!p.trim()) return;
     setBusy(true);
+    const tk = opts.ticked === undefined ? ticked : opts.ticked;
+    const as = opts.assign ?? assign;
     try {
       const r = movieId
         ? await api<{ items: PlanItem[]; notes?: string[] }>("/import/movie-plan", { body: { movieId, path: p, grabId: grabId ?? undefined } })
-        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", { body: { tvdbId, path: p, episodeIds: chosen.length ? chosen : undefined, grabId: grabId ?? undefined } });
+        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", { body: { tvdbId, path: p, episodeIds: chosen.length ? chosen : undefined, grabId: grabId ?? undefined, only: tk ? [...tk] : undefined, assign: as } });
       setItems(r.items);
+      // First look: every file that can go is ticked; a creditless extra or a clash starts unticked.
+      if (!tk) setTicked(new Set(r.items.filter((i) => !i.problem).map((i) => i.source)));
       setNotes(r.notes ?? []);
     } catch (e) {
       toast((e as Error).message, true);
@@ -129,14 +136,18 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
     setPath(p);
     setItems(null);
     setNotes([]);
-    if (!dir && !pick && !auto) void plan(p);
+    setTicked(null);
+    setAssign({});
+    // "Review files…" from a download that needs you: its whole folder is listed right away.
+    if (auto && (review || (pick && grabId))) void plan(p, { ticked: null, assign: {} });
+    else if (!dir && !pick && !auto) void plan(p, { ticked: null, assign: {} });
   };
   const run = async () => {
     setBusy(true);
     try {
       const r = movieId
         ? await api<{ results: { done: boolean; why: string }[] }>("/import/movie-run", { body: { movieId, path, grabId: grabId ?? undefined } })
-        : await api<{ results: { done: boolean; why: string }[] }>("/import/run", { body: { tvdbId, path, episodeIds: chosen.length ? chosen : undefined, dryRun: false, grabId: grabId ?? undefined, only: items?.filter((i) => !i.problem).map((i) => i.source) } });
+        : await api<{ results: { done: boolean; why: string }[] }>("/import/run", { body: { tvdbId, path, episodeIds: chosen.length ? chosen : undefined, dryRun: false, grabId: grabId ?? undefined, only: goes.map((i) => i.source), assign } });
       const ok = r.results.filter((x) => x.done).length;
       toast(t("import.done", { ok, total: r.results.length }), ok < r.results.length);
       window.dispatchEvent(new Event("animearr:changed"));
@@ -147,7 +158,26 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
       setBusy(false);
     }
   };
-  const ready = items?.filter((i) => !i.problem).length ?? 0;
+  const many = !!tvdbId && (items?.length ?? 0) > 1;
+  const goes = items?.filter((i) => !i.problem && (!many || !ticked || ticked.has(i.source))) ?? [];
+  const ready = goes.length;
+  const toggle = (src: string, on: boolean) => {
+    const next = new Set(ticked ?? []);
+    if (on) next.add(src);
+    else next.delete(src);
+    setTicked(next);
+    void plan(path, { ticked: next });
+  };
+  const reassign = (src: string, id: number | null) => {
+    const next = { ...assign, [src]: id ? [id] : [] };
+    setAssign(next);
+    const tk = new Set(ticked ?? []);
+    if (id) tk.add(src);
+    else tk.delete(src);
+    setTicked(tk);
+    void plan(path, { ticked: tk, assign: next });
+  };
+  const fileName = (src: string) => src.split(/[\\/]/).pop() ?? src;
   const label = (e: Ep) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}${e.title ? ` · ${e.title}` : ""}`;
   return (
     <Modal title={t(pick ? "fix.pickTitle" : "fix.importTitle")} onClose={onClose}>
@@ -166,7 +196,7 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
             {t("import.selected")} <strong>{place && path.split("/").pop() === place.split(" › ").pop() ? place : path.split("/").pop()}</strong>
           </p>
         )}
-        {tvdbId && (
+        {tvdbId && !many && (
           <label className="stack small">
             {t("fix.episode")}
             {!eps ? (
@@ -191,11 +221,29 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
         {items && !items.length && <p className="small warn-text">{t("import.nothing")}</p>}
         {items && items.length > 0 && (
           <ul className="rename-list small">
+            {many && <p className="muted">{t("import.reviewHelp")}</p>}
             {items.map((i) => (
               <li key={i.source} className="stack">
-                <span>
-                  <b>{i.label}</b> · {t(`import.action.${i.action}` as I18nKey)}
-                </span>
+                {many ? (
+                  <span className="row">
+                    <label className="check">
+                      <input type="checkbox" checked={!!ticked?.has(i.source)} disabled={busy} onChange={(e) => toggle(i.source, e.target.checked)} /> <b>{i.label}</b>
+                    </label>
+                    <select aria-label={t("import.episodeFor", { file: fileName(i.source) })} value={i.episodeIds?.[0] ?? ""} disabled={busy || !eps} onChange={(e) => reassign(i.source, e.target.value ? Number(e.target.value) : null)}>
+                      <option value="">{t("import.notAnEpisode")}</option>
+                      {(eps ?? []).map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {label(e)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="muted">· {t(`import.action.${i.action}` as I18nKey)}</span>
+                  </span>
+                ) : (
+                  <span>
+                    <b>{i.label}</b> · {t(`import.action.${i.action}` as I18nKey)}
+                  </span>
+                )}
                 <span className="muted">{i.source.split(/[\/]/).pop()}</span>
                 {i.destArr && (
                   <span className="muted" title={i.destArr}>

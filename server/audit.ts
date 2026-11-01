@@ -5,6 +5,7 @@
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
+import { burnedInFile } from "./fileMarks.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { movieSpecials } from "./franchise.js";
 import { ownFile, probeOf } from "./mediafiles.js";
@@ -121,7 +122,8 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
       const p = own ? probeOf(own) : null;
       const subs = p ? p.subs : f.sub_langs.split("/").filter(Boolean);
       const audio = p ? p.audio : f.audio_langs.split("/").filter(Boolean);
-      const v = judge(p ? { ...p, durationSec: null } : { subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, null);
+      // A file you marked as hardsubbed counts as having that language.
+      const v = judge(p ? { ...p, durationSec: null } : { subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, burnedInFile(f.path));
       if (v.ok) continue;
       const sidecar = opts.checkSidecars && prof.watchMode !== "dub" ? sidecarFor(f.path, prof.subLangs) : null;
       if (sidecar) continue;

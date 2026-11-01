@@ -30,7 +30,7 @@ test("off by default: nothing is planned", () => {
 });
 
 test("plans old missing episodes in scope (the default scope still honours Sonarr's unmonitored episodes); hourly budget, newest first", async () => {
-  patchSettings((s) => ({ ...s, backlog: { enabled: true, perHour: 2, retryDays: 7 } }));
+  patchSettings((s) => ({ ...s, backlog: { enabled: true, perHour: 2, retryDays: 7, wrongLanguage: false } }));
   assert.equal(planBacklog(now), 3);
   assert.equal(state(2004), undefined, "unmonitored in Sonarr, no own scope yet");
   assert.equal(state(2005), undefined, "has a file");
@@ -66,7 +66,7 @@ test("give-ups from the normal schedule join the backlog after retryDays; dry-ru
 
 test("the hourly budget counts searches, not rows: an RSS bring-forward can't exceed it", async () => {
   const t0 = now + 30 * DAY;
-  patchSettings((s) => ({ ...s, backlog: { enabled: true, perHour: 3, retryDays: 7 } }));
+  patchSettings((s) => ({ ...s, backlog: { enabled: true, perHour: 3, retryDays: 7, wrongLanguage: false } }));
   db.prepare("UPDATE search_state SET next_at = 0, state = 'backlog' WHERE episode_id IN (2002, 2003)").run();
   assert.equal(await backlogPass(t0, { plan: false }), 2);
   db.prepare("UPDATE search_state SET next_at = 0, last_why = 'New release seen: x' WHERE episode_id = 2002").run();

@@ -49,6 +49,9 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
   if (ctx.grabId && /restarted during the import|AnimeArr's importer: /i.test(why) && !/switched off|paused for a review/i.test(why)) add({ action: "importManual", label: "Import manually…", params: { ...target, path: null, grabId: ctx.grabId } });
   // The message tells the user to press "Retry import": the button is right there (the grab kept its download).
   if (ctx.grabId && /Retry import/.test(why)) add({ action: "retryImport", label: "Retry import", params: { grabId: ctx.grabId } });
+  // A download with several files that don't sort themselves out: the whole download in the import dialog, every file
+  // with its proposed episode (untick or reassign), not a one-episode picker.
+  if (ctx.grabId && /review the files to import|two files look like the same episode/i.test(why)) add({ action: "importManual", label: "Review files…", params: { ...target, path: null, grabId: ctx.grabId, review: true } });
   if (/couldn't tell which (?:file is which )?episode|couldn't map the episode|two files look like the same episode|import (?:it|them|this one) by hand/i.test(why)) add({ action: "pickEpisode", label: "Pick episode…", params: { ...target, grabId: ctx.grabId ?? null } });
   if ((ctx.kind === "verify-fail" || /failed verification/i.test(why)) && /sub|English|dialogue|audio|dub/i.test(why)) {
     add({ action: "regrab", label: "Download again", params: target });
@@ -61,6 +64,11 @@ export function fixesFor(why: string, ctx: FixContext = {}): Fix[] {
     if (rule && !/free/i.test(why)) add({ action: "resumeRule", label: "Turn rule off", params: { name: rule } });
   }
   if (/importer is paused|real (?:movie )?imports by AnimeArr's importer are switched off|aren't switched on yet/i.test(why)) add({ action: "resumeImports", label: "Resume imports", params: { movies: !!ctx.movieId || /\bmovie/i.test(why) } });
+  // Replace season stopped (the download was one episode, or nothing could be swapped): another version, or pick one.
+  if (ctx.grabId && /replace stopped/i.test(why)) {
+    add({ action: "tryNext", label: "Try another version", params: { grabId: ctx.grabId } });
+    if (ctx.tvdbId) add({ action: "interactiveSearch", label: "Pick a version…", params: target });
+  }
   // "No more candidates" means the automatic next already ran out: only the interactive search helps then.
   if (ctx.grabId && /fail|couldn't send|SABnzbd:|download (?:failed|error)|stalled|missing from/i.test(why) && !/verification|no more candidates/i.test(why)) add({ action: "tryNext", label: "Try another version", params: { grabId: ctx.grabId } });
   if ((ctx.tvdbId || ctx.movieId) && /fail|nothing found|needs a look|no result|no more candidates|couldn't|wrong/i.test(why)) add({ action: "interactiveSearch", label: "Pick a version…", params: target });

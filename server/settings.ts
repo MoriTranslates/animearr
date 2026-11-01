@@ -170,7 +170,7 @@ export interface Settings {
    * episodes without a file are searched a few per hour; ones not found are tried again every retryDays.
    * Off by default: turning it on can grab many episodes for shows that aren't in dry-run.
    */
-  backlog: { enabled: boolean; perHour: number; retryDays: number };
+  backlog: { enabled: boolean; perHour: number; retryDays: number; wrongLanguage: boolean };
   /**
    * Queue health for AnimeArr's own downloads (Cleanuparr-style): a download with no progress for stallHours, or a
    * torrent still without metadata after metadataMin, counts as failed (blocklist + next candidate). removeFailed
@@ -369,7 +369,7 @@ const DEFAULTS: Settings = {
   defaultProfileId: "default",
   managed: { dryRun: true, searchDelayMin: 45, backoffMin: [30, 60, 120, 240, 480], maxAttempts: 12, rssMin: 15, minConfidence: 80 },
   repair: { mode: "log", maxPerDay: 10 },
-  backlog: { enabled: false, perHour: 4, retryDays: 7 },
+  backlog: { enabled: false, perHour: 4, retryDays: 7, wrongLanguage: false },
   queueHealth: { stallHours: 6, metadataMin: 60, removeFailed: true, strikes: 3 },
   malware: { enabled: true, extensions: ["exe", "scr", "bat", "cmd", "com", "msi", "lnk", "vbs", "js", "ps1", "jar", "apk"] },
   extraction: { enabled: false },

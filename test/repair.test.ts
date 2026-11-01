@@ -127,3 +127,27 @@ test("global dry-run: non-managed shows aren't touched; a short file alone is on
   assert.equal(calls.failed.length, 0);
   patchSettings((s) => ({ ...s, managed: { ...s.managed, dryRun: false } }));
 });
+
+test("no import vanishes: one outside the roots or of a show not synced yet gets a row with the reason, and the unsynced one is checked once the library catches up", async () => {
+  const { NOT_SYNCED, OUTSIDE_ROOTS } = await import("../server/repair.js");
+  patchSettings((s) => ({ ...s, repair: { mode: "log", maxPerDay: 10 } }));
+  const now = Date.now();
+  // Imported by Sonarr ~5 hours before the show reached AnimeArr's library.
+  const early = { ...item(1201, 13, "[FrGroup] Late Show - 01 VOSTFR", "Late Show"), date: new Date(now - 5 * 3_600_000).toISOString() };
+  const outside = item(1004, 12, "[Group] Main Library - 01", "Main Library");
+  const first = deps([early, outside], { [early.id]: { subs: ["fr"] } }, { [early.id]: "fre" });
+  await checkNewImports(first.d, now);
+  const row = (id: number) => db.prepare("SELECT action, why, ok FROM checked_imports WHERE history_id = ?").get(id) as { action: string; why: string; ok: number } | undefined;
+  assert.equal(row(early.id)?.why, NOT_SYNCED);
+  assert.equal(row(outside.id)?.why, OUTSIDE_ROOTS);
+  // A later run asks Sonarr from before that import, even after newer imports moved the watermark on.
+  db.prepare("INSERT INTO kv (key, value) VALUES ('repair-watermark', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(now + 30 * 3_600_000));
+  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (13, 800004, 'Late Show', '/media/AnimeArr/Late Show', 1, 'Japanese', 0)").run();
+  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (1201, 13, 1, 1, 1, 1, 24)").run();
+  let asked: Date | null = null;
+  const second = deps([early], { [early.id]: { subs: ["fr"] } }, { [early.id]: "fre" });
+  const r = await checkNewImports({ ...second.d, history: async (since) => ((asked = since), [early]) }, now + 32 * 3_600_000);
+  assert.ok(asked! <= new Date(now - 5 * 3_600_000), `asked from ${asked!.toISOString()}`);
+  assert.equal(r[0]?.historyId, early.id);
+  assert.equal(row(early.id)?.action, "would-repair", row(early.id)?.why);
+});
