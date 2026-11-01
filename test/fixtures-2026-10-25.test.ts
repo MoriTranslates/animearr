@@ -150,3 +150,15 @@ test("'2nd Season - 08' is one episode, not a batch (seen live on 2026-10-25)", 
   assert.equal(p.batch, false);
   assert.equal(p.fullSeason, false);
 });
+
+test("'2nd.Season.03' without the dash is episode 3 of season 2, not a Season 3 pack (Replace season, 2026-11)", () => {
+  const p = parseRelease("[Erai-raws].Black.Clover.2nd.Season.03.[1080p][Multiple.Subtitle].mkv");
+  assert.equal(p.season, 2);
+  assert.deepEqual(p.absolute, [3]);
+  assert.equal(p.batch, false);
+  assert.equal(p.fullSeason, false);
+  // A real season pack still is one.
+  const pack = parseRelease("[Erai-raws] Black Clover 2nd Season [1080p] (Batch)");
+  assert.equal(pack.season, 2);
+  assert.equal(pack.fullSeason, true);
+});

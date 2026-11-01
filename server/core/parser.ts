@@ -340,7 +340,8 @@ export function parseRelease(input: string): ParsedRelease {
   // "6th Season" / "Season 6" / "S01" without an episode → season token (pack if nothing else).
   const reOrd = /\b(\d{1,2})(?:st|nd|rd|th)\s+Season\b/gi;
   while ((m = reOrd.exec(work))) push(m, { season: +m[1], fullSeason: true, batch: true });
-  const reSeasonOnly = /\(?\bSeason\s+(\d{1,2})\b\)?|\bS(\d{1,2})\b(?!\s*-\s*\d)(?![ ._]?E\d)/gi;
+  // "2nd Season 03" (dotted names lose their dash) is episode 3 of the 2nd season, never "Season 03".
+  const reSeasonOnly = /(?<!\b\d{1,2}(?:st|nd|rd|th)\s+)\(?\bSeason\s+(\d{1,2})\b\)?|\bS(\d{1,2})\b(?!\s*-\s*\d)(?![ ._]?E\d)/gi;
   while ((m = reSeasonOnly.exec(work))) push(m, { season: +(m[1] ?? m[2]), fullSeason: true, batch: true });
   // Ranges: "(01-12)", "01~10", "01 - 119", "091-123", "[01-05]", "Ep01-12", "Episode 99-100", "1-13"
   const reRange = /(?:^|\s|\(|-\s)(?:EP?|Episode\s?)?(\d{1,4})\s*(?:[-~]|\s-\s)\s*(\d{1,4})(?=\s|\)|$|v\d)/gi;
