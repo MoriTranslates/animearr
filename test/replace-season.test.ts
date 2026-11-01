@@ -181,3 +181,24 @@ test("Replace season whose download is one episode stops before touching the lib
   assert.equal(after.error, "Season 1 replace stopped: the download was only episode 2, not the whole season. Nothing in your library changed.");
   assert.deepEqual(fs.readdirSync(path.join(LIB, "Absolute Duo", "Season 01")).sort(), before);
 });
+
+test("two files of a download that look like one episode: a plain message whose fix reviews the whole download", async () => {
+  const now = Date.now();
+  const folder = "/data/completed/animearr/Absolute Duo dupes";
+  const id = Number(
+    db
+      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (?, ?, ?, 77, ?, 'Absolute Duo dupes', 'g-dup', 9, 'torrent', 'qbittorrent', 'h2', 'importing', 0, 'manual', 'test', '[]')")
+      .run(now, now, TVDB, JSON.stringify([701, 702])).lastInsertRowid,
+  );
+  const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
+  const deps = {
+    clients: { remove: async () => undefined },
+    sonarr: { preview: async () => ["[Judas] Absolute Duo - S01E01.mkv", "[Judas] Absolute Duo - S01E01 (alt).mkv", "[Judas] Absolute Duo - S01E02.mkv"].map((n) => ({ path: `${folder}/${n}`, size: 5e8, quality: {}, languages: [] })) },
+    localPath: () => null,
+    sleep: async () => undefined,
+  } as unknown as Deps;
+  await importAndVerify(row, folder, deps);
+  const after = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null };
+  assert.equal(after.state, "needs-attention");
+  assert.equal(after.error, "two files in this download look like episode 1; review the files to import");
+});

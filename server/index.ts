@@ -1163,16 +1163,21 @@ const grabSource = (b: { release?: string; client?: string | null; grabId?: numb
   const g = b.grabId ? (db.prepare("SELECT release, client FROM grabs WHERE id = ?").get(Number(b.grabId)) as { release: string; client: string | null } | undefined) : undefined;
   return { release: b.release ?? g?.release, client: b.client ?? g?.client ?? null };
 };
-app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; grabId?: number | null } }>("/api/import/plan", async (req) => {
+/** The hand import's per-file choices: which files (only) and which episode each one is (assign: source → ids). */
+const handChoices = (b: { only?: unknown; assign?: unknown }) => ({
+  only: Array.isArray(b.only) ? b.only.map(String) : undefined,
+  assign: b.assign && typeof b.assign === "object" ? Object.fromEntries(Object.entries(b.assign as Record<string, unknown>).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0)])) : undefined,
+});
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; grabId?: number | null; only?: string[]; assign?: Record<string, number[]> } }>("/api/import/plan", async (req) => {
   const b = req.body ?? ({} as never);
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
-  return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b) });
+  return planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b), ...handChoices(b) });
 });
-app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; dryRun?: boolean; grabId?: number | null } }>("/api/import/run", async (req) => {
+app.post<{ Body: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; only?: string[]; assign?: Record<string, number[]>; dryRun?: boolean; grabId?: number | null } }>("/api/import/run", async (req) => {
   writable();
   const b = req.body ?? ({} as never);
   if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);
-  const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b) });
+  const plan = await planImport({ tvdbId: Number(b.tvdbId), path: String(b.path), episodeIds: b.episodeIds?.map(Number), ...grabSource(b), ...handChoices(b) });
   const results = await executeImport(plan, { dryRun: b.dryRun !== false, only: b.only, grabId: b.grabId ? Number(b.grabId) : undefined });
   // Opened from a grab's fix: everything it was for is imported → the grab is done.
   if (b.grabId && b.dryRun === false && results.length && results.every((r) => r.done)) await finishGrabByHand(Number(b.grabId), plan.seriesTitle);

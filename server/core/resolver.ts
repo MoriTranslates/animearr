@@ -65,6 +65,15 @@ export function creditlessOf(episodes: LibEpisode[]) {
     });
 }
 
+/**
+ * A file inside a download's extras folder ("NCED & NCOP", "NC", "Extras", "Specials", "Menus", "Bonus", "Creditless"):
+ * never a regular episode (a season-0 special in "Specials" still can be). `rel` is the path inside the download.
+ */
+export function inExtrasFolder(rel: string) {
+  const dirs = rel.split(/[\\/]/).slice(0, -1);
+  return dirs.some((d) => /^(?:extras?|specials?|sps?|menus?|bonus(?:es)?|nc|creditless|featurettes?|cms?|pvs?|trailers?)$/i.test(d.trim()) || /\bNC[ ._-]?(?:OP|ED)s?\b|\bcreditless\b|\bnon[- ]?credit/i.test(d));
+}
+
 /** "Creditless Opening 2", "Clean Ending", "NCOP", "Non-Credit OP", "Textless ED", "Opening 1 (creditless)". */
 export function isCreditlessTitle(t: string | null) {
   return !!t && (/\bNC(?:OP|ED)\d*\b|\b(creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) || /^\s*(opening|ending)(\s*(theme|\d+[a-z]?))?\s*(?:[:\-–].*)?$/i.test(t));
@@ -105,8 +114,12 @@ export function resolveRelease(
   const seasons = [...new Set(episodes.filter((e) => e.season > 0).map((e) => e.season))].sort((a, b) => a - b);
   const aired = (e: LibEpisode) => e.airUtc !== null && e.airUtc <= now + DAY;
 
-  // Creditless OP/ED: the show's own "Opening N"/"Ending N" special (by number, else the N-th of its kind).
-  if (p.creditless && !p.episodes.length && !p.absolute.filter((n) => n !== p.creditless!.n).length && !p.batch && !p.fullSeason) {
+  // Creditless OP/ED: the show's own "Opening N"/"Ending N" special (by number, else the N-th of its kind). Never a
+  // regular episode: "NCED Ep11" is the ending as it ran in episode 11, not episode 11.
+  if (p.creditless && !p.batch && !p.fullSeason) {
+    const label0 = `${p.creditless.kind === "op" ? "opening" : "ending"}`;
+    const extra = p.episodes.length > 0 || p.absolute.some((n) => n !== p.creditless!.n);
+    if (extra && p.creditless.n === null) return fail([...why, `creditless ${label0} as used in an episode: never imported as that episode (import it by hand as an extra if you want it)`], "creditless");
     const list = creditlessOf(episodes).filter((x) => x.kind === p.creditless!.kind);
     const n = p.creditless.n ?? 1;
     const hit = list.find((x) => x.n === n) ?? (list.every((x) => x.n === null) ? list[n - 1] : undefined);

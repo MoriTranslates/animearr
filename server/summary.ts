@@ -59,6 +59,7 @@ export function plainReason(raw: string): string | null {
     [/several large video files|import the right (?:one|file) by hand/i, "it has several video files, so pick the right one"],
     [/\.animearr-part already exists/i, "a half-finished copy from an earlier try was in the way"],
     [/restarted during the import/i, "AnimeArr restarted during the import"],
+    [/two files in this download look like (episode \d+|the same episode)( \(one is a creditless (?:opening|ending)\))?/i, (m) => `two files in this download look like ${m[1]}${m[2] ?? ""}; review the files to import`],
     [/two files look like the same episode/i, "two files look like the same episode"],
     [/couldn't tell which (?:file is which )?episode|couldn't map the episode/i, "AnimeArr couldn't tell which episode it is"],
     [/isn't in AnimeArr's own download folders|only a manual import can take it/i, "it's outside AnimeArr's download folders, so it needs a manual import"],

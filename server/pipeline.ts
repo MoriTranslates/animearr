@@ -27,6 +27,7 @@ import { scopeFor } from "./scope.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
+import { inExtrasFolder } from "./core/resolver.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
@@ -764,12 +765,20 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     for (const it of inThis) {
       const id = identify(path.posix.basename(it.path), ctx, { tvdbId: row.tvdb_id });
       if (!id.resolution?.ok || id.resolution.confidence < minConf) continue;
+      // Files in the download's extras folder ("NCED & NCOP", "Extras", …) are never regular episodes.
+      if (inExtrasFolder(it.path.slice(folder.length + 1)) && id.resolution.episodes.some((e) => e.season > 0)) continue;
       const ids = id.resolution.episodes.map((e) => e.id).filter((x) => wanted.includes(x));
       if (ids.length) plan.push({ item: it, episodeIds: ids });
     }
   const mapped = plan.flatMap((p) => p.episodeIds);
   if (!plan.length) return attention("couldn't tell which file is which episode");
-  if (new Set(mapped).size !== mapped.length) return attention("two files look like the same episode; import them by hand");
+  const dup = mapped.find((e, i) => mapped.indexOf(e) !== i);
+  if (dup !== undefined) {
+    // Say which episode, and whether a creditless opening/ending is one of them; the fix opens the whole download.
+    const n = episodesFor(row.tvdb_id).find((e) => e.id === dup)?.episode;
+    const cl = plan.filter((p) => p.episodeIds.includes(dup)).map((p) => parseRelease(path.posix.basename(p.item.path)).creditless).find(Boolean);
+    return attention(`two files in this download look like ${n !== undefined ? `episode ${n}` : "the same episode"}${cl ? ` (one is a creditless ${cl.kind === "op" ? "opening" : "ending"})` : ""}; review the files to import`);
+  }
   const replacing = row.purpose === "replace";
   const seasonNo = episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.season ?? null;
   const replaceLabel = seasonNo === null ? "Replace season" : seasonNo === 0 ? "Specials replace" : `Season ${seasonNo} replace`;
