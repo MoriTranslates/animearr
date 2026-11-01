@@ -394,6 +394,12 @@ export function addStrike(row: GrabRow, why: string, now: number, limit: number)
 }
 const resetStrikes = (id: number) => db.prepare("UPDATE grabs SET strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?").run(id);
 
+/** Episodes a grab's earlier import passes already placed in the library (from its "import" activity entries). */
+function placedByGrab(grabId: number): Set<number> {
+  const rows = db.prepare("SELECT episode_ids FROM decisions WHERE kind = 'import' AND undone_at IS NULL AND json_extract(detail, '$.grabId') = ?").all(grabId) as { episode_ids: string }[];
+  return new Set(rows.flatMap((r) => JSON.parse(r.episode_ids) as number[]));
+}
+
 /** The runtime (minutes) of the episode, or movie, a grab is for; null when unknown. */
 function runtimeOf(row: GrabRow): number | null {
   if (row.movie_id) return (cache.prepare("SELECT runtime FROM movies WHERE id = ?").get(row.movie_id) as { runtime: number | null } | undefined)?.runtime ?? null;
@@ -642,7 +648,7 @@ export function episodeFileOpts(tvdbId: number, wantedIds: number[]): FileMapOpt
   return {
     wantedIds,
     resolve: (name) => {
-      const id = identify(name, ctx, { tvdbId });
+      const id = identify(name, ctx, { tvdbId, expect: wantedIds });
       return id.resolution?.ok && id.resolution.confidence >= minConf ? id.resolution.episodes.map((e) => e.id) : null;
     },
     keepCreditless: scopeFor(tvdbId).creditless,
@@ -763,7 +769,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (inThis.length === 1 && wanted.length === 1) plan.push({ item: inThis[0], episodeIds: wanted });
   else
     for (const it of inThis) {
-      const id = identify(path.posix.basename(it.path), ctx, { tvdbId: row.tvdb_id });
+      const id = identify(path.posix.basename(it.path), ctx, { tvdbId: row.tvdb_id, expect: wanted });
       if (!id.resolution?.ok || id.resolution.confidence < minConf) continue;
       // Files in the download's extras folder ("NCED & NCOP", "Extras", …) are never regular episodes.
       if (inExtrasFolder(it.path.slice(folder.length + 1)) && id.resolution.episodes.some((e) => e.season > 0)) continue;
@@ -852,9 +858,12 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     if (!imp.allowReal) return attention("real imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
     if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
     const keptIds = new Set(kept.map((k) => k.id));
-    const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)));
+    // Retry import of a replace that stopped part-way: episodes this grab already placed are not copied again.
+    const placed = replacing ? placedByGrab(row.id) : new Set<number>();
+    const done = plan.filter((p) => p.episodeIds.every((e) => placed.has(e)));
+    const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)) && !done.includes(p));
     if (!toPlace.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
-    if (replacing && !toPlace.length) return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
+    if (replacing && !toPlace.length && !done.length) return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
     if (replacing && !getSettings().media.recycleBin.trim()) return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
     let swapped = 0;
     for (const p of toPlace) {
@@ -880,7 +889,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
     }
-    if (replacing && !swapped) return attention(`${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`);
+    if (replacing && !swapped && !done.length) return attention(`${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`);
     if (replacing) {
       db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
       if (kept.length) {
