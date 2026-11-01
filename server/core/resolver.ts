@@ -104,7 +104,8 @@ export function resolveRelease(
   p: ParsedRelease,
   cand: Candidate,
   episodes: LibEpisode[],
-  opts: { entries?: AnimeListEntry[]; rules?: NumberingRule[]; publishDate?: number | null; now?: number } = {},
+  /** expect: episode ids the caller already knows the file is one of (a grab's episodes); settles a tie between readings. */
+  opts: { entries?: AnimeListEntry[]; rules?: NumberingRule[]; publishDate?: number | null; now?: number; expect?: number[] } = {},
 ): Resolution {
   const why: string[] = [...cand.why];
   const entries = opts.entries ?? [];
@@ -244,7 +245,13 @@ export function resolveRelease(
     }
     let best = uniq[0];
     let tieNote = "";
-    if (uniq.length > 1) {
+    // A download grabbed for some episodes: the one reading among them wins ("- 001" of a whole-show pack is S01E01, not
+    // the newest season's E01).
+    const fits = opts.expect?.length ? uniq.filter((r) => r.eps.every((e) => opts.expect!.includes(e.id))) : [];
+    if (uniq.length > 1 && fits.length === 1) {
+      best = fits[0];
+      tieNote = `${uniq.length} readings fit; picked ${labelOf(best.eps)} because the download was grabbed for it (other: ${uniq.filter((r) => r !== best).map((r) => labelOf(r.eps)).join(", ")})`;
+    } else if (uniq.length > 1) {
       if (pub) {
         const dist = (r: Reading) => Math.abs((r.eps[r.eps.length - 1].airUtc ?? 0) - pub);
         const sorted = [...uniq].sort((a, b) => dist(a) - dist(b));

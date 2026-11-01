@@ -58,10 +58,11 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
   );
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
   let cleanups = 0;
+  let fixed = false;
   const probe = async (p: string) => ({
     durationSec: 1440,
     audio: ["ja", "en"],
-    subs: /S01E02/.test(p) ? [] : ["en"],
+    subs: /S01E02/.test(p) && !fixed ? [] : ["en"],
     sidecars: [],
     untagged: 0,
     forced: [],
@@ -100,6 +101,17 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
   assert.match(kept.why, /S01E02 \(.*no .*subtitles.*\)/);
   assert.match(kept.why, /S01E03 \(not in the pack\)/);
   assert.equal(cleanups, 0, "episodes kept their old file: the download stays for a retry");
+
+  // Retry import once E02's file is fixed: E02 swaps; E01, placed on the first pass, is not copied again.
+  fixed = true;
+  db.prepare("UPDATE grabs SET state = 'importing' WHERE id = ?").run(id);
+  await importAndVerify(db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row, pack, deps);
+  const count = (like: string) => (db.prepare("SELECT COUNT(*) n FROM decisions WHERE kind = 'import' AND why LIKE ?").get(like) as { n: number }).n;
+  assert.equal(count("Imported S01E01 →%"), 1, "E01 imported once");
+  assert.equal(count("Imported S01E02 →%"), 1, "E02 imported on the retry");
+  const retried = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null };
+  assert.equal(retried.state, "needs-attention");
+  assert.match(retried.error ?? "", /1 episode kept its old file|1 episode kept their old file/);
 });
 
 test("clean-up right after the outcome: an imported torrent goes once seeding is done; nothing when switched off", async () => {
