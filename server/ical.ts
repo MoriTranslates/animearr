@@ -1,6 +1,6 @@
 /**
  * The calendar as an iCalendar (RFC 5545) feed, the way Sonarr offers one: episodes at their air time, anime movies on
- * their release dates. Calendar apps can't log in, so the route (index.ts) takes the API key as ?apikey=.
+ * their release dates. Calendar apps can't log in, so the route (ical.ts registerIcal) takes the API key as ?apikey=.
  */
 import type { FastifyInstance } from "fastify";
 import { authState } from "./auth.js";

@@ -105,9 +105,9 @@ test("only metadata reads the override table", () => {
     for (const f of fs.readdirSync(d, { withFileTypes: true })) {
       if (f.isDirectory()) walk(path.join(d, f.name));
       else if (f.name.endsWith(".ts") && /meta_overrides|metaoverride\.js/.test(fs.readFileSync(path.join(d, f.name), "utf8")))
-        readers.push(f.name);
+        readers.push(path.relative(dir, path.join(d, f.name)).split(path.sep).join("/"));
     }
   };
   walk(dir);
-  assert.deepEqual(readers.sort(), ["db.ts", "episodemeta.ts", "index.ts", "metaoverride.ts"]);
+  assert.deepEqual(readers.sort(), ["db.ts", "episodemeta.ts", "metaoverride.ts", "routes/activity.ts"]);
 });

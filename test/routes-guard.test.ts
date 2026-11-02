@@ -1,5 +1,5 @@
 /**
- * Every route in server/index.ts against the auth guard, over HTTP (Fastify inject, no socket): nothing under /api/
+ * Every route (server/index.ts and server/routes/*.ts) against the auth guard, over HTTP (Fastify inject, no socket): nothing under /api/
  * answers without a login except the routes explicitly flagged public/setup, and every change (POST/PUT/PATCH/DELETE)
  * from a logged-in browser needs AnimeArr's CSRF header. A new route that forgets either fails here.
  */
