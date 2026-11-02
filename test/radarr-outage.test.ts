@@ -14,7 +14,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 fs.mkdirSync(path.join(process.env.ANIMEARR_CONFIG, "cache"), { recursive: true });
 fs.writeFileSync(path.join(process.env.ANIMEARR_CONFIG, "cache", "anime-list-master.xml"), "<anime-list></anime-list>");
 
-const { cache, listJobs } = await import("../server/system/db.js");
+const { cache, db, listJobs } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { syncLibrary } = await import("../server/library/library.js");
 const { addMovie } = await import("../server/library/native.js");
@@ -120,4 +120,43 @@ test("a full sync confirms that Radarr really has no movies left", async () => {
     addMovie({ anilistId: 1, rootFolder: "/nowhere" }, noNetwork),
     (e: Error & { statusCode?: number }) => e.statusCode !== 503,
   );
+});
+
+// ---------------------------------------------------------------- multi-part movie records (movie_parts)
+
+const partsRecord = (movieId: number) => db.prepare("SELECT 1 FROM movie_parts WHERE movie_id = ?").get(movieId);
+const hasFile = (movieId: number) =>
+  (cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(movieId) as { has_file: number }).has_file;
+
+test("a refused or malformed Radarr answer never deletes a multi-part movie record; an accepted one still does", async () => {
+  ids = [1, 2, 3];
+  mode = "ok";
+  await syncLibrary(true);
+  // Movie 1: parts AnimeArr imported that are now gone from disk (an accepted sync drops this record).
+  const gone = path.join(process.env.ANIMEARR_CONFIG!, "gone");
+  db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(
+    1,
+    JSON.stringify({ parts: [`${gone}/cd1.mkv`, `${gone}/cd2.mkv`] }),
+    Date.now(),
+  );
+  for (const m of ["empty", "partial", "notList", "badItem"] as const) {
+    mode = m;
+    await syncLibrary();
+    assert.ok(partsRecord(1), `record kept after a ${m} answer`);
+  }
+  mode = "ok";
+  await syncLibrary();
+  assert.ok(!partsRecord(1), "an accepted sync still drops a record whose parts are gone");
+});
+
+test("a refused Radarr answer still counts a multi-part movie's stacked parts as its file", async () => {
+  const dir = fs.mkdtempSync(path.join(process.env.ANIMEARR_CONFIG!, "parts-"));
+  const parts = ["cd1.mkv", "cd2.mkv"].map((f) => path.join(dir, f));
+  for (const p of parts) fs.writeFileSync(p, "x");
+  db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(1, JSON.stringify({ parts }), Date.now());
+  mode = "partial"; // returns movie 1 (hasFile false in Radarr's eyes) and holds the removal of 2 and 3
+  await syncLibrary();
+  assert.equal(hasFile(1), 1);
+  assert.ok(partsRecord(1));
+  mode = "ok";
 });

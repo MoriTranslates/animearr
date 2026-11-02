@@ -316,12 +316,13 @@ async function syncRadarr(full: boolean, res: SyncResult) {
     s.animeProfileIds.includes(m.qualityProfileId) ||
     (!roots.length && !s.animeProfileIds.length && (m.genres ?? []).includes("Animation") && m.originalLanguage?.name === "Japanese");
   let n = 0;
+  let held: string | null = null;
   tx(cache, () => {
     // Movies no longer in Radarr go (native movies, added in AnimeArr, always stay); a mass removal waits, see heldRemoval.
     const keep = new Set(movies.map((m) => m.id));
     const prev = (cache.prepare(`SELECT id FROM movies WHERE id < ${NATIVE_BASE}`).all() as { id: number }[]).map((r) => r.id);
     const gone = prev.filter((id) => !keep.has(id));
-    const held = heldRemoval("Radarr", "movies", prev.length, gone.length, full, null);
+    held = heldRemoval("Radarr", "movies", prev.length, gone.length, full, null);
     if (held) res.errors.push(held);
     else {
       for (const id of gone) cache.prepare("DELETE FROM movies WHERE id = ?").run(id);
@@ -380,10 +381,11 @@ async function syncRadarr(full: boolean, res: SyncResult) {
   // Multi-part movies AnimeArr imported: Radarr doesn't see stacked parts, so its "no file" doesn't count.
   for (const r of db.prepare("SELECT movie_id, file FROM movie_parts").all() as { movie_id: number; file: string }[]) {
     const parts = ((JSON.parse(r.file) as { parts?: string[] }).parts ?? []).map((p) => localPath(p));
-    // Parts deleted or replaced (or Radarr has its own file now): the record goes.
+    // Parts deleted or replaced (or Radarr has its own file now): the record goes, but only after an answer the sync
+    // accepted. A held (suspect) answer never deletes it: the record is AnimeArr's own and can't be rebuilt.
     const has = cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(r.movie_id) as { has_file: number } | undefined;
     if (has?.has_file || !parts.length || parts.some((p) => !p || !fs.existsSync(p))) {
-      db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
+      if (!held) db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
       continue;
     }
     cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ? AND has_file = 0").run(r.file, r.movie_id);
