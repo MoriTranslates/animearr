@@ -375,8 +375,9 @@ export function parseRelease(input: string): ParsedRelease {
   const raw = input;
   let s = stripDecorations(input);
 
-  // Path → last component (manual-import file names).
-  if (/[\\/]/.test(s)) s = s.split(/[\\/]/).filter(Boolean).pop() ?? s;
+  // Path → last component (manual-import file names). Only a real path counts: a backslash, or a leading "/", "./",
+  // "../", "~/" or drive letter. A bare "/" is part of the title ("Fate/Zero", "22/7") or a bracket ("[1080p / HEVC]").
+  if (/\\/.test(s) || /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(s)) s = s.split(/[\\/]/).filter(Boolean).pop() ?? s;
 
   // CJK brackets → square brackets; full-width spaces.
   s = s.replace(/【/g, "[").replace(/】/g, "]").replace(/　/g, " ");
@@ -692,6 +693,8 @@ export function parseRelease(input: string): ParsedRelease {
   // ---- title
   let title = s.slice(0, titleEnd);
   title = title.replace(/\[[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ");
+  // "Shingeki no Kyojin / Attack on Titan": a spaced slash separates two names; the last one is the title, as before.
+  title = title.split(/\s\/\s/).pop()!;
   // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go.
   title = cleanSpaces(title)
     .replace(/[\s\-–~|:,.]+$/, "")
