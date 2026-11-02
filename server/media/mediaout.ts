@@ -18,14 +18,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { logDecision } from "./system/activity.js";
-import { cache, db } from "./system/db.js";
-import { enrichEpisodes, ffmpegFrame, type MetaDeps } from "./metadata/episodemeta.js";
-import { allowedImage } from "./metadata/img.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db } from "../system/db.js";
+import { enrichEpisodes, ffmpegFrame, type MetaDeps } from "../metadata/episodemeta.js";
+import { allowedImage } from "../metadata/img.js";
 import { notifyMediaServers } from "./mediaservers.js";
-import { mappedPath } from "./system/paths.js";
+import { mappedPath } from "../system/paths.js";
 import { notifyPlex } from "./plex.js";
-import { getSettings, underAllowedRoot } from "./system/settings.js";
+import { getSettings, underAllowedRoot } from "../system/settings.js";
 
 export const MARKER = "Written by AnimeArr";
 const NOTE = `${MARKER}. Delete this line to keep your own edits; AnimeArr then leaves the file alone.`;

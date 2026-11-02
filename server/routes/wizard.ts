@@ -14,8 +14,8 @@ import {
   testIndexer,
 } from "../system/connectionsAdmin.js";
 import { connectionsOverview, invalidateConnections } from "../system/connections.js";
-import { testPlex } from "../plex.js";
-import { testEmbyLike, testKodi } from "../mediaservers.js";
+import { testPlex } from "../media/plex.js";
+import { testEmbyLike, testKodi } from "../media/mediaservers.js";
 import { CONFIG_DIR } from "../system/db.js";
 import { testProwlarr } from "../arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "../arr/radarr.js";

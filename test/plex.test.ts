@@ -9,7 +9,7 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/system/settings.js");
-const { toPlexPath, sectionFor, notifyPlex, flush } = await import("../server/plex.js");
+const { toPlexPath, sectionFor, notifyPlex, flush } = await import("../server/media/plex.js");
 
 const sections = [
   { key: "1", title: "Anime", type: "show", locations: ["/data/Anime"] },
@@ -44,7 +44,7 @@ test("notify: nothing unless switched on; then one scan per folder, batched", as
 });
 
 test("notify: more folders than the bulk limit scan each library once", async () => {
-  const { BULK_SCAN_FOLDERS } = await import("../server/plex.js");
+  const { BULK_SCAN_FOLDERS } = await import("../server/media/plex.js");
   const calls: string[] = [];
   const deps = { sections: async () => sections, refresh: async (k: string, p?: string) => void calls.push(`${k}:${p ?? "*"}`) };
   const many = Array.from({ length: BULK_SCAN_FOLDERS + 1 }, (_, i) => `/media/Anime/Show ${i}`);

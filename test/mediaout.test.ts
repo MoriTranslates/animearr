@@ -11,9 +11,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings, updateSettings, publicSettings } = await import("../server/system/settings.js");
 const { tvshowNfo, episodeNfo, seasonNfo, plexmatch, plainText, syncSeriesFiles, MARKER, realWriteDeps } =
-  await import("../server/mediaout.js");
+  await import("../server/media/mediaout.js");
 const { embyRequest, kodiRequest, testEmbyLike, testKodi, notifyMediaServers, flushMediaServers } =
-  await import("../server/mediaservers.js");
+  await import("../server/media/mediaservers.js");
 const { renderSeriesFolder, serverIdHint } = await import("../server/import/naming.js");
 
 const show = {
@@ -196,7 +196,7 @@ test("notify: only enabled servers, mapped paths, batched; secrets stay masked",
 
 test("from AnimeArr's catalog: a show's files are written only inside an allowed root and only when switched on", async () => {
   const { cache, db } = await import("../server/system/db.js");
-  const { syncSeriesMetadata, afterLibraryChange } = await import("../server/mediaout.js");
+  const { syncSeriesMetadata, afterLibraryChange } = await import("../server/media/mediaout.js");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-lib-"));
   const showDir = path.join(root, "Frieren (2023)", "Season 01");
   fs.mkdirSync(showDir, { recursive: true });
@@ -240,8 +240,8 @@ test("from AnimeArr's catalog: a show's files are written only inside an allowed
 });
 
 test("notify: a big batch of folders asks each server for one library scan; a small one stays per folder", async () => {
-  const { BULK_SCAN_FOLDERS } = await import("../server/plex.js");
-  const { scanFolders } = await import("../server/mediaservers.js");
+  const { BULK_SCAN_FOLDERS } = await import("../server/media/plex.js");
+  const { scanFolders } = await import("../server/media/mediaservers.js");
   patchSettings((s) => ({
     ...s,
     jellyfin: { url: "http://jf:8096", apiKey: "k3y", enabled: true, pathMappings: [] },

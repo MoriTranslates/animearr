@@ -34,7 +34,7 @@ import { burnedInFiles } from "./import/fileMarks.js";
 import { isLocked } from "./search/qualityLocks.js";
 import { LOCK_TAG } from "./core/quality.js";
 import { liveFixesFor, type Fix } from "./system/fixes.js";
-import { afterLibraryChange } from "./mediaout.js";
+import { afterLibraryChange } from "./media/mediaout.js";
 
 /** "wrong-lang": a managed show's file that fails the language check (and isn't kept as is): wanted like a missing one. */
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang";

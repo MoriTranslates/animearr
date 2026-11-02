@@ -35,7 +35,7 @@ import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } fr
 import { rematerializeMovie, rematerializeSeries } from "../native.js";
 import { isNativeMovieId, isNativeSeriesId } from "../nativeIds.js";
 import { localPath, mappedPath } from "../system/paths.js";
-import { afterLibraryChange } from "../mediaout.js";
+import { afterLibraryChange } from "../media/mediaout.js";
 import { identifyContext, seriesByTvdb } from "../search/search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "../system/settings.js";
 import { fileForMovie, movieSubtitles } from "../core/movieTitle.js";
