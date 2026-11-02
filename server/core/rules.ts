@@ -31,14 +31,15 @@ const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 /**
  * User regexes run with a time limit. The static check above can't catch every runaway pattern ("((a+))+$",
  * "(a|a)*b" backtrack exponentially), and JavaScript has no regex timeout, so the match runs as a vm script with one.
- * A term that hits the limit is remembered and from then on treated as not matching, so it costs the limit only once.
+ * A term that hits the limit is remembered and never run again ("couldn't check": null), so it costs the limit only
+ * once. applyRules fails closed on it: a must-not term blocks, a must term is missing, a preferred term scores nothing.
  */
 const REGEX_LIMIT_MS = 50;
 const regexRun = new vm.Script("re.test(title)");
 const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
 const runaway = new Set<string>();
-function guardedTest(term: string, re: RegExp, title: string): boolean {
-  if (runaway.has(term)) return false;
+function guardedTest(term: string, re: RegExp, title: string): boolean | null {
+  if (runaway.has(term)) return null;
   regexCtx.re = re;
   regexCtx.title = title;
   try {
@@ -46,14 +47,21 @@ function guardedTest(term: string, re: RegExp, title: string): boolean {
   } catch (e) {
     if ((e as { code?: string }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
     runaway.add(term);
-    return false;
+    return null;
   } finally {
     regexCtx.title = "";
   }
 }
 
-/** A term as a matcher, or an error message in plain words. */
-export function compileTerm(raw: string): { test: (title: string) => boolean } | { error: string } {
+/** Told once per term, the first time a rule's term takes too long (the search layer writes the warning). */
+let onRunaway: (rule: string, term: string) => void = () => {};
+export function setRunawayReporter(fn: (rule: string, term: string) => void) {
+  onRunaway = fn;
+}
+const reported = new Set<string>();
+
+/** A term as a matcher (true / false, or null when it took too long to check), or an error message in plain words. */
+export function compileTerm(raw: string): { test: (title: string) => boolean | null } | { error: string } {
   const term = raw.trim();
   if (!term) return { error: "A term can't be empty" };
   if (term.length > MAX_TERM) return { error: `A term can be at most ${MAX_TERM} characters` };
@@ -106,25 +114,32 @@ export function applyRules(title: string, rules: ReleaseRule[]): RuleVerdict {
   const matches: RuleVerdict["matches"] = [];
   for (const r of rules) {
     if (!r.enabled) continue;
+    // true / false, or null when a regex took too long to check (reported once per term).
+    const check = (t: string) => {
+      const c = compileTerm(t);
+      const v = "test" in c ? c.test(title) : false;
+      if (v === null && !reported.has(t)) {
+        reported.add(t);
+        onRunaway(r.name, t);
+      }
+      return v;
+    };
     let blocked: string | null = null;
     if (r.must.length) {
-      const hit = r.must.some((t) => {
-        const c = compileTerm(t);
-        return "test" in c && c.test(title);
-      });
+      const hit = r.must.some((t) => check(t) === true);
       if (!hit) blocked = `lacks any of ${r.must.map((t) => `'${t}'`).join(", ")}`;
     }
     if (!blocked) {
+      // Fails closed: a term that couldn't be checked counts as present.
+      let slow = false;
       const bad = r.mustNot.find((t) => {
-        const c = compileTerm(t);
-        return "test" in c && c.test(title);
+        const v = check(t);
+        slow = v === null;
+        return v !== false;
       });
-      if (bad) blocked = `contains '${bad}'`;
+      if (bad) blocked = `contains '${bad}'${slow ? " (took too long to check)" : ""}`;
     }
-    const preferred = r.preferred.filter((p) => {
-      const c = compileTerm(p.term);
-      return "test" in c && c.test(title);
-    });
+    const preferred = r.preferred.filter((p) => check(p.term) === true);
     matches.push({ rule: r.name, blocked, preferred: preferred.map((p) => ({ term: p.term, score: p.score })) });
     if (blocked) reject ??= `Blocked by release rule '${r.name}': ${blocked}`;
     else

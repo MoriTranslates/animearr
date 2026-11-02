@@ -5,11 +5,23 @@
  */
 import crypto from "node:crypto";
 import { logDecision } from "../system/activity.js";
-import { applyRules, cleanTerms, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
+import { applyRules, cleanTerms, setRunawayReporter, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
 import { db, dbState, tx } from "../system/db.js";
 import { tagRows, tagsOf, type TagKind } from "../library/tags.js";
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+// A regex term that took too long is already handled safely by core/rules.ts (it fails closed); say so once.
+setRunawayReporter((rule, term) => {
+  const why = `Release rule "${rule}": the regular expression ${term} took too long to check, so it is treated as blocking (must not contain) or missing (must contain). Simplify it.`;
+  console.warn(why);
+  try {
+    logDecision("rule", { why });
+  } catch (e) {
+    // Harmless to lose: the release was already blocked, and the warning above reached the log.
+    console.warn(`(could not add it to Activity: ${(e as Error).message})`);
+  }
+});
 
 interface Row {
   id: string;

@@ -53,7 +53,7 @@ test("invalid regular expressions are refused with a clear message, and runaway 
   assert.equal(listRules().length, 0, "nothing saved");
 });
 
-test("a runaway regex the static check misses can't hang the server: it is cut off and then treated as not matching", () => {
+test("a runaway regex the static check misses can't hang the server, and it fails closed", () => {
   // Both pass the nested-repeat check, and both backtrack exponentially (30 characters: seconds; a long title: forever).
   const runaway = ["/((a+))+$/", "/(a|a)*b/"];
   for (const t of runaway) assert.ok("test" in compileTerm(t), `${t} passes the static check`);
@@ -64,9 +64,35 @@ test("a runaway regex the static check misses can't hang the server: it is cut o
   for (let i = 0; i < 20; i++) applyRules(title, [r]); // later calls skip the term at once
   const ms = Date.now() - t0;
   assert.ok(ms < 1500, `took ${ms} ms`);
-  assert.equal(first.reject, null);
+  // Must not contain: a term that couldn't be checked counts as present, so the release stays blocked.
+  assert.match(first.reject ?? "", /Blocked by release rule 'Rule': contains '\/\(\(a\+\)\)\+\$\/' \(took too long to check\)/);
+  // Must contain: it counts as absent, so the release is blocked too.
+  assert.match(applyRules(title, [rule({ must: ["/((a+))+$/"] })]).reject ?? "", /lacks any of/);
+  // Preferred: it scores nothing; other preferred terms still count.
+  const pref = applyRules(title, [
+    rule({
+      preferred: [
+        { term: "/(a|aa)+$/", score: 5 },
+        { term: "aaa", score: 2 },
+      ],
+    }),
+  ]);
+  assert.equal(pref.reject, null);
+  assert.equal(pref.score, 2);
   // Ordinary regexes keep working, also after a runaway one was cut off.
   assert.notEqual(applyRules("Show 1080p x265", [rule({ mustNot: ["/x26[45]/"] })]).reject, null);
+  assert.equal(applyRules("Show 1080p x264", [rule({ mustNot: ["/x265/"] })]).reject, null);
+});
+
+test("the first time a rule's term takes too long, one warning names the rule and the term", () => {
+  const term = "/((b+))+$/";
+  const saved = saveRule(null, { name: "Slow rule", mustNot: [term] });
+  const before = (db.prepare("SELECT COUNT(*) AS n FROM decisions WHERE kind = 'rule' AND why LIKE ?").get(`%${term}%`) as { n: number }).n;
+  for (let i = 0; i < 3; i++) assert.ok(testRules("b".repeat(30) + "!").rejected);
+  const rows = db.prepare("SELECT why FROM decisions WHERE kind = 'rule' AND why LIKE ?").all(`%${term}%`) as { why: string }[];
+  assert.equal(rows.length - before, 1, JSON.stringify(rows));
+  assert.match(rows.at(-1)!.why, /Slow rule/);
+  deleteRule(saved.id);
 });
 
 test("must: the name needs at least one of the terms; mustNot: none may appear", () => {
