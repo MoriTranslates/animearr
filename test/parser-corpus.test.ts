@@ -322,6 +322,28 @@ test("remakes: a weak rival (a sequel reached only through the franchise) doesn'
     const cands = ctxOf(library).index.lookup("Hunter x Hunter");
     assert.ok(cands[0].score > cands[1].score, JSON.stringify(cands.map((c) => [c.tvdbId, c.score])));
   }
+  // An episode only the remake has ("- 120": the 1999 series has 62) goes to the remake, above the auto threshold.
+  const sized = (t: number) =>
+    Array.from({ length: t === 1 ? 62 : 148 }, (_, i) => ({
+      id: t * 1000 + i + 1,
+      season: 1,
+      episode: i + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  for (const library of [
+    [lib(2, "Hunter x Hunter (2011)", ["Hunter x Hunter"]), lib(1, "Hunter x Hunter")],
+    [lib(1, "Hunter x Hunter"), lib(2, "Hunter x Hunter (2011)", ["Hunter x Hunter"])],
+  ]) {
+    const ctx = { index: new AliasIndex({ library }), now: Date.parse("2026-11-02T00:00:00Z"), episodesFor: sized };
+    const late = identify("[Group] Hunter x Hunter - 120 [1080p]", ctx);
+    assert.equal(late.candidate?.tvdbId, 2, late.summary);
+    assert.equal(late.resolution?.confidence, 83, late.summary);
+    assert.equal(identify("[Group] Hunter x Hunter - 05 [1080p]", ctx).candidate?.tvdbId, 1);
+  }
 });
 
 test("multi-episode files keep every episode, not just the first two", () => {
