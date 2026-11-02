@@ -11,6 +11,8 @@ import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { recycleSetting } from "../import/recycle.js";
+import { movePathRows } from "../import/pathRows.js";
+import { keyOf } from "../system/paths.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "../import/mediafiles.js";
 import { catalogLookup, entriesForSeries } from "../metadata/catalog.js";
@@ -719,12 +721,25 @@ export async function deleteEpisodeFiles(
       await deps.deleteFile(ep.episodeFileId);
       done.add(ep.episodeFileId);
       deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
+      // Its per-file rows (track corrections, burned-in mark, release details) go to the bin with it: kept, and a new
+      // file at this name won't inherit them. Sonarr's bin keeps the show folder (<bin>/<show folder>/…). No bin (gone
+      // for good) or a bin Sonarr didn't tell: the rows stay where they are.
+      let rowsNote = "";
+      if (bin?.configured && bin.path) {
+        const show = keyOf(s.path);
+        const binned = `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`;
+        try {
+          movePathRows(f.path, binned);
+        } catch (e) {
+          rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
+        }
+      }
       logDecision("info", {
         tvdbId,
         title: s.title,
         episodeIds: sharing.length ? sharing.map((x) => x.id) : [eid],
         release: f.sceneName ?? null,
-        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.`,
+        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.${rowsNote}`,
         detail: { kind: "delete", fileId: ep.episodeFileId, path: f.path },
       });
     } catch (e) {
