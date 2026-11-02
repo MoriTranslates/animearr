@@ -7,7 +7,7 @@ import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, 
 import { Ring } from "../posters";
 import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, usePoll, useToast } from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { TagPicker } from "../rules";
@@ -85,12 +85,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
 
   // Poll while something is downloading so status moves on by itself.
   const downloading = d.data?.rows.some((r) => r.status === "downloading");
-  useEffect(() => {
-    if (!downloading) return;
-    const id = setInterval(() => void d.reload(), 10_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [downloading]);
+  usePoll(d.reload, 10_000, !!downloading);
 
   const h = d.data?.header;
   const dryRun = status.data?.dryRun ?? true;

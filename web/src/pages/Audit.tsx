@@ -338,12 +338,38 @@ interface RecycleItem { path: string; series: string | null; tvdbId: number | nu
 function OwnBin() {
   const toast = useToast();
   const [ask, setAsk] = useState(false);
-  const d = useLoad(() => api<{ path: string; days: number; error: string | null; files: number; bytes: number; nextPurge: number | null; oldest: number | null }>("/recycle/animearr"), []);
+  const d = useLoad(() => api<{ path: string; days: number; error: string | null; files: number; bytes: number; nextPurge: number | null; oldest: number | null; pinned?: { path: string; why: string; at: number; exists: boolean }[] }>("/recycle/animearr"), []);
   if (!d.data) return null;
   const b = d.data;
   return (
     <div className="card pad stack">
       <h3>{t("bin.title")}</h3>
+      {!!b.pinned?.length && (
+        <div className="banner warn stack">
+          <strong>{t("bin.pinnedTitle", { n: b.pinned.length })}</strong>
+          {b.pinned.map((p) => (
+            <div key={p.path} className="stack">
+              <p className="mono small">{p.path}</p>
+              <p className="small">{p.why}</p>
+              {!p.exists && <p className="muted small">{t("bin.pinnedGone")}</p>}
+              <button
+                type="button"
+                className="small self-start"
+                onClick={async () => {
+                  try {
+                    await api("/recycle/animearr/unpin", { body: { path: p.path } });
+                    await d.reload();
+                  } catch (e) {
+                    toast((e as Error).message, true);
+                  }
+                }}
+              >
+                {t("bin.unpin")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {b.error ? (
         <p className="warn-text small">{b.error}</p>
       ) : (

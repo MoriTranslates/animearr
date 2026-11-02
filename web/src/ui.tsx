@@ -550,6 +550,42 @@ export function dateTime(ms: number) {
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Runs fn every `ms` while `enabled`, and only while the page is visible: a hidden tab stops polling, and coming back
+ * after at least one period refreshes at once. Always calls the latest fn (no stale closures).
+ */
+export function usePoll(fn: () => unknown, ms: number, enabled = true) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    if (!enabled) return;
+    let id: ReturnType<typeof setInterval> | undefined;
+    let last = Date.now();
+    const run = () => {
+      last = Date.now();
+      void ref.current();
+    };
+    const start = () => {
+      if (id === undefined) id = setInterval(run, ms);
+    };
+    const stop = () => {
+      if (id !== undefined) clearInterval(id);
+      id = undefined;
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") return stop();
+      if (Date.now() - last >= ms) run();
+      start();
+    };
+    if (document.visibilityState !== "hidden") start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [ms, enabled]);
+}
+
 /** Simple async loader: data, error, reload. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);

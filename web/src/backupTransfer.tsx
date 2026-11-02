@@ -13,6 +13,25 @@ export function BackupTransfer() {
   const [busy, setBusy] = useState(false);
   const [staged, setStaged] = useState<Staged | null>(null);
   const [pw, setPw] = useState("");
+  const [asking, setAsking] = useState(false);
+  // The file holds the key to every saved password, so downloading it needs the password too (also on the home network).
+  const download = async () => {
+    const res = await fetch(`${BASE}/api/system/backup/download`, { method: "POST", headers: { "X-AnimeArr": "1", "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }), credentials: "same-origin" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      toast(humanError(data.error ?? res.statusText), true);
+      return;
+    }
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "animearr-backup.tar.gz";
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    setPw("");
+    setAsking(false);
+  };
   const upload = async (file: File) => {
     setBusy(true);
     try {
@@ -34,14 +53,29 @@ export function BackupTransfer() {
       <p className="muted small">{t("bt.help")}</p>
       <p className="banner warn slim small">{t("bt.warn")}</p>
       <div className="row">
-        <a className="button-link small" href={`${BASE}/api/system/backup/download`} download>
+        <button
+          className="small"
+          onClick={() => {
+            setPw("");
+            setAsking(true);
+          }}
+        >
           {t("bt.download")}
-        </a>
+        </button>
         <button className="small" disabled={busy} onClick={() => pick.current?.click()}>
           {busy ? t("bt.checking") : t("bt.upload")}
         </button>
         <input ref={pick} type="file" accept=".gz,.tgz,application/gzip" hidden onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
       </div>
+      {asking && (
+        <Confirm title={t("bt.download")} confirmLabel={t("bt.download")} onClose={() => setAsking(false)} onConfirm={download}>
+          <p>{t("bt.downloadPw")}</p>
+          <label className="field">
+            {t("bt.pw")}
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus />
+          </label>
+        </Confirm>
+      )}
       {staged && (
         <Confirm
           danger

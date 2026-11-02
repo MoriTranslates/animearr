@@ -3,7 +3,7 @@ import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
 import { Link, navigate } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, relTime, Spinner, useLoad, usePageTitle, useToast, Why } from "../ui";
+import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, relTime, Spinner, useLoad, usePageTitle, usePoll, useToast, Why } from "../ui";
 import { ReleaseLine, StateChip } from "./Queue";
 
 const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { waiting: "info", retry: "warn", "would-grab": "accent", grabbed: "good", "gave-up": "bad", done: "good", backlog: "info", replace: "warn" };
@@ -13,11 +13,7 @@ export function Managed({ status }: { status: Status }) {
   const toast = useToast();
   const data = useLoad(() => api<{ dryRun: boolean; backlogOn?: boolean; shows: ManagedShow[]; grabs: Grab[] }>("/managed"), []);
   // Refresh while the page is open, so grabs and imports move on by themselves.
-  useEffect(() => {
-    const id = setInterval(() => void data.reload(), 15_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePoll(data.reload, 15_000);
   const [confirm, setConfirm] = useState<ManagedShow | null>(null);
 
   const shows = data.data?.shows ?? [];

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, BASE } from "./api";
 import { t, type I18nKey } from "./i18n";
-import { Toggle, useToast } from "./ui";
+import { Toggle, usePoll, useToast } from "./ui";
 
 interface Entry { at: number; level: "error" | "warn" | "info" | "debug"; msg: string }
 const LEVELS = ["error", "warn", "info", "debug"] as const;
@@ -27,11 +27,7 @@ export function LogsCard() {
     const h = setTimeout(() => void load(), q ? 250 : 0);
     return () => clearTimeout(h);
   }, [level, q]);
-  useEffect(() => {
-    if (!auto) return;
-    const h = setInterval(() => void load(), 5000);
-    return () => clearInterval(h);
-  }, [auto, level, q]);
+  usePoll(load, 5000, auto);
   useEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
   }, [r]);

@@ -21,7 +21,7 @@ import { Search } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { Show } from "./pages/Show";
 import { Shows } from "./pages/Shows";
-import { ToastProvider, useToast } from "./ui";
+import { ToastProvider, usePoll, useToast } from "./ui";
 import { confirmLeave } from "./unsaved";
 import { applyFont, applyTextScale } from "./appearance";
 import { applySeason, seasonOf } from "./season";
@@ -148,15 +148,13 @@ export function App() {
     window.addEventListener("popstate", onPop);
     window.addEventListener("animearr:auth", onAuth);
     window.addEventListener("animearr:changed", onAuth);
-    // Keeps the Queue badge and banners current.
-    const poll = setInterval(() => document.visibilityState === "visible" && void refreshStatus(), 60_000);
     return () => {
-      clearInterval(poll);
       window.removeEventListener("animearr:changed", onAuth);
       window.removeEventListener("popstate", onPop);
       window.removeEventListener("animearr:auth", onAuth);
     };
   }, [refreshStatus]);
+  usePoll(refreshStatus, 60_000); // keeps the Queue badge and banners current
 
   if (error && !status)
     return (

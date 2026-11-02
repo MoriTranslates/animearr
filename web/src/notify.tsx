@@ -4,7 +4,7 @@ import { Bell as BellIcon } from "lucide-react";
 import { FixButtons } from "./fixes";
 import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
-import { relTime, SecretInput, Toggle, useToast } from "./ui";
+import { relTime, SecretInput, Toggle, usePoll, useToast } from "./ui";
 
 interface BellItem { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer" | "setup"; title: string; body: string; summary?: string | null; read: boolean; resolved?: boolean; action?: boolean; fixes?: import("./api").Fix[] }
 interface Bell { unread: number; needs?: number; items: BellItem[] }
@@ -53,13 +53,15 @@ export function BellButton() {
   const ref = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<{ top: number; right: number }>({ top: 64, right: 16 });
+  const alive = useRef(true);
+  const loadBell = () => api<Bell>("/notifications").then((x) => alive.current && setB(x), () => undefined);
   useEffect(() => {
-    let alive = true;
-    const load = () => api<Bell>("/notifications").then((x) => alive && setB(x), () => undefined);
-    void load();
-    const h = setInterval(load, 60_000);
-    return () => ((alive = false), clearInterval(h));
+    alive.current = true;
+    void loadBell();
+    return () => void (alive.current = false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  usePoll(loadBell, 60_000);
   useEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => e.key === "Escape" && (setOpen(false), btn.current?.focus());
