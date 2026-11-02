@@ -10,9 +10,9 @@ import zlib from "node:zlib";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { getSettings, patchSettings } = await import("../server/settings.js");
-const { BACKUP_DIR, listBackups, userSchemaVersion } = await import("../server/db.js");
-const { createBackup, parseBackup, applyBackup, safetyBackup, tarPack, tarUnpack } = await import("../server/backupTransfer.js");
+const { getSettings, patchSettings } = await import("../server/system/settings.js");
+const { BACKUP_DIR, listBackups, userSchemaVersion } = await import("../server/system/db.js");
+const { createBackup, parseBackup, applyBackup, safetyBackup, tarPack, tarUnpack } = await import("../server/system/backupTransfer.js");
 
 patchSettings((s) => ({ ...s, externalUrl: "http://backup-test.lan" })); // something to find again after a restore
 const sha = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
@@ -44,7 +44,10 @@ test("files that aren't backups, or are damaged, are refused in plain words", as
   await assert.rejects(() => parseBackup(zlib.gzipSync(tarPack([{ name: "x.txt", data: Buffer.from("hi") }]))), /no manifest/);
   await assert.rejects(() => parseBackup(remake(good, (_f, m) => (m.format = "other"))), /isn't an AnimeArr backup/);
   await assert.rejects(() => parseBackup(remake(good, (f) => f.delete("secret.key"))), /missing its database or its secret key/);
-  await assert.rejects(() => parseBackup(remake(good, (f) => f.set("animearr.db", Buffer.concat([f.get("animearr.db")!, Buffer.from("x")])))), /checksum/);
+  await assert.rejects(
+    () => parseBackup(remake(good, (f) => f.set("animearr.db", Buffer.concat([f.get("animearr.db")!, Buffer.from("x")])))),
+    /checksum/,
+  );
   await assert.rejects(() => parseBackup(good.subarray(0, good.length - 40)), /isn't an AnimeArr backup|damaged/);
 });
 
@@ -112,7 +115,10 @@ test("the live database is replaced by a rename, never deleted first; a copy tha
   fs.writeFileSync(paths.db, "old database");
   fs.writeFileSync(paths.key, "old key");
   const broken = { ...good, db: Buffer.from("not a database at all, just text that is long enough".repeat(20)) };
-  assert.throws(() => applyBackup(broken, paths, { safety: () => undefined, closeDb: () => assert.fail("must not close the database") }), /nothing was changed/);
+  assert.throws(
+    () => applyBackup(broken, paths, { safety: () => undefined, closeDb: () => assert.fail("must not close the database") }),
+    /nothing was changed/,
+  );
   assert.equal(fs.readFileSync(paths.db, "utf8"), "old database");
   assert.equal(fs.readFileSync(paths.key, "utf8"), "old key");
   assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key"], "no temporary files left");
@@ -124,7 +130,16 @@ test("a failing safety copy stops the restore before anything changes", async ()
   const paths = { db: path.join(dir, "animearr.db"), key: path.join(dir, "secret.key") };
   fs.writeFileSync(paths.db, "old database");
   fs.writeFileSync(paths.key, "old key");
-  assert.throws(() => applyBackup(good, paths, { safety: () => { throw new Error("disk full"); }, closeDb: () => assert.fail("must not close the database") }), /disk full/);
+  assert.throws(
+    () =>
+      applyBackup(good, paths, {
+        safety: () => {
+          throw new Error("disk full");
+        },
+        closeDb: () => assert.fail("must not close the database"),
+      }),
+    /disk full/,
+  );
   assert.equal(fs.readFileSync(paths.db, "utf8"), "old database");
   assert.equal(fs.readFileSync(paths.key, "utf8"), "old key");
 });

@@ -3,7 +3,7 @@ import { FixDetection, Peek, Verdicts, WatchIn } from "./filetools";
 import { CaptionsOff } from "lucide-react";
 import { api, fmtSize, sxe, type Fix } from "./api";
 import { FixButtons } from "./fixes";
-import { Link, navigate } from "./App";
+import { Link, navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, usePoll, useToast, Why, ReleaseName } from "./ui";
 import { showVars } from "./season";
@@ -13,13 +13,70 @@ import { followAutoJob, outcomeMessage, queuedMessage, useAutoSearching, type Au
 
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang";
 
-export interface FileInfo { id: number; path: string; name: string; size: number | null; quality: string | null; source: string | null; platform: string | null; group: string | null; sceneName: string | null; subs: string[]; audio: string[]; runTime: string | null; resolution: string | null; episodes: string[]; codec?: string | null; scanned?: boolean; lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string }; burnedIn?: string | null; changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null }
+export interface FileInfo {
+  id: number;
+  path: string;
+  name: string;
+  size: number | null;
+  quality: string | null;
+  source: string | null;
+  platform: string | null;
+  group: string | null;
+  sceneName: string | null;
+  subs: string[];
+  audio: string[];
+  runTime: string | null;
+  resolution: string | null;
+  episodes: string[];
+  codec?: string | null;
+  scanned?: boolean;
+  lang?: { state: "ok" | "no" | "unknown"; why: string; code?: string };
+  burnedIn?: string | null;
+  changed?: {
+    fromSize: number | null;
+    toSize: number;
+    codec: string | null;
+    importedAt: string | null;
+    changedAt: number;
+    fromQuality: string | null;
+  } | null;
+}
 export interface EpisodeRow {
-  missingWhy?: string | null; id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null; runtime: number | null; monitored: boolean; status: EpisodeStatus; progress: number | null; file: FileInfo | null; movie?: { movieId: number | null; title: string } | null; special?: { type: string; cls: string } | null; stage?: string | null; ahead?: number | null; attention?: AttentionNote | null; keptWhy?: string | null }
+  missingWhy?: string | null;
+  id: number;
+  season: number;
+  episode: number;
+  absolute: number | null;
+  title: string | null;
+  airUtc: number | null;
+  runtime: number | null;
+  monitored: boolean;
+  status: EpisodeStatus;
+  progress: number | null;
+  file: FileInfo | null;
+  movie?: { movieId: number | null; title: string } | null;
+  special?: { type: string; cls: string } | null;
+  stage?: string | null;
+  ahead?: number | null;
+  attention?: AttentionNote | null;
+  keptWhy?: string | null;
+}
 /** A download that needs you: why, in plain words, and the fixes (server/episodes.ts). */
-export interface AttentionNote { grabId: number; release: string; summary: string; fixes: Fix[] }
+export interface AttentionNote {
+  grabId: number;
+  release: string;
+  summary: string;
+  fixes: Fix[];
+}
 
-const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = { have: "good", missing: "bad", downloading: "accent", unaired: "info", attention: "warn", "wrong-lang": "warn" };
+const TONE: Record<EpisodeStatus, "good" | "bad" | "warn" | "info" | "accent"> = {
+  have: "good",
+  missing: "bad",
+  downloading: "accent",
+  unaired: "info",
+  attention: "warn",
+  "wrong-lang": "warn",
+};
 const ICON: Record<EpisodeStatus, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠", "wrong-lang": "!" };
 
 export const resLabel = (r: string | null) => {
@@ -35,7 +92,18 @@ export function langOf(f: Pick<FileInfo, "subs" | "audio" | "lang"> | null | und
   return f.lang?.state ?? "unknown";
 }
 
-export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | "progress" | "file"> & { id?: number; stage?: string | null; ahead?: number | null; attention?: AttentionNote | null }; lang?: string }) {
+export function StatusPill({
+  e,
+  lang = "en",
+}: {
+  e: Pick<EpisodeRow, "status" | "progress" | "file"> & {
+    id?: number;
+    stage?: string | null;
+    ahead?: number | null;
+    attention?: AttentionNote | null;
+  };
+  lang?: string;
+}) {
   // ⚡ runs in the background: the row says so until its result is in.
   const busy = useAutoSearching().episodes;
   if (e.id !== undefined && busy.has(e.id))
@@ -46,7 +114,8 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
     );
   let label: string = t(`ep.status.${e.status}`);
   if (e.status === "downloading" && e.stage === "importing") label = `⇢ ${t("ep.importing")}`;
-  else if (e.status === "downloading" && e.stage === "waiting") label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
+  else if (e.status === "downloading" && e.stage === "waiting")
+    label = `⇢ ${e.ahead ? t("ep.waitingImportAhead", { n: e.ahead }) : t("ep.waitingImport")}`;
   else if (e.status === "downloading" && e.progress !== null) label += ` ${Math.round(e.progress * 100)}%`;
   // Healthy rows are quiet (a dot and muted words); a colour chip is kept for what needs you.
   const ls = e.file ? langOf(e.file, lang) : "ok";
@@ -57,7 +126,9 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
         <span className="dot good" aria-hidden="true" />
         <span className="sr-only">{t("ep.status.have")}</span>
         {q || <span aria-hidden="true">{t("ep.status.have")}</span>}
-        {e.file && !e.file.subs.includes(lang) && e.file.audio.includes(lang) ? ` · ${t("ep.audioLang", { lang: lang.toUpperCase() })}` : ""}
+        {e.file && !e.file.subs.includes(lang) && e.file.audio.includes(lang)
+          ? ` · ${t("ep.audioLang", { lang: lang.toUpperCase() })}`
+          : ""}
       </span>
     );
   }
@@ -71,17 +142,29 @@ export function StatusPill({ e, lang = "en" }: { e: Pick<EpisodeRow, "status" | 
   if (e.status === "have" && e.file && ls === "unknown")
     return (
       <span className="tag neutral" title={e.file.lang?.why ?? t("ep.status.have")}>
-        <span aria-hidden="true">?</span> {e.file.lang?.code === "untagged" ? t("ep.subsUnknownLang") : t("ep.langUnknownShort", { lang: lang.toUpperCase() })}
+        <span aria-hidden="true">?</span>{" "}
+        {e.file.lang?.code === "untagged" ? t("ep.subsUnknownLang") : t("ep.langUnknownShort", { lang: lang.toUpperCase() })}
       </span>
     );
   if (e.status === "have" && e.file) {
     const code = e.file.lang?.code;
     const L = lang.toUpperCase();
-    const audio = e.file.audio.filter((a) => a !== "und").map((a) => a.toUpperCase()).join("/");
+    const audio = e.file.audio
+      .filter((a) => a !== "und")
+      .map((a) => a.toUpperCase())
+      .join("/");
     return (
       <span className="tag warn" title={e.file.lang?.why ?? t("ep.status.have")}>
         <CaptionsOff className="lucide" aria-hidden="true" />
-        {code === "dub-no-subs" ? t("ep.dubNoSubs", { audio: audio || "?" }) : code === "no-dub" ? t("ep.noDubShort", { lang: L }) : code === "forced-only" ? t("ep.forcedOnly", { lang: L }) : code === "dub-only" ? t("ep.dubOnlyShort") : t("ep.noSubsShort", { lang: L })}
+        {code === "dub-no-subs"
+          ? t("ep.dubNoSubs", { audio: audio || "?" })
+          : code === "no-dub"
+            ? t("ep.noDubShort", { lang: L })
+            : code === "forced-only"
+              ? t("ep.forcedOnly", { lang: L })
+              : code === "dub-only"
+                ? t("ep.dubOnlyShort")
+                : t("ep.noSubsShort", { lang: L })}
       </span>
     );
   }
@@ -110,11 +193,27 @@ export function airLabel(ms: number | null) {
   if (diff === 1) return `${t("cal.tomorrow")} ${time}`;
   if (diff === -1) return `${t("cal.yesterday")} ${time}`;
   if (diff > 1 && diff < 7) return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(diff, "day");
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}),
+  });
 }
 
 /** Whole-card link for a show (poster + title + chevron). Inner controls belong outside it. */
-export function ShowLink({ tvdbId, title, children, className = "", to }: { tvdbId: number | null; title: string; children: ReactNode; className?: string; to?: string }) {
+export function ShowLink({
+  tvdbId,
+  title,
+  children,
+  className = "",
+  to,
+}: {
+  tvdbId: number | null;
+  title: string;
+  children: ReactNode;
+  className?: string;
+  to?: string;
+}) {
   return (
     <Link to={to ?? `/show/${tvdbId}`} className={`card-link ${className}`}>
       {children}
@@ -134,7 +233,13 @@ export function openInteractive(tvdbId: number, ids: number[]) {
   window.dispatchEvent(new CustomEvent("animearr:interactive", { detail: { tvdbId, ids } }));
 }
 
-interface ActionProps { tvdbId: number; episodes: { id: number; label: string; release?: string | null; file?: string | null; fileEpisodes?: string[] }[]; managedLive: boolean; dryRun: boolean; onDone: () => void }
+interface ActionProps {
+  tvdbId: number;
+  episodes: { id: number; label: string; release?: string | null; file?: string | null; fileEpisodes?: string[] }[];
+  managedLive: boolean;
+  dryRun: boolean;
+  onDone: () => void;
+}
 
 export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDone }: ActionProps) {
   const toast = useToast();
@@ -149,7 +254,9 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
       if (r.episodes) toast(queuedMessage(r));
       followAutoJob(r.jobId, (job) => {
         const o = outcomeMessage(job);
-        toast(o.msg, o.error, o.look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, o.look) } : undefined, { kind: o.got ? "grab" : "success" });
+        toast(o.msg, o.error, o.look.length ? { label: t("auto.openList"), run: () => openInteractive(tvdbId, o.look) } : undefined, {
+          kind: o.got ? "grab" : "success",
+        });
         onDone();
       });
     } catch (e) {
@@ -172,7 +279,9 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
           onClose={() => setDialog(null)}
           onConfirm={async () => {
             try {
-              const r = await api<{ results: { outcome: string }[] }>("/episodes/regrab", { body: { tvdbId, episodeIds: ids, confirm: true } });
+              const r = await api<{ results: { outcome: string }[] }>("/episodes/regrab", {
+                body: { tvdbId, episodeIds: ids, confirm: true },
+              });
               toast(r.results.map((x) => x.outcome).join(" · "));
               setDialog(null);
               onDone();
@@ -181,7 +290,9 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
             }
           }}
         >
-          <p>{one?.release ? t("ep.regrabBody", { release: one.release }) : one?.file ? t("ep.regrabUnknown") : t("ep.regrabBodyNoFile")}</p>
+          <p>
+            {one?.release ? t("ep.regrabBody", { release: one.release }) : one?.file ? t("ep.regrabUnknown") : t("ep.regrabBodyNoFile")}
+          </p>
           {dryRun && <p className="warn-text">{t("ep.regrabDry")}</p>}
         </Confirm>
       )}
@@ -193,8 +304,14 @@ export function useEpisodeActions({ tvdbId, episodes, managedLive, dryRun, onDon
           onClose={() => setDialog(null)}
           onConfirm={async () => {
             try {
-              const r = await api<{ deleted: unknown[]; skipped: { why: string }[]; affected: number[]; askSearch: boolean }>("/episodes/delete", { body: { tvdbId, episodeIds: ids, confirm: true } });
-              toast(t("ep.deleted", { n: r.deleted.length }) + (r.skipped.length ? ` · ${r.skipped.map((x) => x.why).join("; ")}` : ""), r.deleted.length === 0);
+              const r = await api<{ deleted: unknown[]; skipped: { why: string }[]; affected: number[]; askSearch: boolean }>(
+                "/episodes/delete",
+                { body: { tvdbId, episodeIds: ids, confirm: true } },
+              );
+              toast(
+                t("ep.deleted", { n: r.deleted.length }) + (r.skipped.length ? ` · ${r.skipped.map((x) => x.why).join("; ")}` : ""),
+                r.deleted.length === 0,
+              );
               setAfterIds(r.affected);
               setDialog(r.askSearch ? "searchAgain" : null);
               onDone();
@@ -271,15 +388,30 @@ const kindWord = (k: string) => kindLabel(k);
  */
 const sourceDiffers = (quality: string, source: string | null) => {
   if (!source) return false;
-  const q = /hdtv|television/i.test(quality) ? "hdtv" : /web/i.test(quality) ? "web" : /blu/i.test(quality) ? "bluray" : /dvd/i.test(quality) ? "dvd" : null;
+  const q = /hdtv|television/i.test(quality)
+    ? "hdtv"
+    : /web/i.test(quality)
+      ? "web"
+      : /blu/i.test(quality)
+        ? "bluray"
+        : /dvd/i.test(quality)
+          ? "dvd"
+          : null;
   return !!q && q !== source.toLowerCase().replace("-", "");
 };
 /** "[SubsPlease] Show - 01 (1080p)" → "SubsPlease"; "Show.S01E01.1080p.WEB-ToonsHub" → "ToonsHub". */
-const groupOf = (release: string | null | undefined) => (release ? (/^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:\.\w{2,4})?$/.exec(release)?.[1] ?? null) : null);
+const groupOf = (release: string | null | undefined) =>
+  release ? (/^\[([^\]]+)\]/.exec(release)?.[1] ?? /-([A-Za-z0-9]+)(?:\.\w{2,4})?$/.exec(release)?.[1] ?? null) : null;
 /** "ToonsHub · WEB · 1080p" from a release name (the name itself is a detail). */
 function releaseBits(release: string) {
   const res = /\b(2160|1080|720|480)p\b/i.exec(release)?.[1];
-  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release) ? "Blu-ray" : /\bWEB(-?DL|Rip)?\b/i.test(release) ? "WEB" : /\bHDTV\b/i.test(release) ? "TV" : null;
+  const src = /\b(BD|Blu-?Ray|BDRip)\b/i.test(release)
+    ? "Blu-ray"
+    : /\bWEB(-?DL|Rip)?\b/i.test(release)
+      ? "WEB"
+      : /\bHDTV\b/i.test(release)
+        ? "TV"
+        : null;
   return [groupOf(release), src, res ? `${res}p` : null].filter(Boolean).join(" · ");
 }
 /**
@@ -296,7 +428,9 @@ function SubsLine({ d, lang }: { d: Detail; lang: string }) {
   const all = tracks ? [...own.map((x) => x.lang), ...side.map((x) => x.lang)] : (d.file?.subs ?? []);
   // Japanese first (the original), then the rest. A streaming release can carry 25+ languages: show two and a
   // "+N more" that opens the full list in place.
-  const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))].sort((a, b) => Number(b === "ja") - Number(a === "ja"));
+  const others = [...new Set(all.filter((x): x is string => !!x && x !== lang && x !== "und"))].sort(
+    (a, b) => Number(b === "ja") - Number(a === "ja"),
+  );
   const long = others.length > 3;
   const list = (
     <>
@@ -318,14 +452,34 @@ function SubsLine({ d, lang }: { d: Detail; lang: string }) {
       {list}
     </>
   ) : null;
-  if (code === "forced-only") return <>{t("ep.subsSigns", { lang: L })}{also}</>;
+  if (code === "forced-only")
+    return (
+      <>
+        {t("ep.subsSigns", { lang: L })}
+        {also}
+      </>
+    );
   if (code === "untagged") return <>{t("ep.subsUnlabelled")}</>;
-  const full = tracks ? own.some((x) => x.lang === lang && !x.partial) || side.some((x) => x.lang === lang) : (d.file?.subs ?? []).includes(lang);
-  if (full) return <>{t("ep.subsFull", { lang: L })}{also}</>;
+  const full = tracks
+    ? own.some((x) => x.lang === lang && !x.partial) || side.some((x) => x.lang === lang)
+    : (d.file?.subs ?? []).includes(lang);
+  if (full)
+    return (
+      <>
+        {t("ep.subsFull", { lang: L })}
+        {also}
+      </>
+    );
   if (!all.length) return <>{t("ep.subsNone")}</>;
   // "No English (has Indonesian, Thai +12 more)": the list goes where {langs} sits.
   const [pre, post = ""] = t("ep.subsNoTarget", { lang: L, langs: "\u0000" }).split("\u0000");
-  return <>{pre}{list}{post}</>;
+  return (
+    <>
+      {pre}
+      {list}
+      {post}
+    </>
+  );
 }
 /** "English", "Japanese + English", "1 track, language unknown". */
 function trackAudio(d: Detail) {
@@ -335,22 +489,27 @@ function trackAudio(d: Detail) {
   const unknown = a.length - known.length;
   return [...known, ...(unknown ? [t("ep.tracksUnknown", { n: unknown })] : [])].join(" + ");
 }
-/** "none", "English (signs only)", "1 track, language unknown (ASS)". */
-function trackSubs(d: Detail) {
-  const s = d.own?.subs ?? [];
-  const side = d.own?.sidecars ?? [];
-  if (!s.length && !side.length) return d.file?.subs.length ? d.file.subs.map((x) => langName(x)).join(", ") : t("ep.tracksNone");
-  const parts = s.map((x) => (x.lang ? `${langName(x.lang)}${x.partial ? ` (${t("ep.signsOnly")})` : ""}` : `${t("ep.tracksUnknown", { n: 1 })} (${(x.codec ?? "?").toUpperCase()})`));
-  for (const x of side) parts.push(`${x.lang ? langName(x.lang) : t("ep.tracksUnknown", { n: 1 })} (${t("ep.sidecar")})`);
-  return parts.join(", ");
-}
 
 interface Detail extends EpisodeRow {
   art?: { cover: string | null; banner: string | null; color: string | null };
-  own?: { audio: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; channels: number | null }[]; subs: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; partial: boolean }[]; sidecars: { file: string; lang: string | null }[] } | null;
+  own?: {
+    audio: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; channels: number | null }[];
+    subs: { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; partial: boolean }[];
+    sidecars: { file: string; lang: string | null }[];
+  } | null;
   tvdbId: number;
   seriesTitle: string;
-  grabs: { id: number; at: number; release: string; protocol: string; state: string; dry_run: number; why: string; error: string | null; progress: number | null }[];
+  grabs: {
+    id: number;
+    at: number;
+    release: string;
+    protocol: string;
+    state: string;
+    dry_run: number;
+    why: string;
+    error: string | null;
+    progress: number | null;
+  }[];
   activity: { id: number; at: number; kind: string; why: string; summary?: string | null; resolved?: boolean }[];
   verify: { at: number; ok: boolean; why: string } | null;
   currentRelease: string | null;
@@ -358,7 +517,23 @@ interface Detail extends EpisodeRow {
   seadex?: "best" | "alt" | null;
 }
 
-export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = false, dryRun = true, lang = "en", focus }: { episodeId: number; onClose: () => void; onChanged?: () => void; managedLive?: boolean; dryRun?: boolean; lang?: string; focus?: "fix" }) {
+export function EpisodeSheet({
+  episodeId,
+  onClose,
+  onChanged,
+  managedLive = false,
+  dryRun = true,
+  lang = "en",
+  focus,
+}: {
+  episodeId: number;
+  onClose: () => void;
+  onChanged?: () => void;
+  managedLive?: boolean;
+  dryRun?: boolean;
+  lang?: string;
+  focus?: "fix";
+}) {
   const toast = useToast();
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -403,9 +578,23 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
   dialogOpen.current = actions.open;
   return (
     <div className="sheet-back" onClick={onClose}>
-      <div className="sheet card" role="dialog" aria-modal="true" aria-label={t("ep.details")} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div
+        className="sheet card"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("ep.details")}
+        tabIndex={-1}
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="sh-hero" style={showVars(d?.art?.color)}>
-          {(d?.art?.banner || d?.art?.cover) && <span className="sh-art" style={{ backgroundImage: `url(${thumbUrl((d.art.banner ?? d.art.cover)!, d.art.banner ? "xl" : "md")})` }} aria-hidden="true" />}
+          {(d?.art?.banner || d?.art?.cover) && (
+            <span
+              className="sh-art"
+              style={{ backgroundImage: `url(${thumbUrl((d.art.banner ?? d.art.cover)!, d.art.banner ? "xl" : "md")})` }}
+              aria-hidden="true"
+            />
+          )}
           <div className="sheet-grip" aria-hidden="true" />
           <button className="icon sh-close" aria-label={t("common.close")} onClick={onClose}>
             ✕
@@ -420,7 +609,16 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                   </Link>
                 </span>
               )}
-              {d ? " · " + [d.season === 0 ? t("series.specials") : t("common.season", { n: d.season }), t("ep.episodeN", { n: d.episode }), d.airUtc ? new Date(d.airUtc).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null].filter(Boolean).join(" · ") : ""}
+              {d
+                ? " · " +
+                  [
+                    d.season === 0 ? t("series.specials") : t("common.season", { n: d.season }),
+                    t("ep.episodeN", { n: d.episode }),
+                    d.airUtc ? new Date(d.airUtc).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : ""}
             </span>
             <h2>{d ? (d.title ?? label) : ""}</h2>
           </div>
@@ -433,7 +631,11 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               <StatusPill e={d} lang={lang} />
               <span className="muted small">
                 {/* A file before the listed date: streaming sites often release a week before the TV broadcast that TVDB lists. */}
-                {d.airUtc && d.airUtc > Date.now() ? (d.file ? t("ep.outEarly", { when: dateTime(d.airUtc) }) : `${t("ep.airs")} ${dateTime(d.airUtc)}`) : `${t("ep.aired")} ${d.airUtc ? dateTime(d.airUtc) : "—"}`}
+                {d.airUtc && d.airUtc > Date.now()
+                  ? d.file
+                    ? t("ep.outEarly", { when: dateTime(d.airUtc) })
+                    : `${t("ep.airs")} ${dateTime(d.airUtc)}`
+                  : `${t("ep.aired")} ${d.airUtc ? dateTime(d.airUtc) : "—"}`}
               </span>
             </div>
             {d.attention && (
@@ -456,35 +658,36 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
             {d.keptWhy && <p className="muted small">{t("ep.keptWrongLang", { why: d.keptWhy })}</p>}
             {d.movie && (
               <p className="banner info">
-                🎬 {t("ep.isMovie", { title: d.movie.title })} {d.movie.movieId ? <Link to={`/movie/${d.movie.movieId}`}>{t("ep.openMovie")} →</Link> : t("ep.addInRadarr")}
+                🎬 {t("ep.isMovie", { title: d.movie.title })}{" "}
+                {d.movie.movieId ? <Link to={`/movie/${d.movie.movieId}`}>{t("ep.openMovie")} →</Link> : t("ep.addInRadarr")}
               </p>
             )}
             {!d.movie && (
-            <div className="row sheet-actions">
-              {!d.file ? (
-                <SplitButton
-                  up
-                  label={`⚡ ${actions.autoBusy ? t("common.working") : t("auto.find")}`}
-                  onClick={actions.auto}
-                  disabled={actions.autoBusy}
-                  items={[
-                    { label: t("auto.chooseRelease"), onSelect: actions.search },
-                    { label: t("ep.regrab"), onSelect: actions.regrab, hidden: d.status === "unaired" },
-                  ]}
-                />
-              ) : (
-                <SplitButton
-                  up
-                  primary={false}
-                  label={t("auto.chooseRelease")}
-                  onClick={actions.search}
-                  items={[
-                    { label: t("ep.regrab"), onSelect: actions.regrab },
-                    { label: t("ep.delete"), onSelect: actions.remove, danger: true },
-                  ]}
-                />
-              )}
-            </div>
+              <div className="row sheet-actions">
+                {!d.file ? (
+                  <SplitButton
+                    up
+                    label={`⚡ ${actions.autoBusy ? t("common.working") : t("auto.find")}`}
+                    onClick={actions.auto}
+                    disabled={actions.autoBusy}
+                    items={[
+                      { label: t("auto.chooseRelease"), onSelect: actions.search },
+                      { label: t("ep.regrab"), onSelect: actions.regrab, hidden: d.status === "unaired" },
+                    ]}
+                  />
+                ) : (
+                  <SplitButton
+                    up
+                    primary={false}
+                    label={t("auto.chooseRelease")}
+                    onClick={actions.search}
+                    items={[
+                      { label: t("ep.regrab"), onSelect: actions.regrab },
+                      { label: t("ep.delete"), onSelect: actions.remove, danger: true },
+                    ]}
+                  />
+                )}
+              </div>
             )}
             {d.file ? (
               <dl className="facts">
@@ -499,7 +702,9 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                 </div>
                 <div>
                   <dt>{t("ep.subtitles")}</dt>
-                  <dd><SubsLine d={d} lang={lang} /></dd>
+                  <dd>
+                    <SubsLine d={d} lang={lang} />
+                  </dd>
                 </div>
                 <div>
                   <dt>{t("ep.runtime")}</dt>
@@ -515,7 +720,18 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                   <WatchIn path={d.file.path} title={d.seriesTitle} kind="episode" />
                   <Peek path={d.file.path} />
                 </div>
-                {d.file.lang && ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) || d.file.lang.code === "untagged") && <Verdicts tvdbId={d.tvdbId} season={d.season} lang={lang} path={d.file.path} onFind={actions.search} onDone={() => (load(), onChanged?.())} />}
+                {d.file.lang &&
+                  ((d.file.lang.state === "no" && ["no-subs", "wrong-subs", "forced-only"].includes(d.file.lang.code ?? "")) ||
+                    d.file.lang.code === "untagged") && (
+                    <Verdicts
+                      tvdbId={d.tvdbId}
+                      season={d.season}
+                      lang={lang}
+                      path={d.file.path}
+                      onFind={actions.search}
+                      onDone={() => (load(), onChanged?.())}
+                    />
+                  )}
                 {d.file.burnedIn && (
                   <p className="row small">
                     <span className="muted">{t("ep.burnedInOn", { lang: d.file.burnedIn.toUpperCase() })}</span>
@@ -555,7 +771,13 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
                   {d.grabs.map((g) => (
                     <li key={g.id} className="history-row">
                       <div className="row between">
-                        <Chip tone={g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : "info"}>{t(`grab.${g.state}` as I18nKey) || g.state}</Chip>
+                        <Chip
+                          tone={
+                            g.state === "done" ? "good" : g.state === "failed" ? "bad" : g.state === "needs-attention" ? "warn" : "info"
+                          }
+                        >
+                          {t(`grab.${g.state}` as I18nKey) || g.state}
+                        </Chip>
                         <span className="muted small">{dateTime(g.at)}</span>
                       </div>
                       <p className="small muted">{releaseBits(g.release) || t("ep.aVersion")}</p>
@@ -566,102 +788,132 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
               </>
             )}
             {(d.file || d.verify || !!d.activity.length) && (
-            <details className="tech-details">
-              <summary>{t("ep.technical")}</summary>
-              <div className="stack">
-                {d.file && (
-                  <dl className="facts">
-                    <div className="wide">
-                      <dt>{t("ep.file")}</dt>
-                      <dd className="mono small">{d.file.path}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("ep.source")}</dt>
-                      <dd>
-                        {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
-                        {/* Sonarr's quality label only when it disagrees with the file itself. */}
-                        {d.file.quality && ((resLabel(d.file.resolution) && !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, ""))) || sourceDiffers(d.file.quality, d.file.source)) && <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{t("ep.codec")}</dt>
-                      <dd>{d.file.codec ? d.file.codec.toUpperCase() : "—"}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("ep.group")}</dt>
-                      <dd>
-                        {group ?? "—"}
-                        {d.file.platform ? ` · ${d.file.platform}` : ""}
-                        {d.seadex && <> <Chip tone={d.seadex === "best" ? "good" : "info"}>{t(d.seadex === "best" ? "seadex.chip.best" : "seadex.chip.alt")}</Chip></>}
-                      </dd>
-                    </div>
-                    {d.file.changed && (
+              <details className="tech-details">
+                <summary>{t("ep.technical")}</summary>
+                <div className="stack">
+                  {d.file && (
+                    <dl className="facts">
                       <div className="wide">
-                        <dt>{t("ep.changed")}</dt>
+                        <dt>{t("ep.file")}</dt>
+                        <dd className="mono small">{d.file.path}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("ep.source")}</dt>
                         <dd>
-                          {t("ep.lineage", {
-                            source: [d.file.changed.fromQuality, group, d.file.changed.fromSize ? fmtSize(d.file.changed.fromSize) : null].filter(Boolean).join(" · "),
-                            imported: d.file.changed.importedAt ? new Date(d.file.changed.importedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "?",
-                            now: [(d.file.changed.codec ?? "").toUpperCase(), fmtSize(d.file.changed.toSize)].filter(Boolean).join(" · "),
-                            changed: new Date(d.file.changed.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                          })}
+                          {[resLabel(d.file.resolution), d.file.source].filter(Boolean).join(" ") || "—"}
+                          {/* Sonarr's quality label only when it disagrees with the file itself. */}
+                          {d.file.quality &&
+                            ((resLabel(d.file.resolution) &&
+                              !d.file.quality.includes(String(resLabel(d.file.resolution)).replace(/p$/, ""))) ||
+                              sourceDiffers(d.file.quality, d.file.source)) && (
+                              <span className="warn-text small"> {t("ep.sonarrLabel", { label: d.file.quality })}</span>
+                            )}
                         </dd>
                       </div>
-                    )}
-                    {d.currentRelease && (
-                      <div className="wide">
-                        <dt>{t("ep.release")}</dt>
-                        <dd className="small">
-                          <ReleaseName name={d.currentRelease} />
+                      <div>
+                        <dt>{t("ep.codec")}</dt>
+                        <dd>{d.file.codec ? d.file.codec.toUpperCase() : "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("ep.group")}</dt>
+                        <dd>
+                          {group ?? "—"}
+                          {d.file.platform ? ` · ${d.file.platform}` : ""}
+                          {d.seadex && (
+                            <>
+                              {" "}
+                              <Chip tone={d.seadex === "best" ? "good" : "info"}>
+                                {t(d.seadex === "best" ? "seadex.chip.best" : "seadex.chip.alt")}
+                              </Chip>
+                            </>
+                          )}
                         </dd>
                       </div>
-                    )}
-                  </dl>
-                )}
-                {d.file?.lang && d.file.lang.state !== "ok" && <p className="muted small">{d.file.lang.why}</p>}
-                {d.own && (
-                  <>
-                    <h4 className="small">{t("files.ownTracks")}</h4>
-                    <ul className="plain small">
-                      {d.own.audio.map((a) => (
-                        <li key={`a${a.index}`}>
-                          🔊 {a.lang ? languageName(a.lang) : t("fix.untagged")} <span className="muted">· {[a.codec?.toUpperCase(), a.channels ? `${a.channels}ch` : null, a.title, a.default ? t("files.default") : null].filter(Boolean).join(" · ")}</span>
-                        </li>
-                      ))}
-                      {d.own.subs.map((x) => (
-                        <li key={`s${x.index}`} className={x.partial ? "warn-text" : undefined}>
-                          💬 {x.lang ? languageName(x.lang) : t("fix.untagged")}
-                          {x.partial ? ` (${t("ep.signsOnly")})` : ""} <span className="muted">· {[x.codec?.toUpperCase(), x.title, x.default ? t("files.default") : null].filter(Boolean).join(" · ")}</span>
-                        </li>
-                      ))}
-                      {d.own.sidecars.map((x) => (
-                        <li key={x.file}>
-                          📄 {x.lang ? languageName(x.lang) : t("fix.untagged")} <span className="muted mono">· {x.file}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                {d.verify && (
-                  <p className={d.verify.ok ? "good-text small" : "warn-text small"}>
-                    {d.verify.ok ? "✓" : "✕"} {t("ep.verified")}: {d.verify.why}
-                  </p>
-                )}
-                {!!d.activity.length && (
-                  <>
-                    <h4 className="small">{t("ep.activity")}</h4>
-                    <ul className="plain">
-                      {d.activity.map((a) => (
-                        <li key={a.id} className="small">
-                          <span className="muted">{dateTime(a.at)}</span> · <strong>{kindWord(a.kind)}</strong> {a.summary ?? a.why}
-                          {a.resolved ? <span className="muted"> · {t("activity.resolved")}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-            </details>
+                      {d.file.changed && (
+                        <div className="wide">
+                          <dt>{t("ep.changed")}</dt>
+                          <dd>
+                            {t("ep.lineage", {
+                              source: [d.file.changed.fromQuality, group, d.file.changed.fromSize ? fmtSize(d.file.changed.fromSize) : null]
+                                .filter(Boolean)
+                                .join(" · "),
+                              imported: d.file.changed.importedAt
+                                ? new Date(d.file.changed.importedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                                : "?",
+                              now: [(d.file.changed.codec ?? "").toUpperCase(), fmtSize(d.file.changed.toSize)].filter(Boolean).join(" · "),
+                              changed: new Date(d.file.changed.changedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                            })}
+                          </dd>
+                        </div>
+                      )}
+                      {d.currentRelease && (
+                        <div className="wide">
+                          <dt>{t("ep.release")}</dt>
+                          <dd className="small">
+                            <ReleaseName name={d.currentRelease} />
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  )}
+                  {d.file?.lang && d.file.lang.state !== "ok" && <p className="muted small">{d.file.lang.why}</p>}
+                  {d.own && (
+                    <>
+                      <h4 className="small">{t("files.ownTracks")}</h4>
+                      <ul className="plain small">
+                        {d.own.audio.map((a) => (
+                          <li key={`a${a.index}`}>
+                            🔊 {a.lang ? languageName(a.lang) : t("fix.untagged")}{" "}
+                            <span className="muted">
+                              ·{" "}
+                              {[
+                                a.codec?.toUpperCase(),
+                                a.channels ? `${a.channels}ch` : null,
+                                a.title,
+                                a.default ? t("files.default") : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </li>
+                        ))}
+                        {d.own.subs.map((x) => (
+                          <li key={`s${x.index}`} className={x.partial ? "warn-text" : undefined}>
+                            💬 {x.lang ? languageName(x.lang) : t("fix.untagged")}
+                            {x.partial ? ` (${t("ep.signsOnly")})` : ""}{" "}
+                            <span className="muted">
+                              · {[x.codec?.toUpperCase(), x.title, x.default ? t("files.default") : null].filter(Boolean).join(" · ")}
+                            </span>
+                          </li>
+                        ))}
+                        {d.own.sidecars.map((x) => (
+                          <li key={x.file}>
+                            📄 {x.lang ? languageName(x.lang) : t("fix.untagged")} <span className="muted mono">· {x.file}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {d.verify && (
+                    <p className={d.verify.ok ? "good-text small" : "warn-text small"}>
+                      {d.verify.ok ? "✓" : "✕"} {t("ep.verified")}: {d.verify.why}
+                    </p>
+                  )}
+                  {!!d.activity.length && (
+                    <>
+                      <h4 className="small">{t("ep.activity")}</h4>
+                      <ul className="plain">
+                        {d.activity.map((a) => (
+                          <li key={a.id} className="small">
+                            <span className="muted">{dateTime(a.at)}</span> · <strong>{kindWord(a.kind)}</strong> {a.summary ?? a.why}
+                            {a.resolved ? <span className="muted"> · {t("activity.resolved")}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              </details>
             )}
             <div className="row">
               <span onClick={onClose}>
@@ -686,7 +938,11 @@ function RecycleNote() {
   const r = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; error?: string }>("/recycle/setting"), []);
   if (!r.data || r.data.error) return <p className="small muted">{t("recycle.maybe")}</p>;
   return r.data.configured ? (
-    <p className="small">{r.data.cleanupDays ? t("recycle.goesTo", { path: r.data.path, days: r.data.cleanupDays }) : t("recycle.goesToForever", { path: r.data.path })}</p>
+    <p className="small">
+      {r.data.cleanupDays
+        ? t("recycle.goesTo", { path: r.data.path, days: r.data.cleanupDays })
+        : t("recycle.goesToForever", { path: r.data.path })}
+    </p>
   ) : (
     <p className="small warn-text">⚠ {t("recycle.none")}</p>
   );

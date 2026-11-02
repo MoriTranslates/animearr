@@ -39,10 +39,25 @@ export function MediaOutputCard({ s, saveNow }: { s: S; saveNow: SaveNow }) {
         <span className="muted small">{t("media.out.mainHelp")}</span>
       </label>
       <Toggle checked={m.nfo} onChange={(v) => set({ nfo: v })} label={t("media.out.nfo")} help={t("media.out.nfoHelp")} />
-      <Toggle checked={m.plexmatch} onChange={(v) => set({ plexmatch: v })} label={t("media.out.plexmatch")} help={t("media.out.plexmatchHelp")} />
+      <Toggle
+        checked={m.plexmatch}
+        onChange={(v) => set({ plexmatch: v })}
+        label={t("media.out.plexmatch")}
+        help={t("media.out.plexmatchHelp")}
+      />
       <Toggle checked={m.artwork} onChange={(v) => set({ artwork: v })} label={t("media.out.artwork")} help={t("media.out.artworkHelp")} />
-      <Toggle checked={m.episodeThumbs} onChange={(v) => set({ episodeThumbs: v })} label={t("media.out.thumbs")} help={t("media.out.thumbsHelp")} />
-      <Toggle checked={m.episodeThumbsFromVideo} onChange={(v) => set({ episodeThumbsFromVideo: v })} label={t("media.out.thumbsVideo")} help={t("media.out.thumbsVideoHelp")} />
+      <Toggle
+        checked={m.episodeThumbs}
+        onChange={(v) => set({ episodeThumbs: v })}
+        label={t("media.out.thumbs")}
+        help={t("media.out.thumbsHelp")}
+      />
+      <Toggle
+        checked={m.episodeThumbsFromVideo}
+        onChange={(v) => set({ episodeThumbsFromVideo: v })}
+        label={t("media.out.thumbsVideo")}
+        help={t("media.out.thumbsVideoHelp")}
+      />
       <div className="row">
         <button
           disabled={busy || !(m.nfo || m.plexmatch || m.artwork)}
@@ -69,7 +84,13 @@ export function MediaOutputCard({ s, saveNow }: { s: S; saveNow: SaveNow }) {
 /** Wizard (new users): pick the servers; the first one picked becomes the main one. */
 export function MediaPicker({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   // Starts from what's saved (main server, the files switched on, servers already connected); kept on screen after.
-  const [picked, setPicked] = useState<Exclude<Main, "none">[]>(() => SERVERS.filter((x) => s.mediaOutput.main === x.id || (x.id === "plex" ? s.mediaOutput.plexmatch : (s[x.id] as { enabled: boolean }).enabled)).map((x) => x.id).sort((a, b) => (a === s.mediaOutput.main ? -1 : b === s.mediaOutput.main ? 1 : 0)));
+  const [picked, setPicked] = useState<Exclude<Main, "none">[]>(() =>
+    SERVERS.filter(
+      (x) => s.mediaOutput.main === x.id || (x.id === "plex" ? s.mediaOutput.plexmatch : (s[x.id] as { enabled: boolean }).enabled),
+    )
+      .map((x) => x.id)
+      .sort((a, b) => (a === s.mediaOutput.main ? -1 : b === s.mediaOutput.main ? 1 : 0)),
+  );
   const choose = (next: Exclude<Main, "none">[]) => {
     setPicked(next);
     void saveNow((x) => ({
@@ -91,7 +112,12 @@ export function MediaPicker({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       <div className="row wrap">
         {SERVERS.map((x) => (
           <label key={x.id} className="check">
-            <input type="checkbox" checked={picked.includes(x.id)} onChange={(e) => choose(e.target.checked ? [...picked, x.id] : picked.filter((k) => k !== x.id))} /> {x.name}
+            <input
+              type="checkbox"
+              checked={picked.includes(x.id)}
+              onChange={(e) => choose(e.target.checked ? [...picked, x.id] : picked.filter((k) => k !== x.id))}
+            />{" "}
+            {x.name}
           </label>
         ))}
       </div>

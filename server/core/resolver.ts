@@ -71,12 +71,20 @@ export function creditlessOf(episodes: LibEpisode[]) {
  */
 export function inExtrasFolder(rel: string) {
   const dirs = rel.split(/[\\/]/).slice(0, -1);
-  return dirs.some((d) => /^(?:extras?|specials?|sps?|menus?|bonus(?:es)?|nc|creditless|featurettes?|cms?|pvs?|trailers?)$/i.test(d.trim()) || /\bNC[ ._-]?(?:OP|ED)s?\b|\bcreditless\b|\bnon[- ]?credit/i.test(d));
+  return dirs.some(
+    (d) =>
+      /^(?:extras?|specials?|sps?|menus?|bonus(?:es)?|nc|creditless|featurettes?|cms?|pvs?|trailers?)$/i.test(d.trim()) ||
+      /\bNC[ ._-]?(?:OP|ED)s?\b|\bcreditless\b|\bnon[- ]?credit/i.test(d),
+  );
 }
 
 /** "Creditless Opening 2", "Clean Ending", "NCOP", "Non-Credit OP", "Textless ED", "Opening 1 (creditless)". */
 export function isCreditlessTitle(t: string | null) {
-  return !!t && (/\bNC(?:OP|ED)\d*\b|\b(creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) || /^\s*(opening|ending)(\s*(theme|\d+[a-z]?))?\s*(?:[:\-–].*)?$/i.test(t));
+  return (
+    !!t &&
+    (/\bNC(?:OP|ED)\d*\b|\b(creditless|clean (?:opening|ending|op|ed)|non[-\s]?credit(?:ed)?|textless)\b|ノンクレジット/i.test(t) ||
+      /^\s*(opening|ending)(\s*(theme|\d+[a-z]?))?\s*(?:[:\-–].*)?$/i.test(t))
+  );
 }
 
 export function labelOf(eps: LibEpisode[]) {
@@ -120,16 +128,33 @@ export function resolveRelease(
   if (p.creditless && !p.batch && !p.fullSeason) {
     const label0 = `${p.creditless.kind === "op" ? "opening" : "ending"}`;
     const extra = p.episodes.length > 0 || p.absolute.some((n) => n !== p.creditless!.n);
-    if (extra && p.creditless.n === null) return fail([...why, `creditless ${label0} as used in an episode: never imported as that episode (import it by hand as an extra if you want it)`], "creditless");
+    if (extra && p.creditless.n === null)
+      return fail(
+        [
+          ...why,
+          `creditless ${label0} as used in an episode: never imported as that episode (import it by hand as an extra if you want it)`,
+        ],
+        "creditless",
+      );
     const list = creditlessOf(episodes).filter((x) => x.kind === p.creditless!.kind);
     const n = p.creditless.n ?? 1;
     const hit = list.find((x) => x.n === n) ?? (list.every((x) => x.n === null) ? list[n - 1] : undefined);
     const label = `${p.creditless.kind === "op" ? "OP" : "ED"}${p.creditless.n ?? ""}`;
     if (!hit) return fail([...why, `creditless ${label}: this show has no matching opening/ending special`], "creditless");
-    return { ok: true, episodes: [hit.e], label: labelOf([hit.e]), confidence: 90, method: "creditless", why: [...why, `creditless ${label} → ${labelOf([hit.e])} (${hit.e.title ?? "special"})`], pack: false };
+    return {
+      ok: true,
+      episodes: [hit.e],
+      label: labelOf([hit.e]),
+      confidence: 90,
+      method: "creditless",
+      why: [...why, `creditless ${label} → ${labelOf([hit.e])} (${hit.e.title ?? "special"})`],
+      pack: false,
+    };
   }
-  if (p.special && p.special !== "movie" && !p.episodes.length && !p.absolute.length) return fail([...why, `special (${p.special}): pick the episode by hand`], "special");
-  if (p.specialNumber !== null && !p.episodes.length) return fail([...why, `recap/special number ${p.specialNumber}: pick the episode by hand`], "special");
+  if (p.special && p.special !== "movie" && !p.episodes.length && !p.absolute.length)
+    return fail([...why, `special (${p.special}): pick the episode by hand`], "special");
+  if (p.specialNumber !== null && !p.episodes.length)
+    return fail([...why, `recap/special number ${p.specialNumber}: pick the episode by hand`], "special");
 
   // ---- whole-season pack with no episode numbers
   if (p.fullSeason && !p.episodes.length && !p.absolute.length) {
@@ -137,7 +162,15 @@ export function resolveRelease(
     if (s === null) return fail([...why, "season pack without a season number"], "pack");
     const list = bySeason(s);
     if (!list.length) return fail([...why, `Sonarr has no season ${s}`], "pack");
-    return { ok: true, episodes: list, label: `S${pad(s)} (whole season)`, confidence: Math.min(cand.score, 90), method: "pack", why: [...why, `season pack → all ${list.length} episodes of season ${s}`], pack: true };
+    return {
+      ok: true,
+      episodes: list,
+      label: `S${pad(s)} (whole season)`,
+      confidence: Math.min(cand.score, 90),
+      method: "pack",
+      why: [...why, `season pack → all ${list.length} episodes of season ${s}`],
+      pack: true,
+    };
   }
 
   const numbers = p.episodes.length ? p.episodes : p.absolute;
@@ -154,10 +187,15 @@ export function resolveRelease(
   };
 
   // ---- 1. per-show numbering rule
-  const rule = (opts.rules ?? []).find((r) => r.group && p.group && r.group.toLowerCase() === p.group.toLowerCase()) ?? (opts.rules ?? []).find((r) => !r.group);
+  const rule =
+    (opts.rules ?? []).find((r) => r.group && p.group && r.group.toLowerCase() === p.group.toLowerCase()) ??
+    (opts.rules ?? []).find((r) => !r.group);
   if (rule && rule.mode !== "auto") {
     let eps: LibEpisode[] | null = null;
-    if (rule.mode === "absolute") eps = numbers.map((n) => episodes.find((e) => e.absolute === n) ?? null).every(Boolean) ? numbers.map((n) => episodes.find((e) => e.absolute === n)!) : null;
+    if (rule.mode === "absolute")
+      eps = numbers.map((n) => episodes.find((e) => e.absolute === n) ?? null).every(Boolean)
+        ? numbers.map((n) => episodes.find((e) => e.absolute === n)!)
+        : null;
     else if (rule.season !== null) eps = mapAll(rule.season, rule.mode === "offset" ? rule.offset : 0);
     const ruleWhy = `your numbering rule${rule.group ? ` for ${rule.group}` : ""}: ${rule.mode}${rule.season !== null ? ` season ${rule.season}` : ""}${rule.offset ? ` offset ${rule.offset}` : ""}`;
     if (eps) return finish([{ eps, method: `rule-${rule.mode}`, certainty: 1, why: ruleWhy }]);
@@ -166,7 +204,11 @@ export function resolveRelease(
 
   // ---- 2. alias pins an AniDB entry (not the franchise's first entry, unless the name has no season either)
   const seasonToken = p.season ?? null;
-  if (cand.entry && typeof cand.entry.season === "number" && (cand.entry.season > 1 || seasonToken === null || seasonToken === cand.entry.season)) {
+  if (
+    cand.entry &&
+    typeof cand.entry.season === "number" &&
+    (cand.entry.season > 1 || seasonToken === null || seasonToken === cand.entry.season)
+  ) {
     const entry = entries.find((x) => x.aid === cand.entry!.aid);
     const eps: LibEpisode[] = [];
     for (const n of numbers) {
@@ -175,7 +217,13 @@ export function resolveRelease(
       if (!e) break;
       eps.push(e);
     }
-    if (eps.length === numbers.length) readings.push({ eps, method: "anidb-entry", certainty: seasonToken !== null && seasonToken !== cand.entry.season ? 0.75 : 0.97, why: `AniDB ${cand.entry.aid} is TVDB season ${cand.entry.season}${cand.entry.offset ? ` (episode offset ${cand.entry.offset})` : ""} per Anime-Lists` });
+    if (eps.length === numbers.length)
+      readings.push({
+        eps,
+        method: "anidb-entry",
+        certainty: seasonToken !== null && seasonToken !== cand.entry.season ? 0.75 : 0.97,
+        why: `AniDB ${cand.entry.aid} is TVDB season ${cand.entry.season}${cand.entry.offset ? ` (episode offset ${cand.entry.offset})` : ""} per Anime-Lists`,
+      });
   }
 
   // ---- 3. season token (explicit or implied by the alias)
@@ -186,7 +234,9 @@ export function resolveRelease(
     const scene = numbers.map((n) => episodes.find((e) => e.sceneSeason === s && e.sceneEpisode === n) ?? null);
     const sceneOk = scene.every(Boolean) ? (scene as LibEpisode[]) : null;
     // N-th mainline Anime-Lists entry (TV seasons ≥ 1 mapped to this series, in TVDB order).
-    const mainline = entries.filter((e) => typeof e.defaultSeason === "number" && e.defaultSeason >= 1).sort((a, b) => (a.defaultSeason as number) - (b.defaultSeason as number) || a.offset - b.offset);
+    const mainline = entries
+      .filter((e) => typeof e.defaultSeason === "number" && e.defaultSeason >= 1)
+      .sort((a, b) => (a.defaultSeason as number) - (b.defaultSeason as number) || a.offset - b.offset);
     const nth = mainline[s - 1];
     let viaEntry: LibEpisode[] | null = null;
     if (nth && (nth.defaultSeason !== s || nth.offset !== 0) && mainline.length >= s) {
@@ -197,31 +247,71 @@ export function resolveRelease(
       if (eps.every(Boolean)) viaEntry = eps as LibEpisode[];
     }
     const agreeWithScene = (eps: LibEpisode[] | null) => !!eps && !!sceneOk && eps.every((e, i) => e.id === sceneOk[i].id);
-    if (direct) readings.push({ eps: direct, method: "season", certainty: agreeWithScene(direct) || !viaEntry ? 0.96 : 0.8, why: `season ${s} episode ${numbers.join(",")} = Sonarr S${pad(s)}${p.fanSeason ? " (fan numbering \"S" + s + " - NN\")" : ""}` });
-    if (viaEntry) readings.push({ eps: viaEntry, method: "mainline-entry", certainty: agreeWithScene(viaEntry) ? 0.95 : 0.82, why: `season ${s} = AniDB ${nth.aid} "${nth.name}", which Anime-Lists places at TVDB season ${nth.defaultSeason} offset ${nth.offset}` });
-    if (sceneOk && !direct && !viaEntry) readings.push({ eps: sceneOk, method: "scene", certainty: 0.88, why: `Sonarr's scene numbering maps S${s} ${numbers.join(",")} to ${labelOf(sceneOk)}` });
-    if (!readings.length) return fail([...why, `Sonarr has no S${pad(s)}E${pad(numbers[0])}${seasons.length ? ` (seasons ${seasons.join(", ")})` : ""}`], "season");
+    if (direct)
+      readings.push({
+        eps: direct,
+        method: "season",
+        certainty: agreeWithScene(direct) || !viaEntry ? 0.96 : 0.8,
+        why: `season ${s} episode ${numbers.join(",")} = Sonarr S${pad(s)}${p.fanSeason ? ' (fan numbering "S' + s + ' - NN")' : ""}`,
+      });
+    if (viaEntry)
+      readings.push({
+        eps: viaEntry,
+        method: "mainline-entry",
+        certainty: agreeWithScene(viaEntry) ? 0.95 : 0.82,
+        why: `season ${s} = AniDB ${nth.aid} "${nth.name}", which Anime-Lists places at TVDB season ${nth.defaultSeason} offset ${nth.offset}`,
+      });
+    if (sceneOk && !direct && !viaEntry)
+      readings.push({
+        eps: sceneOk,
+        method: "scene",
+        certainty: 0.88,
+        why: `Sonarr's scene numbering maps S${s} ${numbers.join(",")} to ${labelOf(sceneOk)}`,
+      });
+    if (!readings.length)
+      return fail(
+        [...why, `Sonarr has no S${pad(s)}E${pad(numbers[0])}${seasons.length ? ` (seasons ${seasons.join(", ")})` : ""}`],
+        "season",
+      );
   }
 
   // ---- 4. bare number: per-entry (newest/implied season) vs absolute
   if (s === null && !readings.length) {
     const abs = numbers.map((n) => episodes.find((e) => e.absolute === n) ?? null);
-    if (abs.every(Boolean)) readings.push({ eps: abs as LibEpisode[], method: "absolute", certainty: 0.9, why: `absolute episode ${numbers.join(",")} = ${labelOf(abs as LibEpisode[])}` });
+    if (abs.every(Boolean))
+      readings.push({
+        eps: abs as LibEpisode[],
+        method: "absolute",
+        certainty: 0.9,
+        why: `absolute episode ${numbers.join(",")} = ${labelOf(abs as LibEpisode[])}`,
+      });
     const sceneAbs = numbers.map((n) => episodes.find((e) => e.sceneAbsolute === n && e.season > 0) ?? null);
     // Newest season that has aired episodes: a new release of an airing show is almost always its newest entry.
     const airedSeasons = seasons.filter((x) => bySeason(x).some(aired));
     const newest = airedSeasons[airedSeasons.length - 1] ?? seasons[seasons.length - 1];
     if (newest !== undefined && newest !== 1) {
       const perEntry = mapAll(newest);
-      if (perEntry) readings.push({ eps: perEntry, method: "per-entry", certainty: 0.85, why: `episode ${numbers.join(",")} of the newest season ${newest}` });
+      if (perEntry)
+        readings.push({
+          eps: perEntry,
+          method: "per-entry",
+          certainty: 0.85,
+          why: `episode ${numbers.join(",")} of the newest season ${newest}`,
+        });
     }
     if (sceneAbs.every(Boolean) && !readings.some((r) => r.eps.every((e, i) => e.id === sceneAbs[i]!.id)))
-      readings.push({ eps: sceneAbs as LibEpisode[], method: "scene-absolute", certainty: 0.8, why: `Sonarr's scene numbering maps ${numbers.join(",")} to ${labelOf(sceneAbs as LibEpisode[])}` });
+      readings.push({
+        eps: sceneAbs as LibEpisode[],
+        method: "scene-absolute",
+        certainty: 0.8,
+        why: `Sonarr's scene numbering maps ${numbers.join(",")} to ${labelOf(sceneAbs as LibEpisode[])}`,
+      });
     if (!readings.length && seasons.length === 1) {
       const only = mapAll(seasons[0]);
       if (only) readings.push({ eps: only, method: "single-season", certainty: 0.9, why: `only season ${seasons[0]}` });
     }
-    if (!readings.length) return fail([...why, `no Sonarr episode numbered ${numbers.join(",")} (absolute or in the newest season)`], "bare");
+    if (!readings.length)
+      return fail([...why, `no Sonarr episode numbered ${numbers.join(",")} (absolute or in the newest season)`], "bare");
   }
 
   return finish(readings);
@@ -232,7 +322,11 @@ export function resolveRelease(
     let valid = rs;
     if (pub) {
       valid = rs.filter((r) => r.eps.every((e) => e.airUtc === null || e.airUtc <= pub + 2 * DAY));
-      if (!valid.length) return fail([...why, `every reading airs after the release was published (${new Date(pub).toISOString().slice(0, 10)})`], rs[0].method);
+      if (!valid.length)
+        return fail(
+          [...why, `every reading airs after the release was published (${new Date(pub).toISOString().slice(0, 10)})`],
+          rs[0].method,
+        );
     }
     // De-duplicate identical readings (keep the most certain, merge reasons).
     const uniq: Reading[] = [];
@@ -250,17 +344,26 @@ export function resolveRelease(
     const fits = opts.expect?.length ? uniq.filter((r) => r.eps.every((e) => opts.expect!.includes(e.id))) : [];
     if (uniq.length > 1 && fits.length === 1) {
       best = fits[0];
-      tieNote = `${uniq.length} readings fit; picked ${labelOf(best.eps)} because the download was grabbed for it (other: ${uniq.filter((r) => r !== best).map((r) => labelOf(r.eps)).join(", ")})`;
+      tieNote = `${uniq.length} readings fit; picked ${labelOf(best.eps)} because the download was grabbed for it (other: ${uniq
+        .filter((r) => r !== best)
+        .map((r) => labelOf(r.eps))
+        .join(", ")})`;
     } else if (uniq.length > 1) {
       if (pub) {
         const dist = (r: Reading) => Math.abs((r.eps[r.eps.length - 1].airUtc ?? 0) - pub);
         const sorted = [...uniq].sort((a, b) => dist(a) - dist(b));
         best = sorted[0];
-        tieNote = `${uniq.length} readings fit; picked ${labelOf(best.eps)} because it aired closest to the release date (other: ${sorted.slice(1).map((r) => labelOf(r.eps)).join(", ")})`;
+        tieNote = `${uniq.length} readings fit; picked ${labelOf(best.eps)} because it aired closest to the release date (other: ${sorted
+          .slice(1)
+          .map((r) => labelOf(r.eps))
+          .join(", ")})`;
         best.certainty = Math.min(best.certainty, dist(sorted[1]) - dist(best) > 14 * DAY ? 0.9 : 0.7);
       } else {
         best.certainty = Math.min(best.certainty, 0.7);
-        tieNote = `ambiguous: also could be ${uniq.slice(1).map((r) => labelOf(r.eps)).join(", ")}`;
+        tieNote = `ambiguous: also could be ${uniq
+          .slice(1)
+          .map((r) => labelOf(r.eps))
+          .join(", ")}`;
       }
     }
     const confidence = Math.round(cand.score * best.certainty);

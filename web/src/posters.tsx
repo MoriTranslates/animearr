@@ -20,18 +20,54 @@ export function StatusRing({ status, progress }: { status: PosterStatus; progres
     );
   return (
     <span className={`st ${status}`} title={label}>
-      {status === "have" ? <Check className="lucide" aria-hidden="true" /> : status === "missing" || status === "wrong-lang" ? <b aria-hidden="true">!</b> : status === "attention" ? <TriangleAlert className="lucide" aria-hidden="true" /> : <Clock className="lucide" aria-hidden="true" />}
+      {status === "have" ? (
+        <Check className="lucide" aria-hidden="true" />
+      ) : status === "missing" || status === "wrong-lang" ? (
+        <b aria-hidden="true">!</b>
+      ) : status === "attention" ? (
+        <TriangleAlert className="lucide" aria-hidden="true" />
+      ) : (
+        <Clock className="lucide" aria-hidden="true" />
+      )}
       <span className="sr-only">{label}</span>
     </span>
   );
 }
 
 /** A 2:3 poster with the title over a bottom gradient, a status ring, a ★ for managed shows, and a lift on hover. */
-export function PosterCard({ title, cover, color, status, progress, managed, onClick, href, meta, width, className = "" }: { title: string; cover: string | null; color?: string | null; status?: PosterStatus; progress?: number | null; managed?: boolean; onClick?: () => void; href?: string; meta?: ReactNode; width?: number; className?: string }) {
+export function PosterCard({
+  title,
+  cover,
+  color,
+  status,
+  progress,
+  managed,
+  onClick,
+  href,
+  meta,
+  width,
+  className = "",
+}: {
+  title: string;
+  cover: string | null;
+  color?: string | null;
+  status?: PosterStatus;
+  progress?: number | null;
+  managed?: boolean;
+  onClick?: () => void;
+  href?: string;
+  meta?: ReactNode;
+  width?: number;
+  className?: string;
+}) {
   const inner = (
     <>
       <span className="pimg">
-        {cover ? <img src={thumbUrl(cover, "md")} alt="" loading="lazy" decoding="async" width={200} height={300} /> : <span className="noimg">{title.slice(0, 1)}</span>}
+        {cover ? (
+          <img src={thumbUrl(cover, "md")} alt="" loading="lazy" decoding="async" width={200} height={300} />
+        ) : (
+          <span className="noimg">{title.slice(0, 1)}</span>
+        )}
         {managed && (
           <span className="star" title={t("chip.managed")}>
             <Star className="lucide" aria-hidden="true" />
@@ -67,7 +103,14 @@ export function Ring({ value, size = 52, label, children }: { value: number; siz
     <span className="ring" style={{ width: size, height: size }} role="img" aria-label={label}>
       <svg viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={size / 2} cy={size / 2} r={r} className="ring-bg" />
-        <circle cx={size / 2} cy={size / 2} r={r} className="ring-fg" strokeDasharray={c} strokeDashoffset={c * (1 - Math.max(0, Math.min(1, value)))} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          className="ring-fg"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - Math.max(0, Math.min(1, value)))}
+        />
       </svg>
       <b>{children ?? `${Math.round(value * 100)}%`}</b>
     </span>

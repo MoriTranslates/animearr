@@ -2,17 +2,22 @@
 export const mediaStrings = {
   "media.enabled": "Ask it to scan after AnimeArr changes a folder",
   "media.pathsHelp": "If the server sees your library under a different path than AnimeArr does, map AnimeArr's path to the server's.",
-  "media.help.jellyfin": "After AnimeArr imports or renames something, Jellyfin looks at just that folder. AnimeArr doesn't change anything else in Jellyfin.",
-  "media.help.emby": "After AnimeArr imports or renames something, Emby looks at just that folder. AnimeArr doesn't change anything else in Emby.",
-  "media.help.kodi": "After AnimeArr imports or renames something, Kodi scans just that folder. Turn on Kodi's web server (Settings → Services → Control) first.",
+  "media.help.jellyfin":
+    "After AnimeArr imports or renames something, Jellyfin looks at just that folder. AnimeArr doesn't change anything else in Jellyfin.",
+  "media.help.emby":
+    "After AnimeArr imports or renames something, Emby looks at just that folder. AnimeArr doesn't change anything else in Emby.",
+  "media.help.kodi":
+    "After AnimeArr imports or renames something, Kodi scans just that folder. Turn on Kodi's web server (Settings → Services → Control) first.",
   "media.keyWhere.jellyfin": "Jellyfin: Dashboard → API Keys → +.",
   "media.keyWhere.emby": "Emby: Settings → Advanced → API Keys → New API Key.",
   "media.keyWhere.kodi": "",
   "media.out.title": "Files for your media servers",
-  "media.out.help": "AnimeArr can write small files beside your videos so every media server shows a show with AnimeArr's numbering (split cours, sequel seasons, specials) instead of guessing. Files you made yourself are never overwritten.",
+  "media.out.help":
+    "AnimeArr can write small files beside your videos so every media server shows a show with AnimeArr's numbering (split cours, sequel seasons, specials) instead of guessing. Files you made yourself are never overwritten.",
   "media.out.main": "Main media server",
   "media.out.mainNone": "None",
-  "media.out.mainHelp": "Picks the folder ID hint for the {Server Id Hint} naming token: {tvdb-12345} for Plex, [tvdbid-12345] for Jellyfin and Emby. Only new show folders get it.",
+  "media.out.mainHelp":
+    "Picks the folder ID hint for the {Server Id Hint} naming token: {tvdb-12345} for Plex, [tvdbid-12345] for Jellyfin and Emby. Only new show folders get it.",
   "media.out.nfo": "NFO files and season info (Jellyfin, Emby, Kodi)",
   "media.out.nfoHelp": "tvshow.nfo, season.nfo and one .nfo per episode file, with titles, dates, plot and the ids AnimeArr knows.",
   "media.out.plexmatch": ".plexmatch (Plex)",
@@ -20,9 +25,11 @@ export const mediaStrings = {
   "media.out.artwork": "Poster and banner",
   "media.out.artworkHelp": "From AniList, only when the folder doesn't have one yet.",
   "media.out.thumbs": "Episode thumbnails and descriptions",
-  "media.out.thumbsHelp": "A picture for each episode (next to the video, as name-thumb.jpg) from TMDB, then Sonarr, and each episode's description in its NFO. Needs the poster and banner switch above, and a TMDB key in Settings > Metadata for TMDB. They matter for Jellyfin, Emby and Kodi; Plex ignores them and uses its own. Thumbnails you made yourself are never replaced.",
+  "media.out.thumbsHelp":
+    "A picture for each episode (next to the video, as name-thumb.jpg) from TMDB, then Sonarr, and each episode's description in its NFO. Needs the poster and banner switch above, and a TMDB key in Settings > Metadata for TMDB. They matter for Jellyfin, Emby and Kodi; Plex ignores them and uses its own. Thumbnails you made yourself are never replaced.",
   "media.out.thumbsVideo": "Use a frame from the video when there is no picture",
-  "media.out.thumbsVideoHelp": "Last resort, off by default: AnimeArr reads every video that has no thumbnail to cut one frame out of it. That wakes sleeping disks and is slow on a big library. Files that are still downloading or importing are skipped.",
+  "media.out.thumbsVideoHelp":
+    "Last resort, off by default: AnimeArr reads every video that has no thumbnail to cut one frame out of it. That wakes sleeping disks and is slow on a big library. Files that are still downloading or importing are skipped.",
   "media.out.syncAll": "Write them for every show now",
   "media.out.syncHelp": "New imports and renames get them automatically; this fills in your existing library.",
   "media.out.syncStarted": "Writing the files in the background; Activity shows the result.",

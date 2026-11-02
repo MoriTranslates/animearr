@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, store, type Settings as S } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
 import { ScopeFields, type Scope } from "../scope";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Confirm, Cover, Empty, ErrorBox, Modal, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { seasonOf } from "../season";
 import { TrailerButton } from "../trailer";
@@ -28,12 +28,26 @@ interface AddResult {
 }
 
 /** AniList formats in plain words. */
-const KIND: Record<string, I18nKey> = { TV: "add.kind.tv", TV_SHORT: "add.kind.short", ONA: "add.kind.ona", OVA: "add.kind.ova", SPECIAL: "add.kind.special", MOVIE: "add.kind.movie", MUSIC: "add.kind.music" };
+const KIND: Record<string, I18nKey> = {
+  TV: "add.kind.tv",
+  TV_SHORT: "add.kind.short",
+  ONA: "add.kind.ona",
+  OVA: "add.kind.ova",
+  SPECIAL: "add.kind.special",
+  MOVIE: "add.kind.movie",
+  MUSIC: "add.kind.music",
+};
 const kindLabel = (k: string | null) => (k && KIND[k] ? t(KIND[k]) : (k ?? "?"));
 /** AniList writes censored words as "●●" (e.g. "Sousou no Frieren: ●● no Mahou"): shown as "…". */
 const clean = (s: string) => s.replace(/\s*[●○◯]+\s*/g, (m) => `${m.startsWith(" ") ? " " : ""}…${m.endsWith(" ") ? " " : ""}`).trim();
 
-interface LibHit { kind: "show" | "movie"; id: number; title: string; cover: string | null; year?: number | null }
+interface LibHit {
+  kind: "show" | "movie";
+  id: number;
+  title: string;
+  cover: string | null;
+  year?: number | null;
+}
 
 const RECENT_KEY = "recentSearches";
 const recent = (): string[] => store.get<string[]>(RECENT_KEY, []);
@@ -58,16 +72,28 @@ export function Add() {
     history.replaceState(null, "", `${location.pathname}?q=${encodeURIComponent(debounced)}`); // keeps the URL base as is
     return () => clearTimeout(h);
   }, [debounced]);
-  const d = useLoad(() => (debounced.length >= 2 ? api<{ results: AddResult[]; anilist: string }>(`/add/search?q=${encodeURIComponent(debounced)}`) : Promise.resolve({ results: [] as AddResult[], anilist: "ok" })), [debounced]);
+  const d = useLoad(
+    () =>
+      debounced.length >= 2
+        ? api<{ results: AddResult[]; anilist: string }>(`/add/search?q=${encodeURIComponent(debounced)}`)
+        : Promise.resolve({ results: [] as AddResult[], anilist: "ok" }),
+    [debounced],
+  );
   // The library, loaded once when you start typing (then filtered locally).
   const started = debounced.length >= 2;
   const lib = useLoad(
     () =>
       started
-        ? Promise.all([api<{ series: { tvdbId: number; title: string; cover: string | null }[] }>("/library/candidates"), api<{ id: number; title: string; year: number | null; cover: string | null }[]>("/movies")]).then(([sh, mv]) => [
-            ...sh.series.map((x) => ({ kind: "show" as const, id: x.tvdbId, title: x.title, cover: x.cover })),
-            ...mv.map((x) => ({ kind: "movie" as const, id: x.id, title: x.title, cover: x.cover, year: x.year })),
-          ] as LibHit[])
+        ? Promise.all([
+            api<{ series: { tvdbId: number; title: string; cover: string | null }[] }>("/library/candidates"),
+            api<{ id: number; title: string; year: number | null; cover: string | null }[]>("/movies"),
+          ]).then(
+            ([sh, mv]) =>
+              [
+                ...sh.series.map((x) => ({ kind: "show" as const, id: x.tvdbId, title: x.title, cover: x.cover })),
+                ...mv.map((x) => ({ kind: "movie" as const, id: x.id, title: x.title, cover: x.cover, year: x.year })),
+              ] as LibHit[],
+          )
         : Promise.resolve(null),
     [started],
   );
@@ -91,7 +117,15 @@ export function Add() {
   return (
     <section className="stack">
       <h1>{t("find.title")}</h1>
-      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.placeholder")} aria-label={t("find.title")} autoFocus className="add-search" />
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={t("find.placeholder")}
+        aria-label={t("find.title")}
+        autoFocus
+        className="add-search"
+      />
       {debounced.length < 2 && (
         <div className="stack">
           {!!recent().length && (
@@ -158,8 +192,12 @@ export function Add() {
       )}
       {d.error && <ErrorBox error={d.error} retry={d.reload} />}
       {debounced.length >= 2 && !d.data && !d.error && <Spinner label={t("app.loading")} />}
-      {d.data && (d.data.anilist === "busy" || d.data.anilist === "error") && <p className="banner warn">{t(d.data.anilist === "busy" ? "add.busy" : "add.aniError")}</p>}
-      {d.data && debounced.length >= 2 && !adds.length && !hits.length && d.data.anilist !== "busy" && <Empty icon="⌕">{t("add.none")}</Empty>}
+      {d.data && (d.data.anilist === "busy" || d.data.anilist === "error") && (
+        <p className="banner warn">{t(d.data.anilist === "busy" ? "add.busy" : "add.aniError")}</p>
+      )}
+      {d.data && debounced.length >= 2 && !adds.length && !hits.length && d.data.anilist !== "busy" && (
+        <Empty icon="⌕">{t("add.none")}</Empty>
+      )}
       {!!adds.length && <h2 className="eyebrow">{t("find.addNew", { n: adds.length })}</h2>}
       <div className="poster-grid">
         {adds.map((r) => (
@@ -171,7 +209,14 @@ export function Add() {
               <span className="poster-title clamp2">{clean(r.title)}</span>
               {r.romaji && r.romaji !== r.title && <span className="muted small clamp2">{clean(r.romaji)}</span>}
               <span className="muted small">
-                {[kindLabel(r.kind), r.year, r.episodes && r.kind !== "MOVIE" ? t("add.eps", { n: r.episodes }) : null, r.country && r.country !== "JP" ? r.country : null].filter(Boolean).join(" · ")}
+                {[
+                  kindLabel(r.kind),
+                  r.year,
+                  r.episodes && r.kind !== "MOVIE" ? t("add.eps", { n: r.episodes }) : null,
+                  r.country && r.country !== "JP" ? r.country : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
               <button className="small" onClick={() => setPick(r)}>
                 + {t("add.add")}
@@ -219,7 +264,17 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
   const add = async (how: "search" | "queue" | "none") => {
     setBusy(true);
     try {
-      const res = await api<{ tvdbId?: number; movieId?: number; title: string; path: string }>("/add", { body: { anilistId: r.anilistId, rootFolder: root, kind: movie ? "movie" : "show", profileId: profileId || null, sizePreset: movie ? null : size || null, scope: movie ? null : scope, then: movie && how === "queue" ? "none" : how } });
+      const res = await api<{ tvdbId?: number; movieId?: number; title: string; path: string }>("/add", {
+        body: {
+          anilistId: r.anilistId,
+          rootFolder: root,
+          kind: movie ? "movie" : "show",
+          profileId: profileId || null,
+          sizePreset: movie ? null : size || null,
+          scope: movie ? null : scope,
+          then: movie && how === "queue" ? "none" : how,
+        },
+      });
       toast(t("add.added", { title: res.title, path: res.path }));
       navigate(res.movieId ? `/movie/${res.movieId}` : `/show/${res.tvdbId}`);
     } catch (e) {
@@ -253,12 +308,18 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
               {t("profiles.profile")}
               <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
                 {/* One "default" entry: the default profile by name (it follows later changes of the default). */}
-                <option value="">{t("add.profileDefault", { name: plainName(profiles.data.profiles.find((p) => p.id === profiles.data!.defaultProfileId)?.name ?? "") })}</option>
-                {profiles.data.profiles.filter((p) => p.id !== profiles.data!.defaultProfileId).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                <option value="">
+                  {t("add.profileDefault", {
+                    name: plainName(profiles.data.profiles.find((p) => p.id === profiles.data!.defaultProfileId)?.name ?? ""),
+                  })}
+                </option>
+                {profiles.data.profiles
+                  .filter((p) => p.id !== profiles.data!.defaultProfileId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
               </select>
             </label>
             {/* Everything else has a sensible default: tucked away. */}
@@ -297,7 +358,8 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
                 {scope && !movie && <ScopeFields value={scope} onChange={setScope} />}
                 {!movie && (
                   <label className="row small">
-                    <input type="checkbox" checked={then === "queue"} onChange={(e) => setThen(e.target.checked ? "queue" : "none")} /> {t("add.then.queue")}
+                    <input type="checkbox" checked={then === "queue"} onChange={(e) => setThen(e.target.checked ? "queue" : "none")} />{" "}
+                    {t("add.then.queue")}
                   </label>
                 )}
               </div>
@@ -319,7 +381,19 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
 }
 
 /** Show page, shows added in AnimeArr: remove from AnimeArr (files stay on disk). */
-export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbId?: number; movieId?: number; title: string; asked?: boolean; onClose?: () => void }) {
+export function RemoveNative({
+  tvdbId,
+  movieId,
+  title,
+  asked,
+  onClose,
+}: {
+  tvdbId?: number;
+  movieId?: number;
+  title: string;
+  asked?: boolean;
+  onClose?: () => void;
+}) {
   const toast = useToast();
   const [askState, setAsk] = useState(false);
   const ask = asked ?? askState;
@@ -341,7 +415,9 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
           onClose={() => (setAsk(false), onClose?.())}
           onConfirm={async () => {
             try {
-              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}${exclude && lists.data?.lists.length ? "?exclude=1" : ""}`, { method: "DELETE" });
+              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}${exclude && lists.data?.lists.length ? "?exclude=1" : ""}`, {
+                method: "DELETE",
+              });
               navigate(movieId ? "/movies" : "/shows");
             } catch (e) {
               toast((e as Error).message, true);
@@ -358,14 +434,34 @@ export function RemoveNative({ tvdbId, movieId, title, asked, onClose }: { tvdbI
 
 /** The empty Find page: this season's popular shows that aren't in the library yet (tap → search it, then Add). */
 function SeasonPicks({ onPick }: { onPick: (title: string) => void }) {
-  const d = useLoad(() => api<{ items: { anilistId: number; title: string; cover: string | null; color: string | null; episodes: number | null; format: string | null }[] }>("/add/season"), []);
+  const d = useLoad(
+    () =>
+      api<{
+        items: {
+          anilistId: number;
+          title: string;
+          cover: string | null;
+          color: string | null;
+          episodes: number | null;
+          format: string | null;
+        }[];
+      }>("/add/season"),
+    [],
+  );
   if (!d.data?.items.length) return null;
   return (
     <>
       <h2 className="eyebrow">{t("find.thisSeason", { season: seasonOf().name })}</h2>
       <div className="posters hscroll">
         {d.data.items.map((m) => (
-          <PosterCard key={m.anilistId} title={clean(m.title)} cover={m.cover} color={m.color} onClick={() => onPick(m.title)} meta={<span className="clamp1">{clean(m.title)}</span>} />
+          <PosterCard
+            key={m.anilistId}
+            title={clean(m.title)}
+            cover={m.cover}
+            color={m.color}
+            onClick={() => onPick(m.title)}
+            meta={<span className="clamp1">{clean(m.title)}</span>}
+          />
         ))}
       </div>
     </>

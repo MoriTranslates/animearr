@@ -1,7 +1,11 @@
 import { humanError, rememberDetail } from "./errors";
 
 /** A problem's fix, as the server describes it (rendered as a button; see server/fixes.ts). */
-export interface Fix { action: string; label: string; params?: Record<string, unknown> }
+export interface Fix {
+  action: string;
+  label: string;
+  params?: Record<string, unknown>;
+}
 
 /** The fixes the server sent with recent error messages (so a toast of that message can offer its fix). */
 const errorFixes = new Map<string, Fix[]>();
@@ -10,7 +14,11 @@ export const fixesForMessage = (msg: string) => errorFixes.get(msg) ?? null;
 export const runFix = (f: Fix) => window.dispatchEvent(new CustomEvent("animearr:fix", { detail: f }));
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public data?: Record<string, unknown>) {
+  constructor(
+    message: string,
+    public status: number,
+    public data?: Record<string, unknown>,
+  ) {
     super(message);
   }
 }
@@ -29,7 +37,13 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), credentials: "same-origin", signal: opts.signal });
+    res = await fetch(`${BASE}/api${path}`, {
+      method,
+      headers,
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      credentials: "same-origin",
+      signal: opts.signal,
+    });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     throw new ApiError(humanError(e), 0); // AnimeArr itself didn't answer (raw text kept for "Details")
@@ -61,7 +75,11 @@ export interface Status {
   via?: "session" | "local" | "apikey";
   connected?: { sonarr: boolean; radarr: boolean; prowlarr: boolean; sabnzbd: boolean; qbittorrent: boolean };
   dryRun?: boolean;
-  grabsPaused?: { why: string; disk: { freeGb: number; animearrGb: number; otherGb: number; label: string; shareFreeGb: number | null } | null; diskRule: boolean } | null;
+  grabsPaused?: {
+    why: string;
+    disk: { freeGb: number; animearrGb: number; otherGb: number; label: string; shareFreeGb: number | null } | null;
+    diskRule: boolean;
+  } | null;
   dryRunShows?: { tvdbId: number; title: string }[];
   allowedRoots?: string[];
   lastSync?: number | null;
@@ -85,7 +103,11 @@ export interface Status {
 }
 
 export type Tone = "good" | "bad" | "warn" | "info";
-export interface Flag { key: string; label: string; tone: Tone }
+export interface Flag {
+  key: string;
+  label: string;
+  tone: Tone;
+}
 
 export interface Decision {
   /** Activity list only: the show/movie poster and a short episode label. */
@@ -129,13 +151,53 @@ export interface LibraryShow {
   dryRun: boolean;
 }
 
-export interface Episode { id: number; season: number; episode: number; absolute: number | null; title?: string | null; airUtc: number | null; hasFile?: boolean; monitored?: boolean }
+export interface Episode {
+  id: number;
+  season: number;
+  episode: number;
+  absolute: number | null;
+  title?: string | null;
+  airUtc: number | null;
+  hasFile?: boolean;
+  monitored?: boolean;
+}
 
-export interface ScheduleRow { episodeId: number; season: number | null; episode: number | null; title: string | null; airUtc: number | null; nextAt: number; attempts: number; state: string; why: string }
+export interface ScheduleRow {
+  episodeId: number;
+  season: number | null;
+  episode: number | null;
+  title: string | null;
+  airUtc: number | null;
+  nextAt: number;
+  attempts: number;
+  state: string;
+  why: string;
+}
 
-export interface ManagedShow { tvdbId: number; seriesId: number; title: string; dryRun: boolean; since: number; unmonitoredInSonarr: boolean; cover: string | null; schedule: ScheduleRow[]; /** Missing episodes in scope (any age; the schedule lists only the last 30 days). */ missing?: number }
+export interface ManagedShow {
+  tvdbId: number;
+  seriesId: number;
+  title: string;
+  dryRun: boolean;
+  since: number;
+  unmonitoredInSonarr: boolean;
+  cover: string | null;
+  schedule: ScheduleRow[];
+  /** Missing episodes in scope (any age; the schedule lists only the last 30 days). */ missing?: number;
+}
 
-export interface Grab { id: number; at: number; tvdb_id: number; release: string; protocol: string; state: string; dry_run: number; why: string; error: string | null; episode_ids: number[] }
+export interface Grab {
+  id: number;
+  at: number;
+  tvdb_id: number;
+  release: string;
+  protocol: string;
+  state: string;
+  dry_run: number;
+  why: string;
+  error: string | null;
+  episode_ids: number[];
+}
 
 export interface SearchResult {
   guid: string;
@@ -173,7 +235,10 @@ export interface SearchResponse {
   ownedElsewhere?: { episodeId: number; why: string }[];
 }
 
-export interface PathMapping { from: string; to: string }
+export interface PathMapping {
+  from: string;
+  to: string;
+}
 export interface MediaSettings {
   renameEpisodes: boolean;
   replaceIllegalCharacters: boolean;
@@ -237,10 +302,39 @@ export interface Settings {
   jellyfin: { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] };
   emby: { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] };
   kodi: { url: string; username: string; password: string; enabled: boolean; pathMappings: PathMapping[] };
-  mediaOutput: { main: "none" | "plex" | "jellyfin" | "emby" | "kodi"; nfo: boolean; plexmatch: boolean; artwork: boolean; episodeThumbs: boolean; episodeThumbsFromVideo: boolean };
-  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean } };
-  downloads: { rules: import("./downloads").FolderRule[]; freeSpaceGb: number; freeSpacePath: string; excludeSeeding: boolean; cleanup: "off" | "plan" | "auto"; allowDelete: boolean; minRatio: number; minSeedDays: number; maxSeedDays: number };
-  importer: { engine: "sonarr" | "animearr"; allowReal: boolean; allowRename: boolean; realBudget: number; movies: boolean; sourceRoots: string[] };
+  mediaOutput: {
+    main: "none" | "plex" | "jellyfin" | "emby" | "kodi";
+    nfo: boolean;
+    plexmatch: boolean;
+    artwork: boolean;
+    episodeThumbs: boolean;
+    episodeThumbsFromVideo: boolean;
+  };
+  notify: {
+    discordWebhook: string;
+    ntfyUrl: string;
+    ntfyToken: string;
+    events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean };
+  };
+  downloads: {
+    rules: import("./downloads").FolderRule[];
+    freeSpaceGb: number;
+    freeSpacePath: string;
+    excludeSeeding: boolean;
+    cleanup: "off" | "plan" | "auto";
+    allowDelete: boolean;
+    minRatio: number;
+    minSeedDays: number;
+    maxSeedDays: number;
+  };
+  importer: {
+    engine: "sonarr" | "animearr";
+    allowReal: boolean;
+    allowRename: boolean;
+    realBudget: number;
+    movies: boolean;
+    sourceRoots: string[];
+  };
   sync: { intervalHours: number };
   lists: { intervalHours: number; malClientId: string };
   externalUrl: string;
@@ -273,4 +367,5 @@ export const store = {
 };
 
 export const fmtSize = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${Math.round(b / 1e6)} MB`);
-export const sxe = (s: number | null, e: number | null) => (s === null || e === null ? "" : `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`);
+export const sxe = (s: number | null, e: number | null) =>
+  s === null || e === null ? "" : `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`;

@@ -15,7 +15,11 @@
     "build": "tsc -p tsconfig.json && vite build",
     "start": "node --no-warnings=ExperimentalWarning dist/server/index.js",
     "test": "node scripts/test.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "check:cycles": "node scripts/check-cycles.mjs",
+    "lint": "oxlint --deny-warnings server web/src test scripts vite.config.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",
@@ -36,6 +40,8 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "lucide-react": "^1.61.0",
+    "oxlint": "1.90.0",
+    "prettier": "3.9.10",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tsx": "^4.23.15",

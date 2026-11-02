@@ -1,0 +1,4 @@
+{
+  "//": "Import cycles tolerated for now (scripts/check-cycles.mjs). An entry may only shrink; keep this empty.",
+  "cycles": []
+}

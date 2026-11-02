@@ -5,7 +5,14 @@ import { Toggle, useToast } from "./ui";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
-export interface Scope { seasons: SeasonScope; recentN: number; episodes: EpisodeScope; specials: boolean; creditless?: boolean; /** Seasons picked elsewhere (a Jellyseerr request); offered only while the show has them. */ picked?: number[] }
+export interface Scope {
+  seasons: SeasonScope;
+  recentN: number;
+  episodes: EpisodeScope;
+  specials: boolean;
+  creditless?: boolean;
+  /** Seasons picked elsewhere (a Jellyseerr request); offered only while the show has them. */ picked?: number[];
+}
 const EPISODES: EpisodeScope[] = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 const SEASONS: SeasonScope[] = ["all", "recent", "latest", "first"];
 
@@ -34,12 +41,25 @@ export function ScopeFields({ value, onChange }: { value: Scope; onChange: (s: S
             ))}
           </select>
           {value.seasons === "recent" && (
-            <input className="num-small" type="number" min={1} max={100} value={value.recentN} aria-label={t("scope.recentN")} onChange={(e) => onChange({ ...value, recentN: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })} />
+            <input
+              className="num-small"
+              type="number"
+              min={1}
+              max={100}
+              value={value.recentN}
+              aria-label={t("scope.recentN")}
+              onChange={(e) => onChange({ ...value, recentN: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+            />
           )}
         </span>
       </label>
       <Toggle checked={value.specials} onChange={(v) => onChange({ ...value, specials: v })} label={t("scope.specials")} />
-      <Toggle checked={value.creditless !== false} onChange={(v) => onChange({ ...value, creditless: v })} label={t("scope.creditless")} help={t("scope.creditlessHelp")} />
+      <Toggle
+        checked={value.creditless !== false}
+        onChange={(v) => onChange({ ...value, creditless: v })}
+        label={t("scope.creditless")}
+        help={t("scope.creditlessHelp")}
+      />
     </div>
   );
 }
@@ -54,13 +74,36 @@ export function ScopeEditor({ tvdbIds, previewFor, onSaved }: { tvdbIds: number[
   useEffect(() => {
     if (!one) return setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true });
     void api<{ scope: Scope & { source: string }; preview: typeof preview }>(`/series/${one}/scope`)
-      .then((r) => (setValue({ seasons: r.scope.seasons, recentN: r.scope.recentN, episodes: r.scope.episodes, specials: r.scope.specials, creditless: r.scope.creditless, picked: r.scope.picked }), setSource(r.scope.source), setPreview(r.preview)))
-      .catch((e) => (toast((e as Error).message, true), setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true })));
+      .then(
+        (r) => (
+          setValue({
+            seasons: r.scope.seasons,
+            recentN: r.scope.recentN,
+            episodes: r.scope.episodes,
+            specials: r.scope.specials,
+            creditless: r.scope.creditless,
+            picked: r.scope.picked,
+          }),
+          setSource(r.scope.source),
+          setPreview(r.preview)
+        ),
+      )
+      .catch(
+        (e) => (
+          toast((e as Error).message, true),
+          setValue({ seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true })
+        ),
+      );
   }, [one]);
   useEffect(() => {
     if (!one || !value) return;
     const id = setTimeout(
-      () => void api<{ preview: typeof preview }>(`/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}&creditless=${value.creditless === false ? 0 : 1}&picked=${(value.picked ?? []).join(",")}`).then((r) => setPreview(r.preview)).catch(() => undefined),
+      () =>
+        void api<{ preview: typeof preview }>(
+          `/series/${one}/scope?seasons=${value.seasons}&recentN=${value.recentN}&episodes=${value.episodes}&specials=${value.specials ? 1 : 0}&creditless=${value.creditless === false ? 0 : 1}&picked=${(value.picked ?? []).join(",")}`,
+        )
+          .then((r) => setPreview(r.preview))
+          .catch(() => undefined),
       200,
     );
     return () => clearTimeout(id);
@@ -79,7 +122,16 @@ export function ScopeEditor({ tvdbIds, previewFor, onSaved }: { tvdbIds: number[
   return (
     <div className="stack">
       <ScopeFields value={value} onChange={setValue} />
-      {preview && <p className="small">{t("scope.preview", { seasons: preview.seasons, episodes: preview.episodes, missing: preview.missing, upcoming: preview.upcoming })}</p>}
+      {preview && (
+        <p className="small">
+          {t("scope.preview", {
+            seasons: preview.seasons,
+            episodes: preview.episodes,
+            missing: preview.missing,
+            upcoming: preview.upcoming,
+          })}
+        </p>
+      )}
       <div className="row">
         <button className="small primary" onClick={() => void save(value)}>
           {tvdbIds.length > 1 ? t("scope.saveMany", { n: tvdbIds.length }) : t("common.save")}

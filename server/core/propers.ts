@@ -28,7 +28,8 @@ export const revisionOf = (release: string | ParsedRelease): Revision => {
 const sameGroup = (a: string | null, b: string | null) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Score points a version earns in a search (a tiebreaker among releases of one group; none when versions are ignored). */
-export const versionPoints = (version: number, mode: ProperMode) => (mode === "doNotPrefer" ? 0 : Math.min(Math.max(version - 1, 0), 3) * 2);
+export const versionPoints = (version: number, mode: ProperMode) =>
+  mode === "doNotPrefer" ? 0 : Math.min(Math.max(version - 1, 0), 3) * 2;
 
 /**
  * Is the candidate a newer version of the file we have? Same group (case-insensitive), a higher version, the file isn't
@@ -36,9 +37,21 @@ export const versionPoints = (version: number, mode: ProperMode) => (mode === "d
  * release rules and the blocklist have already had their say by the time this is asked.
  */
 export function isNewerRevision(have: HaveRevision, cand: Revision, mode: ProperMode): { ok: boolean; why: string } {
-  if (mode !== "preferAndUpgrade") return { ok: false, why: mode === "doNotUpgrade" ? "newer versions don't replace files you already have (Settings → Media management)" : "versions are ignored (Settings → Media management)" };
+  if (mode !== "preferAndUpgrade")
+    return {
+      ok: false,
+      why:
+        mode === "doNotUpgrade"
+          ? "newer versions don't replace files you already have (Settings → Media management)"
+          : "versions are ignored (Settings → Media management)",
+    };
   if (have.locked) return { ok: false, why: "your file is locked (keep as is)" };
-  if (!sameGroup(have.group, cand.group)) return { ok: false, why: `a different group than your file${have.group ? ` (${have.group})` : ""}` };
-  if (cand.version <= have.version) return { ok: false, why: cand.version === have.version ? `same version as your file (v${have.version})` : `older than your file (v${have.version})` };
+  if (!sameGroup(have.group, cand.group))
+    return { ok: false, why: `a different group than your file${have.group ? ` (${have.group})` : ""}` };
+  if (cand.version <= have.version)
+    return {
+      ok: false,
+      why: cand.version === have.version ? `same version as your file (v${have.version})` : `older than your file (v${have.version})`,
+    };
   return { ok: true, why: `v${cand.version} of the episode you have from ${have.group} (fixes a v${have.version}) — upgrade` };
 }

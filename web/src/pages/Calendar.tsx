@@ -3,14 +3,37 @@ import { ChevronLeft, ChevronRight, ListFilter, Rss } from "lucide-react";
 import { seasonOf } from "../season";
 import { SeasonHeader } from "../seasonal";
 import { api, store, sxe } from "../api";
-import { navigate, Link } from "../App";
+import { navigate, Link } from "../nav";
 import { IcalLink } from "../icalLink";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, usePoll } from "../ui";
 
-interface EpEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; stage?: string | null; ahead?: number | null; managed: boolean }
-interface MovieEntry { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }
+interface EpEntry {
+  episodeId: number;
+  tvdbId: number;
+  series: string;
+  cover: string | null;
+  season: number;
+  episode: number;
+  title: string | null;
+  airUtc: number;
+  status: EpisodeStatus;
+  progress: number | null;
+  stage?: string | null;
+  ahead?: number | null;
+  managed: boolean;
+}
+interface MovieEntry {
+  movieId: number;
+  title: string;
+  year: number | null;
+  cover: string | null;
+  kind: "cinema" | "digital" | "physical";
+  at: number;
+  status: string;
+  monitored: boolean;
+}
 type Entry = ({ type: "episode" } & EpEntry & { at: number }) | ({ type: "movie" } & MovieEntry);
 type View = "month" | "week" | "agenda";
 
@@ -77,11 +100,21 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   const [ical, setIcal] = useState(false);
   const [from, to] = rangeOf(view, anchor, compact);
-  const d = useLoad(() => api<{ from: number; to: number; entries: EpEntry[]; movies?: MovieEntry[] }>(`/calendar?from=${from}&to=${to}${managedOnly ? "&managed=1" : ""}`), [managedOnly, from, to]);
+  const d = useLoad(
+    () =>
+      api<{ from: number; to: number; entries: EpEntry[]; movies?: MovieEntry[] }>(
+        `/calendar?from=${from}&to=${to}${managedOnly ? "&managed=1" : ""}`,
+      ),
+    [managedOnly, from, to],
+  );
   const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
   const current = d.data && d.data.from === from && d.data.to === to ? d.data : null;
   const entries = useMemo<Entry[]>(
-    () => [...(current?.entries ?? []).map((e) => ({ ...e, type: "episode" as const, at: e.airUtc })), ...(current?.movies ?? []).map((m) => ({ ...m, type: "movie" as const }))].sort((a, b) => a.at - b.at),
+    () =>
+      [
+        ...(current?.entries ?? []).map((e) => ({ ...e, type: "episode" as const, at: e.airUtc })),
+        ...(current?.movies ?? []).map((m) => ({ ...m, type: "movie" as const })),
+      ].sort((a, b) => a.at - b.at),
     [current],
   );
   const byDay = useMemo(() => {
@@ -98,7 +131,10 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
     store.set("calView", v);
     if (v === "agenda") setAnchor(Date.now());
   };
-  const step = (dir: -1 | 1) => setAnchor((a) => (view === "month" ? new Date(new Date(a).getFullYear(), new Date(a).getMonth() + dir, 1).getTime() : addDays(a, dir * 7)));
+  const step = (dir: -1 | 1) =>
+    setAnchor((a) =>
+      view === "month" ? new Date(new Date(a).getFullYear(), new Date(a).getMonth() + dir, 1).getTime() : addDays(a, dir * 7),
+    );
   const openEntry = (e: Entry) => (e.type === "episode" ? setOpen(e.episodeId) : navigate(`/movie/${e.movieId}`));
   const season = seasonOf(anchor);
   const title =
@@ -114,7 +150,13 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
           compact
           eyebrow={t("cal.title")}
           title={view === "agenda" ? t("cal.view.agenda") : title}
-          sub={t("cal.headerSub", { season: t(`season.${season.key}` as I18nKey), year: season.year, week: season.week, weeks: season.weeks, n: entries.length })}
+          sub={t("cal.headerSub", {
+            season: t(`season.${season.key}` as I18nKey),
+            year: season.year,
+            week: season.week,
+            weeks: season.weeks,
+            n: entries.length,
+          })}
           right={
             <div className="cal-controls">
               <div className="seg seg-accent" role="group" aria-label={t("cal.view")}>
@@ -162,7 +204,14 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
       {current && view === "agenda" && <Agenda byDay={byDay} compact={compact} onOpen={openEntry} />}
       {current && view === "week" && <Week from={from} byDay={byDay} onOpen={openEntry} />}
       {current && view === "month" && <Month key={from} from={from} anchor={anchor} byDay={byDay} onOpen={openEntry} />}
-      {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.data?.dryRun ?? true} />}
+      {open !== null && (
+        <EpisodeSheet
+          episodeId={open}
+          onClose={() => setOpen(null)}
+          onChanged={() => void d.reload()}
+          dryRun={status.data?.dryRun ?? true}
+        />
+      )}
     </section>
   );
 }
@@ -180,7 +229,10 @@ function Legend() {
     <ul className="plain cal-legend small muted" aria-label={t("cal.legend")}>
       {items.map(([k, label]) => (
         <li key={k} className={`cal-key ${k}`}>
-          <span className="cal-swatch" aria-hidden="true">{k === "movie" ? "🎬" : GLYPH[k]}</span> {t(label)}
+          <span className="cal-swatch" aria-hidden="true">
+            {k === "movie" ? "🎬" : GLYPH[k]}
+          </span>{" "}
+          {t(label)}
         </li>
       ))}
     </ul>
@@ -188,12 +240,21 @@ function Legend() {
 }
 
 const GLYPH: Record<string, string> = { have: "✓", missing: "!", downloading: "↓", unaired: "◷", attention: "⚠", unreleased: "◷" };
-const MOVIE_STATUS: Record<string, "good" | "bad" | "accent" | "info" | "warn"> = { have: "good", missing: "bad", downloading: "accent", attention: "warn", unreleased: "info" };
+const MOVIE_STATUS: Record<string, "good" | "bad" | "accent" | "info" | "warn"> = {
+  have: "good",
+  missing: "bad",
+  downloading: "accent",
+  attention: "warn",
+  unreleased: "info",
+};
 
 /** One entry: poster thumb, show (or movie), SxxEyy (or release kind), time, worded status. */
 function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) => void; dense?: boolean }) {
   return (
-    <button className={`agenda-entry card${dense ? " dense" : ""}${e.type === "movie" ? " movie" : ""} st-${e.status}`} onClick={() => onOpen(e)}>
+    <button
+      className={`agenda-entry card${dense ? " dense" : ""}${e.type === "movie" ? " movie" : ""} st-${e.status}`}
+      onClick={() => onOpen(e)}
+    >
       <Cover src={e.cover} alt={e.type === "episode" ? e.series : e.title} size="sm" />
       <span className="agenda-text">
         <span className="strong clamp2">
@@ -213,7 +274,11 @@ function EntryCard({ e, onOpen, dense = false }: { e: Entry; onOpen: (e: Entry) 
         {e.type === "episode" && <span className="muted small">{time(e.at)}</span>}
       </span>
       <span className="agenda-status">
-        {e.type === "episode" ? <StatusPill e={{ status: e.status, progress: e.progress, file: null, stage: e.stage, ahead: e.ahead }} /> : <Chip tone={MOVIE_STATUS[e.status] ?? "info"}>{t(`movies.status.${e.status}` as I18nKey)}</Chip>}
+        {e.type === "episode" ? (
+          <StatusPill e={{ status: e.status, progress: e.progress, file: null, stage: e.stage, ahead: e.ahead }} />
+        ) : (
+          <Chip tone={MOVIE_STATUS[e.status] ?? "info"}>{t(`movies.status.${e.status}` as I18nKey)}</Chip>
+        )}
       </span>
     </button>
   );
@@ -233,11 +298,13 @@ function Agenda({ byDay, compact, onOpen }: { byDay: Map<number, Entry[]>; compa
   const today = startOfDay(Date.now());
   // Compact (Home): the first 8 entries, then "Full calendar".
   let left = compact ? 8 : Infinity;
-  const shown = days.map(([k, list]) => {
-    const take = list.slice(0, Math.max(0, left));
-    left -= take.length;
-    return [k, take] as [number, Entry[]];
-  }).filter(([, l]) => l.length);
+  const shown = days
+    .map(([k, list]) => {
+      const take = list.slice(0, Math.max(0, left));
+      left -= take.length;
+      return [k, take] as [number, Entry[]];
+    })
+    .filter(([, l]) => l.length);
   const more = compact && entriesCount(days) > 8;
   return (
     <div className="agenda">
@@ -277,10 +344,16 @@ function Week({ from, byDay, onOpen }: { from: number; byDay: Map<number, Entry[
       {Array.from({ length: 7 }, (_, i) => addDays(from, i)).map((day) => {
         const list = byDay.get(day) ?? [];
         return (
-          <div key={day} className={`week-day${day === today ? " today" : ""}`} style={{ "--heat": Math.min(1, list.length / Math.max(4, busiest)) } as React.CSSProperties}>
+          <div
+            key={day}
+            className={`week-day${day === today ? " today" : ""}`}
+            style={{ "--heat": Math.min(1, list.length / Math.max(4, busiest)) } as React.CSSProperties}
+          >
             <h2 className="week-hd">
               <span className="eyebrow">{new Date(day).toLocaleDateString(undefined, { weekday: "short" })}</span>
-              <span className="week-kanji jp" lang="ja" aria-hidden="true">{"日月火水木金土"[new Date(day).getDay()]}</span>
+              <span className="week-kanji jp" lang="ja" aria-hidden="true">
+                {"日月火水木金土"[new Date(day).getDay()]}
+              </span>
               <span className="week-num">{new Date(day).getDate()}</span>
               <span className="muted small week-count">{list.length ? t("cal.eps", { n: list.length }) : ""}</span>
             </h2>
@@ -359,7 +432,9 @@ function Month({ from, anchor, byDay, onOpen }: { from: number; anchor: number; 
       {picked !== null && (
         <div className="agenda-day month-picked" ref={listRef}>
           <div className="row between">
-            <h2 className="agenda-date" tabIndex={-1}>{dayTitle(picked)}</h2>
+            <h2 className="agenda-date" tabIndex={-1}>
+              {dayTitle(picked)}
+            </h2>
             <button className="small" onClick={() => setPicked(null)}>
               {t("common.close")}
             </button>

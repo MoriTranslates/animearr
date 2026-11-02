@@ -1,7 +1,7 @@
 /**
  * Release rules (Sonarr's release profiles): terms a release name must or must not contain, and preferred terms with
  * a score. A term is a plain case-insensitive substring, or `/regex/` (always case-insensitive) when wrapped in slashes.
- * Pure: the rules a show falls under (tag scoping) are picked by server/releaseRules.ts before they get here.
+ * Pure: the rules a show falls under (tag scoping) are picked by server/search/releaseRules.ts before they get here.
  */
 export interface PreferredTerm {
   term: string;

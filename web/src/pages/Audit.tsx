@@ -1,10 +1,25 @@
 import { useState } from "react";
 import { api, fmtSize, sxe } from "../api";
-import { Link, navigate, query } from "../App";
+import { Link, navigate, query } from "../nav";
 import { QualityUpgradesPanel } from "../quality";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, SplitButton, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
+import {
+  Chip,
+  Confirm,
+  Cover,
+  dateTime,
+  Empty,
+  ErrorBox,
+  Menu,
+  Spinner,
+  SplitButton,
+  useLoad,
+  usePageTitle,
+  useToast,
+  Why,
+  ReleaseName,
+} from "../ui";
 import { ReleaseLine } from "./Queue";
 
 type Tab = "gaps" | "language" | "specials" | "maintenance";
@@ -14,7 +29,13 @@ type Maint = "checks" | "upgrades" | "quality" | "duplicates" | "recycle";
 export function Audit() {
   usePageTitle(t("audit.title"));
   const q = query().get("tab") ?? "gaps";
-  const [tab, setTab] = useState<Tab>(["checks", "upgrades", "quality", "duplicates", "recycle", "maintenance"].includes(q) ? "maintenance" : ["language", "gaps", "specials"].includes(q) ? (q as Tab) : "gaps");
+  const [tab, setTab] = useState<Tab>(
+    ["checks", "upgrades", "quality", "duplicates", "recycle", "maintenance"].includes(q)
+      ? "maintenance"
+      : ["language", "gaps", "specials"].includes(q)
+        ? (q as Tab)
+        : "gaps",
+  );
   const [maint, setMaint] = useState<Maint>(["upgrades", "quality", "duplicates", "recycle"].includes(q) ? (q as Maint) : "checks");
   const pick = (x: Tab, m: Maint = maint) => {
     setTab(x);
@@ -67,7 +88,7 @@ function ranges(eps: { season: number; episode: number }[]) {
     .map(([season, list]) => {
       const nums = [...new Set(list)].sort((a, b) => a - b);
       const parts: string[] = [];
-      for (let i = 0; i < nums.length; ) {
+      for (let i = 0; i < nums.length;) {
         let j = i;
         while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
         parts.push(j > i ? `${nums[i]}–${nums[j]}` : `${nums[i]}`);
@@ -77,7 +98,15 @@ function ranges(eps: { season: number; episode: number }[]) {
     });
 }
 
-interface GapSeries { seriesId: number; tvdbId: number; title: string; cover: string | null; status: string; missing: { id: number; season: number; episode: number; title: string | null; airUtc: number | null }[]; missingSeasons: { season: number; aired: number; monitored: boolean }[] }
+interface GapSeries {
+  seriesId: number;
+  tvdbId: number;
+  title: string;
+  cover: string | null;
+  status: string;
+  missing: { id: number; season: number; episode: number; title: string | null; airUtc: number | null }[];
+  missingSeasons: { season: number; aired: number; monitored: boolean }[];
+}
 
 function Gaps() {
   const d = useLoad(() => api<{ series: GapSeries[]; episodes: number; seasons: number }>("/audit/gaps"), []);
@@ -89,7 +118,11 @@ function Gaps() {
       <p>
         <strong>{t("audit.gaps.total", { episodes: d.data.episodes, seasons: d.data.seasons })}</strong>
       </p>
-      {!d.data.series.length && <Empty icon="✓" title={t("audit.allGood")}>{t("audit.gaps.empty")}</Empty>}
+      {!d.data.series.length && (
+        <Empty icon="✓" title={t("audit.allGood")}>
+          {t("audit.gaps.empty")}
+        </Empty>
+      )}
       <div className="list">
         {d.data.series.map((s) => (
           <article key={s.tvdbId} className="card show-card">
@@ -111,7 +144,8 @@ function Gaps() {
                 <ul className="plain small gap-ranges">
                   {ranges(s.missing).map((r) => (
                     <li key={r.season}>
-                      <span className="mono">{r.season === 0 ? t("series.specials") : `S${r.season}`}</span> · {t("audit.gaps.range", { eps: r.text, n: r.n })}
+                      <span className="mono">{r.season === 0 ? t("series.specials") : `S${r.season}`}</span> ·{" "}
+                      {t("audit.gaps.range", { eps: r.text, n: r.n })}
                     </li>
                   ))}
                 </ul>
@@ -125,12 +159,29 @@ function Gaps() {
   );
 }
 
-interface LangGroup { seriesId: number; tvdbId: number; title: string; cover: string | null; season: number; files: { id: number; name: string; group: string | null; audio: string[]; subs: string[]; reason: string }[] }
+interface LangGroup {
+  seriesId: number;
+  tvdbId: number;
+  title: string;
+  cover: string | null;
+  season: number;
+  files: { id: number; name: string; group: string | null; audio: string[]; subs: string[]; reason: string }[];
+}
 
 function Language() {
   const toast = useToast();
   const [sidecars, setSidecars] = useState(false);
-  const d = useLoad(() => api<{ profile: string[]; checkedFiles: number; series: LangGroup[]; confirmed: { tvdbId: number; title: string; season: number; files: number }[]; movies: { movieId: number; title: string; cover: string | null; group: string | null; reason: string }[] }>(`/audit/language${sidecars ? "?sidecars=1" : ""}`), [sidecars]);
+  const d = useLoad(
+    () =>
+      api<{
+        profile: string[];
+        checkedFiles: number;
+        series: LangGroup[];
+        confirmed: { tvdbId: number; title: string; season: number; files: number }[];
+        movies: { movieId: number; title: string; cover: string | null; group: string | null; reason: string }[];
+      }>(`/audit/language${sidecars ? "?sidecars=1" : ""}`),
+    [sidecars],
+  );
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const lang = d.data.profile[0] ?? "en";
@@ -141,7 +192,11 @@ function Language() {
         <input type="checkbox" checked={sidecars} onChange={(e) => setSidecars(e.target.checked)} /> {t("audit.lang.sidecars")}
       </label>
       <p className="muted small">{t("audit.lang.checked", { n: d.data.checkedFiles })}</p>
-      {!d.data.series.length && !d.data.movies.length && <Empty icon="✓" title={t("audit.allGood")}>{t("audit.lang.empty")}</Empty>}
+      {!d.data.series.length && !d.data.movies.length && (
+        <Empty icon="✓" title={t("audit.allGood")}>
+          {t("audit.lang.empty")}
+        </Empty>
+      )}
       <div className="list">
         {d.data.series.map((g) => (
           <article key={`${g.tvdbId}-${g.season}`} className="card show-card">
@@ -175,7 +230,12 @@ function Language() {
                 />
               </div>
               <p className="small muted">{g.files[0].reason}</p>
-              {g.files.length > 1 && <Why summary={t("audit.lang.allFiles", { n: g.files.length })} lines={g.files.map((f) => `${f.name}${f.group ? ` [${f.group}]` : ""}: ${f.reason}`)} />}
+              {g.files.length > 1 && (
+                <Why
+                  summary={t("audit.lang.allFiles", { n: g.files.length })}
+                  lines={g.files.map((f) => `${f.name}${f.group ? ` [${f.group}]` : ""}: ${f.reason}`)}
+                />
+              )}
             </div>
           </article>
         ))}
@@ -212,7 +272,21 @@ function Language() {
   );
 }
 
-interface SpecialSeries { tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; cls: "movie" | "real" | "junk" | "unknown" | "creditless"; why: string; radarr: { inRadarr: boolean; title?: string; movieId?: number } | null }[] }
+interface SpecialSeries {
+  tvdbId: number;
+  title: string;
+  cover: string | null;
+  items: {
+    id: number;
+    episode: number;
+    title: string | null;
+    runtime: number | null;
+    hasFile: boolean;
+    cls: "movie" | "real" | "junk" | "unknown" | "creditless";
+    why: string;
+    radarr: { inRadarr: boolean; title?: string; movieId?: number } | null;
+  }[];
+}
 
 function Specials() {
   const [junk, setJunk] = useState(false);
@@ -224,7 +298,16 @@ function Specials() {
     <div className="stack">
       <p className="muted">{t("audit.specials.intro")}</p>
       <p>
-        <strong>{t("audit.specials.totals", { movie: d.data.totals.movie, inRadarr: d.data.totals.movieInRadarr, real: d.data.totals.real, junk: d.data.totals.junk, unknown: d.data.totals.unknown, creditless: d.data.totals.creditless ?? 0 })}</strong>
+        <strong>
+          {t("audit.specials.totals", {
+            movie: d.data.totals.movie,
+            inRadarr: d.data.totals.movieInRadarr,
+            real: d.data.totals.real,
+            junk: d.data.totals.junk,
+            unknown: d.data.totals.unknown,
+            creditless: d.data.totals.creditless ?? 0,
+          })}
+        </strong>
       </p>
       <label className="check">
         <input type="checkbox" checked={junk} onChange={(e) => setJunk(e.target.checked)} /> {t("audit.specials.showJunk")}
@@ -249,11 +332,22 @@ function Specials() {
                           <span className="mono">S00E{String(i.episode).padStart(2, "0")}</span>
                           <span className="muted small">{t(`audit.specials.${i.cls}`)}</span>
                           <span className="clamp1 grow">{i.title ?? "—"}</span>
-                          {i.hasFile && <span className="quiet-status"><span className="dot good" aria-hidden="true" />{t("ep.status.have")}</span>}
+                          {i.hasFile && (
+                            <span className="quiet-status">
+                              <span className="dot good" aria-hidden="true" />
+                              {t("ep.status.have")}
+                            </span>
+                          )}
                         </summary>
                         <div className="stack small special-detail">
                           <p className="muted">{i.why}</p>
-                          {i.radarr && <span className={i.radarr.inRadarr ? "good-text" : "warn-text"}>{i.radarr.inRadarr ? t("audit.specials.inRadarr", { title: i.radarr.title }) : t("audit.specials.notInRadarr")}</span>}
+                          {i.radarr && (
+                            <span className={i.radarr.inRadarr ? "good-text" : "warn-text"}>
+                              {i.radarr.inRadarr
+                                ? t("audit.specials.inRadarr", { title: i.radarr.title })
+                                : t("audit.specials.notInRadarr")}
+                            </span>
+                          )}
                           {i.radarr?.movieId && <Link to={`/movie/${i.radarr.movieId}`}>{t("ep.openMovie")} →</Link>}
                         </div>
                       </details>
@@ -268,9 +362,30 @@ function Specials() {
   );
 }
 
-interface Check { history_id: number; tvdb_id: number; episode_id: number; release: string; ok: number; action: string; why: string; at: number; title: string | null; label: string | null }
+interface Check {
+  history_id: number;
+  tvdb_id: number;
+  episode_id: number;
+  release: string;
+  ok: number;
+  action: string;
+  why: string;
+  at: number;
+  title: string | null;
+  label: string | null;
+}
 
-const CHECK_TONE: Record<string, "good" | "accent" | "info" | "warn" | "bad"> = { none: "good", skipped: "info", unchecked: "info", suspected: "info", "would-repair": "warn", capped: "warn", "gave-up": "bad", error: "bad", repaired: "accent" };
+const CHECK_TONE: Record<string, "good" | "accent" | "info" | "warn" | "bad"> = {
+  none: "good",
+  skipped: "info",
+  unchecked: "info",
+  suspected: "info",
+  "would-repair": "warn",
+  capped: "warn",
+  "gave-up": "bad",
+  error: "bad",
+  repaired: "accent",
+};
 
 /** After-import checks: every file that landed in the allowed root folders, checked against its show's profile. */
 function Checks() {
@@ -302,43 +417,66 @@ function Checks() {
       {!d.data.checks.length && <Empty icon="✓">{t("repair.empty")}</Empty>}
       {d.data.checks.some((c) => c.action === "skipped" || c.action === "unchecked") && (
         <label className="check small">
-          <input type="checkbox" checked={showSkipped} onChange={(e) => setShowSkipped(e.target.checked)} /> {t("repair.showSkipped", { n: d.data.checks.filter((c) => c.action === "skipped" || c.action === "unchecked").length })}
+          <input type="checkbox" checked={showSkipped} onChange={(e) => setShowSkipped(e.target.checked)} />{" "}
+          {t("repair.showSkipped", { n: d.data.checks.filter((c) => c.action === "skipped" || c.action === "unchecked").length })}
         </label>
       )}
       <div className="list">
-        {d.data.checks.filter((c) => showSkipped || (c.action !== "skipped" && c.action !== "unchecked")).map((c) => (
-          <article key={c.history_id} className="card pad stack">
-            <div className="row between">
-              <Chip tone={CHECK_TONE[c.action] ?? "info"}>
-                {c.action === "none" ? "✓ " : c.action === "repaired" ? "↻ " : c.ok ? "" : "✕ "}
-                {t(`repair.action.${c.action}` as I18nKey)}
-              </Chip>
-              <span className="muted small">{dateTime(c.at)}</span>
-            </div>
-            {c.title && (
-              <ShowLink tvdbId={c.tvdb_id} title={c.title}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <strong className="clamp2">{c.title}</strong>
-                  {c.label && <span className="muted small">{c.label}</span>}
-                </span>
-              </ShowLink>
-            )}
-            <ReleaseLine release={c.release} />
-            <p className="small">{c.why}</p>
-          </article>
-        ))}
+        {d.data.checks
+          .filter((c) => showSkipped || (c.action !== "skipped" && c.action !== "unchecked"))
+          .map((c) => (
+            <article key={c.history_id} className="card pad stack">
+              <div className="row between">
+                <Chip tone={CHECK_TONE[c.action] ?? "info"}>
+                  {c.action === "none" ? "✓ " : c.action === "repaired" ? "↻ " : c.ok ? "" : "✕ "}
+                  {t(`repair.action.${c.action}` as I18nKey)}
+                </Chip>
+                <span className="muted small">{dateTime(c.at)}</span>
+              </div>
+              {c.title && (
+                <ShowLink tvdbId={c.tvdb_id} title={c.title}>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <strong className="clamp2">{c.title}</strong>
+                    {c.label && <span className="muted small">{c.label}</span>}
+                  </span>
+                </ShowLink>
+              )}
+              <ReleaseLine release={c.release} />
+              <p className="small">{c.why}</p>
+            </article>
+          ))}
       </div>
     </div>
   );
 }
 
-interface RecycleItem { path: string; series: string | null; tvdbId: number | null; size: number; deletedAt: number; purgeAt: number | null }
+interface RecycleItem {
+  path: string;
+  series: string | null;
+  tvdbId: number | null;
+  size: number;
+  deletedAt: number;
+  purgeAt: number | null;
+}
 
 /** AnimeArr's own recycling bin: replaced files, kept N days, purged daily; "Empty bin now". */
 function OwnBin() {
   const toast = useToast();
   const [ask, setAsk] = useState(false);
-  const d = useLoad(() => api<{ path: string; days: number; error: string | null; files: number; bytes: number; nextPurge: number | null; oldest: number | null; pinned?: { path: string; why: string; at: number; exists: boolean }[] }>("/recycle/animearr"), []);
+  const d = useLoad(
+    () =>
+      api<{
+        path: string;
+        days: number;
+        error: string | null;
+        files: number;
+        bytes: number;
+        nextPurge: number | null;
+        oldest: number | null;
+        pinned?: { path: string; why: string; at: number; exists: boolean }[];
+      }>("/recycle/animearr"),
+    [],
+  );
   if (!d.data) return null;
   const b = d.data;
   return (
@@ -375,7 +513,8 @@ function OwnBin() {
       ) : (
         <>
           <p className="small">
-            {t("bin.summary", { path: b.path, n: b.files, size: fmtSize(b.bytes) })} · {b.days ? t("bin.keeps", { days: b.days }) : t("bin.forever")}
+            {t("bin.summary", { path: b.path, n: b.files, size: fmtSize(b.bytes) })} ·{" "}
+            {b.days ? t("bin.keeps", { days: b.days }) : t("bin.forever")}
           </p>
           {b.nextPurge && <p className="muted small">{t("bin.next", { when: dateTime(b.nextPurge) })}</p>}
           <div className="row">
@@ -412,7 +551,21 @@ function OwnBin() {
 /** Sonarr's recycle bin, anime shows only (read-only: restore by moving the file back). */
 function Recycle() {
   const [fresh, setFresh] = useState(0);
-  const d = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; reachable: boolean; items: RecycleItem[]; totalCount: number; totalBytes: number; truncated: boolean; error?: string }>(`/recycle${fresh ? "?fresh=1" : ""}`), [fresh]);
+  const d = useLoad(
+    () =>
+      api<{
+        configured: boolean;
+        path: string;
+        cleanupDays: number;
+        reachable: boolean;
+        items: RecycleItem[];
+        totalCount: number;
+        totalBytes: number;
+        truncated: boolean;
+        error?: string;
+      }>(`/recycle${fresh ? "?fresh=1" : ""}`),
+    [fresh],
+  );
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const r = d.data;
@@ -431,11 +584,18 @@ function Recycle() {
     );
   return (
     <div className="stack">
-      <p className="muted">{r.cleanupDays ? t("recycle.intro", { path: r.path, days: r.cleanupDays }) : t("recycle.introForever", { path: r.path })}</p>
+      <p className="muted">
+        {r.cleanupDays ? t("recycle.intro", { path: r.path, days: r.cleanupDays }) : t("recycle.introForever", { path: r.path })}
+      </p>
       {!r.reachable && <p className="muted small">{t("recycle.unreachable")}</p>}
       {r.reachable && !r.items.length && <Empty>{t("recycle.empty")}</Empty>}
       {refresh}
-      {r.reachable && !!r.items.length && <p className="small">{t("recycle.total", { n: r.totalCount, size: fmtSize(r.totalBytes) })}{r.truncated ? ` ${t("recycle.truncated", { n: r.items.length })}` : ""}</p>}
+      {r.reachable && !!r.items.length && (
+        <p className="small">
+          {t("recycle.total", { n: r.totalCount, size: fmtSize(r.totalBytes) })}
+          {r.truncated ? ` ${t("recycle.truncated", { n: r.items.length })}` : ""}
+        </p>
+      )}
       <div className="list">
         {r.items.map((i) => (
           <article key={i.path} className="card pad stack">
@@ -456,17 +616,52 @@ function Recycle() {
   );
 }
 
-interface Upgrade { episodeId: number; tvdbId: number; title: string; label: string; audio: string[]; dub: string[]; state: string; lastAt: number | null; why: string; release: string | null }
-const UPGRADE_TONE: Record<string, "good" | "accent" | "info" | "warn"> = { waiting: "info", found: "accent", grabbed: "good", upgraded: "good" };
+interface Upgrade {
+  episodeId: number;
+  tvdbId: number;
+  title: string;
+  label: string;
+  audio: string[];
+  dub: string[];
+  state: string;
+  lastAt: number | null;
+  why: string;
+  release: string | null;
+}
+const UPGRADE_TONE: Record<string, "good" | "accent" | "info" | "warn"> = {
+  waiting: "info",
+  found: "accent",
+  grabbed: "good",
+  upgraded: "good",
+};
 
 /** Sub-only placeholders in dual-mode shows, waiting for a dual-audio release. */
 function Upgrades() {
-  const d = useLoad(() => api<{ mode: string; items: Upgrade[]; movies: { movieId: number; title: string; audio: string[]; dub: string[]; state: string; lastAt: number | null; why: string; release: string | null }[] }>("/upgrades"), []);
+  const d = useLoad(
+    () =>
+      api<{
+        mode: string;
+        items: Upgrade[];
+        movies: {
+          movieId: number;
+          title: string;
+          audio: string[];
+          dub: string[];
+          state: string;
+          lastAt: number | null;
+          why: string;
+          release: string | null;
+        }[];
+      }>("/upgrades"),
+    [],
+  );
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
     <div className="stack">
-      <p className="muted">{t("dual.intro", { mode: t(d.data.mode === "auto" ? "dual.auto" : (`repair.mode.${d.data.mode}` as I18nKey)) })}</p>
+      <p className="muted">
+        {t("dual.intro", { mode: t(d.data.mode === "auto" ? "dual.auto" : (`repair.mode.${d.data.mode}` as I18nKey)) })}
+      </p>
       {d.data.mode === "off" && <p className="warn-text">{t("dual.offNote")}</p>}
       {!d.data.items.length && !d.data.movies.length && <Empty>{t("dual.empty")}</Empty>}
       <div className="list" hidden={!d.data.movies.length}>
@@ -479,7 +674,11 @@ function Upgrades() {
               <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
               <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
             </div>
-            {u.release && <p className="small"><ReleaseName name={u.release} /></p>}
+            {u.release && (
+              <p className="small">
+                <ReleaseName name={u.release} />
+              </p>
+            )}
             <p className="small">{u.why}</p>
           </article>
         ))}
@@ -497,7 +696,11 @@ function Upgrades() {
               <Chip tone={UPGRADE_TONE[u.state] ?? "info"}>{t(`dual.state.${u.state}` as I18nKey)}</Chip>
               <span className="muted small">{t("dual.audioNow", { audio: u.audio.join("/"), dub: u.dub.join("/") })}</span>
             </div>
-            {u.release && <p className="small"><ReleaseName name={u.release} /></p>}
+            {u.release && (
+              <p className="small">
+                <ReleaseName name={u.release} />
+              </p>
+            )}
             <p className="small">
               {u.why}
               {u.lastAt ? ` · ${dateTime(u.lastAt)}` : ""}
@@ -509,7 +712,20 @@ function Upgrades() {
   );
 }
 
-interface Dup { tvdbId: number; title: string; managed: boolean; sonarr: boolean; sonarrUrl: string; otherTvdbId: number; otherTitle: string; mine: string; there: string; mineFiles: { files: number; total: number }; thereFiles: { files: number; total: number }; blocking: boolean }
+interface Dup {
+  tvdbId: number;
+  title: string;
+  managed: boolean;
+  sonarr: boolean;
+  sonarrUrl: string;
+  otherTvdbId: number;
+  otherTitle: string;
+  mine: string;
+  there: string;
+  mineFiles: { files: number; total: number };
+  thereFiles: { files: number; total: number };
+  blocking: boolean;
+}
 
 /** Shows TVDB lists twice (found from catalog ids): which episodes overlap, file counts, and how to retire the copy. */
 function Duplicates() {
@@ -545,16 +761,25 @@ function Duplicates() {
             <p className="small">{t("dup.overlap", { mine: x.mine, there: x.there, other: x.otherTitle })}</p>
             <div className="row">
               <Chip tone={x.blocking ? "good" : "warn"}>{t(x.blocking ? "dup.blocking" : "dup.notBlocking")}</Chip>
-              <span className="muted small">{t("dup.files", { a: x.mineFiles.files, b: x.mineFiles.total, c: x.thereFiles.files, d: x.thereFiles.total })}</span>
+              <span className="muted small">
+                {t("dup.files", { a: x.mineFiles.files, b: x.mineFiles.total, c: x.thereFiles.files, d: x.thereFiles.total })}
+              </span>
             </div>
             {x.managed && (
               <div className="row">
-                <button className="small" onClick={() => void stop(x)}>{t("dup.stop")}</button>
+                <button className="small" onClick={() => void stop(x)}>
+                  {t("dup.stop")}
+                </button>
               </div>
             )}
             {x.sonarr && (
               <p className="muted small">
-                {t("dup.sonarrHow", { title: x.title })} {x.sonarrUrl && <a href={x.sonarrUrl} target="_blank" rel="noreferrer">{t("dup.openSonarr")}</a>}
+                {t("dup.sonarrHow", { title: x.title })}{" "}
+                {x.sonarrUrl && (
+                  <a href={x.sonarrUrl} target="_blank" rel="noreferrer">
+                    {t("dup.openSonarr")}
+                  </a>
+                )}
               </p>
             )}
           </article>
@@ -565,12 +790,36 @@ function Duplicates() {
 }
 
 /** "Find missing (n)" for a show on the Gaps list; the caret picks releases (or opens the show). */
-function GapSearch({ tvdbId, missing, onDone }: { tvdbId: number; missing: { id: number; season: number; episode: number }[]; onDone: () => void }) {
+function GapSearch({
+  tvdbId,
+  missing,
+  onDone,
+}: {
+  tvdbId: number;
+  missing: { id: number; season: number; episode: number }[];
+  onDone: () => void;
+}) {
   const list = missing.slice(0, 26);
-  const a = useEpisodeActions({ tvdbId, episodes: list.map((e) => ({ id: e.id, label: sxe(e.season, e.episode) })), managedLive: false, dryRun: false, onDone });
+  const a = useEpisodeActions({
+    tvdbId,
+    episodes: list.map((e) => ({ id: e.id, label: sxe(e.season, e.episode) })),
+    managedLive: false,
+    dryRun: false,
+    onDone,
+  });
   return (
     <div className="row">
-      <SplitButton small primary={false} label={`⚡ ${t("ep.findMissing", { n: list.length })}`} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }, { label: t("audit.openShow"), onSelect: () => navigate(`/show/${tvdbId}`) }]} />
+      <SplitButton
+        small
+        primary={false}
+        label={`⚡ ${t("ep.findMissing", { n: list.length })}`}
+        onClick={a.auto}
+        disabled={a.autoBusy}
+        items={[
+          { label: t("auto.chooseRelease"), onSelect: a.search },
+          { label: t("audit.openShow"), onSelect: () => navigate(`/show/${tvdbId}`) },
+        ]}
+      />
       {a.ui}
     </div>
   );

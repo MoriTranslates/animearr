@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-files-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db } = await import("../server/db.js");
-const { scanLibrary, recordFor, probeOf, fileSummary } = await import("../server/mediafiles.js");
+const { db } = await import("../server/system/db.js");
+const { scanLibrary, recordFor, probeOf, fileSummary } = await import("../server/import/mediafiles.js");
 
 const lib = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-lib-"));
 const show = path.join(lib, "Show", "Season 1");
@@ -30,7 +30,17 @@ const fake = async (f: string) => {
     container: "matroska,webm",
     video: { codec: "hevc", width: 1920, height: 1080, hdr: false },
     audio: [{ index: 1, codec: "aac", lang: "ja", title: null, default: true, forced: false, channels: 2 }],
-    subs: [{ index: 2, codec: "ass", lang: "en", title: forcedOnly ? "Signs & Songs" : "Full", default: true, forced: false, partial: forcedOnly }],
+    subs: [
+      {
+        index: 2,
+        codec: "ass",
+        lang: "en",
+        title: forcedOnly ? "Signs & Songs" : "Full",
+        default: true,
+        forced: false,
+        partial: forcedOnly,
+      },
+    ],
   };
 };
 
@@ -42,7 +52,10 @@ test("first scan probes everything, with sidecars; forced-only English is detect
   assert.deepEqual(probeOf(one).subs, [], "a Signs & Songs track isn't dialogue");
   assert.deepEqual(probeOf(one).forced, ["en"]);
   const two = recordFor(arr(ep2))!;
-  assert.deepEqual(two.sidecars.map((s) => s.lang), ["en"]);
+  assert.deepEqual(
+    two.sidecars.map((s) => s.lang),
+    ["en"],
+  );
   assert.equal(fileSummary().forcedOnlyEnglish, 1);
 });
 
@@ -88,9 +101,16 @@ test("record keys use forward slashes: a Windows-style *arr path still finds the
 });
 
 test("own records win when they match the *arr or are newer than its import (Tdarr re-encode); stale ones don't", async () => {
-  const { ownFile } = await import("../server/mediafiles.js");
+  const { ownFile } = await import("../server/import/mediafiles.js");
   const rec = recordFor(arr(ep1))!;
   assert.ok(ownFile(arr(ep1), { size: rec.size }), "same size");
-  assert.ok(ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime - 86_400_000).toISOString() }), "rewritten after the import");
-  assert.equal(ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime + 86_400_000).toISOString() }), null, "the *arr has a newer file than our record");
+  assert.ok(
+    ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime - 86_400_000).toISOString() }),
+    "rewritten after the import",
+  );
+  assert.equal(
+    ownFile(arr(ep1), { size: rec.size * 6, dateAdded: new Date(rec.mtime + 86_400_000).toISOString() }),
+    null,
+    "the *arr has a newer file than our record",
+  );
 });

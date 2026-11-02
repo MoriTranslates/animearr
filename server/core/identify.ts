@@ -22,20 +22,45 @@ export interface Identification {
   summary: string;
 }
 
-export function identify(name: string, ctx: IdentifyContext, opts: { publishDate?: number | null; tvdbId?: number; parsed?: ParsedRelease; expect?: number[] } = {}): Identification {
+export function identify(
+  name: string,
+  ctx: IdentifyContext,
+  opts: { publishDate?: number | null; tvdbId?: number; parsed?: ParsedRelease; expect?: number[] } = {},
+): Identification {
   const parsed = opts.parsed ?? parseRelease(name);
   let cands = ctx.index.lookup(parsed.title, parsed.altTitles);
   if (opts.tvdbId !== undefined) cands = cands.filter((c) => c.tvdbId === opts.tvdbId);
-  const others = cands.slice(1).map((c) => ({ tvdbId: c.tvdbId, title: ctx.index.library(c.tvdbId)?.title ?? c.matchedTitle, score: c.score }));
-  if (!cands.length) return { parsed, candidate: null, resolution: null, others, summary: `"${parsed.title}" is not a known title${opts.tvdbId !== undefined ? " for this show" : ""}` };
+  const others = cands
+    .slice(1)
+    .map((c) => ({ tvdbId: c.tvdbId, title: ctx.index.library(c.tvdbId)?.title ?? c.matchedTitle, score: c.score }));
+  if (!cands.length)
+    return {
+      parsed,
+      candidate: null,
+      resolution: null,
+      others,
+      summary: `"${parsed.title}" is not a known title${opts.tvdbId !== undefined ? " for this show" : ""}`,
+    };
   // Try candidates in order; the first that resolves wins (a library show that can't hold the episode loses to one that can).
   let first: { c: Candidate; r: Resolution } | null = null;
   for (const c of cands.slice(0, 4)) {
-    const r = resolveRelease(parsed, c, ctx.episodesFor(c.tvdbId), { entries: ctx.entriesFor?.(c.tvdbId) ?? ctx.index.entriesFor(c.tvdbId), rules: ctx.rulesFor?.(c.tvdbId), publishDate: opts.publishDate ?? null, now: ctx.now, expect: opts.expect });
+    const r = resolveRelease(parsed, c, ctx.episodesFor(c.tvdbId), {
+      entries: ctx.entriesFor?.(c.tvdbId) ?? ctx.index.entriesFor(c.tvdbId),
+      rules: ctx.rulesFor?.(c.tvdbId),
+      publishDate: opts.publishDate ?? null,
+      now: ctx.now,
+      expect: opts.expect,
+    });
     first ??= { c, r };
     if (r.ok) {
       const title = ctx.index.library(c.tvdbId)?.title ?? c.matchedTitle;
-      return { parsed, candidate: c, resolution: r, others: others.filter((o) => o.tvdbId !== c.tvdbId), summary: `${title} ${r.label} (${r.confidence}%)` };
+      return {
+        parsed,
+        candidate: c,
+        resolution: r,
+        others: others.filter((o) => o.tvdbId !== c.tvdbId),
+        summary: `${title} ${r.label} (${r.confidence}%)`,
+      };
     }
   }
   const title = ctx.index.library(first!.c.tvdbId)?.title ?? first!.c.matchedTitle;

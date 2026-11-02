@@ -58,7 +58,13 @@ const ABSOLUTE: [string, string, number, number, number][] = [
   ["[SubsPlease] Another Anime 100 - Another 100 Anime - 01 (1080p) [4E6B4518].mkv", "Another Anime 100 - Another 100 Anime", 1, 0, 0],
   ["[SubsPlease] Series Title - 100 Years Quest - 01 (1080p) [1107F3A9].mkv", "Series Title - 100 Years Quest", 1, 0, 0],
   ["Series_Title_2_[01]_[AniLibria_TV]_[WEBRip_1080p]", "Series Title 2", 1, 0, 0],
-  ["[Dae-P9] Anime Series - 05 - S01E05 - Marrying by Contesting (BD 1080p HEVC FLAC AAC) [Dual Audio] [5BCD56B8]", "Anime Series", 5, 1, 5],
+  [
+    "[Dae-P9] Anime Series - 05 - S01E05 - Marrying by Contesting (BD 1080p HEVC FLAC AAC) [Dual Audio] [5BCD56B8]",
+    "Anime Series",
+    5,
+    1,
+    5,
+  ],
   ["[Kaleido-subs] Animation - 12 (S01E12) - (WEB 1080p HEVC x265 10-bit E-AC3 2.0) [1ADD8F6D]", "Animation", 12, 1, 12],
 ];
 
@@ -70,7 +76,12 @@ const FAN_SEASON: [string, string, number, number][] = [
   ["Series Title S03 - EP14 VOSTFR [1080p] [HardSub] Yass'Kun", "Series Title", 3, 14],
   ["[SubsPlease] Title de Series S2 - 03 (540p) [63501322]", "Title de Series", 2, 3],
   ["[SubsPlease] Anime Title 100 S3 - 01 (1080p) [5A493522]", "Anime Title 100", 3, 1],
-  ["[DameDesuYo] Another Anime With Special Naming (Season 2) - 33 (1280x720 10bit EAC3) [42A12A76].mkv", "Another Anime With Special Naming", 2, 33],
+  [
+    "[DameDesuYo] Another Anime With Special Naming (Season 2) - 33 (1280x720 10bit EAC3) [42A12A76].mkv",
+    "Another Anime With Special Naming",
+    2,
+    33,
+  ],
 ];
 
 const MULTI: [string, string, number, number][] = [
@@ -87,7 +98,11 @@ const MULTI: [string, string, number, number][] = [
 
 const PACKS: [string, string, number][] = [
   ["[Vivid] Some Anime Show S01 [Web][MKV][h264 10-bit][1080p][AAC 2.0]", "Some Anime Show", 1],
-  ["[Judas] Japanse Anime, Title (Anime, Title?) (Season 1) [1080p][HEVC x265 10bit][Multi-Subs] (Batch)", "Japanse Anime, Title (Anime, Title?)", 1],
+  [
+    "[Judas] Japanse Anime, Title (Anime, Title?) (Season 1) [1080p][HEVC x265 10bit][Multi-Subs] (Batch)",
+    "Japanse Anime, Title (Anime, Title?)",
+    1,
+  ],
 ];
 
 const RECAP: [string, string, number][] = [
@@ -126,7 +141,10 @@ for (const [name, title, a, b] of MULTI)
   test(`multi-episode: ${name}`, () => {
     const p = parseRelease(name);
     assert.equal(p.title, title);
-    assert.deepEqual(p.absolute, Array.from({ length: b - a + 1 }, (_, i) => a + i));
+    assert.deepEqual(
+      p.absolute,
+      Array.from({ length: b - a + 1 }, (_, i) => a + i),
+    );
     assert.equal(p.batch, true);
   });
 

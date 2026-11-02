@@ -1,6 +1,6 @@
-import { getSettings } from "../settings.js";
-import { jsonCall, redactUrl, type Conn } from "./http.js";
-import { cachedQuery } from "../searchQueue.js";
+import { getSettings } from "../system/settings.js";
+import { jsonCall, type Conn } from "./http.js";
+import { cachedQuery } from "../search/searchQueue.js";
 
 /** Prowlarr v1 API client: searches (read-only) and fetching a release's NZB/torrent for the grab pipeline. */
 
@@ -23,36 +23,66 @@ export interface ProwlarrRelease {
 }
 
 const conn = (): Conn => getSettings().prowlarr;
-const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) => jsonCall<T>("Prowlarr", c, "/api/v1", method, path, body, timeout);
+const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) =>
+  jsonCall<T>("Prowlarr", c, "/api/v1", method, path, body, timeout);
 
 export const prowlarrConfigured = () => !!(getSettings().prowlarr.url && getSettings().prowlarr.apiKey);
 
 export async function testProwlarr(c: Conn) {
   const s = await call<{ version: string; appName?: string }>("GET", "/system/status", undefined, c);
   if (s.appName && s.appName !== "Prowlarr") throw new Error(`That's ${s.appName}, not Prowlarr`);
-  const indexers = await call<{ id: number; name: string; protocol: string; enable: boolean; priority?: number }[]>("GET", "/indexer", undefined, c);
-  return { version: s.version, indexers: indexers.map(({ id, name, protocol, enable, priority }) => ({ id, name, protocol, enable, priority: priority ?? null })) };
+  const indexers = await call<{ id: number; name: string; protocol: string; enable: boolean; priority?: number }[]>(
+    "GET",
+    "/indexer",
+    undefined,
+    c,
+  );
+  return {
+    version: s.version,
+    indexers: indexers.map(({ id, name, protocol, enable, priority }) => ({ id, name, protocol, enable, priority: priority ?? null })),
+  };
 }
 
-export interface ProwlarrIndexerDetail { id: number; name: string; definitionName: string | null; protocol: string; enable: boolean; animeCategories: boolean }
+export interface ProwlarrIndexerDetail {
+  id: number;
+  name: string;
+  definitionName: string | null;
+  protocol: string;
+  enable: boolean;
+  animeCategories: boolean;
+}
 /** Prowlarr's indexers with whether they carry anime (Newznab category 5070 or one of its sub-categories). */
 export async function prowlarrIndexerDetails(): Promise<ProwlarrIndexerDetail[]> {
   type Cat = { id: number; subCategories?: Cat[] };
   const has = (cats: Cat[] | undefined): boolean => (cats ?? []).some((c) => c.id === 5070 || has(c.subCategories));
-  const list = await call<{ id: number; name: string; definitionName?: string; protocol: string; enable: boolean; capabilities?: { categories?: Cat[] } }[]>("GET", "/indexer");
-  return list.map((x) => ({ id: x.id, name: x.name, definitionName: x.definitionName ?? null, protocol: x.protocol, enable: x.enable, animeCategories: has(x.capabilities?.categories) }));
+  const list = await call<
+    { id: number; name: string; definitionName?: string; protocol: string; enable: boolean; capabilities?: { categories?: Cat[] } }[]
+  >("GET", "/indexer");
+  return list.map((x) => ({
+    id: x.id,
+    name: x.name,
+    definitionName: x.definitionName ?? null,
+    protocol: x.protocol,
+    enable: x.enable,
+    animeCategories: has(x.capabilities?.categories),
+  }));
 }
 
 export async function prowlarrIndexers() {
-  return (await call<{ id: number; name: string; protocol: string; enable: boolean }[]>("GET", "/indexer")).map(({ id, name, protocol, enable }) => ({ id, name, protocol, enable }));
+  return (await call<{ id: number; name: string; protocol: string; enable: boolean }[]>("GET", "/indexer")).map(
+    ({ id, name, protocol, enable }) => ({ id, name, protocol, enable }),
+  );
 }
 
 /**
  * Free-text search across the configured indexers and categories (`indexerIds` narrows it to those). An empty query returns each indexer's recent feed.
- * Identical queries within 10 minutes (and ones in flight) share one answer (server/searchQueue.ts); `fresh` asks again.
+ * Identical queries within 10 minutes (and ones in flight) share one answer (server/search/searchQueue.ts); `fresh` asks again.
  * `timeoutMs` limits the wait (Prowlarr's API has no time limit of its own; its combined search waits for every indexer).
  */
-export async function prowlarrSearch(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; indexerIds?: number[]; timeoutMs?: number } = {}): Promise<ProwlarrRelease[]> {
+export async function prowlarrSearch(
+  query: string,
+  opts: { limit?: number; categories?: number[]; fresh?: boolean; indexerIds?: number[]; timeoutMs?: number } = {},
+): Promise<ProwlarrRelease[]> {
   const s = getSettings().prowlarr;
   const qs = new URLSearchParams({ query, type: "search", limit: String(opts.limit ?? 200) });
   for (const c of opts.categories ?? s.categories) qs.append("categories", String(c));
@@ -61,7 +91,12 @@ export async function prowlarrSearch(query: string, opts: { limit?: number; cate
   const run = () =>
     call<ProwlarrRelease[]>("GET", `/search?${qs}`, undefined, conn(), timeout).then(
       (list) => list.map((r) => ({ ...r, protocol: r.protocol === "usenet" ? ("usenet" as const) : ("torrent" as const) })),
-      (e: Error) => Promise.reject(/timed out/.test(e.message) && opts.timeoutMs ? new Error(`timed out after ${Math.round(timeout / 1000)} s (asked through Prowlarr)`) : e),
+      (e: Error) =>
+        Promise.reject(
+          /timed out/.test(e.message) && opts.timeoutMs
+            ? new Error(`timed out after ${Math.round(timeout / 1000)} s (asked through Prowlarr)`)
+            : e,
+        ),
     );
   // The empty "recent releases" query is never cached (the RSS-style poll needs fresh results).
   return query ? cachedQuery(`prowlarr:${s.url}:${qs}`, run, { fresh: opts.fresh }) : run();

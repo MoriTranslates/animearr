@@ -2,15 +2,17 @@
 export const rulesStrings = {
   "settings.tab.rules": "Release rules",
   "settings.tab.tags": "Tags",
-  "tags.intro": "Tags are labels for your shows and movies. A release rule can be limited to shows with a tag, and request apps like Jellyseerr see the same tags. Add them to a show on its page, or to several at once from Library → Shows (Select).",
+  "tags.intro":
+    "Tags are labels for your shows and movies. A release rule can be limited to shows with a tag, and request apps like Jellyseerr see the same tags. Add them to a show on its page, or to several at once from Library → Shows (Select).",
   "tags.add": "Add a tag",
   "tags.newPlaceholder": "New tag, e.g. dubs",
   "tags.none": "No tags yet.",
   "tags.usage": "{series} {series|show|shows}, {movies} {movies|movie|movies}, {rules} {rules|release rule|release rules}",
   "tags.unused": "Not used yet",
   "tags.rename": "Rename",
-  "tags.deleteTitle": "Delete the tag \"{label}\"?",
-  "tags.deleteBody": "It is used by {series} {series|show|shows}, {movies} {movies|movie|movies} and {rules} {rules|release rule|release rules}. They are unlinked, nothing else changes. A release rule that only had this tag then applies to every show.",
+  "tags.deleteTitle": 'Delete the tag "{label}"?',
+  "tags.deleteBody":
+    "It is used by {series} {series|show|shows}, {movies} {movies|movie|movies} and {rules} {rules|release rule|release rules}. They are unlinked, nothing else changes. A release rule that only had this tag then applies to every show.",
   "tags.deleteUnused": "Nothing uses it.",
   "tags.deleted": "Tag deleted",
   "tags.button": "Tags",
@@ -23,9 +25,12 @@ export const rulesStrings = {
   "tags.bulkAdd": "Add to all",
   "tags.bulkRemove": "Remove from all",
   "tags.bulkDone": "Tags updated",
-  "rules.intro": "Release rules say which releases may be picked. A release is skipped when a rule requires terms it doesn't contain, or when it contains a term the rule forbids. Skipped releases still show in a search, with the reason.",
-  "rules.preferHelp": "Preferred terms add or subtract points, but only as a small nudge (at most 8 points either way) after the language, the quality and the SeaDex and group ranking. They break ties between similar releases; they never beat a better language fit or a better quality category, and never rescue a skipped release.",
-  "rules.termsHelp": "A term is plain text, matched anywhere in the release name without caring about capitals, or a regular expression wrapped in slashes, like /\\b(x265|hevc)\\b/.",
+  "rules.intro":
+    "Release rules say which releases may be picked. A release is skipped when a rule requires terms it doesn't contain, or when it contains a term the rule forbids. Skipped releases still show in a search, with the reason.",
+  "rules.preferHelp":
+    "Preferred terms add or subtract points, but only as a small nudge (at most 8 points either way) after the language, the quality and the SeaDex and group ranking. They break ties between similar releases; they never beat a better language fit or a better quality category, and never rescue a skipped release.",
+  "rules.termsHelp":
+    "A term is plain text, matched anywhere in the release name without caring about capitals, or a regular expression wrapped in slashes, like /\\b(x265|hevc)\\b/.",
   "rules.add": "Add a rule",
   "rules.newName": "New rule",
   "rules.none": "No rules yet. Without rules, every release is judged only by your language profile.",
@@ -44,7 +49,7 @@ export const rulesStrings = {
   "rules.score": "Score",
   "rules.scorePlaceholder": "+5 or -5",
   "rules.addTerm": "Add",
-  "rules.deleteTitle": "Delete the rule \"{name}\"?",
+  "rules.deleteTitle": 'Delete the rule "{name}"?',
   "rules.deleteBody": "Releases it was skipping can be picked again.",
   "rules.test": "Test against a title",
   "rules.testHelp": "Paste a release name to see which rules block it or add points.",

@@ -12,14 +12,14 @@ const { parseRelease } = await import("../server/core/parser.js");
 const { isNewerRevision, revisionOf, versionPoints } = await import("../server/core/propers.js");
 const { beatsCurrent, qualityScore } = await import("../server/core/quality.js");
 const { rankRelease } = await import("../server/core/rank.js");
-const { decideSeason } = await import("../server/batch.js");
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
-const { fileRevision, haveRevisions, newerVersionOf } = await import("../server/propers.js");
-const { pickUpgrade, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/qualityUpgrade.js");
-const { setLock } = await import("../server/qualityLocks.js");
-type SR = import("../server/search.js").SearchResult;
-type Deps = import("../server/qualityUpgrade.js").QualityDeps;
+const { decideSeason } = await import("../server/grabs/batch.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { fileRevision, haveRevisions, newerVersionOf } = await import("../server/search/propers.js");
+const { pickUpgrade, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
+type SR = import("../server/search/search.js").SearchResult;
+type Deps = import("../server/search/qualityUpgrade.js").QualityDeps;
 
 const DAY = 86_400_000;
 const now = Date.now();
@@ -58,7 +58,11 @@ test("a different group's v2, an equal version and a lower version are not upgra
   assert.equal(isNewerRevision(have, revisionOf("[Erai-raws] Some Show - 09v2 (1080p)"), "preferAndUpgrade").ok, false);
   assert.equal(isNewerRevision(have, revisionOf("[SubsPlease] Some Show - 09 (1080p)"), "preferAndUpgrade").ok, false);
   assert.equal(isNewerRevision({ group: "SubsPlease", version: 2 }, { group: "SubsPlease", version: 1 }, "preferAndUpgrade").ok, false);
-  assert.equal(isNewerRevision({ group: null, version: 1 }, { group: null, version: 2 }, "preferAndUpgrade").ok, false, "no group on either side: can't tell it is the same release");
+  assert.equal(
+    isNewerRevision({ group: null, version: 1 }, { group: null, version: 2 }, "preferAndUpgrade").ok,
+    false,
+    "no group on either side: can't tell it is the same release",
+  );
 });
 
 test("doNotUpgrade and doNotPrefer never replace a file; doNotPrefer also ignores versions in scoring", () => {
@@ -72,7 +76,10 @@ test("doNotUpgrade and doNotPrefer never replace a file; doNotPrefer also ignore
 });
 
 test("a locked file is never replaced, not even by a v2", () => {
-  assert.equal(isNewerRevision({ ...have, locked: true }, revisionOf("[SubsPlease] Some Show - 09v2 (1080p)"), "preferAndUpgrade").ok, false);
+  assert.equal(
+    isNewerRevision({ ...have, locked: true }, revisionOf("[SubsPlease] Some Show - 09v2 (1080p)"), "preferAndUpgrade").ok,
+    false,
+  );
 });
 
 test("beatsCurrent: the no-churn rule yields to a newer version of the same group, but not to a lower category", () => {
@@ -90,7 +97,13 @@ test("beatsCurrent: the no-churn rule yields to a newer version of the same grou
 
 // ---------------------------------------------------------------- ranking
 
-const profile = { subLangs: ["en"], softOnly: true, preferUncensored: false, protocolOrder: ["usenet" as const, "torrent" as const], resolution: 1080 };
+const profile = {
+  subLangs: ["en"],
+  softOnly: true,
+  preferUncensored: false,
+  protocolOrder: ["usenet" as const, "torrent" as const],
+  resolution: 1080,
+};
 const info = { protocol: "usenet" as const, size: 1.4e9, episodeCount: 1, runtimeMin: 24 };
 const rank = (title: string, known = {}) => rankRelease(parseRelease(title), info, profile, null, known);
 
@@ -104,9 +117,18 @@ test("search ranking: the higher version wins among one group's releases; the fl
   const other = rank("[Erai-raws] Some Show - 09v2 (1080p) [CCCC3333]", { have });
   assert.ok(!other.flags.some((f) => f.key === "newerVersion"), "another group's v2 is just a v2");
   assert.ok(!rank("[SubsPlease] Some Show - 09v2 (1080p)", { have, propers: "doNotUpgrade" }).flags.some((f) => f.key === "newerVersion"));
-  assert.equal(rank("[SubsPlease] Some Show - 09v2 (1080p)", { propers: "doNotPrefer" }).score, rank("[SubsPlease] Some Show - 09 (1080p)", { propers: "doNotPrefer" }).score);
-  assert.ok(rank("[SubsPlease] Some Show - 09v2 (1080p)", { propers: "doNotUpgrade" }).score > rank("[SubsPlease] Some Show - 09 (1080p)", { propers: "doNotUpgrade" }).score);
-  assert.ok(!rank("[SubsPlease] Some Show - 09v2 (1080p)", { have: { ...have, locked: true } }).flags.some((f) => f.key === "newerVersion"), "locked");
+  assert.equal(
+    rank("[SubsPlease] Some Show - 09v2 (1080p)", { propers: "doNotPrefer" }).score,
+    rank("[SubsPlease] Some Show - 09 (1080p)", { propers: "doNotPrefer" }).score,
+  );
+  assert.ok(
+    rank("[SubsPlease] Some Show - 09v2 (1080p)", { propers: "doNotUpgrade" }).score >
+      rank("[SubsPlease] Some Show - 09 (1080p)", { propers: "doNotUpgrade" }).score,
+  );
+  assert.ok(
+    !rank("[SubsPlease] Some Show - 09v2 (1080p)", { have: { ...have, locked: true } }).flags.some((f) => f.key === "newerVersion"),
+    "locked",
+  );
 });
 
 // ---------------------------------------------------------------- season batches
@@ -138,7 +160,11 @@ test("season batch from the same group: only files it has a newer version of are
 // ---------------------------------------------------------------- library: which version do we have
 
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, year, path, monitored, original_language, synced_at) VALUES (60, 800001, 'Prop Show', 2026, '/media/AnimeArr/Prop Show', 0, 'Japanese', 0)").run();
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, year, path, monitored, original_language, synced_at) VALUES (60, 800001, 'Prop Show', 2026, '/media/AnimeArr/Prop Show', 0, 'Japanese', 0)",
+    )
+    .run();
   // [episode id, season, episode, path, scene name]
   const rows: [number, number, number, string, string | null][] = [
     [6001, 1, 1, "/media/AnimeArr/Prop Show/Season 01/Prop Show - S01E01.mkv", "[Grp] Prop Show - 01 (BD 1080p) [AAAA1111]"],
@@ -147,13 +173,29 @@ before(() => {
     [6004, 1, 4, "/media/AnimeArr/Prop Show/Season 01/Prop Show - S01E04 [BD 1080p].mkv", null],
   ];
   for (const [id, season, ep, p, scene] of rows) {
-    cache.prepare("INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, 60, ?, ?, ?, '1920x1080', 'jpn', 'eng')").run(id + 50000, season, p, scene);
-    cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, 60, ?, ?, 1, 1, ?, ?, 24)").run(id, season, ep, id + 50000, now - 3 * DAY);
+    cache
+      .prepare(
+        "INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, 60, ?, ?, ?, '1920x1080', 'jpn', 'eng')",
+      )
+      .run(id + 50000, season, p, scene);
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, 60, ?, ?, 1, 1, ?, ?, 24)",
+      )
+      .run(id, season, ep, id + 50000, now - 3 * DAY);
   }
   // Episode 4 was imported by AnimeArr itself: no scene name, but the finished grab remembers the release.
-  db.prepare("INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run) VALUES (990, 0, 0, 800001, 60, '[6004]', '[Grp] Prop Show - 04v2 (BD 1080p) [DDDD4444]', 'g-990', 'usenet', 'done', 0)").run();
+  db.prepare(
+    "INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run) VALUES (990, 0, 0, 800001, 60, '[6004]', '[Grp] Prop Show - 04v2 (BD 1080p) [DDDD4444]', 'g-990', 'usenet', 'done', 0)",
+  ).run();
   db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (800001, 60, 'Prop Show', 0, 0)").run();
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], managed: { ...s.managed, dryRun: false }, media: { ...s.media, recycleBin: "/media/bin" }, qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 5, perHour: 10, recheckDays: 21 } }));
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/AnimeArr"],
+    managed: { ...s.managed, dryRun: false },
+    media: { ...s.media, recycleBin: "/media/bin" },
+    qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 5, perHour: 10, recheckDays: 21 },
+  }));
 });
 
 test("the file we have: group and version from the scene name, the grab history, Sonarr's revision or the file name", () => {
@@ -162,9 +204,18 @@ test("the file we have: group and version from the scene name, the grab history,
   assert.equal(h.get(6002)?.version, 2);
   assert.equal(h.get(6003)?.locked, true, "[Remaster] in the file name");
   assert.equal(h.get(6004)?.version, 2, "from the release AnimeArr grabbed");
-  const f = { path: "/x/Some Show - S01E01.mkv", scene_name: "[Grp] Some Show - 01 (1080p)", release_group: "Grp", revision: JSON.stringify({ version: 2, real: 0, isRepack: true }) };
+  const f = {
+    path: "/x/Some Show - S01E01.mkv",
+    scene_name: "[Grp] Some Show - 01 (1080p)",
+    release_group: "Grp",
+    revision: JSON.stringify({ version: 2, real: 0, isRepack: true }),
+  };
   assert.equal(fileRevision(1, f).version, 2, "Sonarr's quality revision counts");
-  assert.equal(fileRevision(1, { ...f, scene_name: null, revision: null, path: "/x/[Grp] Some Show - 01v3 (1080p).mkv" }).version, 3, "file name as the last resort");
+  assert.equal(
+    fileRevision(1, { ...f, scene_name: null, revision: null, path: "/x/[Grp] Some Show - 01v3 (1080p).mkv" }).version,
+    3,
+    "file name as the last resort",
+  );
 });
 
 test("locks: a locked season or show reads as locked", () => {
@@ -186,9 +237,24 @@ test("newerVersionOf follows the setting", () => {
 
 const result = (title: string, episodeIds: number[]): SR =>
   ({
-    guid: `g-${title}`, title, indexer: "X", indexerId: 1, protocol: "usenet", size: 1.4e9, seeders: null, publishDate: null, ageHours: 1, episodeIds, label: "S01", confidence: 95, coversTarget: true, extra: 0,
+    guid: `g-${title}`,
+    title,
+    indexer: "X",
+    indexerId: 1,
+    protocol: "usenet",
+    size: 1.4e9,
+    seeders: null,
+    publishDate: null,
+    ageHours: 1,
+    episodeIds,
+    label: "S01",
+    confidence: 95,
+    coversTarget: true,
+    extra: 0,
     rank: { accept: true, score: 100, langProb: 0.95, lang: "en", langSource: "x", flags: [], why: "", reject: null },
-    mappingWhy: [], group: null, downloadUrl: "http://x",
+    mappingWhy: [],
+    group: null,
+    downloadUrl: "http://x",
   }) as SR;
 
 function deps(results: SR[]) {
@@ -199,7 +265,9 @@ function deps(results: SR[]) {
     grab: (async (req: { candidate: { title: string }; episodeIds: number[]; purpose?: string | null }) => {
       calls.grabbed.push({ title: req.candidate.title, purpose: req.purpose, episodeIds: req.episodeIds });
       const id = ++gid;
-      db.prepare("INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, purpose) VALUES (?, 0, 0, 800001, 60, ?, ?, ?, 'usenet', 'downloading', 0, 'replace')").run(id, JSON.stringify(req.episodeIds), req.candidate.title, `g-${id}`);
+      db.prepare(
+        "INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, purpose) VALUES (?, 0, 0, 800001, 60, ?, ?, ?, 'usenet', 'downloading', 0, 'replace')",
+      ).run(id, JSON.stringify(req.episodeIds), req.candidate.title, `g-${id}`);
       return { id, dryRun: false, message: "Sent to sabnzbd" };
     }) as never,
   };
@@ -233,7 +301,10 @@ test("pickUpgrade: a same-group v2 of a recent file qualifies; another group, th
   assert.equal(pickUpgrade([v2], unit, { ...ctx, propers: "doNotUpgrade" }), null);
   assert.equal(pickUpgrade([v2], unit, { ...ctx, propers: "doNotPrefer" }), null);
   // The same group's v1 is just what we have; a Blu-ray from elsewhere is not a reason to swap a file at its goal.
-  assert.equal(pickUpgrade([result("[Grp] Prop Show - 01 (BD 1080p)", [6001]), result("[Other] Prop Show - 01 (BD 1080p)", [6001])], unit, ctx), null);
+  assert.equal(
+    pickUpgrade([result("[Grp] Prop Show - 01 (BD 1080p)", [6001]), result("[Other] Prop Show - 01 (BD 1080p)", [6001])], unit, ctx),
+    null,
+  );
 });
 
 test("the watcher grabs a v2 as a Replace grab; a locked season or doNotUpgrade grabs nothing", async () => {
@@ -255,6 +326,10 @@ test("the watcher grabs a v2 as a Replace grab; a locked season or doNotUpgrade 
   assert.equal((await qualityUpgradePass(on.d, now + 3000)).grabbed, 1);
   assert.equal(on.calls.grabbed[0].purpose, "replace");
   assert.deepEqual(on.calls.grabbed[0].episodeIds, [6001]);
-  const why = (db.prepare("SELECT why FROM decisions WHERE why LIKE 'Quality upgrade for Prop Show S01%' ORDER BY id DESC LIMIT 1").get() as { why: string }).why;
+  const why = (
+    db.prepare("SELECT why FROM decisions WHERE why LIKE 'Quality upgrade for Prop Show S01%' ORDER BY id DESC LIMIT 1").get() as {
+      why: string;
+    }
+  ).why;
   assert.match(why, /v2 of the episode you have from Grp \(fixes a v1\) — upgrade/);
 });

@@ -18,7 +18,10 @@ interface Entry {
   specialsHave: number;
   unplaced: number;
 }
-interface View { status: { configured: boolean; blockedUntil: number | null; today: number; dailyCap: number }; entries: Entry[] }
+interface View {
+  status: { configured: boolean; blockedUntil: number | null; today: number; dailyCap: number };
+  entries: Entry[];
+}
 
 /** Show page: every AniDB entry of the show, in air order, and how it maps onto the TVDB/Plex numbering. */
 export function AnidbEntries({ tvdbId, onChanged }: { tvdbId: number; onChanged: () => void }) {
@@ -50,10 +53,16 @@ export function AnidbEntries({ tvdbId, onChanged }: { tvdbId: number; onChanged:
       {d.data && (
         <>
           <div className="row">
-            <button className="small" disabled={busy || !d.data.status.configured || !!d.data.status.blockedUntil} onClick={() => void act(() => api(`/series/${tvdbId}/anidb/fetch`, { body: {} }), t("anidb.fetched"))}>
+            <button
+              className="small"
+              disabled={busy || !d.data.status.configured || !!d.data.status.blockedUntil}
+              onClick={() => void act(() => api(`/series/${tvdbId}/anidb/fetch`, { body: {} }), t("anidb.fetched"))}
+            >
               {t("anidb.fetch")}
             </button>
-            <span className="muted small">{d.data.status.blockedUntil ? t("anidb.blocked") : t("anidb.quota", { n: d.data.status.today, cap: d.data.status.dailyCap })}</span>
+            <span className="muted small">
+              {d.data.status.blockedUntil ? t("anidb.blocked") : t("anidb.quota", { n: d.data.status.today, cap: d.data.status.dailyCap })}
+            </span>
           </div>
           {!d.data.entries.length && <p className="muted small">{t("anidb.none")}</p>}
           <ul className="rename-list small">
@@ -76,12 +85,26 @@ export function AnidbEntries({ tvdbId, onChanged }: { tvdbId: number; onChanged:
                   </span>
                 ))}
                 <span className="muted">
-                  {e.override ? t("anidb.overridden", { season: e.override.season, offset: e.override.offset }) : t("anidb.default", { mapping: e.defaultMapping })}{" "}
-                  <button className="small ghost" onClick={() => setEdit({ aid: e.aid, season: e.override?.season ?? 1, offset: e.override?.offset ?? 0 })}>
+                  {e.override
+                    ? t("anidb.overridden", { season: e.override.season, offset: e.override.offset })
+                    : t("anidb.default", { mapping: e.defaultMapping })}{" "}
+                  <button
+                    className="small ghost"
+                    onClick={() => setEdit({ aid: e.aid, season: e.override?.season ?? 1, offset: e.override?.offset ?? 0 })}
+                  >
                     {t("anidb.change")}
                   </button>
                   {e.override && (
-                    <button className="small ghost" disabled={busy} onClick={() => void act(() => api(`/series/${tvdbId}/anidb/override`, { method: "PUT", body: { aid: e.aid, season: null } }), t("anidb.reset"))}>
+                    <button
+                      className="small ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(
+                          () => api(`/series/${tvdbId}/anidb/override`, { method: "PUT", body: { aid: e.aid, season: null } }),
+                          t("anidb.reset"),
+                        )
+                      }
+                    >
                       {t("anidb.resetBtn")}
                     </button>
                   )}
@@ -89,10 +112,34 @@ export function AnidbEntries({ tvdbId, onChanged }: { tvdbId: number; onChanged:
                 {edit?.aid === e.aid && (
                   <span className="row">
                     {t("anidb.season")}
-                    <input type="number" min={0} max={99} value={edit.season} onChange={(x) => setEdit({ ...edit, season: Number(x.target.value) || 0 })} style={{ width: 60 }} aria-label={t("anidb.season")} />
+                    <input
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={edit.season}
+                      onChange={(x) => setEdit({ ...edit, season: Number(x.target.value) || 0 })}
+                      style={{ width: 60 }}
+                      aria-label={t("anidb.season")}
+                    />
                     {t("anidb.offset")}
-                    <input type="number" min={-5000} max={5000} value={edit.offset} onChange={(x) => setEdit({ ...edit, offset: Number(x.target.value) || 0 })} style={{ width: 70 }} aria-label={t("anidb.offset")} />
-                    <button className="small primary" disabled={busy} onClick={() => void act(() => api(`/series/${tvdbId}/anidb/override`, { method: "PUT", body: edit }), t("anidb.saved")).then(() => setEdit(null))}>
+                    <input
+                      type="number"
+                      min={-5000}
+                      max={5000}
+                      value={edit.offset}
+                      onChange={(x) => setEdit({ ...edit, offset: Number(x.target.value) || 0 })}
+                      style={{ width: 70 }}
+                      aria-label={t("anidb.offset")}
+                    />
+                    <button
+                      className="small primary"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(() => api(`/series/${tvdbId}/anidb/override`, { method: "PUT", body: edit }), t("anidb.saved")).then(() =>
+                          setEdit(null),
+                        )
+                      }
+                    >
                       {t("common.save")}
                     </button>
                     <button className="small ghost" onClick={() => setEdit(null)}>

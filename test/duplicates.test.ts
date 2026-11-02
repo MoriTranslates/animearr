@@ -8,15 +8,15 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-dup-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
-const { duplicateListings, overlapsFor, ownedElsewhere, resetDuplicateCache } = await import("../server/duplicates.js");
-const { missingScoped, scopedEpisodeIds } = await import("../server/scope.js");
-const { autoSearchEpisodes } = await import("../server/autosearch.js");
-const { planSchedule } = await import("../server/managed.js");
-const { missingInScope } = await import("../server/fillin.js");
-const { upgradeUnits } = await import("../server/qualityUpgrade.js");
-const { startGrab } = await import("../server/pipeline.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { duplicateListings, overlapsFor, ownedElsewhere, resetDuplicateCache } = await import("../server/library/duplicates.js");
+const { missingScoped, scopedEpisodeIds } = await import("../server/library/scope.js");
+const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
+const { planSchedule } = await import("../server/library/managed.js");
+const { missingInScope } = await import("../server/library/fillin.js");
+const { upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { startGrab } = await import("../server/grabs/pipeline.js");
 
 const DAY = 86_400_000;
 const now = Date.now();
@@ -24,17 +24,30 @@ const SLAYERS = 77681;
 const SPELLS = 383379;
 
 function series(id: number, tvdb: number, title: string, aids: number[] = []) {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, anidb_ids, synced_at) VALUES (?, ?, ?, ?, 0, ?, 0)").run(id, tvdb, title, `/media/AnimeArr/${title}`, JSON.stringify(aids.map((aid) => ({ aid, season: 1 }))));
+  cache
+    .prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, anidb_ids, synced_at) VALUES (?, ?, ?, ?, 0, ?, 0)")
+    .run(id, tvdb, title, `/media/AnimeArr/${title}`, JSON.stringify(aids.map((aid) => ({ aid, season: 1 }))));
 }
 let nextEp = 1000;
 function episode(seriesId: number, season: number, ep: number, file: boolean, scene: string | null = null) {
   const id = nextEp++;
-  if (file) cache.prepare("INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, ?, ?, ?, ?, '1920x1080', 'jpn', 'eng')").run(id + 90000, seriesId, season, `/media/AnimeArr/S${seriesId}/S${season}E${ep}.mkv`, scene);
-  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 24)").run(id, seriesId, season, ep, file ? 1 : 0, file ? id + 90000 : null, now - 5 * DAY);
+  if (file)
+    cache
+      .prepare(
+        "INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, ?, ?, ?, ?, '1920x1080', 'jpn', 'eng')",
+      )
+      .run(id + 90000, seriesId, season, `/media/AnimeArr/S${seriesId}/S${season}E${ep}.mkv`, scene);
+  cache
+    .prepare(
+      "INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 24)",
+    )
+    .run(id, seriesId, season, ep, file ? 1 : 0, file ? id + 90000 : null, now - 5 * DAY);
   return id;
 }
 function entry(anilist: number, aid: number, tvdb: number, season: string, offset: number, episodes: number) {
-  db.prepare("INSERT INTO entries (anilist_id, anidb_id, tvdb_id, tvdb_season, tvdb_offset, kind, title_romaji, episodes, fetched_at) VALUES (?, ?, ?, ?, ?, 'OVA', ?, ?, 0)").run(anilist, aid, tvdb, season, offset, `Entry ${anilist}`, episodes);
+  db.prepare(
+    "INSERT INTO entries (anilist_id, anidb_id, tvdb_id, tvdb_season, tvdb_offset, kind, title_romaji, episodes, fetched_at) VALUES (?, ?, ?, ?, ?, 'OVA', ?, ?, 0)",
+  ).run(anilist, aid, tvdb, season, offset, `Entry ${anilist}`, episodes);
 }
 const ids: Record<string, number[]> = {};
 const count = (sql: string, ...args: number[]) => (db.prepare(sql).get(...args) as { n: number }).n;
@@ -49,7 +62,9 @@ before(() => {
   series(2, SPELLS, "Slayers: The Book of Spells", [2950]);
   ids.spells = [1, 2, 3].map((n) => episode(2, 1, n, false));
   entry(1170, 2950, SLAYERS, "0", 2, 3);
-  db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, 2, 'Slayers: The Book of Spells', 0, 0)").run(SPELLS);
+  db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, 2, 'Slayers: The Book of Spells', 0, 0)").run(
+    SPELLS,
+  );
   // Berserk 1997 (25 episodes, files) and Berserk 2016 (own catalog entry, no files): same title, different shows.
   series(3, 70, "Berserk");
   for (let n = 1; n <= 25; n++) episode(3, 1, n, true);
@@ -64,7 +79,9 @@ before(() => {
   series(8, 501, "Standalone Empty", [5000]);
   ids.empty = [1, 2].map((n) => episode(8, 1, n, false));
   entry(5000, 5000, 500, "0", 0, 2);
-  db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (501, 8, 'Standalone Empty', 0, 0), (330000, 4, 'Berserk', 0, 0)").run();
+  db.prepare(
+    "INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (501, 8, 'Standalone Empty', 0, 0), (330000, 4, 'Berserk', 0, 0)",
+  ).run();
   // Series with no ids at all: only an exact title whose episode count agrees may match.
   series(9, 600, "Slayers Spells Titled", []);
   ids.titled = [1, 2, 3].map((n) => episode(9, 1, n, false));
@@ -93,7 +110,10 @@ test("scope: owned-elsewhere episodes are not missing and not searched (managed,
 
 test("automatic search skips them with the reason and never searches", async () => {
   let searched = 0;
-  const r = await autoSearchEpisodes(SPELLS, ids.spells, { search: (async () => (searched++, { results: [] })) as never, grab: (async () => assert.fail("must not grab")) as never });
+  const r = await autoSearchEpisodes(SPELLS, ids.spells, {
+    search: (async () => (searched++, { results: [] })) as never,
+    grab: (async () => assert.fail("must not grab")) as never,
+  });
   assert.equal(searched, 0);
   assert.equal(r.results.length, 3);
   assert.ok(r.results.every((o) => o.outcome === "skipped" && /owned elsewhere \(filed as Slayers S00E0[345]\)/.test(o.why)));
@@ -101,15 +121,37 @@ test("automatic search skips them with the reason and never searches", async () 
 });
 
 test("the grab chokepoint refuses automatic and managed grabs (upgrades and pack extras can't slip through)", async () => {
-  const candidate = { guid: "g", title: "x", indexerId: 1, indexer: "X", protocol: "usenet", size: 1, downloadUrl: "u", label: "", group: null, why: "", episodeIds: ids.spells } as never;
-  await assert.rejects(startGrab({ tvdbId: SPELLS, episodeIds: ids.spells, candidate, fallbacks: [], origin: "managed" }), /owned elsewhere/);
-  await assert.rejects(startGrab({ tvdbId: SPELLS, episodeIds: ids.spells, candidate, fallbacks: [], origin: "manual", automatic: true }), /owned elsewhere/);
+  const candidate = {
+    guid: "g",
+    title: "x",
+    indexerId: 1,
+    indexer: "X",
+    protocol: "usenet",
+    size: 1,
+    downloadUrl: "u",
+    label: "",
+    group: null,
+    why: "",
+    episodeIds: ids.spells,
+  } as never;
+  await assert.rejects(
+    startGrab({ tvdbId: SPELLS, episodeIds: ids.spells, candidate, fallbacks: [], origin: "managed" }),
+    /owned elsewhere/,
+  );
+  await assert.rejects(
+    startGrab({ tvdbId: SPELLS, episodeIds: ids.spells, candidate, fallbacks: [], origin: "manual", automatic: true }),
+    /owned elsewhere/,
+  );
 });
 
 test("the upgrade watcher leaves the duplicate's own files alone", async () => {
   // A DVD copy of one episode sits in the standalone: the Blu-ray under Slayers is the one that counts.
   const e = ids.spells[0];
-  cache.prepare("INSERT INTO files (id, series_id, season, path, scene_name, resolution) VALUES (777, 2, 1, '/media/AnimeArr/Spells/E1.mkv', '[Grp] Slayers Spells DVD 480p', '720x480')").run();
+  cache
+    .prepare(
+      "INSERT INTO files (id, series_id, season, path, scene_name, resolution) VALUES (777, 2, 1, '/media/AnimeArr/Spells/E1.mkv', '[Grp] Slayers Spells DVD 480p', '720x480')",
+    )
+    .run();
   cache.prepare("UPDATE episodes SET has_file = 1, file_id = 777 WHERE id = ?").run(e);
   try {
     assert.ok(!(await upgradeUnits(now)).some((u) => u.tvdbId === SPELLS));

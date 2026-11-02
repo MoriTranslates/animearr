@@ -102,7 +102,25 @@ export interface Ranked {
   reject: string | null;
 }
 
-const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", pt: "Portuguese", "pt-br": "Portuguese (Brazil)", fr: "French", de: "German", it: "Italian", ru: "Russian", ar: "Arabic", zh: "Chinese", ja: "Japanese", id: "Indonesian", vi: "Vietnamese", th: "Thai", pl: "Polish", tr: "Turkish", ko: "Korean" };
+const LANG_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  pt: "Portuguese",
+  "pt-br": "Portuguese (Brazil)",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  ru: "Russian",
+  ar: "Arabic",
+  zh: "Chinese",
+  ja: "Japanese",
+  id: "Indonesian",
+  vi: "Vietnamese",
+  th: "Thai",
+  pl: "Polish",
+  tr: "Turkish",
+  ko: "Korean",
+};
 export const langName = (l: string) => LANG_NAMES[l] ?? LANG_NAMES[l.split("-")[0]] ?? l;
 /** Release-name hints are base languages ("pt"); a profile may say "pt-br". */
 const base = (l: string) => l.split("-")[0];
@@ -126,21 +144,37 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   // Unknown original language → no original-audio check (never assume Japanese for a show we know nothing about).
   const original = (profile.originalLangs ?? ["ja"]).map(base);
 
-  flags.push(info.protocol === "usenet" ? { key: "usenet", label: "Usenet", tone: "info" } : { key: "torrent", label: `Torrent${info.seeders != null ? ` · ${info.seeders} seeders` : ""}`, tone: info.seeders === 0 ? "warn" : "info" });
+  flags.push(
+    info.protocol === "usenet"
+      ? { key: "usenet", label: "Usenet", tone: "info" }
+      : {
+          key: "torrent",
+          label: `Torrent${info.seeders != null ? ` · ${info.seeders} seeders` : ""}`,
+          tone: info.seeders === 0 ? "warn" : "info",
+        },
+  );
 
   // ---- P(sub)
   let sub: Est = { lang: subWanted[0], p: 0.35, src: "no language info in the name" };
   const considerSub = (lang: string, prob: number, src: string) => {
-    if (prob > sub.p + 0.001 || (Math.abs(prob - sub.p) < 0.001 && subWanted.indexOf(lang) < subWanted.indexOf(sub.lang))) sub = { lang, p: prob, src };
+    if (prob > sub.p + 0.001 || (Math.abs(prob - sub.p) < 0.001 && subWanted.indexOf(lang) < subWanted.indexOf(sub.lang)))
+      sub = { lang, p: prob, src };
   };
   const explicitOther = h.subs.filter((l) => !subWanted.includes(l));
   for (const lang of subWanted) {
     if (h.subs.includes(lang)) considerSub(lang, h.hardsub && h.hardsubLang === lang ? 0.92 : 0.97, "named in the title");
     else if (h.multiSubs) considerSub(lang, MULTI_SET.has(lang) ? 0.9 : 0.45, "Multi-Subs");
-    if (learned && learned.total >= 3) considerSub(lang, learnedProb(learned.subs, learned.total, lang), `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}: ${learned.subs[lang] ?? 0}/${learned.total} ${learned.origin}`);
-    if (lang === "en" && EN_GROUPS.includes(group) && !h.jpMarket && !explicitOther.length) considerSub(lang, 0.88, `${p.group} usually has English subs`);
+    if (learned && learned.total >= 3)
+      considerSub(
+        lang,
+        learnedProb(learned.subs, learned.total, lang),
+        `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}: ${learned.subs[lang] ?? 0}/${learned.total} ${learned.origin}`,
+      );
+    if (lang === "en" && EN_GROUPS.includes(group) && !h.jpMarket && !explicitOther.length)
+      considerSub(lang, 0.88, `${p.group} usually has English subs`);
     if (lang === "en" && h.dualAudio && !h.jpMarket) considerSub(lang, 0.85, "dual audio (usually with English subs)");
-    if (known.burnedIn && base(known.burnedIn.lang) === lang && !h.subs.length && !h.multiSubs) considerSub(lang, 0.9, `burned in (${known.burnedIn.note})`);
+    if (known.burnedIn && base(known.burnedIn.lang) === lang && !h.subs.length && !h.multiSubs)
+      considerSub(lang, 0.9, `burned in (${known.burnedIn.note})`);
   }
   const namedWanted = subWanted.some((l) => h.subs.includes(l)) || h.multiSubs;
   let subReject: string | null = null;
@@ -173,8 +207,14 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   };
   for (const lang of dubWanted) {
     if (original.includes(lang)) continue;
-    if (h.audio.includes(lang)) considerDub(lang, h.dualAudio && lang !== "en" ? 0.6 : 0.95, h.dualAudio ? "dual audio" : "dub named in the title");
-    if (learned?.audio && learned.total >= 3) considerDub(lang, learnedProb(learned.audio, learned.total, lang), `${p.group ?? "no group"}: ${learned.audio[lang] ?? 0}/${learned.total} with ${langName(lang)} audio, ${learned.origin}`);
+    if (h.audio.includes(lang))
+      considerDub(lang, h.dualAudio && lang !== "en" ? 0.6 : 0.95, h.dualAudio ? "dual audio" : "dub named in the title");
+    if (learned?.audio && learned.total >= 3)
+      considerDub(
+        lang,
+        learnedProb(learned.audio, learned.total, lang),
+        `${p.group ?? "no group"}: ${learned.audio[lang] ?? 0}/${learned.total} with ${langName(lang)} audio, ${learned.origin}`,
+      );
   }
   if (h.dualAudio) flags.push({ key: "dual", label: "Dual audio", tone: "info" });
   const dubOnly = h.audio.length > 0 && !hasOriginal;
@@ -305,7 +345,9 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
     const preset = profile.sizePreset ?? "lean";
     const mbMin = perEp / 1e6 / (info.runtimeMin && info.runtimeMin >= 5 ? info.runtimeMin : 24); // runtime 0 = unknown
     const res = p.resolution ?? profile.resolution;
-    const cap = LEAN_MB_PER_MIN[res] ?? (res > 1080 ? LEAN_MB_PER_MIN[2160] : res > 720 ? LEAN_MB_PER_MIN[1080] : res > 480 ? LEAN_MB_PER_MIN[720] : LEAN_MB_PER_MIN[480]);
+    const cap =
+      LEAN_MB_PER_MIN[res] ??
+      (res > 1080 ? LEAN_MB_PER_MIN[2160] : res > 720 ? LEAN_MB_PER_MIN[1080] : res > 480 ? LEAN_MB_PER_MIN[720] : LEAN_MB_PER_MIN[480]);
     const gb = (perEp / 1e9).toFixed(1);
     const remux = /\bremux\b/i.test(p.raw);
     if (preset === "lean") {
@@ -328,7 +370,10 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
         score += 15;
         why.push(`high-bitrate Blu-ray (${gb} GB/ep)`);
       } else if (p.source === "web") score += 5;
-      if (!remux && (MINI.test(p.raw) || ((p.codec === "hevc" || p.codec === "x265" || /\b(x265|hevc)\b/i.test(p.raw)) && mbMin < cap * 0.5))) {
+      if (
+        !remux &&
+        (MINI.test(p.raw) || ((p.codec === "hevc" || p.codec === "x265" || /\b(x265|hevc)\b/i.test(p.raw)) && mbMin < cap * 0.5))
+      ) {
         score -= 20;
         flags.push({ key: "size", label: "Small re-encode", tone: "warn" });
         why.push("a small re-encode (Best source prefers the original)");
@@ -347,7 +392,8 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   const ih = known.indexerHealth;
   if (ih?.off) {
     // The circuit breaker: shown, never picked automatically.
-    reject = reject ?? `${info.indexer ?? "its indexer"} is off for grabbing (downloads kept failing${ih.lastWhy ? `: ${ih.lastWhy}` : ""})`;
+    reject =
+      reject ?? `${info.indexer ?? "its indexer"} is off for grabbing (downloads kept failing${ih.lastWhy ? `: ${ih.lastWhy}` : ""})`;
     flags.push({ key: "indexerOff", label: `${info.indexer ?? "Indexer"} is off`, tone: "bad" });
   } else if (ih && ih.failures > 0) {
     const bad = ih.failures >= 2 && ih.failures > ih.ok;
@@ -371,7 +417,16 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   if (known.inLibrary) flags.push({ key: "inLibrary", label: "Same as your library copy", tone: "info" });
   if (p.batch) flags.push({ key: "batch", label: "Batch", tone: "info" });
 
-  return { accept: !reject, score: reject ? -1000 + score : score, langProb: best.p, lang: best.lang, langSource: best.src, flags, why: reject ? `skipped: ${reject}` : why.join(", "), reject };
+  return {
+    accept: !reject,
+    score: reject ? -1000 + score : score,
+    langProb: best.p,
+    lang: best.lang,
+    langSource: best.src,
+    flags,
+    why: reject ? `skipped: ${reject}` : why.join(", "),
+    reject,
+  };
 }
 
 /** Sort: accepted before rejected, then score; stable for equal scores. */

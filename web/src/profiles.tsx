@@ -8,7 +8,22 @@ import { GOAL_IDS, QualityGoalCard, type GoalId } from "./quality";
 
 export type WatchMode = "sub" | "dub" | "dual" | "either";
 export const MODES: WatchMode[] = ["sub", "dub", "dual", "either"];
-export interface LanguageProfile { id: string; name: string; watchMode: WatchMode; subLangs: string[]; dubLangs: string[]; softOnly: boolean; preferUncensored: boolean; protocolOrder: ("usenet" | "torrent")[]; noProtocolPreference?: boolean; resolution: number; sizePreset?: SizePreset; groupConsistency?: "off" | "prefer" | "strong"; qualityGoal?: GoalId; reencode?: "tdarr" | "keep" }
+export interface LanguageProfile {
+  id: string;
+  name: string;
+  watchMode: WatchMode;
+  subLangs: string[];
+  dubLangs: string[];
+  softOnly: boolean;
+  preferUncensored: boolean;
+  protocolOrder: ("usenet" | "torrent")[];
+  noProtocolPreference?: boolean;
+  resolution: number;
+  sizePreset?: SizePreset;
+  groupConsistency?: "off" | "prefer" | "strong";
+  qualityGoal?: GoalId;
+  reencode?: "tdarr" | "keep";
+}
 export type SizePreset = "lean" | "balanced" | "best";
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
@@ -24,7 +39,13 @@ export function ProfilesEditor() {
       <QualityGoalCard onSaved={d.reload} />
       <p className="muted small">{t("profiles.intro")}</p>
       {d.data.profiles.map((p) => (
-        <ProfileCard key={`${p.id}:${JSON.stringify(p)}`} p={p} isDefault={p.id === d.data!.defaultProfileId} onSaved={d.reload} onDelete={() => setDel(p)} />
+        <ProfileCard
+          key={`${p.id}:${JSON.stringify(p)}`}
+          p={p}
+          isDefault={p.id === d.data!.defaultProfileId}
+          onSaved={d.reload}
+          onDelete={() => setDel(p)}
+        />
       ))}
       <button
         className="self-start"
@@ -62,7 +83,17 @@ export function ProfilesEditor() {
   );
 }
 
-function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: LanguageProfile; isDefault: boolean; onSaved: () => void; onDelete: () => void }) {
+function ProfileCard({
+  p: initial,
+  isDefault,
+  onSaved,
+  onDelete,
+}: {
+  p: LanguageProfile;
+  isDefault: boolean;
+  onSaved: () => void;
+  onDelete: () => void;
+}) {
   const toast = useToast();
   const [p, setP] = useState(initial);
   const [dirty, setDirty] = useState(false);
@@ -85,7 +116,12 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
   return (
     <div className="card pad stack">
       <div className="row between">
-        <input className="grow profile-name" value={p.name} onChange={(e) => set({ name: e.target.value })} aria-label={t("profiles.name")} />
+        <input
+          className="grow profile-name"
+          value={p.name}
+          onChange={(e) => set({ name: e.target.value })}
+          aria-label={t("profiles.name")}
+        />
         {isDefault ? <Chip tone="accent">★ {t("profiles.default")}</Chip> : null}
       </div>
       <fieldset className="modes">
@@ -115,7 +151,16 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
           {t("settings.profile.protocol")}
           <select
             value={p.noProtocolPreference ? "none" : p.protocolOrder[0]}
-            onChange={(e) => set(e.target.value === "none" ? { noProtocolPreference: true } : { noProtocolPreference: false, protocolOrder: e.target.value === "usenet" ? ["usenet", "torrent"] : ["torrent", "usenet"] })}
+            onChange={(e) =>
+              set(
+                e.target.value === "none"
+                  ? { noProtocolPreference: true }
+                  : {
+                      noProtocolPreference: false,
+                      protocolOrder: e.target.value === "usenet" ? ["usenet", "torrent"] : ["torrent", "usenet"],
+                    },
+              )
+            }
           >
             <option value="usenet">{t("proto.preferUsenet")}</option>
             <option value="torrent">{t("proto.preferTorrent")}</option>
@@ -163,10 +208,15 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
           </select>
         </label>
       </div>
-      <p className="muted small">{t(`goal.${p.qualityGoal ?? "high"}.help` as I18nKey)} {p.reencode === "keep" && t("profile.reencode.help")}</p>
+      <p className="muted small">
+        {t(`goal.${p.qualityGoal ?? "high"}.help` as I18nKey)} {p.reencode === "keep" && t("profile.reencode.help")}
+      </p>
       <label>
         {t("group.label")}
-        <select value={p.groupConsistency ?? "prefer"} onChange={(e) => set({ groupConsistency: e.target.value as "off" | "prefer" | "strong" })}>
+        <select
+          value={p.groupConsistency ?? "prefer"}
+          onChange={(e) => set({ groupConsistency: e.target.value as "off" | "prefer" | "strong" })}
+        >
           <option value="off">{t("group.off")}</option>
           <option value="prefer">{t("group.prefer")}</option>
           <option value="strong">{t("group.strong")}</option>
@@ -201,12 +251,27 @@ function ProfileCard({ p: initial, isDefault, onSaved, onDelete }: { p: Language
 }
 
 /** Per-show "Watch as" control: profile + watch mode override (empty = follow the default). */
-export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvdbId: number; prefs: { profile_id: string | null; watch_mode: WatchMode | null; size_preset?: SizePreset | null }; effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode; sizePreset?: SizePreset }; onChanged: () => void; endpoint?: string }) {
+export function WatchAs({
+  tvdbId,
+  prefs,
+  effective,
+  onChanged,
+  endpoint,
+}: {
+  tvdbId: number;
+  prefs: { profile_id: string | null; watch_mode: WatchMode | null; size_preset?: SizePreset | null };
+  effective: { name: string; watchMode: WatchMode; profileMode?: WatchMode; sizePreset?: SizePreset };
+  onChanged: () => void;
+  endpoint?: string;
+}) {
   const toast = useToast();
   const d = useLoad(() => api<{ profiles: LanguageProfile[]; defaultProfileId: string }>("/profiles"), []);
   const save = async (profileId: string | null, watchMode: WatchMode | null, sizePreset?: SizePreset | null) => {
     try {
-      await api(endpoint ?? `/series/${tvdbId}/prefs`, { method: "PUT", body: { profileId, watchMode, ...(sizePreset !== undefined ? { sizePreset } : {}) } });
+      await api(endpoint ?? `/series/${tvdbId}/prefs`, {
+        method: "PUT",
+        body: { profileId, watchMode, ...(sizePreset !== undefined ? { sizePreset } : {}) },
+      });
       toast(t("common.saved"));
       onChanged();
     } catch (e) {
@@ -216,7 +281,11 @@ export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvd
   return (
     <div className="watch-as row small">
       <span className="muted">{t("profiles.watchAs")}</span>
-      <select value={prefs.profile_id ?? ""} onChange={(e) => save(e.target.value || null, prefs.watch_mode)} aria-label={t("profiles.profile")}>
+      <select
+        value={prefs.profile_id ?? ""}
+        onChange={(e) => save(e.target.value || null, prefs.watch_mode)}
+        aria-label={t("profiles.profile")}
+      >
         <option value="">{t("profiles.followDefault")}</option>
         {d.data?.profiles.map((p) => (
           <option key={p.id} value={p.id}>
@@ -224,8 +293,14 @@ export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvd
           </option>
         ))}
       </select>
-      <select value={prefs.watch_mode ?? ""} onChange={(e) => save(prefs.profile_id, (e.target.value || null) as WatchMode | null)} aria-label={t("profiles.watchMode")}>
-        <option value="">{t("profiles.profileMode", { mode: t(`mode.${effective.profileMode ?? effective.watchMode}` as I18nKey) })}</option>
+      <select
+        value={prefs.watch_mode ?? ""}
+        onChange={(e) => save(prefs.profile_id, (e.target.value || null) as WatchMode | null)}
+        aria-label={t("profiles.watchMode")}
+      >
+        <option value="">
+          {t("profiles.profileMode", { mode: t(`mode.${effective.profileMode ?? effective.watchMode}` as I18nKey) })}
+        </option>
         {MODES.map((m) => (
           <option key={m} value={m}>
             {t(`mode.${m}` as I18nKey)}
@@ -233,7 +308,11 @@ export function WatchAs({ tvdbId, prefs, effective, onChanged, endpoint }: { tvd
         ))}
       </select>
       {!endpoint && (
-        <select value={prefs.size_preset ?? ""} onChange={(e) => save(prefs.profile_id, prefs.watch_mode, (e.target.value || null) as SizePreset | null)} aria-label={t("size.preset")}>
+        <select
+          value={prefs.size_preset ?? ""}
+          onChange={(e) => save(prefs.profile_id, prefs.watch_mode, (e.target.value || null) as SizePreset | null)}
+          aria-label={t("size.preset")}
+        >
           <option value="">{t("size.profileDefault")}</option>
           {SIZE_PRESETS.map((s) => (
             <option key={s} value={s}>

@@ -7,7 +7,7 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-wiz-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { saveWizard, wizardState, listFolders } = await import("../server/wizard.js");
+const { saveWizard, wizardState, listFolders } = await import("../server/system/wizard.js");
 
 test("progress is saved and validated", () => {
   assert.deepEqual([wizardState().done, wizardState().step], [false, "welcome"]);
@@ -26,7 +26,10 @@ test("folder browser lists directories only, with a writable flag", () => {
   fs.mkdirSync(path.join(root, "Anime"));
   fs.writeFileSync(path.join(root, "secret.txt"), "x");
   const r = listFolders(root);
-  assert.deepEqual(r.dirs.map((d) => d.name), ["Anime"]);
+  assert.deepEqual(
+    r.dirs.map((d) => d.name),
+    ["Anime"],
+  );
   assert.equal(r.dirs[0].writable, true);
   assert.throws(() => listFolders(path.join(root, "nope")), /Can't open/);
 });

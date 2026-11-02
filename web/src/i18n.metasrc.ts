@@ -2,7 +2,8 @@
 export const metaSrcStrings = {
   "metasrc.menu": "Episode info source…",
   "metasrc.title": "Episode info source: season {n}",
-  "metasrc.help": "Where this season's episode descriptions and thumbnails (for your media server's files) come from. It changes nothing else: searching, numbering and importing stay as they are.",
+  "metasrc.help":
+    "Where this season's episode descriptions and thumbnails (for your media server's files) come from. It changes nothing else: searching, numbering and importing stay as they are.",
   "metasrc.current": "Now",
   "metasrc.auto": "Automatic: TMDB show {tv}, season {season}",
   "metasrc.autoNone": "Automatic: no TMDB match for this season",

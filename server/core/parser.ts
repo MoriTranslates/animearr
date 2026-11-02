@@ -74,13 +74,130 @@ export interface ParsedRelease {
 // ---------------------------------------------------------------- language/group knowledge
 
 /** Groups whose releases are raw (no subtitles). Lower-case. */
-const RAW_GROUPS = new Set(["ohys-raws", "leopard-raws", "snow-raws", "u3-web", "moozzi2", "dbd-raws", "reinforce", "beatrice-raws", "kawaiika-raws", "nanakoraws", "vcb-studio", "lowpower-raws", "jpbd", "raws-4u"]);
+const RAW_GROUPS = new Set([
+  "ohys-raws",
+  "leopard-raws",
+  "snow-raws",
+  "u3-web",
+  "moozzi2",
+  "dbd-raws",
+  "reinforce",
+  "beatrice-raws",
+  "kawaiika-raws",
+  "nanakoraws",
+  "vcb-studio",
+  "lowpower-raws",
+  "jpbd",
+  "raws-4u",
+]);
 /** "-raws" groups that are actually subbed. */
 const SUBBED_RAWS = new Set(["erai-raws", "tsundere-raws", "nc-raws", "lilith-raws", "skymoon-raws", "nekomoe kissaten&vcb-studio"]);
 /** Groups that release Chinese subtitles (and usually only those). */
-const ZH_GROUPS = ["7³acg", "7acg", "lolihouse", "sakurato", "nekomoe kissaten", "ani", "nc-raws", "lilith-raws", "skymoon-raws", "haruhana", "sweetsub", "mingy", "kitaujisub", "airota", "dmhy", "幻樱字幕组", "桜都字幕组", "喵萌奶茶屋", "北宇治字幕组", "ktxp", "jsum", "philosophy-raws", "kirara fantasia", "lpsub", "comicat", "fzsd", "hysub", "nanao", "ktnbytes"];
+const ZH_GROUPS = [
+  "7³acg",
+  "7acg",
+  "lolihouse",
+  "sakurato",
+  "nekomoe kissaten",
+  "ani",
+  "nc-raws",
+  "lilith-raws",
+  "skymoon-raws",
+  "haruhana",
+  "sweetsub",
+  "mingy",
+  "kitaujisub",
+  "airota",
+  "dmhy",
+  "幻樱字幕组",
+  "桜都字幕组",
+  "喵萌奶茶屋",
+  "北宇治字幕组",
+  "ktxp",
+  "jsum",
+  "philosophy-raws",
+  "kirara fantasia",
+  "lpsub",
+  "comicat",
+  "fzsd",
+  "hysub",
+  "nanao",
+  "ktnbytes",
+];
 /** Groups that reliably carry English subtitles (seed values; the learned table refines them). */
-export const EN_GROUPS = ["subsplease", "erai-raws", "ember", "asw", "judas", "varyg", "skyanime", "senpai", "tsundere-raws", "dkb", "anime time", "yameii", "cbm", "nep blanc", "fle", "deanzel", "kametsu", "golumpa", "horriblesubs", "cleo", "lostyears", "mtbb", "commie", "gjm", "kaleido-subs", "crimson subs", "ozi works", "geckyzz", "subsplus+", "toonshub", "anime chap", "nanda", "sam", "dae-p9", "beatrice", "koten_gars", "obscurerips", "vivid", "yurasuka", "ironclad", "sallysubs", "coalgirls", "dekinai", "doki", "underwater", "fff", "chihiro", "hatsuyuki", "naruto-kun.hu", "thighs", "smol", "arid", "sxales", "moozzi2-en", "bonkai77", "breeze", "anime land", "rasetsu", "zigzag", "sokudo", "pmr", "neko-raws-en", "kawaiika", "wtf-anime", "scy", "dragsterps", "hdb", "jacobswaggedup", "flugel", "mysteryprojects", "mihoyo"];
+export const EN_GROUPS = [
+  "subsplease",
+  "erai-raws",
+  "ember",
+  "asw",
+  "judas",
+  "varyg",
+  "skyanime",
+  "senpai",
+  "tsundere-raws",
+  "dkb",
+  "anime time",
+  "yameii",
+  "cbm",
+  "nep blanc",
+  "fle",
+  "deanzel",
+  "kametsu",
+  "golumpa",
+  "horriblesubs",
+  "cleo",
+  "lostyears",
+  "mtbb",
+  "commie",
+  "gjm",
+  "kaleido-subs",
+  "crimson subs",
+  "ozi works",
+  "geckyzz",
+  "subsplus+",
+  "toonshub",
+  "anime chap",
+  "nanda",
+  "sam",
+  "dae-p9",
+  "beatrice",
+  "koten_gars",
+  "obscurerips",
+  "vivid",
+  "yurasuka",
+  "ironclad",
+  "sallysubs",
+  "coalgirls",
+  "dekinai",
+  "doki",
+  "underwater",
+  "fff",
+  "chihiro",
+  "hatsuyuki",
+  "naruto-kun.hu",
+  "thighs",
+  "smol",
+  "arid",
+  "sxales",
+  "moozzi2-en",
+  "bonkai77",
+  "breeze",
+  "anime land",
+  "rasetsu",
+  "zigzag",
+  "sokudo",
+  "pmr",
+  "neko-raws-en",
+  "kawaiika",
+  "wtf-anime",
+  "scy",
+  "dragsterps",
+  "hdb",
+  "jacobswaggedup",
+  "flugel",
+  "mysteryprojects",
+  "mihoyo",
+];
 const ZH_RE = /\b(CHS|CHT|GB|BIG5|Chinese|CN|ZH|CHI)\b|简|繁|中文|字幕[组組社]|中字|國語|国语|内封|內封|简日|繁日|双语|雙語/i;
 
 /** Platforms where releases are for the Japanese market (Japanese subs or none). */
@@ -107,7 +224,10 @@ const CN_PLATFORMS = new Set(["WeTV", "iQIYI", "Youku"]);
 
 /** Subtitle-language tokens. Matched against the raw title. */
 const SUB_LANG: [string, RegExp][] = [
-  ["en", /\b(eng(?:lish)?[ ._-]?(?:subs?|subbed|subtitles?|sub(?:titled)?)|eng[ ._-]?sub|EngSub|\[ENG\]|\(ENG\)|English(?!\s*Dub)|ENG(?=[\]\-&+ ,)]|$))|[\[(](?:[A-Z]{2,3}[-&+])*ENG(?:[-&+][A-Z]{2,3})*[\])]/i],
+  [
+    "en",
+    /\b(eng(?:lish)?[ ._-]?(?:subs?|subbed|subtitles?|sub(?:titled)?)|eng[ ._-]?sub|EngSub|\[ENG\]|\(ENG\)|English(?!\s*Dub)|ENG(?=[\]\-&+ ,)]|$))|[\[(](?:[A-Z]{2,3}[-&+])*ENG(?:[-&+][A-Z]{2,3})*[\])]/i,
+  ],
   ["fr", /\b(VOSTFR|VOSTF|FRENCH|TrueFrench|Fr[ ._-]?Subs?|SUB[ ._-]?FR)\b/i],
   ["es", /\b(ESP|Spanish|Espa[ñn]ol|LATINO|Castellano|CAST|VOSE|SUB[ ._-]?ESP|Sub[ ._-]?Español)\b/i],
   ["pt", /\b(LEGENDADO|PT-?BR|PTBR|Portugu[eê]s|Portuguese)\b/i],
@@ -173,7 +293,8 @@ function detectHints(raw: string, group: string | null, platform: string | null)
   for (const [lang, re] of AUDIO_LANG) if (re.test(raw)) audio.add(lang);
   // A bare "Dubbed" means an English dub only when no other dub language is named ("German Dubbed" is German).
   if (!audio.size && /\bDubbed\b/i.test(raw)) audio.add("en");
-  const multiSubs = /\bmulti[ ._-]?subs?\b|\bmultiple[ ._-]?subtitles?\b|\bmultisubs?\b|\bmulti[ ._-]?sub\b/i.test(raw) || /\bMULTi\b/.test(raw);
+  const multiSubs =
+    /\bmulti[ ._-]?subs?\b|\bmultiple[ ._-]?subtitles?\b|\bmultisubs?\b|\bmulti[ ._-]?sub\b/i.test(raw) || /\bMULTi\b/.test(raw);
   // A run of bracketed language codes next to a subtitle note is a subtitle list ("[Multiple Subtitle] [ENG][SPA][ITA][RUS]"):
   // its "[ITA]" names Italian subtitles, not an Italian dub.
   const subTagList = /(?:\[[A-Z]{2,3}(?:-[A-Z]{2})?\]\s*){3,}/.test(raw);
@@ -215,7 +336,19 @@ function detectHints(raw: string, group: string | null, platform: string | null)
   const censored = !uncensored && /\bcensored\b/i.test(raw);
   const jpPlatform = JP_PLATFORMS.test(raw);
   const jpMarket = (subs.has("ja") || jpPlatform) && ![...subs].some((l) => l !== "ja") && !multiSubs;
-  return { subs: [...subs], audio: [...audio], multiSubs, dualAudio, raw: raw_, hardsub, hardsubLang, hardsubWhy, uncensored, censored, jpMarket };
+  return {
+    subs: [...subs],
+    audio: [...audio],
+    multiSubs,
+    dualAudio,
+    raw: raw_,
+    hardsub,
+    hardsubLang,
+    hardsubWhy,
+    uncensored,
+    censored,
+    jpMarket,
+  };
 }
 
 // ---------------------------------------------------------------- main
@@ -283,7 +416,11 @@ export function parseRelease(input: string): ParsedRelease {
   }
   // Trailing [Group] when no leading group: "Anime Title the Final - 09 (2021) [SubsPlease] [WEBRip] [HD 1080p]"
   if (!group) {
-    const brs = [...s.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1]).filter((x) => !META_TOKEN.test(x.trim()) && !/\d{3,4}p|x26|hevc|aac|web|hd\b/i.test(x) && /^[A-Za-z][\w &.+-]{1,24}$/.test(x.trim()));
+    const brs = [...s.matchAll(/\[([^\]]+)\]/g)]
+      .map((m) => m[1])
+      .filter(
+        (x) => !META_TOKEN.test(x.trim()) && !/\d{3,4}p|x26|hevc|aac|web|hd\b/i.test(x) && /^[A-Za-z][\w &.+-]{1,24}$/.test(x.trim()),
+      );
     if (brs.length) group = brs[0].trim();
   }
 
@@ -294,12 +431,21 @@ export function parseRelease(input: string): ParsedRelease {
   if (resolution && resolution > 2160) resolution = null;
   if (resM?.[1] && resM[2]) resolution = Number(resM[2]) >= 1000 ? 1080 : Number(resM[2]) >= 700 ? 720 : Number(resM[2]) >= 540 ? 576 : 480;
   if (resM?.[1] && Number(resM[1]) >= 3800) resolution = 2160;
-  const source: Source = /\b(BD|BDRip|BDRemux|Blu-?Ray|BRRip|BDMV)\b/i.test(s) ? "bluray" : /\bWEB(?:[ ._-]?(?:DL|Rip))?\b|\bWEBRip\b/i.test(s) ? "web" : /\bHDTV\b/i.test(s) ? "hdtv" : /\bDVD(?:Rip)?\b/i.test(s) ? "dvd" : null;
+  const source: Source = /\b(BD|BDRip|BDRemux|Blu-?Ray|BRRip|BDMV)\b/i.test(s)
+    ? "bluray"
+    : /\bWEB(?:[ ._-]?(?:DL|Rip))?\b|\bWEBRip\b/i.test(s)
+      ? "web"
+      : /\bHDTV\b/i.test(s)
+        ? "hdtv"
+        : /\bDVD(?:Rip)?\b/i.test(s)
+          ? "dvd"
+          : null;
   let platform: string | null = null;
-  for (const [re, name] of PLATFORMS) if (re.test(s)) {
-    platform = name;
-    break;
-  }
+  for (const [re, name] of PLATFORMS)
+    if (re.test(s)) {
+      platform = name;
+      break;
+    }
   const codec = /\bAV1\b/i.test(s) ? "AV1" : /\b(x265|HEVC|H\.?265)\b/i.test(s) ? "HEVC" : /\b(x264|AVC|H\.?264)\b/i.test(s) ? "AVC" : null;
   const crc = s.match(CRC_RE)?.[1]?.toUpperCase() ?? null;
   const yearM = s.match(/[([](19[5-9]\d|20[0-4]\d)[)\]]|\s(19[5-9]\d|20[0-4]\d)(?=\s|$)/);
@@ -310,7 +456,13 @@ export function parseRelease(input: string): ParsedRelease {
   for (const m of s.matchAll(/\(([^()]{4,})\)/g)) {
     for (const part of m[1].split(/[;,]/)) {
       const p = part.trim();
-      if (p.length < 4 || META_TOKEN.test(p) || /\b(sub|subs|audio|dub|uncensored|web|1080|720|batch|season|bd|dual|multi)\b/i.test(p) || /^\d/.test(p)) continue;
+      if (
+        p.length < 4 ||
+        META_TOKEN.test(p) ||
+        /\b(sub|subs|audio|dub|uncensored|web|1080|720|batch|season|bd|dual|multi)\b/i.test(p) ||
+        /^\d/.test(p)
+      )
+        continue;
       altTitles.push(p);
     }
   }
@@ -318,17 +470,20 @@ export function parseRelease(input: string): ParsedRelease {
   // ---- markers. Work on a copy where bracket contents can't masquerade as episode numbers, but keep positions.
   const work = s.replace(/\[[^\]]*\]|\{[^}]*\}/g, (m) => {
     // Keep "[05]" / "[01-05]" / "[第07话]" style episode brackets visible.
-    if (/^\[(\d{1,4})(?:v\d)?\]$/.test(m) || /^\[\d{1,4}\s*[-~]\s*\d{1,4}\]$/.test(m) || /第\s*\d+\s*[话話集]/.test(m)) return m.replace(/[\[\]]/g, " ");
+    if (/^\[(\d{1,4})(?:v\d)?\]$/.test(m) || /^\[\d{1,4}\s*[-~]\s*\d{1,4}\]$/.test(m) || /第\s*\d+\s*[话話集]/.test(m))
+      return m.replace(/[\[\]]/g, " ");
     return " ".repeat(m.length);
   });
 
   const markers: Marker[] = [];
-  const push = (m: RegExpExecArray | RegExpMatchArray, mk: Omit<Marker, "at" | "end">) => markers.push({ at: m.index!, end: m.index! + m[0].length, ...mk });
+  const push = (m: RegExpExecArray | RegExpMatchArray, mk: Omit<Marker, "at" | "end">) =>
+    markers.push({ at: m.index!, end: m.index! + m[0].length, ...mk });
   let m: RegExpExecArray | null;
 
   // S01E02(-E03|E03)(v2), S01E01-02
   const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?(?:(?:[-~]|-?E)E?(\d{1,4})(?!\d))?(?:v(\d))?/gi;
-  while ((m = reSE.exec(work))) push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
+  while ((m = reSE.exec(work)))
+    push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;
   while ((m = reX.exec(work))) if (!(Number(m[1]) > 99 || /\d{3,4}x\d{3,4}/.test(m[0]))) push(m, { season: +m[1], episodes: [+m[2]] });
@@ -337,7 +492,8 @@ export function parseRelease(input: string): ParsedRelease {
   while ((m = reMS.exec(work))) push(m, { season: +(m[1] ?? m[3]), seasonsTo: +(m[2] ?? m[4]), batch: true, fullSeason: true });
   // Fan style "S6 - 01", "S7 - 09v2", "S03 - EP14", "S3 -  15", "S2 - Episode 4"
   const reFan = /\bS(\d{1,2})\s+-\s+(?:EP?\s?|Episode\s)?(\d{1,4})(?:v(\d))?(?:\s*[-~]\s*(\d{1,4}))?(?![\d.])/gi;
-  while ((m = reFan.exec(work))) push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? 1), fan: true, batch: !!m[4] });
+  while ((m = reFan.exec(work)))
+    push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? 1), fan: true, batch: !!m[4] });
   // "Season 2 - 05", "(Season 2) - 33"
   const reSeasonDash = /\(?\bSeason\s+(\d{1,2})\)?\s+-\s+(\d{1,4})(?:v(\d))?(?![\d.])/gi;
   while ((m = reSeasonDash.exec(work))) push(m, { season: +m[1], episodes: [+m[2]], version: Number(m[3] ?? 1), fan: true });
@@ -357,7 +513,8 @@ export function parseRelease(input: string): ParsedRelease {
     if (spacedDash && !(m[1].startsWith("0") || batchWord)) continue;
     if (b > a && !(isYear(a) || isYear(b)) && b - a < 1500) {
       const off = m[0].search(/\d/);
-      const idx = m.index + off - (/(?:EP?|Episode\s?)$/i.test(m[0].slice(0, off)) ? m[0].slice(0, off).match(/(?:EP?|Episode\s?)$/i)![0].length : 0);
+      const idx =
+        m.index + off - (/(?:EP?|Episode\s?)$/i.test(m[0].slice(0, off)) ? m[0].slice(0, off).match(/(?:EP?|Episode\s?)$/i)![0].length : 0);
       markers.push({ at: idx, end: m.index + m[0].length, absolute: range(a, b), batch: true });
     }
   }
@@ -411,16 +568,42 @@ export function parseRelease(input: string): ParsedRelease {
 
   // ---- special markers (OVA, Movie, NCOP...)
   let special: SpecialKind = null;
-  const spM = work.match(/\b(OVA|OAD|ONA|OVD|NCOP\d*|NCED\d*|Special|SP\d*|Movie|Gekijouban|Recap|PV|Tebie Pian|Tokubetsu-hen)\b|劇場版|剧场版|特别篇/i);
+  const spM = work.match(
+    /\b(OVA|OAD|ONA|OVD|NCOP\d*|NCED\d*|Special|SP\d*|Movie|Gekijouban|Recap|PV|Tebie Pian|Tokubetsu-hen)\b|劇場版|剧场版|特别篇/i,
+  );
   if (spM) {
     const k = spM[0].toLowerCase();
-    special = /^(ova|ovd)$/.test(k) ? "ova" : k === "oad" ? "oad" : k === "ona" ? "ona" : /^ncop/.test(k) ? "ncop" : /^nced/.test(k) ? "nced" : /movie|gekijouban|劇場版|剧场版/.test(k) ? "movie" : k === "recap" ? "recap" : k === "pv" ? "pv" : "special";
+    special = /^(ova|ovd)$/.test(k)
+      ? "ova"
+      : k === "oad"
+        ? "oad"
+        : k === "ona"
+          ? "ona"
+          : /^ncop/.test(k)
+            ? "ncop"
+            : /^nced/.test(k)
+              ? "nced"
+              : /movie|gekijouban|劇場版|剧场版/.test(k)
+                ? "movie"
+                : k === "recap"
+                  ? "recap"
+                  : k === "pv"
+                    ? "pv"
+                    : "special";
     if (k === "ona") special = null; // ONA is a format, not a special marker in names
   }
 
   // ---- creditless openings/endings: "NCOP2", "NC ED 01", "Creditless Opening 2", "Clean Ending", "Non-Credit OP"
-  const clM = /\bNC\s*[-_ ]?\s*(OP|ED)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|\b(?:creditless|clean|non[-\s]?credit(?:ed)?|textless)\s*[-_ ]?\s*(OP|ED|opening|ending)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|ノンクレジット(OP|ED)\s*0?(\d{1,2})?/i.exec(work);
-  const creditless = clM ? { kind: (/^(op|opening)$/i.test(clM[1] ?? clM[3] ?? clM[5] ?? "") ? "op" : "ed") as "op" | "ed", n: Number(clM[2] ?? clM[4] ?? clM[6] ?? "") || null } : null;
+  const clM =
+    /\bNC\s*[-_ ]?\s*(OP|ED)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|\b(?:creditless|clean|non[-\s]?credit(?:ed)?|textless)\s*[-_ ]?\s*(OP|ED|opening|ending)\s*[-_ ]?\s*0?(\d{1,2})?(?![\w])|ノンクレジット(OP|ED)\s*0?(\d{1,2})?/i.exec(
+      work,
+    );
+  const creditless = clM
+    ? {
+        kind: (/^(op|opening)$/i.test(clM[1] ?? clM[3] ?? clM[5] ?? "") ? "op" : "ed") as "op" | "ed",
+        n: Number(clM[2] ?? clM[4] ?? clM[6] ?? "") || null,
+      }
+    : null;
   if (creditless && !special) special = creditless.kind === "op" ? "ncop" : "nced";
 
   // ---- choose markers: the title ends at the earliest strong marker.
@@ -473,7 +656,8 @@ export function parseRelease(input: string): ParsedRelease {
   }
   // Scene-style re-releases after the title: PROPER / REPACK / RERIP (any case) and REAL (capitals only: "Real Girl" is a title).
   const tail = s.slice(Math.min(titleEnd, s.length));
-  const scene = /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
+  const scene =
+    /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
   if (scene) version = Math.max(version, Number(scene[1] ?? 1) + 1);
   // A dash number right after a fan "S6 - 01" is the same number; don't double-count.
   if (fan && absolute.length === 1 && episodes.length === 1 && absolute[0] === episodes[0]) absolute = [];
@@ -509,11 +693,17 @@ export function parseRelease(input: string): ParsedRelease {
   let title = s.slice(0, titleEnd);
   title = title.replace(/\[[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ");
   // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go.
-  title = cleanSpaces(title).replace(/[\s\-–~|:,.]+$/, "").replace(/^[\s\-–~|:,.]+/, "");
+  title = cleanSpaces(title)
+    .replace(/[\s\-–~|:,.]+$/, "")
+    .replace(/^[\s\-–~|:,.]+/, "");
   // Remove a trailing "(Season 2)" left by "Title (Season 2) - 33".
   title = title.replace(/\s*\(\s*Season\s+\d+\s*\)\s*$/i, "").trim();
   // Trailing ordinal season, "Season N" or "SN" inside the title: the season is already a marker.
-  title = title.replace(/\s+\d{1,2}(?:st|nd|rd|th)\s+Season$/i, "").replace(/\s+Season\s+\d{1,2}$/i, "").replace(/\s+S\d{1,2}$/i, "").trim();
+  title = title
+    .replace(/\s+\d{1,2}(?:st|nd|rd|th)\s+Season$/i, "")
+    .replace(/\s+Season\s+\d{1,2}$/i, "")
+    .replace(/\s+S\d{1,2}$/i, "")
+    .trim();
   // "(Complete)", "Complete Series", "(Batch)" name the pack, not the show.
   title = title.replace(/[\s(\[]*\b(?:complete(?:\s+series)?|batch)\b[)\]]?\s*$/i, "").trim();
   title = title.replace(/[\s\-–~|:,([]+$/, "").trim();

@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-nrestore-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { db, backupNow, restoreBackup, listBackups, BACKUP_DIR, USER_DB } = await import("../server/db.js");
+const { db, backupNow, restoreBackup, listBackups, BACKUP_DIR, USER_DB } = await import("../server/system/db.js");
 
 const mark = (v: string) => db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('restore-test', ?)").run(v);
 
@@ -23,9 +23,15 @@ test("when the safety copy of the current database fails, nothing is restored", 
     fs.writeFileSync(path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.db`), "in the way");
   }
   assert.throws(() => restoreBackup(name), /Couldn't save a copy of the current database first.*nothing was restored/);
-  assert.equal((db.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value, "after", "the live database is untouched and still open");
+  assert.equal(
+    (db.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value,
+    "after",
+    "the live database is untouched and still open",
+  );
   assert.ok(!fs.existsSync(`${USER_DB}.restore-tmp`));
-  for (const f of fs.readdirSync(BACKUP_DIR)) if (f.startsWith("animearr-prerestore-") && fs.readFileSync(path.join(BACKUP_DIR, f), "utf8") === "in the way") fs.rmSync(path.join(BACKUP_DIR, f));
+  for (const f of fs.readdirSync(BACKUP_DIR))
+    if (f.startsWith("animearr-prerestore-") && fs.readFileSync(path.join(BACKUP_DIR, f), "utf8") === "in the way")
+      fs.rmSync(path.join(BACKUP_DIR, f));
 });
 
 test("a restore keeps a safety copy, swaps the file by rename and leaves no temporary file", () => {
@@ -42,9 +48,16 @@ test("a restore keeps a safety copy, swaps the file by rename and leaves no temp
     (fs as { rmSync: typeof fs.rmSync }).rmSync = realRm;
   }
   assert.ok(!removed.includes(path.resolve(USER_DB)), "the live database is never deleted before the swap");
-  assert.ok(listBackups().some((b) => b.kind === "prerestore"), "the safety copy exists");
+  assert.ok(
+    listBackups().some((b) => b.kind === "prerestore"),
+    "the safety copy exists",
+  );
   assert.ok(!fs.existsSync(`${USER_DB}.restore-tmp`));
   const d = new DatabaseSync(USER_DB, { readOnly: true });
-  assert.equal((d.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value, "before", "the backup's data is live");
+  assert.equal(
+    (d.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value,
+    "before",
+    "the backup's data is live",
+  );
   d.close();
 });

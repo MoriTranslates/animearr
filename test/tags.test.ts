@@ -15,21 +15,50 @@ fs.writeFileSync(
   `<anime-list><anime anidbid="5001" tvdbid="777" defaulttvdbseason="1" episodeoffset=""><name>Harbor Tales</name></anime></anime-list>`,
 );
 
-const { db } = await import("../server/db.js");
-const { patchSettings, setAccount, regenerateApiKey } = await import("../server/settings.js");
-const { guard } = await import("../server/auth.js");
-const { registerSonarrApi } = await import("../server/sonarrApi.js");
-const { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } = await import("../server/tags.js");
-const { listRules, saveRule } = await import("../server/releaseRules.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+const { db } = await import("../server/system/db.js");
+const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
+const { guard } = await import("../server/system/auth.js");
+const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
+const { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } = await import("../server/library/tags.js");
+const { listRules, saveRule } = await import("../server/search/releaseRules.js");
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({
-  id, idMal: null, title: { romaji: "Minato Monogatari", english: "Harbor Tales", native: null }, synonyms: [], format: "TV", status: "FINISHED", episodes: 2, duration: 24,
-  season: null, seasonYear: 2020, startDate: { year: 2020, month: 1, day: 1 }, endDate: { year: 2020, month: 1, day: 8 }, countryOfOrigin: "JP", coverImage: { large: "https://img.example/cover.jpg", color: null },
-  bannerImage: null, description: "", genres: [], isAdult: false, relations: { edges: [] }, airingSchedule: { nodes: [{ episode: 1, airingAt: 1577836800 }, { episode: 2, airingAt: 1578441600 }] },
-  nextAiringEpisode: null, streamingEpisodes: [],
+  id,
+  idMal: null,
+  title: { romaji: "Minato Monogatari", english: "Harbor Tales", native: null },
+  synonyms: [],
+  format: "TV",
+  status: "FINISHED",
+  episodes: 2,
+  duration: 24,
+  season: null,
+  seasonYear: 2020,
+  startDate: { year: 2020, month: 1, day: 1 },
+  endDate: { year: 2020, month: 1, day: 8 },
+  countryOfOrigin: "JP",
+  coverImage: { large: "https://img.example/cover.jpg", color: null },
+  bannerImage: null,
+  description: "",
+  genres: [],
+  isAdult: false,
+  relations: { edges: [] },
+  airingSchedule: {
+    nodes: [
+      { episode: 1, airingAt: 1577836800 },
+      { episode: 2, airingAt: 1578441600 },
+    ],
+  },
+  nextAiringEpisode: null,
+  streamingEpisodes: [],
 });
-const fribb = async () => ({ mtime: 0, anidbToAnilist: new Map([[5001, 601]]), anilistToAnidb: new Map([[601, 5001]]), anilistToAnidbAll: new Map<number, number[]>(), anilistToTmdb: new Map<number, number>() });
+const fribb = async () => ({
+  mtime: 0,
+  anidbToAnilist: new Map([[5001, 601]]),
+  anilistToAnidb: new Map([[601, 5001]]),
+  anilistToAnidbAll: new Map<number, number[]>(),
+  anilistToTmdb: new Map<number, number>(),
+});
 
 const app = Fastify();
 await app.register(fastifyCookie);
@@ -47,7 +76,12 @@ registerSonarrApi(app, {
 });
 let KEY = "";
 const call = async (method: "GET" | "POST" | "PUT" | "DELETE", url: string, payload?: unknown) => {
-  const r = await app.inject({ method, url, headers: { "x-api-key": KEY }, ...(payload !== undefined ? { payload: payload as object } : {}) });
+  const r = await app.inject({
+    method,
+    url,
+    headers: { "x-api-key": KEY },
+    ...(payload !== undefined ? { payload: payload as object } : {}),
+  });
   return { status: r.statusCode, body: r.body ? JSON.parse(r.body) : null };
 };
 
@@ -84,7 +118,10 @@ test("tags link to shows and movies; bulk add and remove; delete unlinks everyth
   assert.deepEqual(tagsOf("series", 10), []);
   assert.deepEqual(tagsOf("movie", 5), []);
   assert.deepEqual(listRules().find((r) => r.id === rule.id)!.tags, []);
-  assert.equal(listTags().some((x) => x.id === t.id), false);
+  assert.equal(
+    listTags().some((x) => x.id === t.id),
+    false,
+  );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM tag_links WHERE tag_id = ?").get(t.id) as { n: number }).n, 0);
 });
 
@@ -92,13 +129,27 @@ test("Sonarr API: /tag returns the real tags, and tags set in AnimeArr show on s
   const made = await call("POST", "/api/v3/tag", { label: "Requested " });
   assert.equal(made.status, 201);
   assert.equal(made.body.label, "requested");
-  assert.ok(listTags().some((x) => x.id === made.body.id && x.label === "requested"), "created through the API = visible in Settings → Tags");
+  assert.ok(
+    listTags().some((x) => x.id === made.body.id && x.label === "requested"),
+    "created through the API = visible in Settings → Tags",
+  );
   const mine = createTag("from settings");
   const all = (await call("GET", "/api/v3/tag")).body as { id: number; label: string }[];
   assert.ok(all.some((x) => x.id === mine.id && x.label === "from settings"));
-  const added = await call("POST", "/api/v3/series", { tvdbId: 777, title: "Harbor Tales", seasons: [{ seasonNumber: 1, monitored: true }], tags: [made.body.id, mine.id], monitored: true, rootFolderPath: "/media/Anime", seriesType: "anime" });
+  const added = await call("POST", "/api/v3/series", {
+    tvdbId: 777,
+    title: "Harbor Tales",
+    seasons: [{ seasonNumber: 1, monitored: true }],
+    tags: [made.body.id, mine.id],
+    monitored: true,
+    rootFolderPath: "/media/Anime",
+    seriesType: "anime",
+  });
   assert.equal(added.status, 201, JSON.stringify(added.body));
-  assert.deepEqual(added.body.tags, [made.body.id, mine.id].sort((x, y) => x - y));
+  assert.deepEqual(
+    added.body.tags,
+    [made.body.id, mine.id].sort((x, y) => x - y),
+  );
   assert.deepEqual(tagsOf("series", 777), added.body.tags, "stored as AnimeArr's own tags");
   setTags("series", 777, [mine.id]);
   assert.deepEqual((await call("GET", `/api/v3/series/${added.body.id}`)).body.tags, [mine.id], "a tag set in AnimeArr is on the resource");

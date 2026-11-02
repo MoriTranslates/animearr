@@ -12,14 +12,14 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ncx-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
-const { planImport } = await import("../server/importer.js");
+const { cache } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { planImport } = await import("../server/import/importer.js");
 const { identify } = await import("../server/core/identify.js");
-const { identifyContext } = await import("../server/search.js");
+const { identifyContext } = await import("../server/search/search.js");
 const { inExtrasFolder } = await import("../server/core/resolver.js");
-const { fixesFor } = await import("../server/fixes.js");
-const { attentionSummary } = await import("../server/summary.js");
+const { fixesFor } = await import("../server/system/fixes.js");
+const { attentionSummary } = await import("../server/system/summary.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ncx-"));
 const LIB = path.join(tmp, "lib");
@@ -32,12 +32,28 @@ const ep = (n: number) => `[IK] Toaru Kagaku no Railgun S - ${String(n).padStart
 const NCED11 = "[IK] Toaru Kagaku no Railgun S - NCED Ep11 (BD 1920x1080 Hi10 FLAC).mkv";
 const NCED01 = "[IK] Toaru Kagaku no Railgun S - NCED 01 (BD 1920x1080 Hi10 FLAC).mkv";
 const NCOP02 = "[IK] Toaru Kagaku no Railgun S - NCOP 02 (BD 1920x1080 Hi10 FLAC).mkv";
-const probe = async () => ({ duration: 1440, container: "matroska", video: { codec: "h264", width: 1920, height: 1080, hdr: false }, audio: [{ lang: "ja", title: null, codec: "flac", channels: 2, default: true, forced: false }], subs: [{ lang: "en", title: null, codec: "ass", default: true, forced: false, partial: false }] }) as never;
+const probe = async () =>
+  ({
+    duration: 1440,
+    container: "matroska",
+    video: { codec: "h264", width: 1920, height: 1080, hdr: false },
+    audio: [{ lang: "ja", title: null, codec: "flac", channels: 2, default: true, forced: false }],
+    subs: [{ lang: "en", title: null, codec: "ass", default: true, forced: false, partial: false }],
+  }) as never;
 const write = (p: string) => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, "x"));
 
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, year, series_type, path, monitored, synced_at) VALUES (40, ?, 'Toaru Kagaku no Railgun S', 2013, 'anime', '/media/AnimeArr/Toaru Kagaku no Railgun S', 1, 0)").run(TVDB);
-  for (let n = 1; n <= 24; n++) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file, air_utc) VALUES (?, 40, 1, ?, ?, ?, 1, 0, 0)").run(4000 + n, n, n, `Episode ${n}`);
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, monitored, synced_at) VALUES (40, ?, 'Toaru Kagaku no Railgun S', 2013, 'anime', '/media/AnimeArr/Toaru Kagaku no Railgun S', 1, 0)",
+    )
+    .run(TVDB);
+  for (let n = 1; n <= 24; n++)
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file, air_utc) VALUES (?, 40, 1, ?, ?, ?, 1, 0, 0)",
+      )
+      .run(4000 + n, n, n, `Episode ${n}`);
   for (const n of [1, 11, 12]) write(path.join(ROOT, ep(n)));
   for (const f of [NCED11, NCED01, NCOP02]) write(path.join(ROOT, NC, f));
   patchSettings((s) => ({
@@ -56,7 +72,10 @@ test("'NCED Ep11' is the ending as it ran in episode 11, never episode 11 itself
   const r = identify(NCED11, ctx, { tvdbId: TVDB });
   assert.ok(!r.resolution?.ok || !r.resolution.episodes.some((e) => e.season > 0), JSON.stringify(r.resolution));
   const plain = identify(ep(11), ctx, { tvdbId: TVDB });
-  assert.deepEqual(plain.resolution?.episodes.map((e) => e.id), [4011]);
+  assert.deepEqual(
+    plain.resolution?.episodes.map((e) => e.id),
+    [4011],
+  );
 });
 
 test("files in an extras folder ('NCED & NCOP', 'Extras', 'Menus', …) are never regular episodes", () => {
@@ -67,7 +86,10 @@ test("files in an extras folder ('NCED & NCOP', 'Extras', 'Menus', …) are neve
 });
 
 test("the season download plans without a clash: episodes mapped, creditless files left out", async () => {
-  const plan = await planImport({ tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, client: "qbittorrent" }, { probe, minBytes: 0 });
+  const plan = await planImport(
+    { tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, client: "qbittorrent" },
+    { probe, minBytes: 0 },
+  );
   const by = new Map(plan.items.map((i) => [path.basename(i.source), i]));
   assert.equal(by.get(ep(11))!.problem, null);
   assert.deepEqual(by.get(ep(11))!.episodeIds, [4011]);
@@ -82,16 +104,25 @@ test("hand import: a file given the same episode only clashes with files the use
   const src11 = fs.realpathSync(path.join(ROOT, ep(11)));
   const nc11 = fs.realpathSync(path.join(ROOT, NC, NCED11));
   // The user (wrongly) gives NCED Ep11 episode 11 too: both picked → one of them clashes.
-  const both = await planImport({ tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, assign: { [nc11]: [4011] }, only: [src11, nc11] }, { probe, minBytes: 0 });
+  const both = await planImport(
+    { tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, assign: { [nc11]: [4011] }, only: [src11, nc11] },
+    { probe, minBytes: 0 },
+  );
   assert.ok(both.items.some((i) => i.problem === "two files would get the same name"));
   // Only the real episode picked: the unpicked NCED file doesn't block it, whatever order the folder lists them in.
-  const one = await planImport({ tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, assign: { [nc11]: [4011] }, only: [src11] }, { probe, minBytes: 0 });
+  const one = await planImport(
+    { tvdbId: TVDB, path: `/data/completed/animearr/${PACK}`, release: PACK, assign: { [nc11]: [4011] }, only: [src11] },
+    { probe, minBytes: 0 },
+  );
   assert.equal(one.items.find((i) => i.source === src11)!.problem, null);
 });
 
 test("two files that look like one episode: plain words, and the fix opens the whole download for review", () => {
   const why = "two files in this download look like episode 11 (one is a creditless ending); review the files to import";
-  assert.equal(attentionSummary(why), "Two files in this download look like episode 11 (one is a creditless ending); review the files to import.");
+  assert.equal(
+    attentionSummary(why),
+    "Two files in this download look like episode 11 (one is a creditless ending); review the files to import.",
+  );
   const fixes = fixesFor(why, { grabId: 5, tvdbId: TVDB, episodeIds: [4011, 4012], kind: "attention" });
   const review = fixes.find((f) => f.action === "importManual");
   assert.ok(review, JSON.stringify(fixes));

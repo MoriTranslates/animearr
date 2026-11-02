@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "./api";
-import { navigate } from "./App";
+import { navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import type { LanguageProfile } from "./profiles";
 import { Confirm, ErrorText, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";
@@ -12,18 +12,119 @@ type Protocol = "usenet" | "torrent";
 export type ExtraType = "nzbget" | "transmission" | "deluge" | "rtorrent" | "blackhole-usenet" | "blackhole-torrent";
 export const isBlackholeType = (t: string) => t === "blackhole-usenet" || t === "blackhole-torrent";
 /** What a blackhole can't do (its card, and the confirmation before turning it on). */
-export const BLACKHOLE_LOSES = (type: ExtraType): I18nKey[] => ["clients.bh.lose.progress", "clients.bh.lose.partial", "clients.bh.lose.stall", "clients.bh.lose.control", "clients.bh.lose.slower", "clients.bh.lose.names", ...(type === "blackhole-usenet" ? (["clients.bh.lose.usenet"] as I18nKey[]) : (["clients.bh.lose.magnets"] as I18nKey[]))];
-export const CLIENT_INFO: Record<ExtraType, { name: string; protocol: "usenet" | "torrent"; placeholder: string; help: I18nKey; labelHelp: I18nKey; username: boolean }> = {
-  nzbget: { name: "NZBGet", protocol: "usenet", placeholder: "http://192.168.1.10:6789", help: "clients.nzbgetHelp", labelHelp: "conn.categoryHelp", username: true },
-  transmission: { name: "Transmission", protocol: "torrent", placeholder: "http://192.168.1.10:9091", help: "clients.transmissionHelp", labelHelp: "clients.labelHelp", username: true },
-  deluge: { name: "Deluge", protocol: "torrent", placeholder: "http://192.168.1.10:8112", help: "clients.delugeHelp", labelHelp: "clients.delugeLabelHelp", username: false },
-  rtorrent: { name: "rTorrent", protocol: "torrent", placeholder: "http://192.168.1.10/RPC2", help: "clients.rtorrentHelp", labelHelp: "clients.rtorrentLabelHelp", username: true },
-  "blackhole-usenet": { name: "Usenet Blackhole", protocol: "usenet", placeholder: "", help: "clients.bh.usenetHelp", labelHelp: "clients.bh.note", username: false },
-  "blackhole-torrent": { name: "Torrent Blackhole", protocol: "torrent", placeholder: "", help: "clients.bh.torrentHelp", labelHelp: "clients.bh.note", username: false },
+export const BLACKHOLE_LOSES = (type: ExtraType): I18nKey[] => [
+  "clients.bh.lose.progress",
+  "clients.bh.lose.partial",
+  "clients.bh.lose.stall",
+  "clients.bh.lose.control",
+  "clients.bh.lose.slower",
+  "clients.bh.lose.names",
+  ...(type === "blackhole-usenet" ? (["clients.bh.lose.usenet"] as I18nKey[]) : (["clients.bh.lose.magnets"] as I18nKey[])),
+];
+export const CLIENT_INFO: Record<
+  ExtraType,
+  { name: string; protocol: "usenet" | "torrent"; placeholder: string; help: I18nKey; labelHelp: I18nKey; username: boolean }
+> = {
+  nzbget: {
+    name: "NZBGet",
+    protocol: "usenet",
+    placeholder: "http://192.168.1.10:6789",
+    help: "clients.nzbgetHelp",
+    labelHelp: "conn.categoryHelp",
+    username: true,
+  },
+  transmission: {
+    name: "Transmission",
+    protocol: "torrent",
+    placeholder: "http://192.168.1.10:9091",
+    help: "clients.transmissionHelp",
+    labelHelp: "clients.labelHelp",
+    username: true,
+  },
+  deluge: {
+    name: "Deluge",
+    protocol: "torrent",
+    placeholder: "http://192.168.1.10:8112",
+    help: "clients.delugeHelp",
+    labelHelp: "clients.delugeLabelHelp",
+    username: false,
+  },
+  rtorrent: {
+    name: "rTorrent",
+    protocol: "torrent",
+    placeholder: "http://192.168.1.10/RPC2",
+    help: "clients.rtorrentHelp",
+    labelHelp: "clients.rtorrentLabelHelp",
+    username: true,
+  },
+  "blackhole-usenet": {
+    name: "Usenet Blackhole",
+    protocol: "usenet",
+    placeholder: "",
+    help: "clients.bh.usenetHelp",
+    labelHelp: "clients.bh.note",
+    username: false,
+  },
+  "blackhole-torrent": {
+    name: "Torrent Blackhole",
+    protocol: "torrent",
+    placeholder: "",
+    help: "clients.bh.torrentHelp",
+    labelHelp: "clients.bh.note",
+    username: false,
+  },
 };
-export interface ExtraClient { watchFolder?: string; completedFolder?: string; saveMagnets?: boolean; timeoutHours?: number; id?: string; type: ExtraType; name: string; url: string; username: string; password: string; category: string; priority: number; enabled: boolean; removeCompleted: boolean; pathMappings: { from: string; to: string }[] }
-export interface DirectIndexer { id?: string; kind: "newznab" | "torznab" | "nyaa" | "rss" | "subsplease"; protocol: Protocol; name: string; url: string; apiPath: string; apiKey: string; categories: number[]; priority: number; enabled: boolean; seedRatio: number | null; seedTimeMin: number | null; tags: string[]; catalogId: string | null }
-export interface CatalogEntry { id: string; name: string; kind: DirectIndexer["kind"]; protocol: Protocol; url: string; apiPath: string; categories: number[]; needsKey: boolean; access: string; visibility: string; language: string; goodFor: string; recommended: boolean; addable?: boolean; viaProwlarr?: boolean; checked: { date: string; status: string; note: string } }
+export interface ExtraClient {
+  watchFolder?: string;
+  completedFolder?: string;
+  saveMagnets?: boolean;
+  timeoutHours?: number;
+  id?: string;
+  type: ExtraType;
+  name: string;
+  url: string;
+  username: string;
+  password: string;
+  category: string;
+  priority: number;
+  enabled: boolean;
+  removeCompleted: boolean;
+  pathMappings: { from: string; to: string }[];
+}
+export interface DirectIndexer {
+  id?: string;
+  kind: "newznab" | "torznab" | "nyaa" | "rss" | "subsplease";
+  protocol: Protocol;
+  name: string;
+  url: string;
+  apiPath: string;
+  apiKey: string;
+  categories: number[];
+  priority: number;
+  enabled: boolean;
+  seedRatio: number | null;
+  seedTimeMin: number | null;
+  tags: string[];
+  catalogId: string | null;
+}
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  kind: DirectIndexer["kind"];
+  protocol: Protocol;
+  url: string;
+  apiPath: string;
+  categories: number[];
+  needsKey: boolean;
+  access: string;
+  visibility: string;
+  language: string;
+  goodFor: string;
+  recommended: boolean;
+  addable?: boolean;
+  viaProwlarr?: boolean;
+  checked: { date: string; status: string; note: string };
+}
 
 // ---------------------------------------------------------------- protocol priority + delays (top of both tabs)
 
@@ -36,7 +137,10 @@ export function ProtocolBar({ onChanged }: { onChanged?: () => void }) {
   const value = p ? (p.noProtocolPreference ? "none" : p.protocolOrder[0]) : "";
   const saveDelay = async (k: "usenetDelayMin" | "torrentDelayMin", v: number) => {
     try {
-      await api("/settings", { method: "PUT", body: { protocol: { ...(set.data?.protocol ?? { usenetDelayMin: 0, torrentDelayMin: 0 }), [k]: v } } });
+      await api("/settings", {
+        method: "PUT",
+        body: { protocol: { ...(set.data?.protocol ?? { usenetDelayMin: 0, torrentDelayMin: 0 }), [k]: v } },
+      });
       await set.reload();
       toast(t("common.saved"));
       onChanged?.();
@@ -54,7 +158,13 @@ export function ProtocolBar({ onChanged }: { onChanged?: () => void }) {
           onChange={async (e) => {
             try {
               const v = e.target.value;
-              await api(`/profiles/${p!.id}`, { method: "PUT", body: v === "none" ? { noProtocolPreference: true } : { noProtocolPreference: false, protocolOrder: v === "usenet" ? ["usenet", "torrent"] : ["torrent", "usenet"] } });
+              await api(`/profiles/${p!.id}`, {
+                method: "PUT",
+                body:
+                  v === "none"
+                    ? { noProtocolPreference: true }
+                    : { noProtocolPreference: false, protocolOrder: v === "usenet" ? ["usenet", "torrent"] : ["torrent", "usenet"] },
+              });
               await prof.reload();
               toast(t("common.saved"));
               onChanged?.();
@@ -78,11 +188,23 @@ export function ProtocolBar({ onChanged }: { onChanged?: () => void }) {
         <>
           <label className="field">
             {t("proto.usenetDelay")}
-            <NumberInput value={set.data.protocol?.usenetDelayMin ?? 0} min={0} max={10080} onChange={(v) => void saveDelay("usenetDelayMin", v)} label={t("proto.usenetDelay")} />
+            <NumberInput
+              value={set.data.protocol?.usenetDelayMin ?? 0}
+              min={0}
+              max={10080}
+              onChange={(v) => void saveDelay("usenetDelayMin", v)}
+              label={t("proto.usenetDelay")}
+            />
           </label>
           <label className="field">
             {t("proto.torrentDelay")}
-            <NumberInput value={set.data.protocol?.torrentDelayMin ?? 0} min={0} max={10080} onChange={(v) => void saveDelay("torrentDelayMin", v)} label={t("proto.torrentDelay")} />
+            <NumberInput
+              value={set.data.protocol?.torrentDelayMin ?? 0}
+              min={0}
+              max={10080}
+              onChange={(v) => void saveDelay("torrentDelayMin", v)}
+              label={t("proto.torrentDelay")}
+            />
           </label>
           <p className="muted small proto-delay-help">{t("proto.delayHelp")}</p>
         </>
@@ -118,7 +240,9 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
   };
   return (
     <Modal title={c.id ? c.name : t("clients.addTitle", { name })} onClose={onClose}>
-      <p className="muted small">{t(info.protocol === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {t(info.help)}</p>
+      <p className="muted small">
+        {t(info.protocol === "usenet" ? "conn.role.usenetClient" : "conn.role.torrentClient")} · {t(info.help)}
+      </p>
       {bh && <BlackholeLoses type={c.type} />}
       {bh ? (
         <div className="form">
@@ -129,16 +253,28 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
           <label>
             {t("clients.bh.watch")}
             <input value={c.watchFolder ?? ""} onChange={(e) => set({ watchFolder: e.target.value })} placeholder="/data/blackhole/watch" />
-            <span className="muted small">{t(c.type === "blackhole-usenet" ? "clients.bh.watchHelpNzb" : "clients.bh.watchHelpTorrent")}</span>
+            <span className="muted small">
+              {t(c.type === "blackhole-usenet" ? "clients.bh.watchHelpNzb" : "clients.bh.watchHelpTorrent")}
+            </span>
           </label>
           <label>
             {t("clients.bh.completed")}
-            <input value={c.completedFolder ?? ""} onChange={(e) => set({ completedFolder: e.target.value })} placeholder="/data/blackhole/completed" />
+            <input
+              value={c.completedFolder ?? ""}
+              onChange={(e) => set({ completedFolder: e.target.value })}
+              placeholder="/data/blackhole/completed"
+            />
             <span className="muted small">{t("clients.bh.completedHelp")}</span>
           </label>
           <label>
             {t("clients.bh.timeout")}
-            <NumberInput value={c.timeoutHours ?? 24} min={1} max={720} onChange={(v) => set({ timeoutHours: v })} label={t("clients.bh.timeout")} />
+            <NumberInput
+              value={c.timeoutHours ?? 24}
+              min={1}
+              max={720}
+              onChange={(v) => set({ timeoutHours: v })}
+              label={t("clients.bh.timeout")}
+            />
             <span className="muted small">{t("clients.bh.timeoutHelp")}</span>
           </label>
           <label>
@@ -146,40 +282,42 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
             <NumberInput value={c.priority} min={1} max={50} onChange={(v) => set({ priority: v })} label={t("clients.priority")} />
             <span className="muted small">{t("clients.bh.priorityHelp")}</span>
           </label>
-          {c.type === "blackhole-torrent" && <Toggle checked={!!c.saveMagnets} onChange={(v) => set({ saveMagnets: v })} label={t("clients.bh.saveMagnets")} />}
+          {c.type === "blackhole-torrent" && (
+            <Toggle checked={!!c.saveMagnets} onChange={(v) => set({ saveMagnets: v })} label={t("clients.bh.saveMagnets")} />
+          )}
           {c.type === "blackhole-torrent" && <p className="muted small">{t("clients.bh.saveMagnetsHelp")}</p>}
         </div>
       ) : (
-      <div className="form">
-        <label>
-          {t("clients.name")}
-          <input value={c.name} onChange={(e) => set({ name: e.target.value })} />
-        </label>
-        <label>
-          {t("settings.url")}
-          <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={info.placeholder} />
-        </label>
-        {info.username && (
+        <div className="form">
           <label>
-            {t("settings.username")}
-            <input value={c.username} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
+            {t("clients.name")}
+            <input value={c.name} onChange={(e) => set({ name: e.target.value })} />
           </label>
-        )}
-        <label className="field">
-          {t("settings.password")}
-          <SecretInput value={c.password} onChange={(v) => set({ password: v })} label={t("settings.password")} />
-        </label>
-        <label>
-          {t(info.protocol === "usenet" ? "settings.category" : "clients.label")}
-          <input value={c.category} onChange={(e) => set({ category: e.target.value })} />
-          <span className="muted small">{t(info.labelHelp)}</span>
-        </label>
-        <label>
-          {t("clients.priority")}
-          <NumberInput value={c.priority} min={1} max={50} onChange={(v) => set({ priority: v })} label={t("clients.priority")} />
-          <span className="muted small">{t("clients.priorityHelp")}</span>
-        </label>
-      </div>
+          <label>
+            {t("settings.url")}
+            <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={info.placeholder} />
+          </label>
+          {info.username && (
+            <label>
+              {t("settings.username")}
+              <input value={c.username} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
+            </label>
+          )}
+          <label className="field">
+            {t("settings.password")}
+            <SecretInput value={c.password} onChange={(v) => set({ password: v })} label={t("settings.password")} />
+          </label>
+          <label>
+            {t(info.protocol === "usenet" ? "settings.category" : "clients.label")}
+            <input value={c.category} onChange={(e) => set({ category: e.target.value })} />
+            <span className="muted small">{t(info.labelHelp)}</span>
+          </label>
+          <label>
+            {t("clients.priority")}
+            <NumberInput value={c.priority} min={1} max={50} onChange={(v) => set({ priority: v })} label={t("clients.priority")} />
+            <span className="muted small">{t("clients.priorityHelp")}</span>
+          </label>
+        </div>
       )}
       {bh && !c.enabled && !tested && !initial.enabled && <p className="muted small">{t("clients.bh.testFirst")}</p>}
       <Toggle
@@ -189,7 +327,12 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
         label={t("clients.enabled")}
       />
       {confirmOn && (
-        <Confirm title={t("clients.bh.enableTitle", { name: c.name || name })} confirmLabel={t("clients.bh.enableConfirm")} onClose={() => setConfirmOn(false)} onConfirm={async () => (set({ enabled: true }), setConfirmOn(false))}>
+        <Confirm
+          title={t("clients.bh.enableTitle", { name: c.name || name })}
+          confirmLabel={t("clients.bh.enableConfirm")}
+          onClose={() => setConfirmOn(false)}
+          onConfirm={async () => (set({ enabled: true }), setConfirmOn(false))}
+        >
           <BlackholeLoses type={c.type} />
         </Confirm>
       )}
@@ -198,9 +341,21 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
         <p className="muted small">{t("clients.pathMappingsHelp")}</p>
         {c.pathMappings.map((m, i) => (
           <div key={i} className="row">
-            <input className="grow" value={m.from} placeholder={t("settings.paths.from")} aria-label={t("settings.paths.from")} onChange={(e) => set({ pathMappings: c.pathMappings.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)) })} />
+            <input
+              className="grow"
+              value={m.from}
+              placeholder={t("settings.paths.from")}
+              aria-label={t("settings.paths.from")}
+              onChange={(e) => set({ pathMappings: c.pathMappings.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)) })}
+            />
             <span aria-hidden="true">→</span>
-            <input className="grow" value={m.to} placeholder={t("settings.paths.to")} aria-label={t("settings.paths.to")} onChange={(e) => set({ pathMappings: c.pathMappings.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)) })} />
+            <input
+              className="grow"
+              value={m.to}
+              placeholder={t("settings.paths.to")}
+              aria-label={t("settings.paths.to")}
+              onChange={(e) => set({ pathMappings: c.pathMappings.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)) })}
+            />
             <button className="small ghost" onClick={() => set({ pathMappings: c.pathMappings.filter((_, j) => j !== i) })}>
               {t("common.delete")}
             </button>
@@ -227,7 +382,12 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
                 try {
                   const r = await api<{ version: string; categoryExists?: boolean }>("/clients/test", { body: c });
                   if (bh) setTested(true);
-                  setRes({ ok: r.categoryExists !== false, text: t("settings.testOk", { app: c.name || name, version: r.version }) + (r.categoryExists === false ? ` · ${t("settings.categoryMissing", { cat: c.category, app: name })}` : "") });
+                  setRes({
+                    ok: r.categoryExists !== false,
+                    text:
+                      t("settings.testOk", { app: c.name || name, version: r.version }) +
+                      (r.categoryExists === false ? ` · ${t("settings.categoryMissing", { cat: c.category, app: name })}` : ""),
+                  });
                 } catch (e) {
                   setRes({ ok: false, text: (e as Error).message });
                 }
@@ -278,8 +438,34 @@ export function ExtraClientDialog({ initial, onClose, onSaved }: { initial: Extr
 
 export const newClient = (type: ExtraType): ExtraClient =>
   isBlackholeType(type)
-    ? { type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 50, enabled: false, removeCompleted: false, pathMappings: [], watchFolder: "", completedFolder: "", saveMagnets: false, timeoutHours: 24 }
-    : { type, name: CLIENT_INFO[type].name, url: "", username: "", password: "", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] };
+    ? {
+        type,
+        name: CLIENT_INFO[type].name,
+        url: "",
+        username: "",
+        password: "",
+        category: "animearr",
+        priority: 50,
+        enabled: false,
+        removeCompleted: false,
+        pathMappings: [],
+        watchFolder: "",
+        completedFolder: "",
+        saveMagnets: false,
+        timeoutHours: 24,
+      }
+    : {
+        type,
+        name: CLIENT_INFO[type].name,
+        url: "",
+        username: "",
+        password: "",
+        category: "animearr",
+        priority: 1,
+        enabled: true,
+        removeCompleted: true,
+        pathMappings: [],
+      };
 
 /** "What you lose with Blackhole": the plain list on its card and in the confirmation before turning it on. */
 export function BlackholeLoses({ type }: { type: ExtraType }) {
@@ -297,7 +483,17 @@ export function BlackholeLoses({ type }: { type: ExtraType }) {
 }
 
 /** Priority + enabled for the SABnzbd / qBittorrent slots. */
-export function PrimaryPrefs({ id, priority, enabled, onSaved }: { id: "sabnzbd" | "qbittorrent"; priority: number; enabled: boolean; onSaved: () => void }) {
+export function PrimaryPrefs({
+  id,
+  priority,
+  enabled,
+  onSaved,
+}: {
+  id: "sabnzbd" | "qbittorrent";
+  priority: number;
+  enabled: boolean;
+  onSaved: () => void;
+}) {
   const toast = useToast();
   const save = async (patch: { priority?: number; enabled?: boolean }) => {
     try {
@@ -321,9 +517,25 @@ export function PrimaryPrefs({ id, priority, enabled, onSaved }: { id: "sabnzbd"
 
 // ---------------------------------------------------------------- direct indexers
 
-const KIND_LABEL: Record<DirectIndexer["kind"], I18nKey> = { newznab: "ix.kind.newznab", torznab: "ix.kind.torznab", nyaa: "ix.kind.nyaa", rss: "ix.kind.rss", subsplease: "ix.kind.subsplease" };
+const KIND_LABEL: Record<DirectIndexer["kind"], I18nKey> = {
+  newznab: "ix.kind.newznab",
+  torznab: "ix.kind.torznab",
+  nyaa: "ix.kind.nyaa",
+  rss: "ix.kind.rss",
+  subsplease: "ix.kind.subsplease",
+};
 
-export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: DirectIndexer; entry?: CatalogEntry | null; onClose: () => void; onSaved: () => void }) {
+export function IndexerDialog({
+  initial,
+  entry,
+  onClose,
+  onSaved,
+}: {
+  initial: DirectIndexer;
+  entry?: CatalogEntry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
   const [ix, setIx] = useState<DirectIndexer>(initial);
   const [res, setRes] = useState<{ ok: boolean; text: string; sample?: string[] } | null>(null);
@@ -347,7 +559,9 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
         {t(ix.protocol === "usenet" ? "conn.proto.usenet" : "conn.proto.torrent")} · {t(KIND_LABEL[ix.kind])}
         {entry ? ` · ${entry.goodFor}` : ""}
       </p>
-      {entry?.checked.status !== undefined && entry.checked.status !== "ok" && <p className="banner warn small">{t("ix.checkedWarn", { date: entry.checked.date, note: entry.checked.note })}</p>}
+      {entry?.checked.status !== undefined && entry.checked.status !== "ok" && (
+        <p className="banner warn small">{t("ix.checkedWarn", { date: entry.checked.date, note: entry.checked.note })}</p>
+      )}
       <div className="form">
         <label>
           {t("clients.name")}
@@ -355,7 +569,11 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
         </label>
         <label>
           {ix.kind === "rss" ? t("ix.rssUrl") : t("settings.url")}
-          <input value={ix.url} onChange={(e) => set({ url: e.target.value })} placeholder={ix.kind === "rss" ? "https://example.org/rss?q={q}" : "https://indexer.example"} />
+          <input
+            value={ix.url}
+            onChange={(e) => set({ url: e.target.value })}
+            placeholder={ix.kind === "rss" ? "https://example.org/rss?q={q}" : "https://indexer.example"}
+          />
           {ix.kind === "rss" && <span className="muted small">{t("ix.rssHelp")}</span>}
         </label>
         {api2 && (
@@ -371,7 +589,14 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
             <legend>{t("ix.categories")}</legend>
             {CATS.map(([n, key]) => (
               <label key={n} className="check">
-                <input type="checkbox" checked={ix.categories.includes(n)} onChange={(e) => set({ categories: e.target.checked ? [...new Set([...ix.categories, n])] : ix.categories.filter((x) => x !== n) })} /> {t(key)}
+                <input
+                  type="checkbox"
+                  checked={ix.categories.includes(n)}
+                  onChange={(e) =>
+                    set({ categories: e.target.checked ? [...new Set([...ix.categories, n])] : ix.categories.filter((x) => x !== n) })
+                  }
+                />{" "}
+                {t(key)}
               </label>
             ))}
           </fieldset>
@@ -386,7 +611,12 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
             </label>
             <label className="field">
               {t("ix.categoryNumbers")}
-              <ListInput value={ix.categories} onChange={(v) => set({ categories: v.map(Number).filter((n) => n > 0) })} label={t("ix.categoryNumbers")} placeholder="5070, 5000, 2000" />
+              <ListInput
+                value={ix.categories}
+                onChange={(v) => set({ categories: v.map(Number).filter((n) => n > 0) })}
+                label={t("ix.categoryNumbers")}
+                placeholder="5070, 5000, 2000"
+              />
               <span className="muted small">{t("ix.categoriesHelp")}</span>
             </label>
           </details>
@@ -400,11 +630,21 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
           <>
             <label>
               {t("ix.seedRatio")}
-              <input inputMode="decimal" value={ix.seedRatio ?? ""} placeholder={t("ix.clientDefault")} onChange={(e) => set({ seedRatio: e.target.value === "" ? null : Number(e.target.value) })} />
+              <input
+                inputMode="decimal"
+                value={ix.seedRatio ?? ""}
+                placeholder={t("ix.clientDefault")}
+                onChange={(e) => set({ seedRatio: e.target.value === "" ? null : Number(e.target.value) })}
+              />
             </label>
             <label>
               {t("ix.seedTime")}
-              <input inputMode="numeric" value={ix.seedTimeMin ?? ""} placeholder={t("ix.clientDefault")} onChange={(e) => set({ seedTimeMin: e.target.value === "" ? null : Number(e.target.value) })} />
+              <input
+                inputMode="numeric"
+                value={ix.seedTimeMin ?? ""}
+                placeholder={t("ix.clientDefault")}
+                onChange={(e) => set({ seedTimeMin: e.target.value === "" ? null : Number(e.target.value) })}
+              />
             </label>
           </>
         )}
@@ -442,8 +682,14 @@ export function IndexerDialog({ initial, entry, onClose, onSaved }: { initial: D
             onClick={() =>
               void run(async () => {
                 try {
-                  const r = await api<{ query: string; found: number; ms: number; sample: { title: string }[] }>("/indexers/test", { body: { ...ix, query: "frieren" } });
-                  setRes({ ok: r.found > 0, text: t("ix.testResult", { n: r.found, q: r.query, ms: r.ms }), sample: r.sample.map((x) => x.title) });
+                  const r = await api<{ query: string; found: number; ms: number; sample: { title: string }[] }>("/indexers/test", {
+                    body: { ...ix, query: "frieren" },
+                  });
+                  setRes({
+                    ok: r.found > 0,
+                    text: t("ix.testResult", { n: r.found, q: r.query, ms: r.ms }),
+                    sample: r.sample.map((x) => x.title),
+                  });
                 } catch (e) {
                   setRes({ ok: false, text: (e as Error).message });
                 }
@@ -499,11 +745,51 @@ const CATS: [number, I18nKey][] = [
   [2000, "ix.cat.movies"],
 ];
 
-export const fromEntry = (e: CatalogEntry): DirectIndexer => ({ kind: e.kind, protocol: e.protocol, name: e.name, url: e.url, apiPath: e.apiPath, apiKey: "", categories: e.categories, priority: e.recommended ? 10 : 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [], catalogId: e.id });
-export const customIndexer = (kind: "newznab" | "torznab" | "rss"): DirectIndexer => ({ kind, protocol: kind === "newznab" ? "usenet" : "torrent", name: "", url: "", apiPath: kind === "rss" ? "" : "/api", apiKey: "", categories: kind === "rss" ? [] : [5070, 5000, 2000], priority: 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [], catalogId: null });
+export const fromEntry = (e: CatalogEntry): DirectIndexer => ({
+  kind: e.kind,
+  protocol: e.protocol,
+  name: e.name,
+  url: e.url,
+  apiPath: e.apiPath,
+  apiKey: "",
+  categories: e.categories,
+  priority: e.recommended ? 10 : 25,
+  enabled: true,
+  seedRatio: null,
+  seedTimeMin: null,
+  tags: [],
+  catalogId: e.id,
+});
+export const customIndexer = (kind: "newznab" | "torznab" | "rss"): DirectIndexer => ({
+  kind,
+  protocol: kind === "newznab" ? "usenet" : "torrent",
+  name: "",
+  url: "",
+  apiPath: kind === "rss" ? "" : "/api",
+  apiKey: "",
+  categories: kind === "rss" ? [] : [5070, 5000, 2000],
+  priority: 25,
+  enabled: true,
+  seedRatio: null,
+  seedTimeMin: null,
+  tags: [],
+  catalogId: null,
+});
 
 /** "+ Add an indexer": the curated anime catalogue (checked live, dated) and the custom forms. */
-export function CataloguePicker({ protocol, prowlarr, added, onPick, onClose }: { protocol: Protocol; prowlarr: boolean; added: string[]; onPick: (ix: DirectIndexer, entry: CatalogEntry | null) => void; onClose: () => void }) {
+export function CataloguePicker({
+  protocol,
+  prowlarr,
+  added,
+  onPick,
+  onClose,
+}: {
+  protocol: Protocol;
+  prowlarr: boolean;
+  added: string[];
+  onPick: (ix: DirectIndexer, entry: CatalogEntry | null) => void;
+  onClose: () => void;
+}) {
   const cat = useLoad(() => api<{ version: number; updated: string; entries: CatalogEntry[] }>("/catalog/indexers"), []);
   const list = (cat.data?.entries ?? []).filter((e) => e.protocol === protocol);
   const groups: [I18nKey, CatalogEntry[]][] = [
@@ -526,7 +812,12 @@ export function CataloguePicker({ protocol, prowlarr, added, onPick, onClose }: 
                   const down = e.checked.status === "down";
                   return (
                     <li key={e.id}>
-                      <button className="cat-card card" disabled={already || e.addable === false} onClick={() => (e.viaProwlarr ? undefined : onPick(fromEntry(e), e))} aria-disabled={e.viaProwlarr || undefined}>
+                      <button
+                        className="cat-card card"
+                        disabled={already || e.addable === false}
+                        onClick={() => (e.viaProwlarr ? undefined : onPick(fromEntry(e), e))}
+                        aria-disabled={e.viaProwlarr || undefined}
+                      >
                         <span className="conn-logo" aria-hidden="true">
                           {e.name.slice(0, 2)}
                         </span>
@@ -537,7 +828,9 @@ export function CataloguePicker({ protocol, prowlarr, added, onPick, onClose }: 
                           <span className="muted small">{e.goodFor}</span>
                           <span className="lib-flags">
                             <span className="tag neutral">{e.language}</span>
-                            <span className={`tag ${e.access === "free" ? "good" : e.access === "invite" ? "warn" : "info"}`}>{t(`ix.access.${e.access}` as I18nKey)}</span>
+                            <span className={`tag ${e.access === "free" ? "good" : e.access === "invite" ? "warn" : "info"}`}>
+                              {t(`ix.access.${e.access}` as I18nKey)}
+                            </span>
                             <span className="tag neutral">{t(e.visibility === "private" ? "ix.private" : "ix.public")}</span>
                             {down && <span className="tag bad">{t("ix.down", { date: e.checked.date })}</span>}
                             {e.checked.status === "unverified" && <span className="tag warn">{t("ix.unverified")}</span>}
@@ -577,7 +870,9 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
   const toast = useToast();
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
-  const [list, setList] = useState<{ id: string; name: string; type: string; language: string; feed: string; added: boolean }[] | null>(null);
+  const [list, setList] = useState<{ id: string; name: string; type: string; language: string; feed: string; added: boolean }[] | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   // Shown in the dialog (a toast could hide behind it); empty fields are said, not silently ignored.
   const [err, setErr] = useState<string | null>(null);
@@ -621,7 +916,8 @@ export function JackettDialog({ onClose, onSaved }: { onClose: () => void; onSav
           {list.map((x) => (
             <li key={x.id} className="row between">
               <span>
-                <b>{x.name}</b> <span className="tag neutral">{x.type}</span> {x.language && <span className="muted small">{x.language}</span>}
+                <b>{x.name}</b> <span className="tag neutral">{x.type}</span>{" "}
+                {x.language && <span className="muted small">{x.language}</span>}
               </span>
               <button
                 className="small"

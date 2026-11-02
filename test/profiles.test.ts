@@ -6,12 +6,21 @@ import os from "node:os";
 import path from "node:path";
 import { parseRelease } from "../server/core/parser.js";
 import { rankRelease, type Profile } from "../server/core/rank.js";
-import { judge } from "../server/verify.js";
+import { judge } from "../server/grabs/verify.js";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-prof-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const base: Profile = { subLangs: ["en"], dubLangs: ["en"], watchMode: "sub", originalLangs: ["ja"], softOnly: true, preferUncensored: true, protocolOrder: ["usenet", "torrent"], resolution: 1080 };
+const base: Profile = {
+  subLangs: ["en"],
+  dubLangs: ["en"],
+  watchMode: "sub",
+  originalLangs: ["ja"],
+  softOnly: true,
+  preferUncensored: true,
+  protocolOrder: ["usenet", "torrent"],
+  resolution: 1080,
+};
 const info = { protocol: "usenet" as const, size: 1.2e9, episodeCount: 1 };
 const rank = (name: string, p: Partial<Profile> = {}) => rankRelease(parseRelease(name), info, { ...base, ...p }, null);
 
@@ -25,7 +34,12 @@ test("sub mode (default): English dub-only is rejected; dual audio is a bonus, n
 });
 
 test("sub mode for a donghua: Mandarin audio is the ORIGINAL audio, not a dub", () => {
-  const r = rankRelease(parseRelease("[GM-Team] Quan Zhi Fa Shi S6 - 05 [Mandarin] [ENG SUB] [1080p]"), info, { ...base, originalLangs: ["zh"] }, null);
+  const r = rankRelease(
+    parseRelease("[GM-Team] Quan Zhi Fa Shi S6 - 05 [Mandarin] [ENG SUB] [1080p]"),
+    info,
+    { ...base, originalLangs: ["zh"] },
+    null,
+  );
   assert.equal(r.accept, true, r.why);
 });
 
@@ -55,7 +69,14 @@ test("pt-br profile matches Portuguese hints", () => {
   assert.equal(r.accept, true, r.why);
 });
 
-const probe = (o: Partial<Parameters<typeof judge>[0]>) => ({ subs: [], audio: ["ja"], durationSec: 1400, sidecars: [], untagged: 0, ...o });
+const probe = (o: Partial<Parameters<typeof judge>[0]>) => ({
+  subs: [],
+  audio: ["ja"],
+  durationSec: 1400,
+  sidecars: [],
+  untagged: 0,
+  ...o,
+});
 
 test("verify: a forced/signs-only English track is NOT English subtitles (Black Clover case)", () => {
   const v = judge(probe({ subs: [], forced: ["en"] }), base, 24, null);
@@ -77,18 +98,35 @@ test("verify: dub, dual and either modes", () => {
 });
 
 test("profiles: the old single profile migrates to the seeded default; per-show watch-mode override", async () => {
-  const { db, cache } = await import("../server/db.js");
-  const { seal } = await import("../server/secretbox.js");
+  const { db, cache } = await import("../server/system/db.js");
+  const { seal } = await import("../server/system/secretbox.js");
   // An 0.1 settings row with the old single "profile".
-  db.prepare("INSERT INTO settings (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(seal(JSON.stringify({ profile: { subLangs: ["en"], audioLangs: ["ja"], softOnly: true, preferUncensored: true, protocolOrder: ["usenet", "torrent"], resolution: 1080 } })));
-  const { getSettings } = await import("../server/settings.js");
+  db.prepare("INSERT INTO settings (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+    seal(
+      JSON.stringify({
+        profile: {
+          subLangs: ["en"],
+          audioLangs: ["ja"],
+          softOnly: true,
+          preferUncensored: true,
+          protocolOrder: ["usenet", "torrent"],
+          resolution: 1080,
+        },
+      }),
+    ),
+  );
+  const { getSettings } = await import("../server/system/settings.js");
   const s = getSettings();
   assert.equal(s.profiles.length, 1);
   assert.equal(s.profiles[0].name, "English subs (default)");
   assert.equal(s.profiles[0].watchMode, "sub");
   assert.equal(s.defaultProfileId, "default");
-  const { profileFor, setSeriesPrefs, saveProfile, deleteProfile } = await import("../server/profiles.js");
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (1, 700001, 'Donghua', '/media/AnimeArr/Donghua', 0, 'Chinese', 0)").run();
+  const { profileFor, setSeriesPrefs, saveProfile, deleteProfile } = await import("../server/library/profiles.js");
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (1, 700001, 'Donghua', '/media/AnimeArr/Donghua', 0, 'Chinese', 0)",
+    )
+    .run();
   assert.deepEqual(profileFor(700001).originalLangs, ["zh"]);
   setSeriesPrefs(700001, null, "dual");
   assert.equal(profileFor(700001).watchMode, "dual");
@@ -105,7 +143,7 @@ test("profiles: the old single profile migrates to the seeded default; per-show 
 
 test("review fixes: forced sidecars, full-dialogue titles, cmn audio, either/dual edge cases", async () => {
   const { sidecarLang, toLang } = await import("../server/core/langs.js");
-  const { PARTIAL_TRACK } = await import("../server/verify.js");
+  const { PARTIAL_TRACK } = await import("../server/grabs/verify.js");
   assert.equal(sidecarLang("Show - S01E01.eng.forced.srt"), null);
   assert.equal(sidecarLang("Show - S01E01.en.signs.ass"), null);
   assert.equal(sidecarLang("Show - S01E01.en.ass"), "en");

@@ -7,11 +7,15 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { patchSettings } = await import("../server/settings.js");
-const { cache } = await import("../server/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { cache } = await import("../server/system/db.js");
 // The library (so the bin can be checked against it).
-cache.prepare("INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, synced_at) VALUES (1, 1, 'Show', '/media/Anime/Show', '/media/Anime', 1, 0)").run();
-const { purgeBin, noteBinned, binFolder } = await import("../server/binpurge.js");
+cache
+  .prepare(
+    "INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, synced_at) VALUES (1, 1, 'Show', '/media/Anime/Show', '/media/Anime', 1, 0)",
+  )
+  .run();
+const { purgeBin, noteBinned, binFolder } = await import("../server/import/binpurge.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-binf-"));
 const BIN = path.join(tmp, "Recycle", "animearr");
@@ -20,7 +24,15 @@ const write = (p: string) => (fs.mkdirSync(path.dirname(p), { recursive: true })
 const DAY = 86_400_000;
 
 test("purges by the time a file went into the bin; keeps forever at 0 days; refuses unsafe bins; Empty now", async () => {
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/Anime"], localPathMappings: [{ from: "/media/Recycle", to: path.join(tmp, "Recycle") }, { from: "/media/Anime", to: LIB }], media: { ...s.media, recycleBin: "/media/Recycle/animearr/", recycleBinCleanupDays: 3 } }));
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/Anime"],
+    localPathMappings: [
+      { from: "/media/Recycle", to: path.join(tmp, "Recycle") },
+      { from: "/media/Anime", to: LIB },
+    ],
+    media: { ...s.media, recycleBin: "/media/Recycle/animearr/", recycleBinCleanupDays: 3 },
+  }));
   const old = path.join(BIN, "Show", "old.mkv");
   const fresh = path.join(BIN, "Show", "fresh.mkv");
   write(old);
@@ -51,7 +63,10 @@ test("purges by the time a file went into the bin; keeps forever at 0 days; refu
   assert.ok("error" in binFolder());
   // Never AnimeArr's own data folder (settings, database, backups), inside it, or a folder holding it.
   const conf = process.env.ANIMEARR_CONFIG!;
-  patchSettings((s) => ({ ...s, localPathMappings: [...s.localPathMappings, { from: "/media/Conf", to: conf }, { from: "/media/Above", to: path.dirname(conf) }] }));
+  patchSettings((s) => ({
+    ...s,
+    localPathMappings: [...s.localPathMappings, { from: "/media/Conf", to: conf }, { from: "/media/Above", to: path.dirname(conf) }],
+  }));
   for (const b of ["/media/Conf", "/media/Conf/bin"]) {
     patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: b } }));
     const r = binFolder();

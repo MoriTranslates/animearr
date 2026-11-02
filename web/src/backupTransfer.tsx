@@ -4,7 +4,12 @@ import { humanError } from "./errors";
 import { t } from "./i18n";
 import { Confirm, dateTime, useToast } from "./ui";
 
-interface Staged { token: string; appVersion: string; createdAt: string; schema: number }
+interface Staged {
+  token: string;
+  appVersion: string;
+  createdAt: string;
+  schema: number;
+}
 
 /** Settings → System → Backups: download a backup file, or upload one to restore (checked first, then the password). */
 export function BackupTransfer() {
@@ -16,7 +21,12 @@ export function BackupTransfer() {
   const [asking, setAsking] = useState(false);
   // The file holds the key to every saved password, so downloading it needs the password too (also on the home network).
   const download = async () => {
-    const res = await fetch(`${BASE}/api/system/backup/download`, { method: "POST", headers: { "X-AnimeArr": "1", "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }), credentials: "same-origin" });
+    const res = await fetch(`${BASE}/api/system/backup/download`, {
+      method: "POST",
+      headers: { "X-AnimeArr": "1", "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw }),
+      credentials: "same-origin",
+    });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       toast(humanError(data.error ?? res.statusText), true);
@@ -36,7 +46,12 @@ export function BackupTransfer() {
     setBusy(true);
     try {
       // Raw bytes, not JSON (the api() helper is JSON-only); same CSRF header as every other change.
-      const res = await fetch(`${BASE}/api/system/backup/upload`, { method: "POST", headers: { "X-AnimeArr": "1", "Content-Type": "application/octet-stream" }, body: file, credentials: "same-origin" });
+      const res = await fetch(`${BASE}/api/system/backup/upload`, {
+        method: "POST",
+        headers: { "X-AnimeArr": "1", "Content-Type": "application/octet-stream" },
+        body: file,
+        credentials: "same-origin",
+      });
       const data = (await res.json().catch(() => ({}))) as Staged & { error?: string };
       if (!res.ok) throw new Error(humanError(data.error ?? res.statusText));
       setPw("");
@@ -65,7 +80,13 @@ export function BackupTransfer() {
         <button className="small" disabled={busy} onClick={() => pick.current?.click()}>
           {busy ? t("bt.checking") : t("bt.upload")}
         </button>
-        <input ref={pick} type="file" accept=".gz,.tgz,application/gzip" hidden onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
+        <input
+          ref={pick}
+          type="file"
+          accept=".gz,.tgz,application/gzip"
+          hidden
+          onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])}
+        />
       </div>
       {asking && (
         <Confirm title={t("bt.download")} confirmLabel={t("bt.download")} onClose={() => setAsking(false)} onConfirm={download}>

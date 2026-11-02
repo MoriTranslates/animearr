@@ -8,16 +8,17 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-seadexui-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { qualityScore, seadexPick, seadexSource } = await import("../server/core/quality.js");
 const { compareToSeadex, pickOfRelease } = await import("../server/core/seadexCompare.js");
-const { budgetBytes, fitsBudget, qualityUpgradePass, startNow, upgradeSeasonNow, usedBytes } = await import("../server/qualityUpgrade.js");
-const { setLock } = await import("../server/qualityLocks.js");
-const { CHECK_COOLDOWN_MS, checkSeadexNow, cooldownLeft, saveSeadex } = await import("../server/seadex.js");
-const { seasonComparison, filePick } = await import("../server/seadexFiles.js");
+const { budgetBytes, fitsBudget, qualityUpgradePass, startNow, upgradeSeasonNow, usedBytes } =
+  await import("../server/search/qualityUpgrade.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
+const { CHECK_COOLDOWN_MS, checkSeadexNow, cooldownLeft, saveSeadex } = await import("../server/metadata/seadex.js");
+const { seasonComparison, filePick } = await import("../server/metadata/seadexFiles.js");
 type SE = import("../server/core/quality.js").SeadexEntry;
-type SR = import("../server/search.js").SearchResult;
+type SR = import("../server/search/search.js").SearchResult;
 
 const DAY = 86_400_000;
 const GB = 1e9;
@@ -71,7 +72,11 @@ test("comparison: best, alt, and 'you have X; SeaDex's best is Y'", () => {
   assert.equal(best.best.dualAudio, true);
   const alt = compareToSeadex(["[SubGrp] Show - 01 (BD 1080p)"], SEADEX, "sub")!;
   assert.equal(alt.verdict, "alt");
-  const worse = compareToSeadex(["[Kekkan] Show - 01 (WEB 1080p)", "[Kekkan] Show - 02 (WEB 1080p)", "[Kekkan] Show - 03 (BD 1080p)"], SEADEX, "dual")!;
+  const worse = compareToSeadex(
+    ["[Kekkan] Show - 01 (WEB 1080p)", "[Kekkan] Show - 02 (WEB 1080p)", "[Kekkan] Show - 03 (BD 1080p)"],
+    SEADEX,
+    "dual",
+  )!;
   assert.equal(worse.verdict, "worse");
   assert.deepEqual(worse.counts, { best: 1, alt: 0, other: 2 });
   assert.deepEqual(worse.have, { group: "Kekkan", source: "web" });
@@ -88,31 +93,66 @@ test("comparison: best, alt, and 'you have X; SeaDex's best is Y'", () => {
 
 let nextEp = 5000;
 function show(sid: number, tvdb: number, title: string, scenes: string[], opts: { anilist?: number } = {}) {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, year, path, monitored, original_language, synced_at) VALUES (?, ?, ?, 2024, ?, 0, 'Japanese', 0)").run(sid, tvdb, title, `/media/AnimeArr/${title}`);
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, year, path, monitored, original_language, synced_at) VALUES (?, ?, ?, 2024, ?, 0, 'Japanese', 0)",
+    )
+    .run(sid, tvdb, title, `/media/AnimeArr/${title}`);
   const ids: number[] = [];
   scenes.forEach((scene, i) => {
     const id = nextEp++;
-    cache.prepare("INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, ?, 1, ?, ?, '1920x1080', 'jpn', 'eng')").run(id + 90000, sid, `/media/AnimeArr/${title}/Season 01/${title} - S01E0${i + 1} [Tdarr x265].mkv`, scene);
-    cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, ?, 1, ?, 1, 1, ?, ?, 24)").run(id, sid, i + 1, id + 90000, now - 400 * DAY);
+    cache
+      .prepare(
+        "INSERT INTO files (id, series_id, season, path, scene_name, resolution, audio_langs, sub_langs) VALUES (?, ?, 1, ?, ?, '1920x1080', 'jpn', 'eng')",
+      )
+      .run(id + 90000, sid, `/media/AnimeArr/${title}/Season 01/${title} - S01E0${i + 1} [Tdarr x265].mkv`, scene);
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id, air_utc, runtime) VALUES (?, ?, 1, ?, 1, 1, ?, ?, 24)",
+      )
+      .run(id, sid, i + 1, id + 90000, now - 400 * DAY);
     ids.push(id);
   });
   db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, ?, 0, 0)").run(tvdb, sid, title);
-  if (opts.anilist) db.prepare("INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, fetched_at) VALUES (?, ?, '1', 0)").run(opts.anilist, tvdb);
+  if (opts.anilist)
+    db.prepare("INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, fetched_at) VALUES (?, ?, '1', 0)").run(opts.anilist, tvdb);
   return ids;
 }
 const result = (title: string, episodeIds: number[], size: number): SR =>
   ({
-    guid: `g-${title}`, title, indexer: "X", indexerId: 1, protocol: "usenet", size, seeders: null, publishDate: null, ageHours: 1, episodeIds, label: "S01", confidence: 95, coversTarget: true, extra: 0,
+    guid: `g-${title}`,
+    title,
+    indexer: "X",
+    indexerId: 1,
+    protocol: "usenet",
+    size,
+    seeders: null,
+    publishDate: null,
+    ageHours: 1,
+    episodeIds,
+    label: "S01",
+    confidence: 95,
+    coversTarget: true,
+    extra: 0,
     rank: { accept: true, score: 100, langProb: 0.95, lang: "en", langSource: "x", flags: [], why: "", reject: null },
-    mappingWhy: [], group: null, downloadUrl: "http://x",
+    mappingWhy: [],
+    group: null,
+    downloadUrl: "http://x",
   }) as SR;
 const web = (n: string) => `[SubsPlease] ${n} - 01 (1080p) [AAAA1111]`;
 const pack = (n: string) => `[SomeBD] ${n} (BD 1080p)`;
 
 const E: Record<string, number[]> = {};
 before(() => {
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], managed: { ...s.managed, dryRun: false }, qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 10, gbPerDay: 10, perHour: 50, recheckDays: 21 } }));
-  E.cmp = show(1, 810001, "Compare Show", ["Compare.Show.S01E01.1080p.BluRay.x264-Kekkan", "Compare.Show.S01E02.1080p.WEB-DL-Kekkan"], { anilist: 9801 });
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/AnimeArr"],
+    managed: { ...s.managed, dryRun: false },
+    qualityUpgrade: { mode: "auto", paused: false, seasonsPerDay: 10, gbPerDay: 10, perHour: 50, recheckDays: 21 },
+  }));
+  E.cmp = show(1, 810001, "Compare Show", ["Compare.Show.S01E01.1080p.BluRay.x264-Kekkan", "Compare.Show.S01E02.1080p.WEB-DL-Kekkan"], {
+    anilist: 9801,
+  });
   saveSeadex(9801, SEADEX, now);
   E.a = show(2, 810002, "Budget A", [web("Budget A")]);
   E.b = show(3, 810003, "Budget B", [web("Budget B")]);
@@ -126,7 +166,9 @@ test("the season comparison reads the files' ORIGINAL release names (a Tdarr re-
   assert.equal(c.verdict, "worse", "one file is Kekkan BD, the other Kekkan WEB");
   assert.deepEqual(c.counts, { best: 1, alt: 0, other: 1 });
   assert.equal(c.have.source, "web");
-  const eps = cache.prepare("SELECT e.id, f.path, f.scene_name FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = 1 ORDER BY e.episode").all() as { id: number; path: string; scene_name: string }[];
+  const eps = cache
+    .prepare("SELECT e.id, f.path, f.scene_name FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = 1 ORDER BY e.episode")
+    .all() as { id: number; path: string; scene_name: string }[];
   assert.equal(filePick(810001, 1, { path: eps[0].path, sceneName: eps[0].scene_name }), "best");
   assert.equal(filePick(810001, 1, { path: eps[1].path, sceneName: eps[1].scene_name }), null);
   assert.equal(seasonComparison(810001, 7), null, "no SeaDex picks for that season");
@@ -153,18 +195,26 @@ test("auto: a season that would exceed the day's size budget waits; it is grabbe
     grab: (async (req: { tvdbId: number; candidate: { title: string }; episodeIds: number[] }) => {
       grabbed.push(`${req.tvdbId}`);
       const id = ++gid;
-      db.prepare("INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, purpose) VALUES (?, 0, 0, ?, 1, ?, ?, ?, 'usenet', 'downloading', 0, 'replace')").run(id, req.tvdbId, JSON.stringify(req.episodeIds), req.candidate.title, `g-${id}`);
+      db.prepare(
+        "INSERT INTO grabs (id, at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, purpose) VALUES (?, 0, 0, ?, 1, ?, ?, ?, 'usenet', 'downloading', 0, 'replace')",
+      ).run(id, req.tvdbId, JSON.stringify(req.episodeIds), req.candidate.title, `g-${id}`);
       return { id, dryRun: false, message: "Sent" };
     }) as never,
   };
   // Only the three budget shows are candidates in these passes.
-  for (const tvdb of [810001, 810005, 810006]) db.prepare("INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, why, updated_at) VALUES (?, 1, 'waiting', ?, '', ?)").run(tvdb, now, now);
+  for (const tvdb of [810001, 810005, 810006])
+    db.prepare(
+      "INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, why, updated_at) VALUES (?, 1, 'waiting', ?, '', ?)",
+    ).run(tvdb, now, now);
   startNow();
   const t0 = now + 10 * 60_000;
   const r1 = await qualityUpgradePass(d, t0);
   assert.equal(r1.grabbed, 1, "6 GB fits in 10 GB; the second 6 GB doesn't");
   assert.equal(usedBytes(t0), 6 * GB);
-  const waiting = db.prepare("SELECT tvdb_id, season, state, why FROM quality_upgrade WHERE state = 'budget'").all() as { tvdb_id: number; why: string }[];
+  const waiting = db.prepare("SELECT tvdb_id, season, state, why FROM quality_upgrade WHERE state = 'budget'").all() as {
+    tvdb_id: number;
+    why: string;
+  }[];
   assert.ok(waiting.length >= 1, "the one that didn't fit is marked as waiting for the budget");
   assert.match(waiting[0].why, /waits/);
   assert.ok(db.prepare("SELECT 1 FROM decisions WHERE why LIKE '%waiting for the daily size budget%'").get());
@@ -177,7 +227,10 @@ test("auto: a season that would exceed the day's size budget waits; it is grabbe
   }
   assert.deepEqual([...new Set(grabbed)].sort(), ["810002", "810003", "810004"], "every season was grabbed in the end");
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM quality_upgrade WHERE state = 'budget'").get().n, 0);
-  assert.ok(db.prepare("SELECT 1 FROM decisions WHERE why LIKE '%more than the whole daily budget%'").get(), "the oversized season is reported");
+  assert.ok(
+    db.prepare("SELECT 1 FROM decisions WHERE why LIKE '%more than the whole daily budget%'").get(),
+    "the oversized season is reported",
+  );
 });
 
 // ---------------------------------------------------------------- e) Upgrade now
@@ -186,7 +239,10 @@ test("Upgrade now: previews the watcher's pick with its size, grabs only on conf
   const grabs: string[] = [];
   const mk = (dryRun: boolean) => ({
     search: (async (_t: number, eps: number[]) => ({ results: [result(pack("Now Show"), eps, 12 * GB)] })) as never,
-    grab: (async (req: { candidate: { title: string } }) => (grabs.push(req.candidate.title), { id: 990, dryRun, message: dryRun ? "dry run" : "Sent" })) as never,
+    grab: (async (req: { candidate: { title: string } }) => (
+      grabs.push(req.candidate.title),
+      { id: 990, dryRun, message: dryRun ? "dry run" : "Sent" }
+    )) as never,
   });
   const before = usedBytes(now);
   const p = await upgradeSeasonNow(810005, 1, {}, mk(false), now);
@@ -231,7 +287,14 @@ test("Check SeaDex now: fetches and saves, then waits out the cooldown", async (
   const fetcher = (async (url: string) => {
     calls++;
     assert.match(String(url), /alID%3D9802/);
-    return { ok: true, json: async () => ({ items: [{ incomplete: false, expand: { trs: [{ releaseGroup: "Kekkan", tracker: "Nyaa", isBest: true, dualAudio: true, tags: [] }] } }] }) };
+    return {
+      ok: true,
+      json: async () => ({
+        items: [
+          { incomplete: false, expand: { trs: [{ releaseGroup: "Kekkan", tracker: "Nyaa", isBest: true, dualAudio: true, tags: [] }] } },
+        ],
+      }),
+    };
   }) as unknown as typeof fetch;
   const first = await checkSeadexNow(810006, { fetch: fetcher }, now);
   assert.equal(first.status, "checked");

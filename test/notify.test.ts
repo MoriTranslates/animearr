@@ -8,9 +8,9 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings, updateSettings, getSettings } = await import("../server/settings.js");
-const { eventOf, send, bell } = await import("../server/notify.js");
-const { logDecision } = await import("../server/activity.js");
+const { patchSettings, updateSettings, getSettings } = await import("../server/system/settings.js");
+const { eventOf, send, bell } = await import("../server/notify/notify.js");
+const { logDecision } = await import("../server/system/activity.js");
 
 test("which activity entries notify", () => {
   assert.equal(eventOf("grab", "Sent X", {}), "grabbed");
@@ -28,11 +28,20 @@ test("the bell records them; Discord and ntfy get them when set; events can be s
   assert.throws(() => updateSettings({ notify: { ntfyUrl: "http://169.254.169.254/x" } }), /ntfy/);
   updateSettings({ notify: { discordWebhook: "https://ptb.discord.com/api/v10/webhooks/1/abc?thread_id=2" } });
   assert.equal(getSettings().notify.discordWebhook, "https://ptb.discord.com/api/v10/webhooks/1/abc?thread_id=2");
-  patchSettings((s) => ({ ...s, notify: { ...s.notify, discordWebhook: "https://discord.com/api/webhooks/1/abc", ntfyUrl: "https://ntfy.sh/animearr", ntfyToken: "tk" } }));
+  patchSettings((s) => ({
+    ...s,
+    notify: { ...s.notify, discordWebhook: "https://discord.com/api/webhooks/1/abc", ntfyUrl: "https://ntfy.sh/animearr", ntfyToken: "tk" },
+  }));
   const calls: { url: string; init: RequestInit }[] = [];
-  const fetch = (async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response("", { status: 200 }))) as unknown as typeof globalThis.fetch;
+  const fetch = (async (url: string, init: RequestInit) => (
+    calls.push({ url, init }),
+    new Response("", { status: 200 })
+  )) as unknown as typeof globalThis.fetch;
   const out = await send("imported", "Frieren", "Imported S01E05", { fetch });
-  assert.deepEqual(out.map((o) => o.channel), ["discord", "ntfy"]);
+  assert.deepEqual(
+    out.map((o) => o.channel),
+    ["discord", "ntfy"],
+  );
   assert.equal((calls[1].init.headers as Record<string, string>).Authorization, "Bearer tk");
   patchSettings((s) => ({ ...s, notify: { ...s.notify, events: { ...s.notify.events, imported: false } } }));
   assert.deepEqual(await send("imported", "x", "y", { fetch }), []);

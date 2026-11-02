@@ -10,7 +10,11 @@ import { api, store } from "./api";
 import { t } from "./i18n";
 import { Modal, useToast } from "./ui";
 
-interface PhoneInfo { externalUrl: string; lan: string[]; bypassLocal: boolean }
+interface PhoneInfo {
+  externalUrl: string;
+  lan: string[];
+  bypassLocal: boolean;
+}
 
 const isLoopback = (host: string) => /^(localhost|127\.|\[?::1\]?$)/i.test(host);
 
@@ -19,7 +23,10 @@ export function phoneUrl(info: PhoneInfo | null, origin = window.location.origin
   if (info?.externalUrl) return { url: info.externalUrl.replace(/\/+$/, ""), sameWifi: false };
   const host = new URL(origin).hostname;
   if (isLoopback(host) && info?.lan[0]) return { url: info.lan[0], sameWifi: true };
-  return { url: origin, sameWifi: !/\./.test(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || host.endsWith(".local") };
+  return {
+    url: origin,
+    sameWifi: !/\./.test(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || host.endsWith(".local"),
+  };
 }
 
 function QrSvg({ text }: { text: string }) {
@@ -49,7 +56,9 @@ export function PhonePanel() {
       <QrSvg text={url} />
       <div className="stack">
         <div className="row phone-url">
-          <code className="mono" ref={codeRef}>{url}</code>
+          <code className="mono" ref={codeRef}>
+            {url}
+          </code>
           <button
             type="button"
             className="small"
@@ -99,7 +108,10 @@ export function PhoneButton() {
 
 // ---------------------------------------------------------------- "Add to home screen" on the phone itself
 
-interface InstallPrompt extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }
+interface InstallPrompt extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: string }>;
+}
 let deferred: InstallPrompt | null = null;
 const listeners = new Set<() => void>();
 
@@ -116,14 +128,17 @@ export function captureInstallPrompt() {
   });
 }
 
-const installed = () => window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const installed = () =>
+  window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 const isAndroid = () => /Android/.test(navigator.userAgent);
 
 /** Phones only, until it's installed or dismissed: Install (when the browser offers it) or the two taps to do it. */
 export function InstallCard() {
   const [, bump] = useState(0);
-  const [hidden, setHidden] = useState(() => store.get("installCardDismissed", false) || installed() || !window.matchMedia?.("(max-width: 760px)").matches);
+  const [hidden, setHidden] = useState(
+    () => store.get("installCardDismissed", false) || installed() || !window.matchMedia?.("(max-width: 760px)").matches,
+  );
   useEffect(() => {
     const f = () => bump((n) => n + 1);
     listeners.add(f);
@@ -150,8 +165,12 @@ export function InstallCard() {
           </p>
         ) : (
           <ul className="small phone-steps">
-            <li><b>iPhone:</b> {t("phone.step.ios")}</li>
-            <li><b>Android:</b> {t("phone.step.android")}</li>
+            <li>
+              <b>iPhone:</b> {t("phone.step.ios")}
+            </li>
+            <li>
+              <b>Android:</b> {t("phone.step.android")}
+            </li>
           </ul>
         )}
         <div className="row">

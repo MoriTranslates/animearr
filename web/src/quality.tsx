@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { api, fmtSize } from "./api";
 import { copyText } from "./errors";
 import { t, type I18nKey } from "./i18n";
@@ -7,7 +7,12 @@ import { Chip, ErrorBox, Modal, Spinner, Toggle, useLoad, useToast } from "./ui"
 
 export type GoalId = "good" | "high" | "collector";
 export const GOAL_IDS: GoalId[] = ["good", "high", "collector"];
-interface GoalInfo { asked: boolean; goal: GoalId; goals: { id: GoalId; label: string; help: string }[]; tdarrGuard: string }
+interface GoalInfo {
+  asked: boolean;
+  goal: GoalId;
+  goals: { id: GoalId; label: string; help: string }[];
+  tdarrGuard: string;
+}
 
 /**
  * The quality-goal question: in the setup wizard (preferences step), as a one-time card on Home for existing installs,
@@ -82,7 +87,20 @@ interface UpgradeView {
   gbToday: number;
   grabsToday: number;
   plan: { planAt: number | null; started: boolean; startsAt: number | null; live: boolean };
-  items: { tvdbId: number; title: string; season: number; goal: string; target: string; episodes: number; now: string[]; why: string; state: string; stateWhy: string; release: string | null; lastAt: number | null }[];
+  items: {
+    tvdbId: number;
+    title: string;
+    season: number;
+    goal: string;
+    target: string;
+    episodes: number;
+    now: string[];
+    why: string;
+    state: string;
+    stateWhy: string;
+    release: string | null;
+    lastAt: number | null;
+  }[];
   recent: { tvdbId: number; title: string; season: number; state: string; why: string; at: number }[];
 }
 
@@ -110,20 +128,41 @@ export function QualityUpgradesPanel() {
         <>
           {!v.plan.live && (
             <div className="card row">
-              <span>{t("upq.plan", { n: v.items.length, when: v.plan.startsAt ? new Date(v.plan.startsAt).toLocaleString() : t("upq.planLater"), perDay: v.seasonsPerDay })}</span>
+              <span>
+                {t("upq.plan", {
+                  n: v.items.length,
+                  when: v.plan.startsAt ? new Date(v.plan.startsAt).toLocaleString() : t("upq.planLater"),
+                  perDay: v.seasonsPerDay,
+                })}
+              </span>
               <button className="primary" onClick={() => void act("/quality/upgrades/start", "POST")}>
                 {t("upq.startNow")}
               </button>
             </div>
           )}
           <div className="row">
-            <button onClick={() => void act("/quality/upgrades", "PUT", { paused: !v.paused })}>{v.paused ? t("upq.resume") : t("upq.pause")}</button>
-            <span className="muted small">{v.paused ? t("upq.paused") : t("upq.budget", { grabs: v.grabsToday, perDay: v.seasonsPerDay })}</span>
+            <button onClick={() => void act("/quality/upgrades", "PUT", { paused: !v.paused })}>
+              {v.paused ? t("upq.resume") : t("upq.pause")}
+            </button>
+            <span className="muted small">
+              {v.paused ? t("upq.paused") : t("upq.budget", { grabs: v.grabsToday, perDay: v.seasonsPerDay })}
+            </span>
           </div>
           <div className="row">
             <label className="row small">
               {t("upq.gbEdit")}
-              <input type="number" min={1} max={100000} defaultValue={v.gbPerDay} style={{ width: "6rem" }} onBlur={(e) => Number(e.target.value) !== v.gbPerDay && Number(e.target.value) >= 1 && void act("/quality/upgrades", "PUT", { gbPerDay: Number(e.target.value) })} />
+              <input
+                type="number"
+                min={1}
+                max={100000}
+                defaultValue={v.gbPerDay}
+                style={{ width: "6rem" }}
+                onBlur={(e) =>
+                  Number(e.target.value) !== v.gbPerDay &&
+                  Number(e.target.value) >= 1 &&
+                  void act("/quality/upgrades", "PUT", { gbPerDay: Number(e.target.value) })
+                }
+              />
             </label>
             <span className="muted small">{t("upq.gb", { used: v.gbToday, budget: v.gbPerDay })}</span>
           </div>
@@ -161,13 +200,23 @@ export function QualityUpgradesPanel() {
 }
 
 type SrcId = "bluray" | "web" | "hdtv" | "dvd";
-interface Compare { verdict: "best" | "alt" | "worse"; files: number; counts: { best: number; alt: number; other: number }; have: { group: string | null; source: SrcId | null }; best: { group: string; dualAudio: boolean; source: SrcId } }
+interface Compare {
+  verdict: "best" | "alt" | "worse";
+  files: number;
+  counts: { best: number; alt: number; other: number };
+  have: { group: string | null; source: SrcId | null };
+  best: { group: string; dualAudio: boolean; source: SrcId };
+}
 interface ShowQuality {
   goal: GoalId;
   goalLabel: string;
   reencode: "tdarr" | "keep";
   locks: { show: boolean; seasons: number[] };
-  seadex: { season: number; picks: { group: string; best: boolean; dualAudio: boolean; tracker: string; source: SrcId }[]; compare: Compare | null }[];
+  seadex: {
+    season: number;
+    picks: { group: string; best: boolean; dualAudio: boolean; tracker: string; source: SrcId }[];
+    compare: Compare | null;
+  }[];
   managed: boolean;
   check: { lastAt: number | null; retryInMs: number };
 }
@@ -177,11 +226,21 @@ function compareLine(c: Compare) {
   const best = `${c.best.group}${c.best.dualAudio ? t("seadex.cmp.dual") : ""}`;
   if (c.verdict === "best") return t("seadex.cmp.best", { group: c.best.group });
   if (c.verdict === "alt") return t("seadex.cmp.alt", { group: c.have.group ?? t("seadex.cmp.unknownGroup"), best });
-  const have = [c.have.group ?? t("seadex.cmp.unknownGroup"), c.have.source ? t(`seadex.src.${c.have.source}` as I18nKey) : ""].filter(Boolean).join(" ");
+  const have = [c.have.group ?? t("seadex.cmp.unknownGroup"), c.have.source ? t(`seadex.src.${c.have.source}` as I18nKey) : ""]
+    .filter(Boolean)
+    .join(" ");
   return t("seadex.cmp.worse", { have, best });
 }
 
-interface SeasonUpgrade { status: "preview" | "grabbed" | "dry-run" | "nothing" | "refused" | "failed"; why: string; release?: string; size?: number; episodes?: number; from?: string; to?: string }
+interface SeasonUpgrade {
+  status: "preview" | "grabbed" | "dry-run" | "nothing" | "refused" | "failed";
+  why: string;
+  release?: string;
+  size?: number;
+  episodes?: number;
+  from?: string;
+  to?: string;
+}
 
 /** "Upgrade now": the watcher's own pick for one season, shown with its size before anything is grabbed. */
 function UpgradeNow({ tvdbId, season, onDone }: { tvdbId: number; season: number; onDone: () => void }) {
@@ -224,7 +283,15 @@ function UpgradeNow({ tvdbId, season, onDone }: { tvdbId: number; season: number
               <Spinner label={t("upnow.looking")} />
             ) : r.status === "preview" ? (
               <>
-                <p>{t("upnow.plan", { release: r.release ?? "", size: fmtSize(r.size ?? 0), to: r.to ?? "", episodes: r.episodes ?? 0, from: r.from ?? "" })}</p>
+                <p>
+                  {t("upnow.plan", {
+                    release: r.release ?? "",
+                    size: fmtSize(r.size ?? 0),
+                    to: r.to ?? "",
+                    episodes: r.episodes ?? 0,
+                    from: r.from ?? "",
+                  })}
+                </p>
                 <p className="muted small">{t("upnow.why", { why: r.why })}</p>
                 <p className="muted small">{t("upnow.budget")}</p>
               </>
@@ -267,7 +334,10 @@ export function ShowQuality({ tvdbId }: { tvdbId: number }) {
   const check = async () => {
     setChecking(true);
     try {
-      const r = await api<{ status: "checked" | "cooldown" | "none"; entries: number; found: number; retryInMs: number }>(`/series/${tvdbId}/seadex/check`, { body: {} });
+      const r = await api<{ status: "checked" | "cooldown" | "none"; entries: number; found: number; retryInMs: number }>(
+        `/series/${tvdbId}/seadex/check`,
+        { body: {} },
+      );
       if (r.status === "checked") toast(t("seadex.checked", { found: r.found, entries: r.entries }));
       else if (r.status === "cooldown") toast(t("seadex.cooldown", { min: Math.max(1, Math.ceil(r.retryInMs / 60_000)) }));
       else toast(t("seadex.noEntries"));
@@ -285,10 +355,17 @@ export function ShowQuality({ tvdbId }: { tvdbId: number }) {
       </p>
       <div className="row">
         <b>{t("seadex.title")}</b>
-        <button className="small" disabled={checking || q.check.retryInMs > 0} title={q.check.retryInMs > 0 ? t("seadex.cooldown", { min: Math.ceil(q.check.retryInMs / 60_000) }) : undefined} onClick={() => void check()}>
+        <button
+          className="small"
+          disabled={checking || q.check.retryInMs > 0}
+          title={q.check.retryInMs > 0 ? t("seadex.cooldown", { min: Math.ceil(q.check.retryInMs / 60_000) }) : undefined}
+          onClick={() => void check()}
+        >
           {checking ? t("seadex.checking") : t("seadex.check")}
         </button>
-        {q.check.lastAt && <span className="muted small">{t("seadex.lastCheck", { when: new Date(q.check.lastAt).toLocaleString() })}</span>}
+        {q.check.lastAt && (
+          <span className="muted small">{t("seadex.lastCheck", { when: new Date(q.check.lastAt).toLocaleString() })}</span>
+        )}
       </div>
       {q.seadex.every((s) => !s.picks.length) ? (
         <p className="muted small">{t("seadex.none")}</p>
@@ -309,10 +386,17 @@ export function ShowQuality({ tvdbId }: { tvdbId: number }) {
                 {s.compare && (
                   <div className={s.compare.verdict === "worse" ? "warn-text" : ""}>
                     {compareLine(s.compare)}
-                    {s.compare.counts.other > 0 && s.compare.counts.best + s.compare.counts.alt > 0 && <span className="muted"> · {t("seadex.cmp.partial", { n: s.compare.counts.best + s.compare.counts.alt, total: s.compare.files })}</span>}
+                    {s.compare.counts.other > 0 && s.compare.counts.best + s.compare.counts.alt > 0 && (
+                      <span className="muted">
+                        {" "}
+                        · {t("seadex.cmp.partial", { n: s.compare.counts.best + s.compare.counts.alt, total: s.compare.files })}
+                      </span>
+                    )}
                   </div>
                 )}
-                {q.managed && s.compare && s.compare.verdict !== "best" && !q.locks.show && !q.locks.seasons.includes(s.season) && <UpgradeNow tvdbId={tvdbId} season={s.season} onDone={() => void d.reload()} />}
+                {q.managed && s.compare && s.compare.verdict !== "best" && !q.locks.show && !q.locks.seasons.includes(s.season) && (
+                  <UpgradeNow tvdbId={tvdbId} season={s.season} onDone={() => void d.reload()} />
+                )}
               </li>
             ))}
         </ul>
@@ -321,7 +405,14 @@ export function ShowQuality({ tvdbId }: { tvdbId: number }) {
       <p className="muted small">{t("keep.help")}</p>
       <Toggle checked={q.locks.show} onChange={(v) => void lock(null, v)} label={t("keep.show")} />
       {!q.locks.show &&
-        q.seadex.map((s) => <Toggle key={s.season} checked={q.locks.seasons.includes(s.season)} onChange={(v) => void lock(s.season, v)} label={t("keep.season", { n: s.season })} />)}
+        q.seadex.map((s) => (
+          <Toggle
+            key={s.season}
+            checked={q.locks.seasons.includes(s.season)}
+            onChange={(v) => void lock(s.season, v)}
+            label={t("keep.season", { n: s.season })}
+          />
+        ))}
       {!!rename && <p className="small">{t("keep.rename", { n: rename })}</p>}
     </div>
   );

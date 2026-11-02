@@ -12,10 +12,19 @@ import { t } from "./i18n";
 import { languageName } from "./lang";
 import { Spinner, useToast } from "./ui";
 
-interface WatchLink { server: string; web: string; app: string | null }
-interface WatchResult { links: WatchLink[]; servers: string[]; errors: string[] }
+interface WatchLink {
+  server: string;
+  web: string;
+  app: string | null;
+}
+interface WatchResult {
+  links: WatchLink[];
+  servers: string[];
+  errors: string[];
+}
 
-const watchUrl = (path: string, title: string, kind: "episode" | "movie") => `/watch?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}&kind=${kind}`;
+const watchUrl = (path: string, title: string, kind: "episode" | "movie") =>
+  `/watch?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}&kind=${kind}`;
 
 /** Opens the file in the media server from a menu (the tab opens first, so a popup blocker doesn't eat it). */
 export async function openInMediaServer(path: string, title: string, kind: "episode" | "movie", toast: (m: string, err?: boolean) => void) {
@@ -86,7 +95,21 @@ export function WatchIn({ path, title, kind }: { path: string; title: string; ki
 }
 
 /** For a file without (or with unknown) subtitles in the profile's language: two quick answers. */
-export function Verdicts({ tvdbId, season, lang, path, onFind, onDone }: { tvdbId: number; season: number; lang: string; path?: string; onFind: () => void; onDone: () => void }) {
+export function Verdicts({
+  tvdbId,
+  season,
+  lang,
+  path,
+  onFind,
+  onDone,
+}: {
+  tvdbId: number;
+  season: number;
+  lang: string;
+  path?: string;
+  onFind: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const L = lang.toUpperCase();
@@ -152,7 +175,11 @@ export function Peek({ path }: { path: string }) {
   if (frames)
     return (
       <div className="peek">
-        {frames.length ? frames.map((f, i) => <img key={i} src={f} alt={t("peek.frame", { n: i + 1 })} loading="lazy" />) : <p className="muted small">{t("peek.none")}</p>}
+        {frames.length ? (
+          frames.map((f, i) => <img key={i} src={f} alt={t("peek.frame", { n: i + 1 })} loading="lazy" />)
+        ) : (
+          <p className="muted small">{t("peek.none")}</p>
+        )}
       </div>
     );
   return (
@@ -181,7 +208,16 @@ export function Peek({ path }: { path: string }) {
 
 // ---------------------------------------------------------------- Fix detection
 
-interface Track { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; forced?: boolean; partial?: boolean; overridden?: boolean }
+interface Track {
+  index: number;
+  codec: string | null;
+  lang: string | null;
+  title: string | null;
+  default: boolean;
+  forced?: boolean;
+  partial?: boolean;
+  overridden?: boolean;
+}
 interface Detail {
   path: string;
   scanned: boolean;
@@ -198,7 +234,25 @@ interface Detail {
 const LANGS = ["en", "ja", "es", "pt", "fr", "de", "it", "ru", "zh", "ko", "ar"];
 
 /** Every track the scan saw and the fixes for a wrong or missing tag. Changes are logged in Activity, with undo. */
-export function FixDetection({ path, tvdbId, season, group, title, onChanged, defaultOpen = false, focus = false }: { path: string; tvdbId?: number | null; season?: number | null; group?: string | null; title?: string; onChanged: () => void; defaultOpen?: boolean; focus?: boolean }) {
+export function FixDetection({
+  path,
+  tvdbId,
+  season,
+  group,
+  title,
+  onChanged,
+  defaultOpen = false,
+  focus = false,
+}: {
+  path: string;
+  tvdbId?: number | null;
+  season?: number | null;
+  group?: string | null;
+  title?: string;
+  onChanged: () => void;
+  defaultOpen?: boolean;
+  focus?: boolean;
+}) {
   const toast = useToast();
   const box = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(defaultOpen);
@@ -237,7 +291,24 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
     return () => cancelAnimationFrame(id);
   }, [focus]);
   const setTrack = (s: Track, lang: string | null, forced: boolean) =>
-    run(() => api("/files/track", { body: { path, trackIndex: s.index, lang, forced, scope, tvdbId, season, group, title, alsoTag: alsoTag && scope !== "group" && d?.mkv } }), t("fix.saved"));
+    run(
+      () =>
+        api("/files/track", {
+          body: {
+            path,
+            trackIndex: s.index,
+            lang,
+            forced,
+            scope,
+            tvdbId,
+            season,
+            group,
+            title,
+            alsoTag: alsoTag && scope !== "group" && d?.mkv,
+          },
+        }),
+      t("fix.saved"),
+    );
   return (
     <details
       ref={box}
@@ -272,7 +343,8 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                     🔊 <b>{a.lang ? languageName(a.lang) : t("fix.untagged")}</b>
                     <span className="muted">
                       {a.title && a.title.toLowerCase() !== languageName(a.lang).toLowerCase() ? ` · “${a.title}”` : ""}
-                      {a.default ? ` · ${t("files.default")}` : ""} · {[a.codec?.toUpperCase(), a.channels ? `${a.channels}ch` : null].filter(Boolean).join(" ")}
+                      {a.default ? ` · ${t("files.default")}` : ""} ·{" "}
+                      {[a.codec?.toUpperCase(), a.channels ? `${a.channels}ch` : null].filter(Boolean).join(" ")}
                     </span>
                   </li>
                 ))}
@@ -294,7 +366,8 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                 </label>
                 {d.mkv && (
                   <label className="check">
-                    <input type="checkbox" checked={alsoTag} onChange={(e) => setAlsoTag(e.target.checked)} disabled={scope === "group"} /> {t("fix.alsoTag")}
+                    <input type="checkbox" checked={alsoTag} onChange={(e) => setAlsoTag(e.target.checked)} disabled={scope === "group"} />{" "}
+                    {t("fix.alsoTag")}
                   </label>
                 )}
               </div>
@@ -314,7 +387,12 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                       {s.overridden ? <span className="tag info inline">{t("fix.yourFix")}</span> : null}
                     </span>
                     <span className="row">
-                      <select aria-label={t("fix.langOf", { n: s.index })} value={s.lang ?? ""} disabled={busy} onChange={(e) => void setTrack(s, e.target.value || null, !!s.partial)}>
+                      <select
+                        aria-label={t("fix.langOf", { n: s.index })}
+                        value={s.lang ?? ""}
+                        disabled={busy}
+                        onChange={(e) => void setTrack(s, e.target.value || null, !!s.partial)}
+                      >
                         <option value="">{t("fix.untagged")}</option>
                         {[...new Set([...LANGS, ...(s.lang ? [s.lang] : [])])].map((l) => (
                           <option key={l} value={l}>
@@ -328,7 +406,12 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                         </button>
                       )}
                       {!s.partial && (
-                        <button type="button" className="small ghost" disabled={busy} onClick={() => void setTrack(s, s.lang ?? "en", true)}>
+                        <button
+                          type="button"
+                          className="small ghost"
+                          disabled={busy}
+                          onClick={() => void setTrack(s, s.lang ?? "en", true)}
+                        >
                           {t("fix.signsOnly")}
                         </button>
                       )}
@@ -355,14 +438,26 @@ export function FixDetection({ path, tvdbId, season, group, title, onChanged, de
                 <span>
                   📄 <span className="mono">{f}</span> <span className="muted">· {t("fix.unrecognised")}</span>
                 </span>
-                <button type="button" className="small" disabled={busy} onClick={() => void run(() => api("/files/sidecar", { body: { video: path, file: f, lang: "en", tvdbId, title } }), t("fix.renamed"))}>
+                <button
+                  type="button"
+                  className="small"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() => api("/files/sidecar", { body: { video: path, file: f, lang: "en", tvdbId, title } }), t("fix.renamed"))
+                  }
+                >
                   {t("fix.useAsEnglish")}
                 </button>
               </li>
             ))}
           </ul>
           <div className="row">
-            <button type="button" className="small ghost" disabled={busy || d.exists === false} onClick={() => void run(() => api("/files/rescan", { body: { path } }), t("fix.rescanned"))}>
+            <button
+              type="button"
+              className="small ghost"
+              disabled={busy || d.exists === false}
+              onClick={() => void run(() => api("/files/rescan", { body: { path } }), t("fix.rescanned"))}
+            >
               {t("fix.rescan")}
             </button>
           </div>

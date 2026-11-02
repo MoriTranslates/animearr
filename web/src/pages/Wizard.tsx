@@ -3,7 +3,7 @@ import { LibraryFolders } from "../folders";
 import { PhonePanel } from "../phone";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Settings as S, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { Cutover } from "../cutover";
 import { fromEntry, type CatalogEntry } from "../connectionsEdit";
 import { DownloadClients, Indexers, Migration, type SaveNow } from "../connections";
@@ -18,16 +18,37 @@ import { saveAllUnsaved } from "../unsaved";
 import { ChangeDefaultLogin } from "./Login";
 
 const MEDIA_NAMES: Record<string, string> = { plex: "Plex", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };
-interface ConnState { name: string; configured: boolean; ok: boolean | null; error?: string | null; errorDetail?: string | null }
-interface Overview { clients: ConnState[]; indexers: { name: string }[]; mediaServers: ConnState[]; migration: ConnState[] }
+interface ConnState {
+  name: string;
+  configured: boolean;
+  ok: boolean | null;
+  error?: string | null;
+  errorDetail?: string | null;
+}
+interface Overview {
+  clients: ConnState[];
+  indexers: { name: string }[];
+  mediaServers: ConnState[];
+  migration: ConnState[];
+}
 
 /**
  * First-run setup: two paths chosen on the welcome screen. Every step can be skipped and comes back later from
  * Settings; progress is saved, so it can be resumed. Re-run from Settings → System, without wiping anything.
  */
 type Path = "new" | "migrate";
-interface WizardState { done: boolean; path: Path | null; step: string; completed: string[] }
-interface Step { id: string; title: I18nKey; intro: I18nKey; body: ReactNode }
+interface WizardState {
+  done: boolean;
+  path: Path | null;
+  step: string;
+  completed: string[];
+}
+interface Step {
+  id: string;
+  title: I18nKey;
+  intro: I18nKey;
+  body: ReactNode;
+}
 
 /** The settings + a "save just this change" helper, for the embedded connection cards. */
 function useSettingsSaver(onSaved: () => void) {
@@ -85,7 +106,10 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
             <b>{t("wiz.pathNew")}</b>
             <span className="muted small">{t("wiz.pathNewHelp")}</span>
           </button>
-          <button className="wiz-path card" onClick={() => void save({ path: "migrate", step: status.defaultPassword ? "account" : "connect" })}>
+          <button
+            className="wiz-path card"
+            onClick={() => void save({ path: "migrate", step: status.defaultPassword ? "account" : "connect" })}
+          >
             <span className="wiz-path-icon" aria-hidden="true">
               ⇄
             </span>
@@ -95,7 +119,10 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
         </div>
         <p className="muted small">
           {t("wiz.skipAll")}{" "}
-          <button className="linklike" onClick={() => void save({ done: true }).then(async () => (await onChanged(), navigate("/settings")))}>
+          <button
+            className="linklike"
+            onClick={() => void save({ done: true }).then(async () => (await onChanged(), navigate("/settings")))}
+          >
             {t("wiz.skipLink")}
           </button>
         </p>
@@ -105,33 +132,68 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
   const steps: Step[] =
     w.path === "new"
       ? [
-          { id: "account", title: "wiz.s.account", intro: "wiz.i.account", body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "folders" })} /> },
+          {
+            id: "account",
+            title: "wiz.s.account",
+            intro: "wiz.i.account",
+            body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "folders" })} />,
+          },
           { id: "folders", title: "wiz.s.folders", intro: "wiz.i.folders", body: <FoldersStep s={s} saveNow={saver.saveNow} /> },
           { id: "clients", title: "wiz.s.clients", intro: "wiz.i.clients", body: <ClientsStep s={s} saveNow={saver.saveNow} /> },
           { id: "indexers", title: "wiz.s.indexers", intro: "wiz.i.indexers", body: <IndexersStep s={s} saveNow={saver.saveNow} /> },
           { id: "prefs", title: "wiz.s.prefs", intro: "wiz.i.prefs", body: section("profile") },
-          { id: "media", title: "wiz.s.media", intro: "wiz.i.media", body: <><MediaPicker s={s} saveNow={saver.saveNow} />{section("mediaservers")}</> },
+          {
+            id: "media",
+            title: "wiz.s.media",
+            intro: "wiz.i.media",
+            body: (
+              <>
+                <MediaPicker s={s} saveNow={saver.saveNow} />
+                {section("mediaservers")}
+              </>
+            ),
+          },
           { id: "metadata", title: "wiz.s.metadata", intro: "wiz.i.metadata", body: section("metadata") },
           { id: "notify", title: "wiz.s.notify", intro: "wiz.i.notify", body: section("notifications") },
           { id: "done", title: "wiz.s.done", intro: "wiz.i.done", body: <DoneStep path="new" /> },
         ]
       : [
           // A migrating fresh install still has the default login: offer to change it first.
-          ...(status.defaultPassword ? [{ id: "account", title: "wiz.s.account", intro: "wiz.i.account", body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "connect" })} /> } satisfies Step] : []),
+          ...(status.defaultPassword
+            ? [
+                {
+                  id: "account",
+                  title: "wiz.s.account",
+                  intro: "wiz.i.account",
+                  body: <AccountStep status={status} onChanged={onChanged} onLater={() => void save({ step: "connect" })} />,
+                } satisfies Step,
+              ]
+            : []),
           { id: "connect", title: "wiz.s.connect", intro: "wiz.i.connect", body: <Migration s={s} saveNow={saver.saveNow} /> },
-          { id: "preview", title: "wiz.s.preview", intro: "wiz.i.preview", body: <PreviewStep onApplied={() => (onChanged(), void saver.reload())} /> },
+          {
+            id: "preview",
+            title: "wiz.s.preview",
+            intro: "wiz.i.preview",
+            body: <PreviewStep onApplied={() => (onChanged(), void saver.reload())} />,
+          },
           { id: "review", title: "wiz.s.review", intro: "wiz.i.review", body: <ReviewStep status={status} /> },
           { id: "clients", title: "wiz.s.clients", intro: "wiz.i.clientsMigrate", body: <ClientsStep s={s} saveNow={saver.saveNow} /> },
           { id: "takeover", title: "wiz.s.takeover", intro: "wiz.i.takeover", body: <Cutover /> },
           { id: "done", title: "wiz.s.done", intro: "wiz.i.done", body: <DoneStep path="migrate" /> },
         ];
-  const idx = Math.max(0, steps.findIndex((x) => x.id === w.step));
+  const idx = Math.max(
+    0,
+    steps.findIndex((x) => x.id === w.step),
+  );
   const step = steps[idx];
   /** Leaves the step: unsaved edits on it are saved first (a failed save shows its error and stays). Next marks it done. */
   const go = async (i: number, next = false) => {
     if (!(await saveAllUnsaved())) return;
     if (step.id === "clients") await preferWhatIsSetUp(toast);
-    void save({ step: steps[Math.max(0, Math.min(steps.length - 1, i))].id, completed: next ? [...new Set([...w.completed, step.id])] : w.completed });
+    void save({
+      step: steps[Math.max(0, Math.min(steps.length - 1, i))].id,
+      completed: next ? [...new Set([...w.completed, step.id])] : w.completed,
+    });
   };
   const c = conn.data;
   const works = (x: { configured: boolean; ok: boolean | null }) => x.configured && x.ok !== false;
@@ -161,8 +223,20 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
 
   return (
     <section className="wizard">
-      <SeasonHeader compact eyebrow={t(w.path === "new" ? "wiz.pathNew" : "wiz.pathMigrate")} title={t(step.title)} sub={t("wiz.stepOf", { n: idx + 1, total: steps.length })}>
-        <div className="wiz-progress" role="progressbar" aria-valuenow={idx + 1} aria-valuemin={1} aria-valuemax={steps.length} aria-label={t("wiz.progress")}>
+      <SeasonHeader
+        compact
+        eyebrow={t(w.path === "new" ? "wiz.pathNew" : "wiz.pathMigrate")}
+        title={t(step.title)}
+        sub={t("wiz.stepOf", { n: idx + 1, total: steps.length })}
+      >
+        <div
+          className="wiz-progress"
+          role="progressbar"
+          aria-valuenow={idx + 1}
+          aria-valuemin={1}
+          aria-valuemax={steps.length}
+          aria-label={t("wiz.progress")}
+        >
           <i style={{ width: `${Math.round(((idx + 1) / steps.length) * 100)}%` }} />
         </div>
       </SeasonHeader>
@@ -189,7 +263,12 @@ export function Wizard({ status, onChanged }: { status: Status; onChanged: () =>
             </button>
           )}
           {step.id === "done" ? (
-            <button className="primary" onClick={() => void saveAllUnsaved().then((ok) => void (ok && save({ done: true }).then(async () => (await onChanged(), navigate("/")))))}>
+            <button
+              className="primary"
+              onClick={() =>
+                void saveAllUnsaved().then((ok) => void (ok && save({ done: true }).then(async () => (await onChanged(), navigate("/")))))
+              }
+            >
               {t("wiz.finish")}
             </button>
           ) : (
@@ -213,7 +292,9 @@ async function preferWhatIsSetUp(toast: ReturnType<typeof useToast>) {
     const kinds = new Set(c.clients.filter((x) => x.configured).map((x) => (/sab|nzb|usenet/i.test(x.type ?? "") ? "usenet" : "torrent")));
     if (kinds.size !== 1) return;
     const only = [...kinds][0] as "usenet" | "torrent";
-    const p = await api<{ profiles: { id: string; protocolOrder: string[]; noProtocolPreference?: boolean }[]; defaultProfileId: string }>("/profiles");
+    const p = await api<{ profiles: { id: string; protocolOrder: string[]; noProtocolPreference?: boolean }[]; defaultProfileId: string }>(
+      "/profiles",
+    );
     const def = p.profiles.find((x) => x.id === p.defaultProfileId) ?? p.profiles[0];
     if (!def || def.noProtocolPreference || def.protocolOrder[0] === only) return;
     await api(`/profiles/${def.id}`, { method: "PUT", body: { ...def, protocolOrder: [only, only === "usenet" ? "torrent" : "usenet"] } });
@@ -252,7 +333,11 @@ function FoldersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
     <div className="stack">
       <p className="banner slim small">{t("wiz.folders.docker")}</p>
       <div className="card pad">
-        <LibraryFolders roots={s.allowedRoots} onAdd={(r) => saveNow((x) => ({ ...x, allowedRoots: [...new Set([...x.allowedRoots, r])] }))} onRemove={(r) => saveNow((x) => ({ ...x, allowedRoots: x.allowedRoots.filter((y) => y !== r) }))} />
+        <LibraryFolders
+          roots={s.allowedRoots}
+          onAdd={(r) => saveNow((x) => ({ ...x, allowedRoots: [...new Set([...x.allowedRoots, r])] }))}
+          onRemove={(r) => saveNow((x) => ({ ...x, allowedRoots: x.allowedRoots.filter((y) => y !== r) }))}
+        />
       </div>
     </div>
   );
@@ -274,7 +359,9 @@ function ClientsStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
       <DownloadClients s={s} saveNow={saveNow} wizard />
       <div className="row">
         {s.sabnzbd.url && <button onClick={() => void create("sabnzbd")}>{t("wiz.cat.sab", { cat: s.sabnzbd.category })}</button>}
-        {s.qbittorrent.url && <button onClick={() => void create("qbittorrent")}>{t("wiz.cat.qbit", { cat: s.qbittorrent.category })}</button>}
+        {s.qbittorrent.url && (
+          <button onClick={() => void create("qbittorrent")}>{t("wiz.cat.qbit", { cat: s.qbittorrent.category })}</button>
+        )}
       </div>
     </div>
   );
@@ -316,7 +403,29 @@ function IndexersStep({ s, saveNow }: { s: S; saveNow: SaveNow }) {
   );
 }
 
-interface Preview { sonarrError?: string; radarrError?: string; sonarr?: { animeSeries: number; roots: string[]; clients: { name: string; type: string; enabled: boolean; protocol: string; host: string | null; port: number | null; ssl?: boolean; urlBase?: string; category: string | null }[]; indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[]; plex: boolean; tags: string[] }; radarr?: { animeMovies: number; roots: string[] } }
+interface Preview {
+  sonarrError?: string;
+  radarrError?: string;
+  sonarr?: {
+    animeSeries: number;
+    roots: string[];
+    clients: {
+      name: string;
+      type: string;
+      enabled: boolean;
+      protocol: string;
+      host: string | null;
+      port: number | null;
+      ssl?: boolean;
+      urlBase?: string;
+      category: string | null;
+    }[];
+    indexers: { name: string; type: string; protocol: string; viaProwlarr: boolean }[];
+    plex: boolean;
+    tags: string[];
+  };
+  radarr?: { animeMovies: number; roots: string[] };
+}
 
 /** What Sonarr/Radarr have, with a checkbox per piece to take over. */
 function PreviewStep({ onApplied }: { onApplied: () => void }) {
@@ -330,7 +439,8 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   const so = d.data.sonarr;
-  const url = (c: { host: string | null; port: number | null; ssl?: boolean; urlBase?: string }) => (c.host ? `${c.ssl ? "https" : "http"}://${c.host}${c.port ? `:${c.port}` : ""}${c.urlBase ?? ""}` : "");
+  const url = (c: { host: string | null; port: number | null; ssl?: boolean; urlBase?: string }) =>
+    c.host ? `${c.ssl ? "https" : "http"}://${c.host}${c.port ? `:${c.port}` : ""}${c.urlBase ?? ""}` : "";
   const sab = so?.clients.find((c) => /sabnzbd/i.test(c.type) && c.enabled);
   const qb = so?.clients.find((c) => /qbittorrent/i.test(c.type) && c.enabled);
   // NZBGet, Transmission, Deluge, rTorrent: added with their address (passwords are entered afterwards).
@@ -338,9 +448,7 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
   return (
     <div className="stack">
       {(d.data.sonarrError || d.data.radarrError) && (
-        <p className="error">
-          {t("wiz.preview.error", { why: (d.data.sonarrError ?? d.data.radarrError)! })}
-        </p>
+        <p className="error">{t("wiz.preview.error", { why: (d.data.sonarrError ?? d.data.radarrError)! })}</p>
       )}
       {!so && !d.data.radarr && !d.data.sonarrError && !d.data.radarrError && <p className="warn-text">{t("wiz.preview.none")}</p>}
       {so && (
@@ -350,7 +458,12 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
           <h4 className="eyebrow">{t("wiz.preview.roots")}</h4>
           {[...so.roots, ...(d.data.radarr?.roots ?? [])].map((r) => (
             <label key={r} className="check">
-              <input type="checkbox" checked={roots.has(r)} onChange={(e) => setRoots((x) => (e.target.checked ? new Set([...x, r]) : new Set([...x].filter((y) => y !== r))))} /> <span className="mono">{r}</span>
+              <input
+                type="checkbox"
+                checked={roots.has(r)}
+                onChange={(e) => setRoots((x) => (e.target.checked ? new Set([...x, r]) : new Set([...x].filter((y) => y !== r))))}
+              />{" "}
+              <span className="mono">{r}</span>
             </label>
           ))}
           <h4 className="eyebrow">{t("wiz.preview.clients")}</h4>
@@ -391,7 +504,14 @@ function PreviewStep({ onApplied }: { onApplied: () => void }) {
         className="primary self-start"
         onClick={async () => {
           try {
-            await api("/wizard/arr-apply", { body: { roots: [...roots], sab: useClients && sab ? { url: url(sab), category: "animearr" } : null, qbit: useClients && qb ? { url: url(qb), category: "animearr" } : null, others: useClients ? others.map((c) => ({ type: c.type, name: c.name, url: url(c) })) : [] } });
+            await api("/wizard/arr-apply", {
+              body: {
+                roots: [...roots],
+                sab: useClients && sab ? { url: url(sab), category: "animearr" } : null,
+                qbit: useClients && qb ? { url: url(qb), category: "animearr" } : null,
+                others: useClients ? others.map((c) => ({ type: c.type, name: c.name, url: url(c) })) : [],
+              },
+            });
             toast(t("wiz.preview.applied"));
             onApplied();
           } catch (e) {
@@ -465,13 +585,23 @@ function DoneStep({ path }: { path: Path }) {
           <ul className="plain stack done-list">
             <li>
               {t("wiz.done.clients")}: {working.map((c) => c.name).join(", ") || "—"}
-              {failing.length > 0 && <span className="warn-text"> · {t("wiz.done.notWorking", { names: failing.map((c) => c.name).join(", ") })}</span>}
+              {failing.length > 0 && (
+                <span className="warn-text"> · {t("wiz.done.notWorking", { names: failing.map((c) => c.name).join(", ") })}</span>
+              )}
             </li>
             <li>
               {t("wiz.done.indexers")}: {o.data.indexers.length}
             </li>
             <li>
-              {t("wiz.done.media")}: {media.length ? media.map((m) => { const n = MEDIA_NAMES[(m as { key?: string }).key ?? "plex"] ?? "Plex"; return m.ok === false ? `${n} (${t("wiz.done.notWorkingShort")})` : n; }).join(", ") : "—"}
+              {t("wiz.done.media")}:{" "}
+              {media.length
+                ? media
+                    .map((m) => {
+                      const n = MEDIA_NAMES[(m as { key?: string }).key ?? "plex"] ?? "Plex";
+                      return m.ok === false ? `${n} (${t("wiz.done.notWorkingShort")})` : n;
+                    })
+                    .join(", ")
+                : "—"}
             </li>
           </ul>
         </div>
@@ -509,7 +639,10 @@ function DoneStep({ path }: { path: Path }) {
 /** The last step: dry run (on by default) and the automatic searches, explained, with the switches right here. */
 function GoLive() {
   const toast = useToast();
-  const d = useLoad(() => api<{ managed: { dryRun: boolean }; backlog: { enabled: boolean }; movieSearch: { enabled: boolean } }>("/settings"), []);
+  const d = useLoad(
+    () => api<{ managed: { dryRun: boolean }; backlog: { enabled: boolean }; movieSearch: { enabled: boolean } }>("/settings"),
+    [],
+  );
   if (!d.data) return null;
   const put = async (body: unknown) => {
     try {
@@ -525,7 +658,11 @@ function GoLive() {
       <p className="muted small">{t("wiz.live.help")}</p>
       <Toggle checked={!d.data.managed.dryRun} onChange={(v) => void put({ managed: { dryRun: !v } })} label={t("wiz.live.real")} />
       <Toggle checked={d.data.backlog.enabled} onChange={(v) => void put({ backlog: { enabled: v } })} label={t("wiz.live.missing")} />
-      <Toggle checked={d.data.movieSearch.enabled} onChange={(v) => void put({ movieSearch: { enabled: v } })} label={t("wiz.live.movies")} />
+      <Toggle
+        checked={d.data.movieSearch.enabled}
+        onChange={(v) => void put({ movieSearch: { enabled: v } })}
+        label={t("wiz.live.movies")}
+      />
     </div>
   );
 }

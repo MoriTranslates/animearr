@@ -6,7 +6,15 @@ import { compareRanked, rankRelease, type Profile } from "../server/core/rank.js
 
 const base: Profile = { subLangs: ["en"], softOnly: true, preferUncensored: true, protocolOrder: ["usenet", "torrent"], resolution: 1080 };
 const learned = { total: 40, subs: { en: 40 }, origin: "verify" };
-const rank = (title: string, gb: number, sizePreset: Profile["sizePreset"]) => ({ title, rank: rankRelease(parseRelease(title), { protocol: "usenet", size: gb * 1e9, episodeCount: 1, runtimeMin: 24 }, { ...base, sizePreset }, learned) });
+const rank = (title: string, gb: number, sizePreset: Profile["sizePreset"]) => ({
+  title,
+  rank: rankRelease(
+    parseRelease(title),
+    { protocol: "usenet", size: gb * 1e9, episodeCount: 1, runtimeMin: 24 },
+    { ...base, sizePreset },
+    learned,
+  ),
+});
 
 const web = "[SubsPlease] Frieren - 05 (1080p) [WEB-DL]";
 const bd = "[Group] Frieren - 05 (BD 1080p FLAC)";
@@ -30,7 +38,10 @@ test("Balanced prefers WEB-DL and has no cap", () => {
 
 test("Best source: REMUX > high-bitrate BD > WEB-DL > mini re-encode", () => {
   const list = [rank(mini, 0.4, "best"), rank(web, 1.4, "best"), rank(bd, 6, "best"), rank(remux, 12, "best")].sort(compareRanked);
-  assert.deepEqual(list.map((x) => x.title), [remux, bd, web, mini]);
+  assert.deepEqual(
+    list.map((x) => x.title),
+    [remux, bd, web, mini],
+  );
   assert.match(list[0].rank.why, /REMUX/);
   assert.match(list[3].rank.why, /small re-encode/);
 });

@@ -27,7 +27,16 @@ export interface UserAlias {
 }
 
 export type HitSource = "user" | "library" | "library-alt" | "learned" | "anidb-main" | "anidb-official" | "anidb-syn" | "anidb-short";
-const WEIGHT: Record<HitSource, number> = { user: 100, library: 96, "library-alt": 92, learned: 88, "anidb-main": 84, "anidb-official": 84, "anidb-syn": 76, "anidb-short": 60 };
+const WEIGHT: Record<HitSource, number> = {
+  user: 100,
+  library: 96,
+  "library-alt": 92,
+  learned: 88,
+  "anidb-main": 84,
+  "anidb-official": 84,
+  "anidb-syn": 76,
+  "anidb-short": 60,
+};
 
 interface RawHit {
   source: HitSource;
@@ -65,22 +74,62 @@ export class AliasIndex {
   private anidb: Map<number, AnidbAnime>;
   private animeList: Map<number, AnimeListEntry>;
 
-  constructor(input: { library: LibSeries[]; anidb?: Map<number, AnidbAnime>; animeList?: Map<number, AnimeListEntry>; userAliases?: UserAlias[] }) {
+  constructor(input: {
+    library: LibSeries[];
+    anidb?: Map<number, AnidbAnime>;
+    animeList?: Map<number, AnimeListEntry>;
+    userAliases?: UserAlias[];
+  }) {
     this.anidb = input.anidb ?? new Map();
     this.animeList = input.animeList ?? new Map();
     for (const s of input.library) this.libByTvdb.set(s.tvdbId, s);
 
-    for (const a of input.userAliases ?? []) this.addTitle(a.title, { source: a.source, title: a.title, tvdbId: a.tvdbId, aid: null, season: a.season, entrySeason: null, entryOffset: 0 });
+    for (const a of input.userAliases ?? [])
+      this.addTitle(a.title, {
+        source: a.source,
+        title: a.title,
+        tvdbId: a.tvdbId,
+        aid: null,
+        season: a.season,
+        entrySeason: null,
+        entryOffset: 0,
+      });
     for (const s of input.library) {
-      this.addTitle(s.title, { source: "library", title: s.title, tvdbId: s.tvdbId, aid: null, season: null, entrySeason: null, entryOffset: 0 });
-      for (const alt of s.altTitles) this.addTitle(alt.title, { source: "library-alt", title: alt.title, tvdbId: s.tvdbId, aid: null, season: alt.sceneSeason !== null && alt.sceneSeason >= 1 ? alt.sceneSeason : null, entrySeason: null, entryOffset: 0 });
+      this.addTitle(s.title, {
+        source: "library",
+        title: s.title,
+        tvdbId: s.tvdbId,
+        aid: null,
+        season: null,
+        entrySeason: null,
+        entryOffset: 0,
+      });
+      for (const alt of s.altTitles)
+        this.addTitle(alt.title, {
+          source: "library-alt",
+          title: alt.title,
+          tvdbId: s.tvdbId,
+          aid: null,
+          season: alt.sceneSeason !== null && alt.sceneSeason >= 1 ? alt.sceneSeason : null,
+          entrySeason: null,
+          entryOffset: 0,
+        });
     }
     for (const a of this.anidb.values()) {
       const al = this.animeList.get(a.aid);
       for (const t of a.titles) {
         if (t.type === "kana") continue;
-        const source: HitSource = t.type === "main" ? "anidb-main" : t.type === "official" ? "anidb-official" : t.type === "short" ? "anidb-short" : "anidb-syn";
-        this.addTitle(t.title, { source, title: t.title, tvdbId: al?.tvdbId ?? null, aid: a.aid, season: null, entrySeason: al?.defaultSeason ?? null, entryOffset: al?.offset ?? 0 });
+        const source: HitSource =
+          t.type === "main" ? "anidb-main" : t.type === "official" ? "anidb-official" : t.type === "short" ? "anidb-short" : "anidb-syn";
+        this.addTitle(t.title, {
+          source,
+          title: t.title,
+          tvdbId: al?.tvdbId ?? null,
+          aid: a.aid,
+          season: null,
+          entrySeason: al?.defaultSeason ?? null,
+          entryOffset: al?.offset ?? 0,
+        });
       }
     }
   }
@@ -90,7 +139,13 @@ export class AliasIndex {
       if (!k.key) continue;
       const h: RawHit = k.season !== null ? { ...hit, season: hit.season ?? k.season, fromSuffix: true } : hit;
       const arr = this.keys.get(k.key) ?? [];
-      if (!arr.some((x) => x.source === h.source && x.tvdbId === h.tvdbId && x.aid === h.aid && x.season === h.season && !!x.fromSuffix === !!h.fromSuffix)) arr.push(h);
+      if (
+        !arr.some(
+          (x) =>
+            x.source === h.source && x.tvdbId === h.tvdbId && x.aid === h.aid && x.season === h.season && !!x.fromSuffix === !!h.fromSuffix,
+        )
+      )
+        arr.push(h);
       this.keys.set(k.key, arr);
     }
   }
@@ -109,13 +164,16 @@ export class AliasIndex {
     const lib = this.libByTvdb.get(tvdbId);
     if (lib) {
       out.add(lib.title);
-      for (const a of lib.altTitles) if (a.sceneSeason === null || a.sceneSeason < 1 || season === undefined || a.sceneSeason === season) out.add(a.title);
+      for (const a of lib.altTitles)
+        if (a.sceneSeason === null || a.sceneSeason < 1 || season === undefined || a.sceneSeason === season) out.add(a.title);
     }
-    for (const [, hits] of this.keys) for (const h of hits) if (h.tvdbId === tvdbId && (h.source === "user" || h.source === "learned")) out.add(h.title);
+    for (const [, hits] of this.keys)
+      for (const h of hits) if (h.tvdbId === tvdbId && (h.source === "user" || h.source === "learned")) out.add(h.title);
     for (const e of this.animeList.values()) {
       if (e.tvdbId !== tvdbId) continue;
       if (season !== undefined && e.defaultSeason !== season && e.defaultSeason !== 1 && !(e.defaultSeason === "a")) continue;
-      for (const t of this.anidb.get(e.aid)?.titles ?? []) if ((t.type === "main" || t.type === "official" || t.type === "syn") && /^[\x20-\x7eÀ-ɏ]+$/.test(t.title)) out.add(t.title);
+      for (const t of this.anidb.get(e.aid)?.titles ?? [])
+        if ((t.type === "main" || t.type === "official" || t.type === "syn") && /^[\x20-\x7eÀ-ɏ]+$/.test(t.title)) out.add(t.title);
     }
     return [...out];
   }
@@ -124,7 +182,8 @@ export class AliasIndex {
   private hits(title: string): { hit: RawHit; keySeason: number | null; exact: boolean }[] {
     const out: { hit: RawHit; keySeason: number | null; exact: boolean }[] = [];
     const full = compactKey(title);
-    for (const k of lookupKeys(title)) for (const h of this.keys.get(k.key) ?? []) out.push({ hit: h, keySeason: k.season, exact: k.key === full });
+    for (const k of lookupKeys(title))
+      for (const h of this.keys.get(k.key) ?? []) out.push({ hit: h, keySeason: k.season, exact: k.key === full });
     return out;
   }
 
@@ -154,7 +213,9 @@ export class AliasIndex {
         const split = splitSeason(main);
         if (split.season === null) return;
         const base = this.keys.get(split.base.replace(/ /g, "")) ?? [];
-        const mapped = base.find((b) => b.tvdbId !== null && (b.source === "library" || b.source === "library-alt" || b.source.startsWith("anidb")));
+        const mapped = base.find(
+          (b) => b.tvdbId !== null && (b.source === "library" || b.source === "library-alt" || b.source.startsWith("anidb")),
+        );
         if (!mapped?.tvdbId) return;
         tvdbId = mapped.tvdbId;
         impliedSeason = split.season;
@@ -164,12 +225,29 @@ export class AliasIndex {
       if (tvdbId === null) return;
       const lib = this.libByTvdb.get(tvdbId);
       const score = WEIGHT[h.source] - (exact ? 0 : 4) - (viaAlt ? 3 : 0) - (inferred ? 6 : 0) - (franchiseOnly ? 10 : 0) + (lib ? 0 : -15);
-      const entry = h.aid !== null && h.entrySeason !== null && !inferred && !franchiseOnly ? { aid: h.aid, season: h.entrySeason, offset: h.entryOffset } : null;
-      why.unshift(`title "${h.title}" (${h.source.replace("-", " ")}${h.aid ? `, AniDB ${h.aid}` : ""})${impliedSeason !== null ? ` implies season ${impliedSeason}` : ""}`);
+      const entry =
+        h.aid !== null && h.entrySeason !== null && !inferred && !franchiseOnly
+          ? { aid: h.aid, season: h.entrySeason, offset: h.entryOffset }
+          : null;
+      why.unshift(
+        `title "${h.title}" (${h.source.replace("-", " ")}${h.aid ? `, AniDB ${h.aid}` : ""})${impliedSeason !== null ? ` implies season ${impliedSeason}` : ""}`,
+      );
       const prev = byTvdb.get(tvdbId);
       // Prefer a hit that pins a season/entry over a plain franchise hit of similar strength.
       const specific = (c: { impliedSeason: number | null; entry: unknown }) => (c.impliedSeason !== null || c.entry ? 3 : 0);
-      const cand: Candidate = { tvdbId, seriesId: lib?.seriesId ?? null, aid: h.aid, impliedSeason, entry, score, inLibrary: !!lib, matchedTitle: h.title, source: h.source, inferred, why };
+      const cand: Candidate = {
+        tvdbId,
+        seriesId: lib?.seriesId ?? null,
+        aid: h.aid,
+        impliedSeason,
+        entry,
+        score,
+        inLibrary: !!lib,
+        matchedTitle: h.title,
+        source: h.source,
+        inferred,
+        why,
+      };
       if (!prev || score + specific(cand) > prev.score + specific(prev)) {
         if (prev) cand.why.push(...prev.why.filter((w) => !cand.why.includes(w)).slice(0, 1));
         byTvdb.set(tvdbId, cand);
@@ -191,6 +269,12 @@ export class AliasIndex {
 
   /** AniDB ids mapped to a TVDB series, with the TVDB season each covers. */
   anidbIdsFor(tvdbId: number) {
-    return this.entriesFor(tvdbId).map((e) => ({ aid: e.aid, season: e.defaultSeason, offset: e.offset, name: e.name, firstEp: anidbToTvdb(e, 1) }));
+    return this.entriesFor(tvdbId).map((e) => ({
+      aid: e.aid,
+      season: e.defaultSeason,
+      offset: e.offset,
+      name: e.name,
+      firstEp: anidbToTvdb(e, 1),
+    }));
   }
 }

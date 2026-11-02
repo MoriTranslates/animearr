@@ -1,11 +1,31 @@
-import { ArrowLeftRight, Bell as BellIcon, Cog, Database, Download, FolderTree, HardDrive, Languages, Lock, MonitorPlay, Palette, Route, Search as SearchIcon, ShieldCheck, Tags as TagsIcon, ListFilter, ListPlus, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Bell as BellIcon,
+  Cog,
+  Database,
+  Download,
+  FolderTree,
+  HardDrive,
+  Languages,
+  Lock,
+  MonitorPlay,
+  Palette,
+  Route,
+  Search as SearchIcon,
+  ShieldCheck,
+  Tags as TagsIcon,
+  ListFilter,
+  ListPlus,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUnsaved } from "../unsaved";
 import { copyText, rememberDetail } from "../errors";
 import { PhonePanel } from "../phone";
 import { applyFont, applyTextScale, TEXT_SCALES } from "../appearance";
 import { api, DEFAULT_LOGIN, fmtSize, store, type PathMapping, type Settings as S, type Status, withBase } from "../api";
-import { applyTheme, query } from "../App";
+import { query } from "../nav";
+import { applyTheme } from "../appearance";
 import { t, type I18nKey } from "../i18n";
 import { Cutover } from "../cutover";
 import { DownloadClients, Indexers, MediaServers, Migration, SectionIntro, type MediaKey, type SaveNow } from "../connections";
@@ -21,16 +41,82 @@ import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { RulesEditor, TagsEditor } from "../rules";
 import { ScopeFields } from "../scope";
-import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, usePoll, useToast } from "../ui";
+import {
+  Chip,
+  Confirm,
+  dateTime,
+  ErrorBox,
+  ErrorText,
+  ListInput,
+  NumberInput,
+  relTime,
+  SecretInput,
+  Spinner,
+  Toggle,
+  useLoad,
+  usePageTitle,
+  usePoll,
+  useToast,
+} from "../ui";
 
-type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "rules" | "tags" | "lists" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
+type Tab =
+  | "indexers"
+  | "clients"
+  | "mediaservers"
+  | "notifications"
+  | "migration"
+  | "profile"
+  | "rules"
+  | "tags"
+  | "lists"
+  | "media"
+  | "paths"
+  | "metadata"
+  | "downloads"
+  | "safety"
+  | "appearance"
+  | "security"
+  | "system";
 
 /** Settings, grouped like Sonarr's: a left sub-nav on desktop, a list on phones. */
 const SECTIONS: { label: I18nKey; tabs: { id: Tab; icon: LucideIcon }[] }[] = [
-  { label: "settings.group.connect", tabs: [{ id: "indexers", icon: SearchIcon }, { id: "clients", icon: Download }, { id: "mediaservers", icon: MonitorPlay }, { id: "notifications", icon: BellIcon }, { id: "migration", icon: ArrowLeftRight }] },
-  { label: "settings.group.library", tabs: [{ id: "profile", icon: Languages }, { id: "rules", icon: ListFilter }, { id: "tags", icon: TagsIcon }, { id: "lists", icon: ListPlus }, { id: "media", icon: FolderTree }, { id: "paths", icon: Route }, { id: "metadata", icon: Database }] },
-  { label: "settings.group.automation", tabs: [{ id: "safety", icon: ShieldCheck }, { id: "downloads", icon: HardDrive }] },
-  { label: "settings.group.general", tabs: [{ id: "appearance", icon: Palette }, { id: "security", icon: Lock }, { id: "system", icon: Cog }] },
+  {
+    label: "settings.group.connect",
+    tabs: [
+      { id: "indexers", icon: SearchIcon },
+      { id: "clients", icon: Download },
+      { id: "mediaservers", icon: MonitorPlay },
+      { id: "notifications", icon: BellIcon },
+      { id: "migration", icon: ArrowLeftRight },
+    ],
+  },
+  {
+    label: "settings.group.library",
+    tabs: [
+      { id: "profile", icon: Languages },
+      { id: "rules", icon: ListFilter },
+      { id: "tags", icon: TagsIcon },
+      { id: "lists", icon: ListPlus },
+      { id: "media", icon: FolderTree },
+      { id: "paths", icon: Route },
+      { id: "metadata", icon: Database },
+    ],
+  },
+  {
+    label: "settings.group.automation",
+    tabs: [
+      { id: "safety", icon: ShieldCheck },
+      { id: "downloads", icon: HardDrive },
+    ],
+  },
+  {
+    label: "settings.group.general",
+    tabs: [
+      { id: "appearance", icon: Palette },
+      { id: "security", icon: Lock },
+      { id: "system", icon: Cog },
+    ],
+  },
 ];
 const TABS = SECTIONS.flatMap((x) => x.tabs.map((y) => y.id));
 /** Old links (?tab=connections, ?tab=cutover) still land in the right place. */
@@ -50,7 +136,10 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
   const desktop = typeof window !== "undefined" && window.matchMedia?.("(min-width: 761px)").matches;
   const [tab, setTabState] = useState<Tab | null>(only ?? (TABS.includes(initial) ? initial : desktop ? TABS[0] : null));
   useEffect(() => {
-    if (!only) document.title = tab ? `${t(`settings.tab.${tab}` as I18nKey)} · ${t("settings.title")} · AnimeArr` : `${t("settings.title")} · AnimeArr`;
+    if (!only)
+      document.title = tab
+        ? `${t(`settings.tab.${tab}` as I18nKey)} · ${t("settings.title")} · AnimeArr`
+        : `${t("settings.title")} · AnimeArr`;
   }, [tab, only]);
   const loaded = useLoad(() => api<S>("/settings"), []);
   const [s, setS] = useState<S | null>(null);
@@ -127,49 +216,56 @@ export function Settings({ status, onSaved, only }: { status: Status; onSaved: (
     const s = cur;
     return (
       <>
-          {x === "indexers" && <Indexers s={s} saveNow={saveNow} />}
-          {x === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
-          {x === "mediaservers" && <MediaServers s={s} saveNow={saveNow} plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />} serverForm={(k, draft, set) => (k === "plex" ? null : <ServerCard k={k} s={draft} upd={set} />)} />}
-          {x === "notifications" && (
-            <>
-              <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
-              <NotifyCard s={s} upd={upd} />
-              <NotifyChannelsCard />
-            </>
-          )}
-          {x === "migration" && (
-            <Migration s={s} saveNow={saveNow}>
-              <Cutover />
-            </Migration>
-          )}
-          {x === "profile" && <ProfilesEditor />}
-          {x === "rules" && <RulesEditor />}
-          {x === "tags" && <TagsEditor />}
-          {x === "lists" && <ImportLists s={s} upd={upd} />}
-          {x === "media" && <MediaManagement s={s} upd={upd} />}
-          {x === "downloads" && <DownloadRules s={s} upd={upd} />}
-          {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}
-          {x === "paths" && <Paths s={s} upd={upd} />}
-          {x === "metadata" && <Metadata s={s} upd={upd} />}
-          {x === "appearance" && <Appearance />}
-          {x === "system" && <System status={status} />}
-          {x === "security" && <Security s={s} status={status} onChanged={onSaved} />}
-          {/* The save bar appears only with unsaved changes (a disabled Save was just a muddy block). */}
-          {FORM_TABS.includes(x) && dirty && (
-            <div className="sticky-actions row">
-              <button className="primary" disabled={!dirty} onClick={() => void save()}>
-                {t("common.save")}
-              </button>
-              {dirty && (
-                <>
-                  <span className="muted small">{t("settings.unsaved")}</span>
-                  <button className="ghost small" onClick={() => (loaded.data && setS(loaded.data), setDirty(false))}>
-                    {t("settings.discard")}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+        {x === "indexers" && <Indexers s={s} saveNow={saveNow} />}
+        {x === "clients" && <DownloadClients s={s} saveNow={saveNow} />}
+        {x === "mediaservers" && (
+          <MediaServers
+            s={s}
+            saveNow={saveNow}
+            plexForm={(draft, set) => <PlexCard s={draft} upd={set} bare />}
+            serverForm={(k, draft, set) => (k === "plex" ? null : <ServerCard k={k} s={draft} upd={set} />)}
+          />
+        )}
+        {x === "notifications" && (
+          <>
+            <SectionIntro icon="🔔" text={t("conn.intro.notifications")} />
+            <NotifyCard s={s} upd={upd} />
+            <NotifyChannelsCard />
+          </>
+        )}
+        {x === "migration" && (
+          <Migration s={s} saveNow={saveNow}>
+            <Cutover />
+          </Migration>
+        )}
+        {x === "profile" && <ProfilesEditor />}
+        {x === "rules" && <RulesEditor />}
+        {x === "tags" && <TagsEditor />}
+        {x === "lists" && <ImportLists s={s} upd={upd} />}
+        {x === "media" && <MediaManagement s={s} upd={upd} />}
+        {x === "downloads" && <DownloadRules s={s} upd={upd} />}
+        {x === "safety" && <Safety s={s} upd={upd} saved={loaded.data ?? s} saveNow={saveNow} />}
+        {x === "paths" && <Paths s={s} upd={upd} />}
+        {x === "metadata" && <Metadata s={s} upd={upd} />}
+        {x === "appearance" && <Appearance />}
+        {x === "system" && <System status={status} />}
+        {x === "security" && <Security s={s} status={status} onChanged={onSaved} />}
+        {/* The save bar appears only with unsaved changes (a disabled Save was just a muddy block). */}
+        {FORM_TABS.includes(x) && dirty && (
+          <div className="sticky-actions row">
+            <button className="primary" disabled={!dirty} onClick={() => void save()}>
+              {t("common.save")}
+            </button>
+            {dirty && (
+              <>
+                <span className="muted small">{t("settings.unsaved")}</span>
+                <button className="ghost small" onClick={() => (loaded.data && setS(loaded.data), setDirty(false))}>
+                  {t("settings.discard")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </>
     );
   }
@@ -311,7 +407,10 @@ function Appearance() {
           </select>
           <span className="muted small">{t("appearance.exclaimHelp")}</span>
         </label>
-        <button className="small self-start" onClick={() => toast(t("appearance.preview"), false, undefined, { kind: "grab", burst: "always" })}>
+        <button
+          className="small self-start"
+          onClick={() => toast(t("appearance.preview"), false, undefined, { kind: "grab", burst: "always" })}
+        >
           {t("appearance.try")}
         </button>
       </div>
@@ -375,7 +474,15 @@ function ShowDryRuns({ globalOn }: { globalOn: boolean }) {
 }
 
 function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow: SaveNow }) {
-  const roots = useLoad(() => api<{ roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[]; suggested: string | null; refused?: Record<string, string> }>("/sonarr/rootfolders"), []);
+  const roots = useLoad(
+    () =>
+      api<{
+        roots: { path: string; freeSpace?: number; app?: "sonarr" | "radarr" }[];
+        suggested: string | null;
+        refused?: Record<string, string>;
+      }>("/sonarr/rootfolders"),
+    [],
+  );
   const m = s.managed;
   // Library folders and practice mode save at once (a switch that only looked switched was the playtest's trap).
   const setRoots = async (fn: (r: string[]) => string[]) => {
@@ -388,16 +495,28 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
       <div className="card pad stack">
         <div className="row between">
           <h2>{t("dry.section")}</h2>
-          <span className={`state-pill ${saved.managed.dryRun ? "warn" : "good"}`}>{saved.managed.dryRun ? t("dry.stateOn") : t("dry.stateOff")}</span>
+          <span className={`state-pill ${saved.managed.dryRun ? "warn" : "good"}`}>
+            {saved.managed.dryRun ? t("dry.stateOn") : t("dry.stateOff")}
+          </span>
         </div>
         <p className="muted small">{t("dry.sectionHelp")}</p>
-        <Toggle checked={saved.managed.dryRun} onChange={(v) => void saveNow((x) => ({ ...x, managed: { ...x.managed, dryRun: v } }))} label={t("settings.safety.dryRun")} help={t("settings.safety.dryRunHelp")} />
+        <Toggle
+          checked={saved.managed.dryRun}
+          onChange={(v) => void saveNow((x) => ({ ...x, managed: { ...x.managed, dryRun: v } }))}
+          label={t("settings.safety.dryRun")}
+          help={t("settings.safety.dryRunHelp")}
+        />
         <ShowDryRuns globalOn={saved.managed.dryRun} />
       </div>
       <div className="card pad stack" id="library-folders">
         <h2>{t("settings.safety.roots")}</h2>
         <p className="muted small">{t("settings.safety.rootsHelp")}</p>
-        <LibraryFolders roots={saved.allowedRoots} refused={roots.data?.refused} onAdd={(r) => setRoots((x) => [...new Set([...x, r])])} onRemove={(r) => setRoots((x) => x.filter((y) => y !== r))} />
+        <LibraryFolders
+          roots={saved.allowedRoots}
+          refused={roots.data?.refused}
+          onAdd={(r) => setRoots((x) => [...new Set([...x, r])])}
+          onRemove={(r) => setRoots((x) => x.filter((y) => y !== r))}
+        />
         {!!arrRoots.length && (
           <div className="stack">
             <h3>{t("folders.fromArr")}</h3>
@@ -405,7 +524,8 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
               {arrRoots.map((r) => (
                 <li key={r.path} className="row between">
                   <span>
-                    <span className="mono">{r.path}</span> {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>} {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
+                    <span className="mono">{r.path}</span> {r.app === "radarr" && <Chip>{t("settings.safety.radarrRoot")}</Chip>}{" "}
+                    {roots.data?.suggested === r.path && <Chip tone="accent">{t("settings.safety.suggested")}</Chip>}
                   </span>
                   <button className="small" onClick={() => void setRoots((x) => [...new Set([...x, r.path])])}>
                     {t("common.add")}
@@ -432,7 +552,10 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
         <div className="form">
           <label>
             {t("repair.mode")}
-            <select value={s.dualUpgrade.mode} onChange={(e) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, mode: e.target.value as "off" | "log" | "auto" } }))}>
+            <select
+              value={s.dualUpgrade.mode}
+              onChange={(e) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, mode: e.target.value as "off" | "log" | "auto" } }))}
+            >
               <option value="off">{t("repair.mode.off")}</option>
               <option value="log">{t("repair.mode.log")}</option>
               <option value="auto">{t("dual.auto")}</option>
@@ -440,15 +563,33 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
           </label>
           <label>
             {t("backlog.perHour")}
-            <NumberInput value={s.dualUpgrade.perHour} min={1} max={24} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, perHour: v } }))} label={t("backlog.perHour")} />
+            <NumberInput
+              value={s.dualUpgrade.perHour}
+              min={1}
+              max={24}
+              onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, perHour: v } }))}
+              label={t("backlog.perHour")}
+            />
           </label>
           <label>
             {t("dual.recheckDays")}
-            <NumberInput value={s.dualUpgrade.recheckDays} min={1} max={60} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, recheckDays: v } }))} label={t("dual.recheckDays")} />
+            <NumberInput
+              value={s.dualUpgrade.recheckDays}
+              min={1}
+              max={60}
+              onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, recheckDays: v } }))}
+              label={t("dual.recheckDays")}
+            />
           </label>
           <label>
             {t("dual.maxAgeDays")}
-            <NumberInput value={s.dualUpgrade.maxAgeDays} min={7} max={3650} onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, maxAgeDays: v } }))} label={t("dual.maxAgeDays")} />
+            <NumberInput
+              value={s.dualUpgrade.maxAgeDays}
+              min={7}
+              max={3650}
+              onChange={(v) => upd((x) => ({ ...x, dualUpgrade: { ...x.dualUpgrade, maxAgeDays: v } }))}
+              label={t("dual.maxAgeDays")}
+            />
           </label>
         </div>
       </div>
@@ -458,31 +599,68 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
         <div className="form">
           <label>
             {t("qh.stallHours")}
-            <NumberInput value={s.queueHealth.stallHours} min={1} max={72} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, stallHours: v } }))} label={t("qh.stallHours")} />
+            <NumberInput
+              value={s.queueHealth.stallHours}
+              min={1}
+              max={72}
+              onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, stallHours: v } }))}
+              label={t("qh.stallHours")}
+            />
           </label>
           <label>
             {t("qh.metadataMin")}
-            <NumberInput value={s.queueHealth.metadataMin} min={10} max={1440} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, metadataMin: v } }))} label={t("qh.metadataMin")} />
+            <NumberInput
+              value={s.queueHealth.metadataMin}
+              min={10}
+              max={1440}
+              onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, metadataMin: v } }))}
+              label={t("qh.metadataMin")}
+            />
           </label>
           <label>
             {t("qh.strikes")}
-            <NumberInput value={s.queueHealth.strikes} min={1} max={20} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, strikes: v } }))} label={t("qh.strikes")} />
+            <NumberInput
+              value={s.queueHealth.strikes}
+              min={1}
+              max={20}
+              onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, strikes: v } }))}
+              label={t("qh.strikes")}
+            />
             <span className="muted small">{t("qh.strikesHelp")}</span>
           </label>
         </div>
-        <Toggle checked={s.queueHealth.removeFailed} onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, removeFailed: v } }))} label={t("qh.removeFailed")} help={t("qh.removeFailedHelp")} />
+        <Toggle
+          checked={s.queueHealth.removeFailed}
+          onChange={(v) => upd((x) => ({ ...x, queueHealth: { ...x.queueHealth, removeFailed: v } }))}
+          label={t("qh.removeFailed")}
+          help={t("qh.removeFailedHelp")}
+        />
       </div>
       <div className="card pad stack">
         <h2>{t("malware.title")}</h2>
-        <Toggle checked={s.malware.enabled} onChange={(v) => upd((x) => ({ ...x, malware: { ...x.malware, enabled: v } }))} label={t("malware.enabled")} help={t("malware.help")} />
+        <Toggle
+          checked={s.malware.enabled}
+          onChange={(v) => upd((x) => ({ ...x, malware: { ...x.malware, enabled: v } }))}
+          label={t("malware.enabled")}
+          help={t("malware.help")}
+        />
         <label>
           {t("malware.extensions")}
-          <ExtensionsInput value={s.malware.extensions} disabled={!s.malware.enabled} onChange={(extensions) => upd((x) => ({ ...x, malware: { ...x.malware, extensions } }))} />
+          <ExtensionsInput
+            value={s.malware.extensions}
+            disabled={!s.malware.enabled}
+            onChange={(extensions) => upd((x) => ({ ...x, malware: { ...x.malware, extensions } }))}
+          />
           <span className="muted small">{t("malware.extensionsHelp")}</span>
         </label>
       </div>
       <div className="card pad stack">
-        <Toggle checked={s.extraction.enabled} onChange={(v) => upd((x) => ({ ...x, extraction: { enabled: v } }))} label={t("extract.enabled")} help={t("extract.help")} />
+        <Toggle
+          checked={s.extraction.enabled}
+          onChange={(v) => upd((x) => ({ ...x, extraction: { enabled: v } }))}
+          label={t("extract.enabled")}
+          help={t("extract.help")}
+        />
       </div>
       <div className="card pad stack">
         <h2>{t("repair.title")}</h2>
@@ -490,7 +668,10 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
         <div className="form">
           <label>
             {t("repair.mode")}
-            <select value={s.repair.mode} onChange={(e) => upd((x) => ({ ...x, repair: { ...x.repair, mode: e.target.value as "off" | "log" | "auto" } }))}>
+            <select
+              value={s.repair.mode}
+              onChange={(e) => upd((x) => ({ ...x, repair: { ...x.repair, mode: e.target.value as "off" | "log" | "auto" } }))}
+            >
               <option value="off">{t("repair.mode.off")}</option>
               <option value="log">{t("repair.mode.log")}</option>
               <option value="auto">{t("repair.mode.auto")}</option>
@@ -498,30 +679,64 @@ function Safety({ s, upd, saved, saveNow }: { s: S; upd: Upd; saved: S; saveNow:
           </label>
           <label>
             {t("repair.maxPerDay")}
-            <NumberInput value={s.repair.maxPerDay} min={1} max={100} onChange={(v) => upd((x) => ({ ...x, repair: { ...x.repair, maxPerDay: v } }))} label={t("repair.maxPerDay")} />
+            <NumberInput
+              value={s.repair.maxPerDay}
+              min={1}
+              max={100}
+              onChange={(v) => upd((x) => ({ ...x, repair: { ...x.repair, maxPerDay: v } }))}
+              label={t("repair.maxPerDay")}
+            />
           </label>
         </div>
       </div>
       <div className="card pad form">
         <label>
           {t("settings.safety.delay")}
-          <NumberInput value={m.searchDelayMin} min={0} max={1440} onChange={(v) => setM((x) => ({ ...x, searchDelayMin: v }))} label={t("settings.safety.delay")} />
+          <NumberInput
+            value={m.searchDelayMin}
+            min={0}
+            max={1440}
+            onChange={(v) => setM((x) => ({ ...x, searchDelayMin: v }))}
+            label={t("settings.safety.delay")}
+          />
         </label>
         <label>
           {t("settings.safety.backoff")}
-          <ListInput value={m.backoffMin} onChange={(v) => setM((x) => ({ ...x, backoffMin: v.map(Number).filter((n) => n > 0) }))} label={t("settings.safety.backoff")} />
+          <ListInput
+            value={m.backoffMin}
+            onChange={(v) => setM((x) => ({ ...x, backoffMin: v.map(Number).filter((n) => n > 0) }))}
+            label={t("settings.safety.backoff")}
+          />
         </label>
         <label>
           {t("settings.safety.attempts")}
-          <NumberInput value={m.maxAttempts} min={1} max={100} onChange={(v) => setM((x) => ({ ...x, maxAttempts: v }))} label={t("settings.safety.attempts")} />
+          <NumberInput
+            value={m.maxAttempts}
+            min={1}
+            max={100}
+            onChange={(v) => setM((x) => ({ ...x, maxAttempts: v }))}
+            label={t("settings.safety.attempts")}
+          />
         </label>
         <label>
           {t("settings.safety.rss")}
-          <NumberInput value={m.rssMin} min={0} max={1440} onChange={(v) => setM((x) => ({ ...x, rssMin: v }))} label={t("settings.safety.rss")} />
+          <NumberInput
+            value={m.rssMin}
+            min={0}
+            max={1440}
+            onChange={(v) => setM((x) => ({ ...x, rssMin: v }))}
+            label={t("settings.safety.rss")}
+          />
         </label>
         <label>
           {t("settings.safety.confidence")}
-          <NumberInput value={m.minConfidence} min={50} max={100} onChange={(v) => setM((x) => ({ ...x, minConfidence: v }))} label={t("settings.safety.confidence")} />
+          <NumberInput
+            value={m.minConfidence}
+            min={50}
+            max={100}
+            onChange={(v) => setM((x) => ({ ...x, minConfidence: v }))}
+            label={t("settings.safety.confidence")}
+          />
         </label>
       </div>
     </div>
@@ -538,10 +753,24 @@ function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
     <div className="card pad stack">
       <h2>{t("msearch.title")}</h2>
       <p className="muted small">{t("msearch.help")}</p>
-      <Toggle checked={m.enabled} onChange={(v) => (v ? setConfirm(true) : setM((x) => ({ ...x, enabled: false })))} label={t("msearch.enabled")} help={t("msearch.enabledHelp")} />
+      <Toggle
+        checked={m.enabled}
+        onChange={(v) => (v ? setConfirm(true) : setM((x) => ({ ...x, enabled: false })))}
+        label={t("msearch.enabled")}
+        help={t("msearch.enabledHelp")}
+      />
       {confirm && (
-        <Confirm title={t("msearch.confirmTitle")} confirmLabel={t("backlog.confirmOk")} onClose={() => setConfirm(false)} onConfirm={() => (setM((x) => ({ ...x, enabled: true })), setConfirm(false))}>
-          <p>{sum.data ? t("msearch.confirmBody", { released: sum.data.released, wanted: sum.data.wanted, perHour: m.perHour }) : t("app.loading")}</p>
+        <Confirm
+          title={t("msearch.confirmTitle")}
+          confirmLabel={t("backlog.confirmOk")}
+          onClose={() => setConfirm(false)}
+          onConfirm={() => (setM((x) => ({ ...x, enabled: true })), setConfirm(false))}
+        >
+          <p>
+            {sum.data
+              ? t("msearch.confirmBody", { released: sum.data.released, wanted: sum.data.wanted, perHour: m.perHour })
+              : t("app.loading")}
+          </p>
           <p className="muted small">{t("backlog.confirmSave")}</p>
         </Confirm>
       )}
@@ -549,15 +778,33 @@ function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
       <div className="form">
         <label>
           {t("msearch.delay")}
-          <NumberInput value={m.delayHours} min={0} max={168} onChange={(v) => setM((x) => ({ ...x, delayHours: v }))} label={t("msearch.delay")} />
+          <NumberInput
+            value={m.delayHours}
+            min={0}
+            max={168}
+            onChange={(v) => setM((x) => ({ ...x, delayHours: v }))}
+            label={t("msearch.delay")}
+          />
         </label>
         <label>
           {t("backlog.perHour")}
-          <NumberInput value={m.perHour} min={1} max={12} onChange={(v) => setM((x) => ({ ...x, perHour: v }))} label={t("backlog.perHour")} />
+          <NumberInput
+            value={m.perHour}
+            min={1}
+            max={12}
+            onChange={(v) => setM((x) => ({ ...x, perHour: v }))}
+            label={t("backlog.perHour")}
+          />
         </label>
         <label>
           {t("backlog.retryDays")}
-          <NumberInput value={m.retryDays} min={1} max={60} onChange={(v) => setM((x) => ({ ...x, retryDays: v }))} label={t("backlog.retryDays")} />
+          <NumberInput
+            value={m.retryDays}
+            min={1}
+            max={60}
+            onChange={(v) => setM((x) => ({ ...x, retryDays: v }))}
+            label={t("backlog.retryDays")}
+          />
         </label>
       </div>
     </div>
@@ -566,7 +813,18 @@ function MovieSearch({ s, upd }: { s: S; upd: Upd }) {
 
 /** Missing-episode search: off by default, rate-limited, with what it would do. */
 function Backlog({ s, upd }: { s: S; upd: Upd }) {
-  const sum = useLoad(() => api<{ missing: number; missingAll?: number; missingLive: number; liveShows: number; states: Record<string, number>; searchedLastHour: number }>("/backlog"), []);
+  const sum = useLoad(
+    () =>
+      api<{
+        missing: number;
+        missingAll?: number;
+        missingLive: number;
+        liveShows: number;
+        states: Record<string, number>;
+        searchedLastHour: number;
+      }>("/backlog"),
+    [],
+  );
   const [confirm, setConfirm] = useState(false);
   const b = s.backlog;
   const setB = (fn: (x: S["backlog"]) => S["backlog"]) => upd((x) => ({ ...x, backlog: fn(x.backlog) }));
@@ -575,43 +833,99 @@ function Backlog({ s, upd }: { s: S; upd: Upd }) {
     <div className="card pad stack">
       <h2>{t("backlog.title")}</h2>
       <p className="muted small">{t("backlog.help")}</p>
-      <Toggle checked={b.enabled} onChange={(v) => (v ? setConfirm(true) : setB((x) => ({ ...x, enabled: false })))} label={t("backlog.enabled")} help={t("backlog.enabledHelp")} />
+      <Toggle
+        checked={b.enabled}
+        onChange={(v) => (v ? setConfirm(true) : setB((x) => ({ ...x, enabled: false })))}
+        label={t("backlog.enabled")}
+        help={t("backlog.enabledHelp")}
+      />
       {confirm && (
-        <Confirm title={t("backlog.confirmTitle")} confirmLabel={t("backlog.confirmOk")} onClose={() => setConfirm(false)} onConfirm={() => (setB((x) => ({ ...x, enabled: true })), setConfirm(false))}>
+        <Confirm
+          title={t("backlog.confirmTitle")}
+          confirmLabel={t("backlog.confirmOk")}
+          onClose={() => setConfirm(false)}
+          onConfirm={() => (setB((x) => ({ ...x, enabled: true })), setConfirm(false))}
+        >
           <p>{t("backlog.confirmBody", { live: sum.data?.liveShows ?? 0, missing: sum.data?.missingLive ?? 0, perHour: b.perHour })}</p>
           <p className="muted small">{t("backlog.confirmSave")}</p>
         </Confirm>
       )}
-      <Toggle checked={!!b.wrongLanguage} onChange={(v) => setB((x) => ({ ...x, wrongLanguage: v }))} label={t("backlog.wrongLanguage")} help={t("backlog.wrongLanguageHelp")} />
+      <Toggle
+        checked={!!b.wrongLanguage}
+        onChange={(v) => setB((x) => ({ ...x, wrongLanguage: v }))}
+        label={t("backlog.wrongLanguage")}
+        help={t("backlog.wrongLanguageHelp")}
+      />
       {sum.data && (
         <p className="small">
-          {t("backlog.summary", { all: sum.data.missingAll ?? sum.data.missing, missing: sum.data.missing, queued: st.backlog ?? 0, wouldGrab: st["would-grab"] ?? 0, grabbed: st.grabbed ?? 0, hour: sum.data.searchedLastHour })}
+          {t("backlog.summary", {
+            all: sum.data.missingAll ?? sum.data.missing,
+            missing: sum.data.missing,
+            queued: st.backlog ?? 0,
+            wouldGrab: st["would-grab"] ?? 0,
+            grabbed: st.grabbed ?? 0,
+            hour: sum.data.searchedLastHour,
+          })}
         </p>
       )}
       <div className="form">
         <label>
           {t("backlog.perHour")}
-          <NumberInput value={b.perHour} min={1} max={24} onChange={(v) => setB((x) => ({ ...x, perHour: v }))} label={t("backlog.perHour")} />
+          <NumberInput
+            value={b.perHour}
+            min={1}
+            max={24}
+            onChange={(v) => setB((x) => ({ ...x, perHour: v }))}
+            label={t("backlog.perHour")}
+          />
         </label>
         <label>
           {t("backlog.retryDays")}
-          <NumberInput value={b.retryDays} min={1} max={60} onChange={(v) => setB((x) => ({ ...x, retryDays: v }))} label={t("backlog.retryDays")} />
+          <NumberInput
+            value={b.retryDays}
+            min={1}
+            max={60}
+            onChange={(v) => setB((x) => ({ ...x, retryDays: v }))}
+            label={t("backlog.retryDays")}
+          />
         </label>
       </div>
     </div>
   );
 }
 
-function MappingList({ value, onChange, title, help }: { value: PathMapping[]; onChange: (v: PathMapping[]) => void; title: string; help: string }) {
+function MappingList({
+  value,
+  onChange,
+  title,
+  help,
+}: {
+  value: PathMapping[];
+  onChange: (v: PathMapping[]) => void;
+  title: string;
+  help: string;
+}) {
   return (
     <div className="card pad stack">
       <h2>{title}</h2>
       <p className="muted small">{help}</p>
       {value.map((m, i) => (
         <div key={i} className="row">
-          <input className="grow" value={m.from} placeholder={t("settings.paths.from")} aria-label={t("settings.paths.from")} onChange={(e) => onChange(value.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)))} />
+          <input
+            className="grow"
+            value={m.from}
+            placeholder={t("settings.paths.from")}
+            aria-label={t("settings.paths.from")}
+            onChange={(e) => onChange(value.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)))}
+          />
           <span aria-hidden="true">→</span>
-          <input className="grow" value={m.to} placeholder={t("settings.paths.to")} aria-label={t("settings.paths.to")} onChange={(e) => onChange(value.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)))} />
+          <input
+            className="grow"
+            value={m.to}
+            placeholder={t("settings.paths.to")}
+            aria-label={t("settings.paths.to")}
+            onChange={(e) => onChange(value.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)))}
+          />
           <button className="small ghost" onClick={() => onChange(value.filter((_, j) => j !== i))}>
             {t("common.delete")}
           </button>
@@ -626,7 +940,6 @@ function MappingList({ value, onChange, title, help }: { value: PathMapping[]; o
 
 /** Plex: partial scans after AnimeArr's own imports and renames (token stored encrypted; read-only otherwise). */
 function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) {
-  const toast = useToast();
   const p = s.plex;
   const set = (patch: Partial<S["plex"]>) => upd((x) => ({ ...x, plex: { ...x.plex, ...patch } }));
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
@@ -638,8 +951,17 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
           className="small"
           onClick={async () => {
             try {
-              const r = await api<{ version: string; name: string; sections: { title: string; locations: string[] }[] }>("/test/plex", { body: { url: p.url, apiKey: p.token } });
-              setRes({ ok: true, text: t("plex.testOk", { name: r.name, version: r.version, libs: r.sections.map((x) => `${x.title} (${x.locations.join(", ")})`).join("; ") }) });
+              const r = await api<{ version: string; name: string; sections: { title: string; locations: string[] }[] }>("/test/plex", {
+                body: { url: p.url, apiKey: p.token },
+              });
+              setRes({
+                ok: true,
+                text: t("plex.testOk", {
+                  name: r.name,
+                  version: r.version,
+                  libs: r.sections.map((x) => `${x.title} (${x.locations.join(", ")})`).join("; "),
+                }),
+              });
             } catch (e) {
               // Shown under the form (a toast on top covered its buttons).
               setRes({ ok: false, text: (e as Error).message });
@@ -658,7 +980,12 @@ function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) 
         <label className="field">
           {t("plex.token")}
           <SecretInput value={p.token} onChange={(v) => set({ token: v })} label={t("plex.token")} />
-          <a className="small" href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noreferrer">
+          <a
+            className="small"
+            href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
+            target="_blank"
+            rel="noreferrer"
+          >
             {t("plex.tokenLink")} ↗
           </a>
         </label>
@@ -680,7 +1007,11 @@ function ServerCard({ k, s, upd }: { k: Exclude<MediaKey, "plex">; s: S; upd: Up
       <div className="form">
         <label>
           {t("settings.url")}
-          <input value={c.url} onChange={(e) => set({ url: e.target.value })} placeholder={k === "kodi" ? "http://192.168.1.10:8080" : "http://192.168.1.10:8096"} />
+          <input
+            value={c.url}
+            onChange={(e) => set({ url: e.target.value })}
+            placeholder={k === "kodi" ? "http://192.168.1.10:8080" : "http://192.168.1.10:8096"}
+          />
         </label>
         {k === "kodi" ? (
           <>
@@ -696,7 +1027,11 @@ function ServerCard({ k, s, upd }: { k: Exclude<MediaKey, "plex">; s: S; upd: Up
         ) : (
           <label className="field">
             {t("settings.apiKey")}
-            <SecretInput value={c.apiKey ?? ""} onChange={(v) => set({ apiKey: v })} label={`${k === "emby" ? "Emby" : "Jellyfin"} ${t("settings.apiKey")}`} />
+            <SecretInput
+              value={c.apiKey ?? ""}
+              onChange={(v) => set({ apiKey: v })}
+              label={`${k === "emby" ? "Emby" : "Jellyfin"} ${t("settings.apiKey")}`}
+            />
             <span className="muted small">{t(`media.keyWhere.${k}` as I18nKey)}</span>
           </label>
         )}
@@ -711,8 +1046,18 @@ function Paths({ s, upd }: { s: S; upd: Upd }) {
   return (
     <div className="stack">
       <p className="banner slim small">{t("paths.containerHint")}</p>
-      <MappingList value={s.localPathMappings} onChange={(v) => upd((x) => ({ ...x, localPathMappings: v }))} title={t("settings.paths.local")} help={t("settings.paths.localHelp")} />
-      <MappingList value={s.remotePathMappings} onChange={(v) => upd((x) => ({ ...x, remotePathMappings: v }))} title={t("settings.paths.remote")} help={t("settings.paths.remoteHelp")} />
+      <MappingList
+        value={s.localPathMappings}
+        onChange={(v) => upd((x) => ({ ...x, localPathMappings: v }))}
+        title={t("settings.paths.local")}
+        help={t("settings.paths.localHelp")}
+      />
+      <MappingList
+        value={s.remotePathMappings}
+        onChange={(v) => upd((x) => ({ ...x, remotePathMappings: v }))}
+        title={t("settings.paths.remote")}
+        help={t("settings.paths.remoteHelp")}
+      />
     </div>
   );
 }
@@ -746,7 +1091,8 @@ const JOB_NAMES: Record<string, I18nKey> = {
 };
 const jobName = (n: string) => (JOB_NAMES[n] ? t(JOB_NAMES[n]) : n);
 /** "the nightly backup from Oct 27, 9:29 AM" (local time), not the file name. */
-const backupLabel = (b: { kind: string; at: number }) => t("backup.label", { kind: t(`backup.kind.${b.kind}` as I18nKey), when: dateTime(b.at) });
+const backupLabel = (b: { kind: string; at: number }) =>
+  t("backup.label", { kind: t(`backup.kind.${b.kind}` as I18nKey), when: dateTime(b.at) });
 const fmtKb = (b: number) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 
 /** "Check for updates": asks GitHub which release is newest (read-only; being offline is said, not an error). */
@@ -760,9 +1106,16 @@ function UpdatesCheck() {
       onClick={async () => {
         setBusy(true);
         try {
-          const r = await api<{ current: string; latest: string | null; newer: boolean; url: string | null; offline: boolean }>("/system/updates");
+          const r = await api<{ current: string; latest: string | null; newer: boolean; url: string | null; offline: boolean }>(
+            "/system/updates",
+          );
           if (r.offline) toast(t("update.offline"));
-          else if (r.newer) toast(t("update.newer", { version: r.latest ?? "" }), false, r.url ? { label: t("update.see"), run: () => void window.open(r.url!, "_blank", "noopener") } : undefined);
+          else if (r.newer)
+            toast(
+              t("update.newer", { version: r.latest ?? "" }),
+              false,
+              r.url ? { label: t("update.see"), run: () => void window.open(r.url!, "_blank", "noopener") } : undefined,
+            );
           else toast(t("update.current", { version: r.current }));
         } catch (e) {
           toast((e as Error).message, true);
@@ -779,7 +1132,21 @@ function UpdatesCheck() {
 /** Own metadata: what the catalog knows, optional provider keys. */
 function Metadata({ s, upd }: { s: S; upd: Upd }) {
   const toast = useToast();
-  const d = useLoad(() => api<{ entries: number; franchises: number; episodes: number; withTitles: number; withoutTvdb: number; donghua: number; providers: Record<string, boolean>; pending: Record<string, boolean>; lastJob: { state: string; detail: string } | null }>("/catalog"), []);
+  const d = useLoad(
+    () =>
+      api<{
+        entries: number;
+        franchises: number;
+        episodes: number;
+        withTitles: number;
+        withoutTvdb: number;
+        donghua: number;
+        providers: Record<string, boolean>;
+        pending: Record<string, boolean>;
+        lastJob: { state: string; detail: string } | null;
+      }>("/catalog"),
+    [],
+  );
   const m = s.metadata;
   const setM = (fn: (x: S["metadata"]) => S["metadata"]) => upd((x) => ({ ...x, metadata: fn(x.metadata) }));
   return (
@@ -792,7 +1159,14 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
             <p className="small">{t("meta.counts", { entries: d.data.entries, episodes: d.data.episodes })}</p>
             <details className="small muted">
               <summary>{t("common.details")}</summary>
-              {t("meta.countsDetail", { entries: d.data.entries, franchises: d.data.franchises, episodes: d.data.episodes, titles: d.data.withTitles, noTvdb: d.data.withoutTvdb, donghua: d.data.donghua })}
+              {t("meta.countsDetail", {
+                entries: d.data.entries,
+                franchises: d.data.franchises,
+                episodes: d.data.episodes,
+                titles: d.data.withTitles,
+                noTvdb: d.data.withoutTvdb,
+                donghua: d.data.donghua,
+              })}
             </details>
             {d.data.lastJob && <p className="small muted">{d.data.lastJob.detail}</p>}
             <div className="chips">
@@ -859,7 +1233,13 @@ function Metadata({ s, upd }: { s: S; upd: Upd }) {
         </label>
         <label>
           {t("meta.anidbVer")}
-          <NumberInput value={m.anidbClientVer} min={1} max={99} onChange={(v) => setM((x) => ({ ...x, anidbClientVer: v }))} label={t("meta.anidbVer")} />
+          <NumberInput
+            value={m.anidbClientVer}
+            min={1}
+            max={99}
+            onChange={(v) => setM((x) => ({ ...x, anidbClientVer: v }))}
+            label={t("meta.anidbVer")}
+          />
         </label>
         <label>
           {t("meta.tvdb")}
@@ -889,7 +1269,22 @@ function ImportFoldersCard() {
 /** AnimeArr's own file records: what was scanned, problems found, scan now. */
 function LibraryFiles() {
   const toast = useToast();
-  const d = useLoad(() => api<{ roots: string[]; byRoot: { root: string; n: number; bytes: number }[]; total: number; probed: number; errors: number; errorSamples: { path: string; error: string }[]; forcedOnlyEnglish: number; forcedSamples: string[]; lastScan: { state: string; detail: string } | null; progress: { phase: string; done: number; total: number; running: boolean } }>("/files/summary"), []);
+  const d = useLoad(
+    () =>
+      api<{
+        roots: string[];
+        byRoot: { root: string; n: number; bytes: number }[];
+        total: number;
+        probed: number;
+        errors: number;
+        errorSamples: { path: string; error: string }[];
+        forcedOnlyEnglish: number;
+        forcedSamples: string[];
+        lastScan: { state: string; detail: string } | null;
+        progress: { phase: string; done: number; total: number; running: boolean };
+      }>("/files/summary"),
+    [],
+  );
   usePoll(d.reload, 5000, !!d.data?.progress.running);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return null;
@@ -900,7 +1295,11 @@ function LibraryFiles() {
       <p className="muted small">{t("files.help")}</p>
       {x.lastScan && <p className="small muted">{t("files.last", { detail: x.lastScan.detail })}</p>}
       <p className="small">{t("files.counts", { total: x.total, probed: x.probed, errors: x.errors })}</p>
-      {x.progress.running && <p className="small">{x.progress.phase === "walking" ? t("files.walking") : t("files.probing", { done: x.progress.done, total: x.progress.total })}</p>}
+      {x.progress.running && (
+        <p className="small">
+          {x.progress.phase === "walking" ? t("files.walking") : t("files.probing", { done: x.progress.done, total: x.progress.total })}
+        </p>
+      )}
       <ul className="plain small">
         {x.roots.map((r) => {
           const b = x.byRoot.find((y) => y.root === r);
@@ -914,7 +1313,11 @@ function LibraryFiles() {
       {x.forcedOnlyEnglish > 0 && (
         <details>
           <summary className="warn-text small">{t("files.forcedOnly", { n: x.forcedOnlyEnglish })}</summary>
-          <ul className="plain small mono">{x.forcedSamples.map((p) => <li key={p}>{p}</li>)}</ul>
+          <ul className="plain small mono">
+            {x.forcedSamples.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
         </details>
       )}
       {x.errors > 0 && (
@@ -927,7 +1330,15 @@ function LibraryFiles() {
               if (plain !== e.error) rememberDetail(plain, e.error);
               return (
                 <li key={e.path}>
-                  <span className="mono">{e.path}</span> · {plain === e.error ? e.error : <details className="error-details"><summary>{plain}</summary><code>{e.error}</code></details>}
+                  <span className="mono">{e.path}</span> ·{" "}
+                  {plain === e.error ? (
+                    e.error
+                  ) : (
+                    <details className="error-details">
+                      <summary>{plain}</summary>
+                      <code>{e.error}</code>
+                    </details>
+                  )}
                 </li>
               );
             })}
@@ -1000,7 +1411,8 @@ function System({ status }: { status: Status }) {
         <ul className="plain stack">
           {x.jobs.map((j) => (
             <li key={j.name}>
-              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{jobName(j.name)}</Chip> <span className="small">{j.state === "error" ? <ErrorText msg={j.detail} /> : j.detail}</span>{" "}
+              <Chip tone={j.state === "error" ? "bad" : j.state === "running" ? "warn" : "good"}>{jobName(j.name)}</Chip>{" "}
+              <span className="small">{j.state === "error" ? <ErrorText msg={j.detail} /> : j.detail}</span>{" "}
               {j.finishedAt && <span className="muted small">· {relTime(j.finishedAt)}</span>}
             </li>
           ))}
@@ -1013,7 +1425,10 @@ function System({ status }: { status: Status }) {
           <summary>{t("common.details")}</summary>
           AniDB {x.metadata.anidb.count} · Anime-Lists {x.metadata.animeLists.count} · {x.aliasKeys} alias keys · {x.memoryMb} MB
         </details>
-        <button className="small self-start" onClick={() => act(() => api("/system/metadata", { body: {} }), t("settings.system.refreshing"))}>
+        <button
+          className="small self-start"
+          onClick={() => act(() => api("/system/metadata", { body: {} }), t("settings.system.refreshing"))}
+        >
           {t("settings.system.refreshMeta")}
         </button>
       </div>
@@ -1118,7 +1533,6 @@ function System({ status }: { status: Status }) {
   );
 }
 
-
 function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: () => void }) {
   const toast = useToast();
   // Still the default login: the current password is known, so it's filled in (one less thing to type).
@@ -1171,7 +1585,14 @@ function Security({ s, status, onChanged }: { s: S; status: Status; onChanged: (
           </label>
           <label>
             {t("security.confirm")}
-            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" minLength={8} required />
+            <input
+              type="password"
+              value={pw2}
+              onChange={(e) => setPw2(e.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
           </label>
         </div>
         <button className="primary self-start">{t("common.save")}</button>
@@ -1194,7 +1615,9 @@ function ApiKeyCard() {
   const [key, setKey] = useState<string | null | undefined>(undefined);
   const [ask, setAsk] = useState(false);
   useEffect(() => {
-    void api<{ apiKey: string | null }>("/settings/apikey").then((r) => setKey(r.apiKey)).catch(() => setKey(null));
+    void api<{ apiKey: string | null }>("/settings/apikey")
+      .then((r) => setKey(r.apiKey))
+      .catch(() => setKey(null));
   }, []);
   return (
     <div className="card pad stack">
@@ -1204,7 +1627,10 @@ function ApiKeyCard() {
       {key && (
         <div className="row">
           <SecretInput value={key} onChange={() => undefined} label={t("apikey.title")} />
-          <button type="button" className="small" onClick={async () => {
+          <button
+            type="button"
+            className="small"
+            onClick={async () => {
               const ok = await copyText(key);
               toast(ok ? t("apikey.copied") : t("apikey.copyFailed"), !ok);
             }}
@@ -1241,7 +1667,9 @@ function ApiKeyCard() {
 /** Text size, per device (this browser), with an optional "save as my default" for new devices. */
 function TextSize() {
   const toast = useToast();
-  const [k, setK] = useState(() => store.get<string | null>("textScale", null) ?? (window as unknown as { __textScaleDefault?: string }).__textScaleDefault ?? "md");
+  const [k, setK] = useState(
+    () => store.get<string | null>("textScale", null) ?? (window as unknown as { __textScaleDefault?: string }).__textScaleDefault ?? "md",
+  );
   const pick = (v: string) => {
     setK(v);
     store.set("textScale", v);
@@ -1335,7 +1763,12 @@ function ExtensionsInput({ value, onChange, disabled }: { value: string[]; onCha
       disabled={disabled}
       onChange={(e) => {
         setText(e.target.value);
-        onChange(e.target.value.split(/[\s,]+/).map((v) => v.replace(/^\./, "").toLowerCase()).filter(Boolean));
+        onChange(
+          e.target.value
+            .split(/[\s,]+/)
+            .map((v) => v.replace(/^\./, "").toLowerCase())
+            .filter(Boolean),
+        );
       }}
       onBlur={() => setText(value.join(" "))}
     />

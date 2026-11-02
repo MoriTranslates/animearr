@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings } = await import("../server/settings.js");
-const { toPlexPath, sectionFor, notifyPlex, flush } = await import("../server/plex.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { toPlexPath, sectionFor, notifyPlex, flush } = await import("../server/media/plex.js");
 
 const sections = [
   { key: "1", title: "Anime", type: "show", locations: ["/data/Anime"] },
@@ -18,7 +18,10 @@ const sections = [
 ];
 
 test("AnimeArr paths map to Plex paths (longest prefix) and to the right library", () => {
-  const maps = [{ from: "/media/Anime", to: "/data/Anime" }, { from: "/media/Movies", to: "/data/Movies" }];
+  const maps = [
+    { from: "/media/Anime", to: "/data/Anime" },
+    { from: "/media/Movies", to: "/data/Movies" },
+  ];
   assert.equal(toPlexPath("/media/Anime/Frieren/Season 1", maps), "/data/Anime/Frieren/Season 1");
   assert.equal(toPlexPath("/elsewhere/x", maps), "/elsewhere/x");
   assert.equal(sectionFor("/data/Movies/Anime/Suzume (2022)", sections)?.title, "Anime Movies", "the most specific library wins");
@@ -30,7 +33,10 @@ test("notify: nothing unless switched on; then one scan per folder, batched", as
   const deps = { sections: async () => sections, refresh: async (k: string, p: string) => void calls.push(`${k}:${p}`) };
   notifyPlex(["/media/Anime/Frieren/Season 1"], deps, 1);
   assert.deepEqual(await flush(deps), []);
-  patchSettings((s) => ({ ...s, plex: { url: "http://plex:32400", token: "t0k3n", enabled: true, pathMappings: [{ from: "/media", to: "/data" }] } }));
+  patchSettings((s) => ({
+    ...s,
+    plex: { url: "http://plex:32400", token: "t0k3n", enabled: true, pathMappings: [{ from: "/media", to: "/data" }] },
+  }));
   notifyPlex(["/media/Anime/Frieren/Season 1", "/media/Anime/Frieren/Season 1/", "/media/Unknown/x"], deps, 60_000);
   const out = await flush(deps);
   assert.deepEqual(calls, ["1:/data/Anime/Frieren/Season 1"]);
@@ -38,7 +44,7 @@ test("notify: nothing unless switched on; then one scan per folder, batched", as
 });
 
 test("notify: more folders than the bulk limit scan each library once", async () => {
-  const { BULK_SCAN_FOLDERS } = await import("../server/plex.js");
+  const { BULK_SCAN_FOLDERS } = await import("../server/media/plex.js");
   const calls: string[] = [];
   const deps = { sections: async () => sections, refresh: async (k: string, p?: string) => void calls.push(`${k}:${p ?? "*"}`) };
   const many = Array.from({ length: BULK_SCAN_FOLDERS + 1 }, (_, i) => `/media/Anime/Show ${i}`);

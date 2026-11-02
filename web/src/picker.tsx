@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, store, sxe } from "./api";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { airLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "./episodes";
 import { t } from "./i18n";
 import { Cover, Empty, Spinner, useLoad } from "./ui";
 
-export interface PickedShow { tvdbId: number; title: string; cover?: string | null; year?: number | null; status?: string }
+export interface PickedShow {
+  tvdbId: number;
+  title: string;
+  cover?: string | null;
+  year?: number | null;
+  status?: string;
+}
 
 /** Show autocomplete with poster thumbs, year and status. */
 export function ShowPicker({ onPick }: { onPick: (s: PickedShow) => void }) {
@@ -15,7 +21,13 @@ export function ShowPicker({ onPick }: { onPick: (s: PickedShow) => void }) {
   useEffect(() => {
     if (!q.trim()) return setList([]);
     const ac = new AbortController();
-    const id = setTimeout(() => void api<PickedShow[]>(`/series?q=${encodeURIComponent(q)}`, { signal: ac.signal }).then((x) => (setList(x.slice(0, 8)), setActive(0))).catch(() => undefined), 180);
+    const id = setTimeout(
+      () =>
+        void api<PickedShow[]>(`/series?q=${encodeURIComponent(q)}`, { signal: ac.signal })
+          .then((x) => (setList(x.slice(0, 8)), setActive(0)))
+          .catch(() => undefined),
+      180,
+    );
     return () => (clearTimeout(id), ac.abort());
   }, [q]);
   const pick = (s: PickedShow) => (onPick(s), setList([]), setQ(""));
@@ -45,7 +57,9 @@ export function ShowPicker({ onPick }: { onPick: (s: PickedShow) => void }) {
                 <span className="picker-text">
                   <span className="strong clamp2">{s.title}</span>
                   <span className="muted small">
-                    {[s.year, s.status === "continuing" ? t("series.airing") : s.status === "ended" ? t("series.ended") : s.status].filter(Boolean).join(" · ")}
+                    {[s.year, s.status === "continuing" ? t("series.airing") : s.status === "ended" ? t("series.ended") : s.status]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </span>
               </button>
@@ -68,7 +82,21 @@ type View = { kind: "missing" } | { kind: "season"; n: number } | { kind: "abs";
  * Pick episodes of a show: a season (with counts) or "all missing", missing-only by default, checkboxes with
  * shift-click ranges and a quick range box, then ⚡ automatic or 🔍 interactive from a sticky bar.
  */
-export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, noAuto = false }: { show: PickedShow; initial?: number[]; dryRun: boolean; onChange: () => void; onInteractive: (ids: number[]) => void; noAuto?: boolean }) {
+export function EpisodePicker({
+  show,
+  initial,
+  dryRun,
+  onChange,
+  onInteractive,
+  noAuto = false,
+}: {
+  show: PickedShow;
+  initial?: number[];
+  dryRun: boolean;
+  onChange: () => void;
+  onInteractive: (ids: number[]) => void;
+  noAuto?: boolean;
+}) {
   const d = useLoad(() => api<ShowData>(`/series/${show.tvdbId}`), [show.tvdbId]);
   const [sel, setSel] = useState<Set<number>>(new Set(initial ?? []));
   const [missingOnly, setMissingOnly] = useState(true);
@@ -89,7 +117,8 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
   useEffect(() => {
     if (!d.data || view) return;
     const first = rows.find((r) => sel.has(r.id));
-    if (first && absOn && first.season > 0 && first.absolute) setView({ kind: "abs", from: Math.floor((first.absolute - 1) / 50) * 50 + 1 });
+    if (first && absOn && first.season > 0 && first.absolute)
+      setView({ kind: "abs", from: Math.floor((first.absolute - 1) / 50) * 50 + 1 });
     else if (first) setView({ kind: "season", n: first.season });
     else if (absOn) setView({ kind: "abs", from: 1 });
     else if (missingRows.length) setView({ kind: "missing" });
@@ -112,9 +141,11 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
     const on = !n.has(r.id);
     const a = shift && last.current !== null ? shown.findIndex((y) => y.id === last.current) : -1;
     const b = shown.findIndex((y) => y.id === r.id);
-    if (a >= 0 && b >= 0) for (const y of shown.slice(Math.min(a, b), Math.max(a, b) + 1)) if (!y.movie) on ? n.add(y.id) : n.delete(y.id);
-    else if (on) n.add(r.id);
-    else n.delete(r.id);
+    if (a >= 0 && b >= 0)
+      for (const y of shown.slice(Math.min(a, b), Math.max(a, b) + 1))
+        if (!y.movie) on ? n.add(y.id) : n.delete(y.id);
+        else if (on) n.add(r.id);
+        else n.delete(r.id);
     last.current = r.id;
     setSel(n);
   };
@@ -134,7 +165,13 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
     setRange("");
   };
   const picked = rows.filter((r) => sel.has(r.id));
-  const actions = useEpisodeActions({ tvdbId: show.tvdbId, episodes: picked.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone: () => (void d.reload(), onChange()) });
+  const actions = useEpisodeActions({
+    tvdbId: show.tvdbId,
+    episodes: picked.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })),
+    managedLive: false,
+    dryRun,
+    onDone: () => (void d.reload(), onChange()),
+  });
 
   if (d.error) return <p className="error">{d.error}</p>;
   if (!d.data || !view) return <Spinner label={t("app.loading")} />;
@@ -149,7 +186,9 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
           <Link to={`/show/${show.tvdbId}`} className="strong clamp2">
             {h.title}
           </Link>
-          <span className="muted small">{t("picker.counts", { have: h.counts.have, aired: h.counts.aired, missing: h.counts.missing })}</span>
+          <span className="muted small">
+            {t("picker.counts", { have: h.counts.have, aired: h.counts.aired, missing: h.counts.missing })}
+          </span>
         </div>
       </div>
       <div className="row picker-controls">
@@ -158,19 +197,34 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
           aria-label={t("picker.which")}
           onChange={(e) => {
             const v = e.target.value;
-            setView(v === "missing" ? { kind: "missing" } : v.startsWith("abs:") ? { kind: "abs", from: Number(v.slice(4)) } : { kind: "season", n: Number(v.slice(2)) });
+            setView(
+              v === "missing"
+                ? { kind: "missing" }
+                : v.startsWith("abs:")
+                  ? { kind: "abs", from: Number(v.slice(4)) }
+                  : { kind: "season", n: Number(v.slice(2)) },
+            );
           }}
         >
           <option value="missing">{t("picker.allMissing", { n: missingRows.length })}</option>
           {absOn
             ? Array.from({ length: Math.ceil(maxAbs / 50) }, (_, i) => i * 50 + 1).map((from) => (
                 <option key={from} value={`abs:${from}`}>
-                  {t("picker.absRange", { from, to: Math.min(from + 49, maxAbs), missing: rows.filter((r) => r.absolute && r.absolute >= from && r.absolute < from + 50 && r.status === "missing").length })}
+                  {t("picker.absRange", {
+                    from,
+                    to: Math.min(from + 49, maxAbs),
+                    missing: rows.filter((r) => r.absolute && r.absolute >= from && r.absolute < from + 50 && r.status === "missing")
+                      .length,
+                  })}
                 </option>
               ))
             : seasons.map(([n, list]) => (
                 <option key={n} value={`s:${n}`}>
-                  {t(n === 0 ? "picker.specials" : "picker.season", { n, eps: list.length, missing: list.filter((r) => r.status === "missing" && !r.movie).length })}
+                  {t(n === 0 ? "picker.specials" : "picker.season", {
+                    n,
+                    eps: list.length,
+                    missing: list.filter((r) => r.status === "missing" && !r.movie).length,
+                  })}
                 </option>
               ))}
           {absOn &&
@@ -210,12 +264,23 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
           {t("picker.none")}
         </button>
         <form className="row" onSubmit={(e) => (e.preventDefault(), applyRange())}>
-          <input className="range-input" disabled={view.kind === "missing" && !absOn} value={range} onChange={(e) => setRange(e.target.value)} placeholder={absOn ? t("picker.rangeAbs") : t("picker.range")} aria-label={t("picker.rangeLabel")} />
+          <input
+            className="range-input"
+            disabled={view.kind === "missing" && !absOn}
+            value={range}
+            onChange={(e) => setRange(e.target.value)}
+            placeholder={absOn ? t("picker.rangeAbs") : t("picker.range")}
+            aria-label={t("picker.rangeLabel")}
+          />
         </form>
       </div>
       {!shown.length ? (
         <Empty>
-          {view.kind === "missing" ? t("picker.nothingMissingShow") : t("picker.nothingMissing", { what: view.kind === "season" ? (view.n === 0 ? t("series.specials") : t("common.season", { n: view.n })) : "" })}
+          {view.kind === "missing"
+            ? t("picker.nothingMissingShow")
+            : t("picker.nothingMissing", {
+                what: view.kind === "season" ? (view.n === 0 ? t("series.specials") : t("common.season", { n: view.n })) : "",
+              })}
           {missingOnly && view.kind !== "missing" && allInView.length > 0 && (
             <>
               {" · "}
@@ -230,7 +295,13 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
           {shown.map((r) => (
             <li key={r.id} className={`ep-row${sel.has(r.id) ? " selected" : ""}`}>
               <label className="ep-main picker-row" onClick={(e) => (e.preventDefault(), !r.movie && toggle(r, e.shiftKey))}>
-                <input type="checkbox" checked={sel.has(r.id)} disabled={!!r.movie} readOnly aria-label={`${sxe(r.season, r.episode)} ${r.title ?? ""}`} />
+                <input
+                  type="checkbox"
+                  checked={sel.has(r.id)}
+                  disabled={!!r.movie}
+                  readOnly
+                  aria-label={`${sxe(r.season, r.episode)} ${r.title ?? ""}`}
+                />
                 <span className="ep-num">{num(r)}</span>
                 <span className="ep-text">
                   <span className="ep-title clamp2" title={r.title ?? undefined}>
@@ -239,7 +310,9 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
                   </span>
                   <span className="ep-meta muted small">{airLabel(r.airUtc)}</span>
                 </span>
-                <span className="ep-status">{r.movie ? <span className="chip info">🎬 {t("ep.movieChip")}</span> : <StatusPill e={r} />}</span>
+                <span className="ep-status">
+                  {r.movie ? <span className="chip info">🎬 {t("ep.movieChip")}</span> : <StatusPill e={r} />}
+                </span>
               </label>
             </li>
           ))}
@@ -247,7 +320,10 @@ export function EpisodePicker({ show, initial, dryRun, onChange, onInteractive, 
       )}
       {!!picked.length && (
         <div className="bulkbar card picker-bar">
-          <span>{t("ep.selected", { n: picked.length })}{picked.length > 26 ? ` · ${t("auto.first26")}` : ""}</span>
+          <span>
+            {t("ep.selected", { n: picked.length })}
+            {picked.length > 26 ? ` · ${t("auto.first26")}` : ""}
+          </span>
           <div className="row">
             {/* Replace season: an automatic search would grab per episode, not replace the season. */}
             {!noAuto && (

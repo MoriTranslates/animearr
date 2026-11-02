@@ -4,14 +4,41 @@ import { t, type I18nKey } from "./i18n";
 import { Chip, ErrorBox, NumberInput, Spinner, Toggle, useLoad, useToast } from "./ui";
 
 type Upd = (fn: (x: S) => S) => void;
-export interface FolderRule { id: string; name: string; metric: "sizeGb" | "items"; threshold: number; action: "pauseUntilUnder" | "pauseUntilCleared" | "pauseAndClean"; resumeAt: number | null; scope: "shows" | "movies" | "both"; applies: "all" | "backlog"; enabled: boolean }
+export interface FolderRule {
+  id: string;
+  name: string;
+  metric: "sizeGb" | "items";
+  threshold: number;
+  action: "pauseUntilUnder" | "pauseUntilCleared" | "pauseAndClean";
+  resumeAt: number | null;
+  scope: "shows" | "movies" | "both";
+  applies: "all" | "backlog";
+  enabled: boolean;
+}
 interface Status {
-  measure: { byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>; disk: { totalGb: number; freeGb: number; animearrGb: number; otherGb: number; label: string; share: { freeGb: number; totalGb: number } | null } | null; errors: string[] } | null;
+  measure: {
+    byScope: Record<"shows" | "movies" | "both", { sizeGb: number; items: number }>;
+    disk: {
+      totalGb: number;
+      freeGb: number;
+      animearrGb: number;
+      otherGb: number;
+      label: string;
+      share: { freeGb: number; totalGb: number } | null;
+    } | null;
+    errors: string[];
+  } | null;
   rules: { id: string; paused: boolean; value: number }[];
   why: string | null;
   presets: Record<string, Omit<FolderRule, "id">[]>;
 }
-interface Action { step: "retry" | "leftover" | "quarantine"; target: string; why: string; bytes: number; destructive: boolean }
+interface Action {
+  step: "retry" | "leftover" | "quarantine";
+  target: string;
+  why: string;
+  bytes: number;
+  destructive: boolean;
+}
 
 const GB = 1024 ** 3;
 
@@ -21,7 +48,8 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
   const set = (patch: Partial<S["downloads"]>) => upd((x) => ({ ...x, downloads: { ...x.downloads, ...patch } }));
   const st = useLoad(() => api<Status>("/downloads/status"), []);
   const setRule = (id: string, patch: Partial<FolderRule>) => set({ rules: d.rules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
-  const addRules = (list: Omit<FolderRule, "id">[]) => set({ rules: [...d.rules, ...list.map((r, i) => ({ ...r, id: `rule-${Date.now().toString(36)}-${i}` }))] });
+  const addRules = (list: Omit<FolderRule, "id">[]) =>
+    set({ rules: [...d.rules, ...list.map((r, i) => ({ ...r, id: `rule-${Date.now().toString(36)}-${i}` }))] });
   return (
     <div className="stack">
       <div className="card pad stack">
@@ -31,12 +59,24 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
         {st.data?.measure && (
           <>
             <p className="small">
-              {t("dl.counts", { size: st.data.measure.byScope.both.sizeGb.toFixed(1), items: st.data.measure.byScope.both.items, shows: st.data.measure.byScope.shows.sizeGb.toFixed(1), movies: st.data.measure.byScope.movies.sizeGb.toFixed(1) })}
+              {t("dl.counts", {
+                size: st.data.measure.byScope.both.sizeGb.toFixed(1),
+                items: st.data.measure.byScope.both.items,
+                shows: st.data.measure.byScope.shows.sizeGb.toFixed(1),
+                movies: st.data.measure.byScope.movies.sizeGb.toFixed(1),
+              })}
             </p>
             {st.data.measure.disk && (
               <p className="small muted">
-                {t("dl.disk", { label: st.data.measure.disk.label, free: Math.round(st.data.measure.disk.freeGb), ours: Math.round(st.data.measure.disk.animearrGb), other: Math.round(st.data.measure.disk.otherGb) })}
-                {st.data.measure.disk.share ? ` · ${t("dl.diskArray", { free: (st.data.measure.disk.share.freeGb / 1024).toFixed(1) })}` : ""}
+                {t("dl.disk", {
+                  label: st.data.measure.disk.label,
+                  free: Math.round(st.data.measure.disk.freeGb),
+                  ours: Math.round(st.data.measure.disk.animearrGb),
+                  other: Math.round(st.data.measure.disk.otherGb),
+                })}
+                {st.data.measure.disk.share
+                  ? ` · ${t("dl.diskArray", { free: (st.data.measure.disk.share.freeGb / 1024).toFixed(1) })}`
+                  : ""}
               </p>
             )}
             {st.data.measure.errors.map((e) => (
@@ -46,7 +86,9 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
             ))}
           </>
         )}
-        {st.data && <Chip tone={st.data.why ? "warn" : "good"}>{st.data.why ? t("dl.paused", { why: st.data.why }) : t("dl.running")}</Chip>}
+        {st.data && (
+          <Chip tone={st.data.why ? "warn" : "good"}>{st.data.why ? t("dl.paused", { why: st.data.why }) : t("dl.running")}</Chip>
+        )}
       </div>
 
       <div className="card pad form">
@@ -61,7 +103,12 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
           <input value={d.freeSpacePath} onChange={(e) => set({ freeSpacePath: e.target.value })} placeholder={t("dl.freePathAuto")} />
           <span className="muted small">{t("dl.freePathHelp")}</span>
         </label>
-        <Toggle checked={d.excludeSeeding} onChange={(v) => set({ excludeSeeding: v })} label={t("dl.excludeSeeding")} help={t("dl.excludeSeedingHelp")} />
+        <Toggle
+          checked={d.excludeSeeding}
+          onChange={(v) => set({ excludeSeeding: v })}
+          label={t("dl.excludeSeeding")}
+          help={t("dl.excludeSeedingHelp")}
+        />
       </div>
 
       <div className="card pad stack">
@@ -88,11 +135,25 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
               </label>
               <label>
                 {t(r.metric === "items" ? "dl.thresholdItems" : "dl.thresholdGb")}
-                <NumberInput value={r.threshold} min={0} max={1000000} onChange={(v) => setRule(r.id, { threshold: v })} label={t(r.metric === "items" ? "dl.thresholdItems" : "dl.thresholdGb")} />
+                <NumberInput
+                  value={r.threshold}
+                  min={0}
+                  max={1000000}
+                  onChange={(v) => setRule(r.id, { threshold: v })}
+                  label={t(r.metric === "items" ? "dl.thresholdItems" : "dl.thresholdGb")}
+                />
               </label>
               <label>
                 {t("dl.then")}
-                <select value={r.action} onChange={(e) => setRule(r.id, { action: e.target.value as FolderRule["action"], resumeAt: e.target.value === "pauseUntilCleared" ? (r.resumeAt ?? Math.round(r.threshold * 0.8)) : r.resumeAt })}>
+                <select
+                  value={r.action}
+                  onChange={(e) =>
+                    setRule(r.id, {
+                      action: e.target.value as FolderRule["action"],
+                      resumeAt: e.target.value === "pauseUntilCleared" ? (r.resumeAt ?? Math.round(r.threshold * 0.8)) : r.resumeAt,
+                    })
+                  }
+                >
                   {(["pauseUntilUnder", "pauseUntilCleared", "pauseAndClean"] as const).map((a) => (
                     <option key={a} value={a}>
                       {t(`dl.action.${a}` as I18nKey)}
@@ -103,7 +164,13 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
               {r.action === "pauseUntilCleared" && (
                 <label>
                   {t("dl.resumeAt")}
-                  <NumberInput value={r.resumeAt ?? r.threshold} min={0} max={1000000} onChange={(v) => setRule(r.id, { resumeAt: v })} label={t("dl.resumeAt")} />
+                  <NumberInput
+                    value={r.resumeAt ?? r.threshold}
+                    min={0}
+                    max={1000000}
+                    onChange={(v) => setRule(r.id, { resumeAt: v })}
+                    label={t("dl.resumeAt")}
+                  />
                 </label>
               )}
               <label>
@@ -130,7 +197,23 @@ export function DownloadRules({ s, upd }: { s: S; upd: Upd }) {
           );
         })}
         <div className="row">
-          <button className="small" onClick={() => addRules([{ name: t("dl.newRule"), metric: "sizeGb", threshold: 200, action: "pauseUntilUnder", resumeAt: null, scope: "both", applies: "all", enabled: true }])}>
+          <button
+            className="small"
+            onClick={() =>
+              addRules([
+                {
+                  name: t("dl.newRule"),
+                  metric: "sizeGb",
+                  threshold: 200,
+                  action: "pauseUntilUnder",
+                  resumeAt: null,
+                  scope: "both",
+                  applies: "all",
+                  enabled: true,
+                },
+              ])
+            }
+          >
             + {t("dl.addRule")}
           </button>
           {st.data &&
@@ -191,12 +274,15 @@ function Cleanup({ s, set, onRan }: { s: S; set: (p: Partial<S["downloads"]>) =>
           {plan.actions.map((a) => (
             <li key={`${a.step}:${a.target}`} className="stack">
               <span>
-                <Chip tone={a.destructive ? "warn" : "info"}>{t(`dl.step.${a.step}` as I18nKey)}</Chip> <span className="mono">{a.target.split("/").pop()}</span> {a.bytes ? `· ${fmtSize(a.bytes)}` : ""}
+                <Chip tone={a.destructive ? "warn" : "info"}>{t(`dl.step.${a.step}` as I18nKey)}</Chip>{" "}
+                <span className="mono">{a.target.split("/").pop()}</span> {a.bytes ? `· ${fmtSize(a.bytes)}` : ""}
               </span>
               <span className="muted">{a.why}</span>
             </li>
           ))}
-          <li className="muted">{t("dl.total", { gb: (plan.actions.filter((a) => a.destructive).reduce((x, a) => x + a.bytes, 0) / GB).toFixed(1) })}</li>
+          <li className="muted">
+            {t("dl.total", { gb: (plan.actions.filter((a) => a.destructive).reduce((x, a) => x + a.bytes, 0) / GB).toFixed(1) })}
+          </li>
         </ul>
       )}
       {plan && plan.actions.length > 0 && d.cleanup !== "off" && (

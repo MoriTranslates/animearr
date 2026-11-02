@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, type SearchResponse, type SearchResult } from "../api";
 import { EpisodePicker, ShowPicker, type PickedShow } from "../picker";
-import { Link, query } from "../App";
+import { Link, query } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { compareQuality, libraryQuality, qualityName, splitPacks, type LibraryQuality, type Pack, type Quality } from "../packs";
 import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
@@ -33,7 +33,9 @@ function DeepSearch() {
   const status = useLoad(() => api<{ dryRun: boolean }>("/status"), []);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<SearchResponse | null>(null);
-  const [partial, setPartial] = useState<{ searched: number; total: number; tier: number; found: number; results: SearchResult[] } | null>(null);
+  const [partial, setPartial] = useState<{ searched: number; total: number; tier: number; found: number; results: SearchResult[] } | null>(
+    null,
+  );
   const [err, setErr] = useState<string | null>(null);
   const [grab, setGrab] = useState<SearchResult | null>(null);
   // Replace season (from the season's ⋯ menu): a pack replaces every selected episode, old files go to the bin.
@@ -41,7 +43,12 @@ function DeepSearch() {
   const [replace, setReplace] = useState(replaceMode);
   const [tab, setTab] = useState<"packs" | "singles" | null>(null);
   const [have, setHave] = useState<LibraryQuality | null>(null);
-  const season = replaceMode && qp.has("season") ? Number(qp.get("season")) : res && new Set(res.targets.map((x) => x.season)).size === 1 && res.targets.some((x) => x.hasFile) ? res.targets[0].season : null;
+  const season =
+    replaceMode && qp.has("season")
+      ? Number(qp.get("season"))
+      : res && new Set(res.targets.map((x) => x.season)).size === 1 && res.targets.some((x) => x.hasFile)
+        ? res.targets[0].season
+        : null;
   const haveFor = res?.series.tvdbId ?? Number(qp.get("tvdbId"));
   // What the season has now, for "better than what you have" on each result.
   useEffect(() => {
@@ -90,7 +97,13 @@ function DeepSearch() {
       const { jobId } = await api<{ jobId: string }>("/search/start", { body: { tvdbId, episodeIds: ids, full, packs: replaceMode } });
       for (;;) {
         await new Promise((r) => setTimeout(r, 700));
-        const j = await api<{ done: boolean; progress: { searched: number; total: number; tier: number; found: number }; results?: SearchResult[]; result: SearchResponse | null; error: string | null }>(`/search/job/${jobId}`);
+        const j = await api<{
+          done: boolean;
+          progress: { searched: number; total: number; tier: number; found: number };
+          results?: SearchResult[];
+          result: SearchResponse | null;
+          error: string | null;
+        }>(`/search/job/${jobId}`);
         if (j.done) {
           if (j.error) throw new Error(j.error);
           setRes(j.result);
@@ -111,8 +124,14 @@ function DeepSearch() {
   const shown = tab ?? (replaceMode || (res?.targets.length ?? 0) > 1 ? "packs" : "singles");
   const packLabel = (p: Pack<SearchResult>) =>
     replaceMode
-      ? p.whole ? t("packs.whole", { n: p.covered, total: p.total }) : t("packs.part", { eps: p.episodes })
-      : p.total === 1 ? t("packs.pack", { n: p.r.episodeIds.length }) : p.whole ? t("packs.allPicked", { n: p.total }) : t("packs.somePicked", { eps: p.episodes });
+      ? p.whole
+        ? t("packs.whole", { n: p.covered, total: p.total })
+        : t("packs.part", { eps: p.episodes })
+      : p.total === 1
+        ? t("packs.pack", { n: p.r.episodeIds.length })
+        : p.whole
+          ? t("packs.allPicked", { n: p.total })
+          : t("packs.somePicked", { eps: p.episodes });
 
   return (
     <div className="stack">
@@ -123,7 +142,10 @@ function DeepSearch() {
         </div>
       )}
       <p className="muted small">
-        {t("search.introShort")} <span className="info-tip" title={t("search.intro")} aria-label={t("search.intro")}>ⓘ</span>
+        {t("search.introShort")}{" "}
+        <span className="info-tip" title={t("search.intro")} aria-label={t("search.intro")}>
+          ⓘ
+        </span>
       </p>
       <div className="card pad stack">
         {!series ? (
@@ -133,16 +155,33 @@ function DeepSearch() {
             <button className="link small self-end" onClick={() => (setSeries(null), setRes(null))}>
               {t("picker.change")}
             </button>
-            <EpisodePicker key={series.tvdbId} show={series} initial={series.tvdbId === Number(qp.get("tvdbId")) ? initial : []} dryRun={status.data?.dryRun ?? true} onChange={() => undefined} onInteractive={(ids) => void run(ids)} noAuto={replaceMode} />
+            <EpisodePicker
+              key={series.tvdbId}
+              show={series}
+              initial={series.tvdbId === Number(qp.get("tvdbId")) ? initial : []}
+              dryRun={status.data?.dryRun ?? true}
+              onChange={() => undefined}
+              onInteractive={(ids) => void run(ids)}
+              noAuto={replaceMode}
+            />
           </>
         )}
       </div>
-      {busy && <Spinner label={partial ? t("search.progress", { searched: partial.searched, total: partial.total, found: partial.found }) : t("search.running")} />}
+      {busy && (
+        <Spinner
+          label={
+            partial ? t("search.progress", { searched: partial.searched, total: partial.total, found: partial.found }) : t("search.running")
+          }
+        />
+      )}
       {busy && partial && !!partial.results.length && (
         <div className="list">
-          {partial.results.filter((r) => !replaceMode || r.episodeIds.length > 1).slice(0, 8).map((r) => (
-            <ResultCard key={r.guid} r={r} />
-          ))}
+          {partial.results
+            .filter((r) => !replaceMode || r.episodeIds.length > 1)
+            .slice(0, 8)
+            .map((r) => (
+              <ResultCard key={r.guid} r={r} />
+            ))}
         </div>
       )}
       {err && <ErrorBox error={err} />}
@@ -154,15 +193,40 @@ function DeepSearch() {
               <Link to={`/show/${res.series.tvdbId}`} className="strong">
                 {res.series.title}
               </Link>
-              <p className="muted small">{t("search.summary", { found: res.found, matched: res.matched, queries: res.queries.length, secs: Math.round(res.tookMs / 1000) })}</p>
-              {!!res.ownedElsewhere?.length && <p className="warn-text small">{t("dup.pickWarn", { why: res.ownedElsewhere[0].why, n: res.ownedElsewhere.length })}</p>}
-              {!!Object.keys(res.skipped).length && <p className="muted small">{t("search.skipped", { list: Object.entries(res.skipped).map(([k, v]) => `${v} ${k}`).join(", ") })}</p>}
+              <p className="muted small">
+                {t("search.summary", {
+                  found: res.found,
+                  matched: res.matched,
+                  queries: res.queries.length,
+                  secs: Math.round(res.tookMs / 1000),
+                })}
+              </p>
+              {!!res.ownedElsewhere?.length && (
+                <p className="warn-text small">{t("dup.pickWarn", { why: res.ownedElsewhere[0].why, n: res.ownedElsewhere.length })}</p>
+              )}
+              {!!Object.keys(res.skipped).length && (
+                <p className="muted small">
+                  {t("search.skipped", {
+                    list: Object.entries(res.skipped)
+                      .map(([k, v]) => `${v} ${k}`)
+                      .join(", "),
+                  })}
+                </p>
+              )}
             </div>
           </div>
           <div className="row between">
             <Why summary={t("common.more")} lines={res.queries} />
             {!res.complete && (
-              <button className="small" onClick={() => run(res.targets.map((x) => x.id), true)}>
+              <button
+                className="small"
+                onClick={() =>
+                  run(
+                    res.targets.map((x) => x.id),
+                    true,
+                  )
+                }
+              >
                 {t("search.more")}
               </button>
             )}
@@ -172,17 +236,41 @@ function DeepSearch() {
           {tabbed && split ? (
             <>
               <div className="tabs" role="tablist">
-                <button role="tab" aria-selected={shown === "packs"} className={shown === "packs" ? "on" : ""} onClick={() => setTab("packs")}>
+                <button
+                  role="tab"
+                  aria-selected={shown === "packs"}
+                  className={shown === "packs" ? "on" : ""}
+                  onClick={() => setTab("packs")}
+                >
                   {t("packs.tabPacks", { n: split.packs.length })}
                 </button>
-                <button role="tab" aria-selected={shown === "singles"} className={shown === "singles" ? "on" : ""} onClick={() => setTab("singles")}>
+                <button
+                  role="tab"
+                  aria-selected={shown === "singles"}
+                  className={shown === "singles" ? "on" : ""}
+                  onClick={() => setTab("singles")}
+                >
                   {t("packs.tabSingles", { n: split.singles.length })}
                 </button>
               </div>
               {shown === "packs" ? (
                 <>
                   {!split.packs.length && (
-                    <Empty title={t("packs.noneTitle", { season: season ?? "" })} action={!res.complete ? { label: t("packs.deeper"), run: () => void run(res.targets.map((x) => x.id), true) } : undefined}>
+                    <Empty
+                      title={t("packs.noneTitle", { season: season ?? "" })}
+                      action={
+                        !res.complete
+                          ? {
+                              label: t("packs.deeper"),
+                              run: () =>
+                                void run(
+                                  res.targets.map((x) => x.id),
+                                  true,
+                                ),
+                            }
+                          : undefined
+                      }
+                    >
                       {t(replaceMode ? "packs.noneNext" : "packs.noneNextSearch")}
                     </Empty>
                   )}
@@ -193,7 +281,17 @@ function DeepSearch() {
                   )}
                   <div className="list">
                     {split.packs.map((p) => (
-                      <ResultCard key={p.r.guid} r={p.r} onGrab={() => setGrab(p.r)} extra={<div className="row"><Chip tone={p.whole ? "good" : "warn"}>{packLabel(p)}</Chip><QualityBadge r={p.r} have={have} /></div>} />
+                      <ResultCard
+                        key={p.r.guid}
+                        r={p.r}
+                        onGrab={() => setGrab(p.r)}
+                        extra={
+                          <div className="row">
+                            <Chip tone={p.whole ? "good" : "warn"}>{packLabel(p)}</Chip>
+                            <QualityBadge r={p.r} have={have} />
+                          </div>
+                        }
+                      />
                     ))}
                   </div>
                 </>
@@ -225,7 +323,15 @@ function DeepSearch() {
           onClose={() => setGrab(null)}
           onConfirm={async () => {
             try {
-              const r = await api<{ message: string }>("/grab", { body: { tvdbId: res.series.tvdbId, episodeIds: res.targets.map((x) => x.id), guid: grab.guid, confirm: true, replace: replace && grab.episodeIds.length > 1 } });
+              const r = await api<{ message: string }>("/grab", {
+                body: {
+                  tvdbId: res.series.tvdbId,
+                  episodeIds: res.targets.map((x) => x.id),
+                  guid: grab.guid,
+                  confirm: true,
+                  replace: replace && grab.episodeIds.length > 1,
+                },
+              });
               toast(t("search.grabDone", { message: r.message }));
               setGrab(null);
             } catch (e) {
@@ -233,9 +339,15 @@ function DeepSearch() {
             }
           }}
         >
-          <p><ReleaseName name={grab.title} /></p>
+          <p>
+            <ReleaseName name={grab.title} />
+          </p>
           <FlagChips flags={grab.rank.flags} />
-          <p>{res.dryRun ? t("search.grabDry") : t("search.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent", label: grab.label })}</p>
+          <p>
+            {res.dryRun
+              ? t("search.grabDry")
+              : t("search.grabLive", { client: grab.protocol === "usenet" ? "SABnzbd" : "qBittorrent", label: grab.label })}
+          </p>
           {grab.episodeIds.length > 1 && res.targets.some((x) => x.hasFile) && (
             <label className="check">
               <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> {t("replace.check")}
@@ -249,7 +361,13 @@ function DeepSearch() {
   );
 }
 
-interface IdentifyResult { summary: string; series: { tvdbId: number; title: string; cover: string | null } | null; mapping: { ok: boolean; label: string; confidence: number; why: string[] } | null; parsed: Record<string, unknown> & { hints: Record<string, unknown> }; others: { tvdbId: number; title: string }[] }
+interface IdentifyResult {
+  summary: string;
+  series: { tvdbId: number; title: string; cover: string | null } | null;
+  mapping: { ok: boolean; label: string; confidence: number; why: string[] } | null;
+  parsed: Record<string, unknown> & { hints: Record<string, unknown> };
+  others: { tvdbId: number; title: string }[];
+}
 
 function Identify() {
   const [name, setName] = useState("");
@@ -269,7 +387,13 @@ function Identify() {
     <div className="stack">
       <p className="muted">{t("search.identifyHelp")}</p>
       <form className="row" onSubmit={run}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="[SubsPlease] Quanzhi Fashi S7 - 05 (1080p)" aria-label={t("search.identify")} className="grow" />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="[SubsPlease] Quanzhi Fashi S7 - 05 (1080p)"
+          aria-label={t("search.identify")}
+          className="grow"
+        />
         <button className="primary">{t("search.identifyRun")}</button>
       </form>
       {err && <ErrorBox error={err} />}
@@ -279,7 +403,15 @@ function Identify() {
             {r.series && <Cover src={r.series.cover} alt={r.series.title} size="sm" />}
             <div>
               <strong>{r.summary}</strong>
-              {r.mapping && <p>{r.mapping.ok ? <Chip tone={r.mapping.confidence >= 80 ? "good" : "warn"}>{r.mapping.label}</Chip> : <Chip tone="bad">✕</Chip>}</p>}
+              {r.mapping && (
+                <p>
+                  {r.mapping.ok ? (
+                    <Chip tone={r.mapping.confidence >= 80 ? "good" : "warn"}>{r.mapping.label}</Chip>
+                  ) : (
+                    <Chip tone="bad">✕</Chip>
+                  )}
+                </p>
+              )}
             </div>
           </div>
           <dl className="facts">
@@ -318,14 +450,20 @@ function haveLine(h: LibraryQuality) {
 function QualityBadge({ r, have }: { r: SearchResult; have: LibraryQuality | null }) {
   const c = compareQuality(r.quality, have?.main);
   if (c.verdict === "unknown") return null;
-  return <Chip tone={c.verdict === "up" ? "good" : c.verdict === "down" ? "warn" : "info"}>{t(`packs.q.${c.verdict}` as I18nKey, { from: c.from, to: c.to })}</Chip>;
+  return (
+    <Chip tone={c.verdict === "up" ? "good" : c.verdict === "down" ? "warn" : "info"}>
+      {t(`packs.q.${c.verdict}` as I18nKey, { from: c.from, to: c.to })}
+    </Chip>
+  );
 }
 
 export function ResultCard({ r, onGrab, extra }: { r: SearchResult; onGrab?: () => void; extra?: React.ReactNode }) {
   const sd = r.rank.flags.find((f) => f.key === "seadex");
   return (
     <article className={`card pad result${r.rank.accept ? "" : " rejected"}`}>
-      <p className="release"><ReleaseName name={r.title} /></p>
+      <p className="release">
+        <ReleaseName name={r.title} />
+      </p>
       {extra}
       <div className="row">
         <Chip tone={r.confidence >= 80 ? "good" : "warn"}>{t("search.mapping", { label: r.label, confidence: r.confidence })}</Chip>
@@ -334,7 +472,11 @@ export function ResultCard({ r, onGrab, extra }: { r: SearchResult; onGrab?: () 
           {r.ageHours !== null ? ` · ${Math.round(r.ageHours / 24)}d` : ""}
         </span>
       </div>
-      {sd && <div className="chips"><Chip tone={/best/i.test(sd.label) ? "good" : "info"}>{t(/best/i.test(sd.label) ? "seadex.mark.best" : "seadex.mark.alt")}</Chip></div>}
+      {sd && (
+        <div className="chips">
+          <Chip tone={/best/i.test(sd.label) ? "good" : "info"}>{t(/best/i.test(sd.label) ? "seadex.mark.best" : "seadex.mark.alt")}</Chip>
+        </div>
+      )}
       <FlagChips flags={r.rank.flags.filter((f) => f.key !== "seadex")} />
       <p className="small">{r.rank.why}</p>
       <div className="row between">

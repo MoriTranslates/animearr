@@ -3,6 +3,7 @@
  * Comic Neue is only loaded when Comic mode is picked (phones and Linux have no Comic Sans).
  */
 import { store } from "./api";
+import { applySeason } from "./season";
 
 export type FontChoice = "inter" | "system" | "comic";
 export type Exclaim = "off" | "sometimes" | "always";
@@ -36,4 +37,19 @@ export type TextScale = (typeof TEXT_SCALES)[number]["key"];
 export function applyTextScale(k: string | null | undefined) {
   const s = TEXT_SCALES.find((x) => x.key === k)?.scale ?? 1;
   document.documentElement.style.setProperty("--text-scale", String(s));
+}
+
+export function applyTheme(theme: string) {
+  document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+  // The browser chrome (address bar, PWA title bar) follows the theme; the root color-scheme comes from the CSS.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f5f6fa" : "#0b0d14");
+  applySeason(theme === "light" ? "light" : "dark");
+  // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
+  document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
+  applyFont(store.get<string>("font", "inter"));
+  // The device's own text size; without one, the saved default (applied when the status arrives).
+  const ts = store.get<string | null>("textScale", null);
+  if (ts) applyTextScale(ts);
+  // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
+  document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
 }

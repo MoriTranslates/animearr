@@ -8,15 +8,23 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-recycle-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
-const { recycleStatus, resetRecycleCache } = await import("../server/recycle.js");
+const { cache } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { recycleStatus, resetRecycleCache } = await import("../server/import/recycle.js");
 
 const bin = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (1, 700001, 'Anime Show', '/media/AnimeArr/Anime Show', 1, 0), (2, 700002, 'TV Show', '/media/Tv Shows/TV Show', 1, 0)").run();
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (1, 700001, 'Anime Show', '/media/AnimeArr/Anime Show', 1, 0), (2, 700002, 'TV Show', '/media/Tv Shows/TV Show', 1, 0)",
+    )
+    .run();
   patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"] }));
-  for (const [dir, file, ago] of [["Anime Show/Season 1", "Anime Show - S01E01.mkv", 2], ["Anime Show", "Anime Show - S01E02.mkv", 1], ["TV Show", "TV Show - S01E01.mkv", 1]] as const) {
+  for (const [dir, file, ago] of [
+    ["Anime Show/Season 1", "Anime Show - S01E01.mkv", 2],
+    ["Anime Show", "Anime Show - S01E02.mkv", 1],
+    ["TV Show", "TV Show - S01E01.mkv", 1],
+  ] as const) {
     fs.mkdirSync(path.join(bin, dir), { recursive: true });
     const f = path.join(bin, dir, file);
     fs.writeFileSync(f, "x");
@@ -27,10 +35,16 @@ before(() => {
 
 test("lists anime files in Sonarr's recycle bin, newest first, with the purge date", async () => {
   resetRecycleCache();
-  const r = await recycleStatus({ get: async () => ({ recycleBin: "/recycle", recycleBinCleanupDays: 7 }), localPath: (p) => (p === "/recycle" ? bin : null) });
+  const r = await recycleStatus({
+    get: async () => ({ recycleBin: "/recycle", recycleBinCleanupDays: 7 }),
+    localPath: (p) => (p === "/recycle" ? bin : null),
+  });
   assert.equal(r.configured, true);
   assert.equal(r.reachable, true);
-  assert.deepEqual(r.items.map((i) => i.path), ["/recycle/Anime Show/Anime Show - S01E02.mkv", "/recycle/Anime Show/Season 1/Anime Show - S01E01.mkv"]);
+  assert.deepEqual(
+    r.items.map((i) => i.path),
+    ["/recycle/Anime Show/Anime Show - S01E02.mkv", "/recycle/Anime Show/Season 1/Anime Show - S01E01.mkv"],
+  );
   assert.equal(r.totalCount, 2);
   // Sonarr purges a show's folder by its newest file: both share the newer date.
   assert.equal(r.items[1].purgeAt, r.items[0].purgeAt);

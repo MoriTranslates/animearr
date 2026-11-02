@@ -25,6 +25,8 @@ All notable changes, newest first. The commit history has the crew's version of 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers
   `PUT series/editor` (bulk monitoring, quality profile and tags; nothing that moves or deletes files).
+- The Sonarr-compatible API's `PUT series/{id}` now treats `monitored: false` the way the series editor does: the show
+  is no longer managed by AnimeArr (its files stay). Before, a single show ignored it.
 - The Sonarr-compatible API reports repacks and `v2` releases correctly again.
 - Remux releases are recognised as remuxes again when season packs and search results are compared (a few patterns had
   been saved with an invisible control character instead of a word boundary).

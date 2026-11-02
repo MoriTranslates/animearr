@@ -10,15 +10,19 @@ import fastifyCookie from "@fastify/cookie";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ical-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { setAccount, regenerateApiKey } = await import("../server/settings.js");
-const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/ical.js");
-const { createTag, setTags } = await import("../server/tags.js");
+const { cache, db } = await import("../server/system/db.js");
+const { setAccount, regenerateApiKey } = await import("../server/system/settings.js");
+const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/api/ical.js");
+const { createTag, setTags } = await import("../server/library/tags.js");
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 const DAY = 86_400_000;
 const unfold = (s: string) => s.replace(/\r\n /g, "");
-const events = (ics: string) => unfold(ics).split("BEGIN:VEVENT\r\n").slice(1).map((e) => e.split("END:VEVENT")[0]);
+const events = (ics: string) =>
+  unfold(ics)
+    .split("BEGIN:VEVENT\r\n")
+    .slice(1)
+    .map((e) => e.split("END:VEVENT")[0]);
 const field = (ev: string, name: string) => new RegExp(`^${name}[;:](.*)$`, "m").exec(ev)?.[0];
 
 let KEY = "";
@@ -30,16 +34,39 @@ before(async () => {
   await setAccount("owner", "owners-own-password");
   KEY = regenerateApiKey();
   // A managed show with episodes at -10, -2, +3 and +40 days; an unmonitored show with one in the window; a movie.
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, runtime, synced_at) VALUES (1, 111, 'Harbor Tales; Part, One', '/m/a', 1, 25, 0)").run();
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, runtime, synced_at) VALUES (2, 222, 'Quiet Cove', '/m/b', 1, NULL, 0)").run();
-  const ep = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file, air_utc, runtime) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)");
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, runtime, synced_at) VALUES (1, 111, 'Harbor Tales; Part, One', '/m/a', 1, 25, 0)",
+    )
+    .run();
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, runtime, synced_at) VALUES (2, 222, 'Quiet Cove', '/m/b', 1, NULL, 0)",
+    )
+    .run();
+  const ep = cache.prepare(
+    "INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file, air_utc, runtime) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)",
+  );
   ep.run(10, 1, 1, 1, 1, "Too old", NOW - 10 * DAY, 24);
-  ep.run(11, 1, 1, 5, 17, "The Long, Long Title; with a back\\slash and enough words to force the content line past seventy-five octets", NOW - 2 * DAY, 22);
+  ep.run(
+    11,
+    1,
+    1,
+    5,
+    17,
+    "The Long, Long Title; with a back\\slash and enough words to force the content line past seventy-five octets",
+    NOW - 2 * DAY,
+    22,
+  );
   ep.run(12, 1, 1, 6, 18, null, NOW + 3 * DAY, null);
   ep.run(13, 1, 1, 7, 19, "Far away", NOW + 40 * DAY, 24);
   ep.run(20, 2, 1, 1, 1, "Unwatched", NOW + 1 * DAY, 24);
   db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (111, 1, 'Harbor Tales', 1, 0)").run();
-  cache.prepare("INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, is_anime, digital_release, synced_at) VALUES (900000007, 9, 'Sea Film', 2026, '/m/f', 1, 0, 1, ?, 0)").run(Date.UTC(2026, 10, 12));
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, is_anime, digital_release, synced_at) VALUES (900000007, 9, 'Sea Film', 2026, '/m/f', 1, 0, 1, ?, 0)",
+    )
+    .run(Date.UTC(2026, 10, 12));
   setTags("series", 111, [createTag("dubs").id]);
 });
 
@@ -78,7 +105,10 @@ test("an episode: UTC start, runtime as the duration, number, absolute number an
   assert.equal(field(e, "DTSTART"), `DTSTART:${new Date(NOW - 2 * DAY).toISOString().replace(/[-:]|\.\d+/g, "")}`);
   assert.equal(field(e, "DTEND"), `DTEND:${new Date(NOW - 2 * DAY + 22 * 60_000).toISOString().replace(/[-:]|\.\d+/g, "")}`);
   const summary = field(e, "SUMMARY")!;
-  assert.ok(summary.startsWith("SUMMARY:Harbor Tales\\; Part\\, One – S01E05 (#17) – The Long\\, Long Title\\; with a back\\\\slash"), summary);
+  assert.ok(
+    summary.startsWith("SUMMARY:Harbor Tales\\; Part\\, One – S01E05 (#17) – The Long\\, Long Title\\; with a back\\\\slash"),
+    summary,
+  );
   // no episode runtime: the show's (25 minutes); no title: just the number; none anywhere: 24 minutes
   const noTitle = events(buildIcal(icalOptions({ unmonitored: "true" }), NOW)).find((x) => x.includes("episode-12@"))!;
   assert.equal(field(noTitle, "SUMMARY"), "SUMMARY:Harbor Tales\\; Part\\, One – S01E06 (#18)");
@@ -96,18 +126,33 @@ test("a movie is an all-day event on its release date", () => {
 });
 
 test("pastDays and futureDays set the window; unmonitored is off by default", () => {
-  const ids = (q: Record<string, string>) => events(buildIcal(icalOptions(q), NOW)).map((e) => /^UID:animearr-(\S+)@/m.exec(e)![1]).sort();
+  const ids = (q: Record<string, string>) =>
+    events(buildIcal(icalOptions(q), NOW))
+      .map((e) => /^UID:animearr-(\S+)@/m.exec(e)![1])
+      .sort();
   assert.deepEqual(ids({ unmonitored: "true" }), ["episode-11", "episode-12", "episode-20", "movie-900000007-digital"]);
   assert.deepEqual(ids({}), ["episode-11", "episode-12"], "only the managed show; the movie isn't wanted");
   assert.deepEqual(ids({ unmonitored: "true", pastDays: "15", futureDays: "1" }), ["episode-10", "episode-11", "episode-20"]);
-  assert.deepEqual(ids({ unmonitored: "true", pastDays: "0", futureDays: "60" }), ["episode-12", "episode-13", "episode-20", "movie-900000007-digital"]);
-  assert.deepEqual(icalOptions({ pastDays: "-3", futureDays: "abc" }), { pastDays: 7, futureDays: 28, unmonitored: false, tags: [] }, "bad values fall back to the defaults");
+  assert.deepEqual(ids({ unmonitored: "true", pastDays: "0", futureDays: "60" }), [
+    "episode-12",
+    "episode-13",
+    "episode-20",
+    "movie-900000007-digital",
+  ]);
+  assert.deepEqual(
+    icalOptions({ pastDays: "-3", futureDays: "abc" }),
+    { pastDays: 7, futureDays: 28, unmonitored: false, tags: [] },
+    "bad values fall back to the defaults",
+  );
 });
 
 test("tags keep only shows and movies with one of the tags", () => {
   const dubs = createTag("dubs").id;
   const other = createTag("other").id;
-  const ids = (q: Record<string, string>) => events(buildIcal(icalOptions(q), NOW)).map((e) => /^UID:animearr-(\S+)@/m.exec(e)![1]).sort();
+  const ids = (q: Record<string, string>) =>
+    events(buildIcal(icalOptions(q), NOW))
+      .map((e) => /^UID:animearr-(\S+)@/m.exec(e)![1])
+      .sort();
   assert.deepEqual(ids({ unmonitored: "true", tags: String(dubs) }), ["episode-11", "episode-12"]);
   assert.deepEqual(ids({ unmonitored: "true", tags: `${other},${dubs}` }), ["episode-11", "episode-12"]);
   assert.deepEqual(ids({ unmonitored: "true", tags: String(other) }), []);

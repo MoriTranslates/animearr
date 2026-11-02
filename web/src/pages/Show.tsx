@@ -1,13 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openInMediaServer } from "../filetools";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { airLabel, EpisodeSheet, langOf, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks, Tag as TagIcon } from "lucide-react";
 import { Ring } from "../posters";
 import { showVars } from "../season";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Menu, Modal, Spinner, SplitButton, thumbUrl, useLoad, usePageTitle, usePoll, useToast } from "../ui";
+import {
+  Chip,
+  Confirm,
+  Cover,
+  Empty,
+  ErrorBox,
+  Menu,
+  Modal,
+  Spinner,
+  SplitButton,
+  thumbUrl,
+  useLoad,
+  usePageTitle,
+  usePoll,
+  useToast,
+} from "../ui";
 import { DecisionCard } from "./Activity";
 import { WatchAs, type WatchMode } from "../profiles";
 import { TagPicker } from "../rules";
@@ -17,7 +32,7 @@ import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
 import { AnidbEntries } from "../anidb";
 import { MetaSource } from "../metasource";
-import { query } from "../App";
+import { query } from "../nav";
 import { languageName } from "../lang";
 import { TrailerButton } from "../trailer";
 import type { Trailer } from "../trailerLinks";
@@ -62,7 +77,17 @@ interface ShowData {
 
 type ShowTab = "episodes" | "movies" | "details" | "history";
 
-interface FranchiseMovie { movieId: number | null; tmdbId: number | null; title: string; year: number | null; cover: string | null; inRadarr: boolean; hasFile: boolean; s0Episode: number | null; source: "anime-lists" | "title" | "manual" }
+interface FranchiseMovie {
+  movieId: number | null;
+  tmdbId: number | null;
+  title: string;
+  year: number | null;
+  cover: string | null;
+  inRadarr: boolean;
+  hasFile: boolean;
+  s0Episode: number | null;
+  source: "anime-lists" | "title" | "manual";
+}
 
 export function Show({ tvdbId }: { tvdbId: number }) {
   const d = useLoad(() => api<ShowData>(`/series/${tvdbId}`), [tvdbId]);
@@ -76,9 +101,13 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [grid, setGrid] = useState(() => store.get("episodeGrid", false));
-  const [tab, setTabState] = useState<ShowTab>(() => (["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes"));
+  const [tab, setTabState] = useState<ShowTab>(() =>
+    ["movies", "details", "history"].includes(query().get("tab") ?? "") ? (query().get("tab") as ShowTab) : "episodes",
+  );
   const [replacing, setReplacing] = useState<number | null>(null);
-  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "tags" | "remove" | "drop">(() => (query().get("rename") === "1" ? "rename" : null));
+  const [panel, setPanel] = useState<null | "scope" | "rename" | "import" | "watch" | "tags" | "remove" | "drop">(() =>
+    query().get("rename") === "1" ? "rename" : null,
+  );
   const [linking, setLinking] = useState(false);
   const [metaSeason, setMetaSeason] = useState<number | null>(null);
   const toast = useToast();
@@ -100,7 +129,13 @@ export function Show({ tvdbId }: { tvdbId: number }) {
   const selected = (d.data?.rows ?? []).filter((r) => sel.has(r.id) && !r.movie);
   const bulk = useEpisodeActions({
     tvdbId,
-    episodes: selected.map((r) => ({ id: r.id, label: sxe(r.season, r.episode), release: r.file?.sceneName ?? null, file: r.file?.name ?? null, fileEpisodes: r.file?.episodes })),
+    episodes: selected.map((r) => ({
+      id: r.id,
+      label: sxe(r.season, r.episode),
+      release: r.file?.sceneName ?? null,
+      file: r.file?.name ?? null,
+      fileEpisodes: r.file?.episodes,
+    })),
     managedLive,
     dryRun,
     onDone: () => (setSel(new Set()), setSelecting(false), void d.reload(), void act.reload()),
@@ -117,7 +152,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       return n;
     });
 
-  const missingAll = (d.data?.rows ?? []).filter((r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
+  const missingAll = (d.data?.rows ?? []).filter(
+    (r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless",
+  );
   const links = [
     { label: "AniList ↗", href: h.links.anilist },
     { label: "AniDB ↗", href: h.links.anidb },
@@ -167,7 +204,17 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           </div>
           <div className="hero-info">
             <div className="hero-top">
-              <span className="eyebrow show-eyebrow">{[h.catalog?.kind ? t(`catalog.kind.${h.catalog.kind}` as I18nKey) : null, h.network, h.catalog?.from ? `${h.catalog.from}${h.catalog.to && h.catalog.to !== h.catalog.from ? ` – ${h.catalog.to}` : h.status === "continuing" ? " –" : ""}` : h.year].filter(Boolean).join(" · ")}</span>
+              <span className="eyebrow show-eyebrow">
+                {[
+                  h.catalog?.kind ? t(`catalog.kind.${h.catalog.kind}` as I18nKey) : null,
+                  h.network,
+                  h.catalog?.from
+                    ? `${h.catalog.from}${h.catalog.to && h.catalog.to !== h.catalog.from ? ` – ${h.catalog.to}` : h.status === "continuing" ? " –" : ""}`
+                    : h.year,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
               <Menu
                 label={t("show.manage")}
                 className="hero-menu"
@@ -178,7 +225,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                     hidden: !h.managed,
                     onSelect: () =>
                       void api(`/managed/${tvdbId}`, { method: "PUT", body: { dryRun: !h.managed?.dryRun } }).then(
-                        () => (toast(h.managed?.dryRun ? t(dryRun ? "dry.showOffDoneGlobal" : "dry.showOffDone") : t("dry.showOnDone")), void d.reload()),
+                        () => (
+                          toast(h.managed?.dryRun ? t(dryRun ? "dry.showOffDoneGlobal" : "dry.showOffDone") : t("dry.showOnDone")),
+                          void d.reload()
+                        ),
                         (e: Error) => toast(e.message, true),
                       ),
                   },
@@ -193,14 +243,20 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               />
             </div>
             <h1 className={`hero-title${h.title.length > 40 ? " long" : ""}`}>{h.title}</h1>
-            {h.catalog?.titleNative && h.catalog.titleNative !== h.title && <p className="hero-jp jp" lang="ja">{h.catalog.titleNative}</p>}
+            {h.catalog?.titleNative && h.catalog.titleNative !== h.title && (
+              <p className="hero-jp jp" lang="ja">
+                {h.catalog.titleNative}
+              </p>
+            )}
             <p className="hero-facts">
               <span>
                 <i className={`dot ${h.status === "continuing" ? "good" : "off"}`} aria-hidden="true" />
                 {h.status === "continuing" ? t("series.continuing") : h.status === "ended" ? t("series.ended") : h.status}
               </span>
               {h.network && <span>{h.network}</span>}
-              <span>{t("show.seasonsEps", { s: seasons.filter(([n]) => n > 0).length, e: s.rows.filter((r) => r.season > 0).length })}</span>
+              <span>
+                {t("show.seasonsEps", { s: seasons.filter(([n]) => n > 0).length, e: s.rows.filter((r) => r.season > 0).length })}
+              </span>
               {!!h.genres?.length && <span className="hide-phone">{h.genres.slice(0, 3).join(", ")}</span>}
               {h.dropped && <span className="dropped-flag">{t("drop.flag")}</span>}
               {h.managed && (
@@ -210,17 +266,32 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 </span>
               )}
             </p>
-            {h.nextEpisode && <p className="hero-next">⏱ {t("series.next", { label: sxe(h.nextEpisode.season, h.nextEpisode.episode), when: airLabel(h.nextEpisode.airUtc) })}</p>}
+            {h.nextEpisode && (
+              <p className="hero-next">
+                ⏱ {t("series.next", { label: sxe(h.nextEpisode.season, h.nextEpisode.episode), when: airLabel(h.nextEpisode.airUtc) })}
+              </p>
+            )}
             {h.overview && <Synopsis text={h.overview} />}
             <div className="hero-actions">
               <span className="ring-wrap hide-phone">
-                <Ring value={h.counts.aired ? Math.min(h.counts.have, h.language.withLang) / h.counts.aired : 0} label={t("show.ringLabel", { n: Math.min(h.counts.have, h.language.withLang), aired: h.counts.aired, lang: languageName(h.language.lang) })} />
+                <Ring
+                  value={h.counts.aired ? Math.min(h.counts.have, h.language.withLang) / h.counts.aired : 0}
+                  label={t("show.ringLabel", {
+                    n: Math.min(h.counts.have, h.language.withLang),
+                    aired: h.counts.aired,
+                    lang: languageName(h.language.lang),
+                  })}
+                />
                 <span className="ringlbl">
                   <b className="tnum">
                     {h.counts.have} / {h.counts.aired}
                   </b>
                   {t("show.inLibraryLang", { n: h.language.withLang, lang: languageName(h.language.lang) })}
-                  {!!h.language.noLang && <span className="lang-count warn-text">{t("show.noLangCount", { n: h.language.noLang, lang: languageName(h.language.lang) })}</span>}
+                  {!!h.language.noLang && (
+                    <span className="lang-count warn-text">
+                      {t("show.noLangCount", { n: h.language.noLang, lang: languageName(h.language.lang) })}
+                    </span>
+                  )}
                   {!!h.language.untagged && <span className="lang-count">{t("show.untaggedCount", { n: h.language.untagged })}</span>}
                   {!!h.language.unknown && (
                     <span className="lang-count">
@@ -233,9 +304,20 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                 </span>
               </span>
               {missingAll.length ? (
-                <SeasonSearch tvdbId={tvdbId} missing={missingAll} dryRun={dryRun} primary big onDone={() => (void d.reload(), void act.reload())} />
+                <SeasonSearch
+                  tvdbId={tvdbId}
+                  missing={missingAll}
+                  dryRun={dryRun}
+                  primary
+                  big
+                  onDone={() => (void d.reload(), void act.reload())}
+                />
               ) : (
-                <SplitButton label={t("show.searchReleases")} onClick={() => navigate(`/search?tvdbId=${tvdbId}`)} items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]} />
+                <SplitButton
+                  label={t("show.searchReleases")}
+                  onClick={() => navigate(`/search?tvdbId=${tvdbId}`)}
+                  items={[{ label: t("files.refreshScan"), onSelect: () => void refreshScan() }]}
+                />
               )}
               <button className="glass-btn" onClick={() => setPanel("watch")} aria-haspopup="dialog">
                 <Captions className="lucide" aria-hidden="true" />
@@ -268,14 +350,32 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         {tab === "episodes" && (
           <div className="row tab-tools">
             <div className="seg icon-seg" role="group" aria-label={t("ep.view")}>
-              <button className={!grid ? "on" : ""} aria-pressed={!grid} aria-label={t("ep.list")} title={t("ep.list")} onClick={() => (setGrid(false), store.set("episodeGrid", false))}>
+              <button
+                className={!grid ? "on" : ""}
+                aria-pressed={!grid}
+                aria-label={t("ep.list")}
+                title={t("ep.list")}
+                onClick={() => (setGrid(false), store.set("episodeGrid", false))}
+              >
                 <List className="lucide" aria-hidden="true" />
               </button>
-              <button className={grid ? "on" : ""} aria-pressed={grid} aria-label={t("ep.grid")} title={t("ep.grid")} onClick={() => (setGrid(true), store.set("episodeGrid", true))}>
+              <button
+                className={grid ? "on" : ""}
+                aria-pressed={grid}
+                aria-label={t("ep.grid")}
+                title={t("ep.grid")}
+                onClick={() => (setGrid(true), store.set("episodeGrid", true))}
+              >
                 <LayoutGrid className="lucide" aria-hidden="true" />
               </button>
             </div>
-            <button className={`icon-btn${selecting ? " on" : ""}`} aria-pressed={selecting} aria-label={selecting ? t("ep.selectDone") : t("ep.select")} title={selecting ? t("ep.selectDone") : t("ep.select")} onClick={() => (setSelecting(!selecting), setSel(new Set()))}>
+            <button
+              className={`icon-btn${selecting ? " on" : ""}`}
+              aria-pressed={selecting}
+              aria-label={selecting ? t("ep.selectDone") : t("ep.select")}
+              title={selecting ? t("ep.selectDone") : t("ep.select")}
+              onClick={() => (setSelecting(!selecting), setSel(new Set()))}
+            >
               <ListChecks className="lucide" aria-hidden="true" />
             </button>
           </div>
@@ -283,7 +383,9 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       </div>
 
       {tab === "movies" && !s.movies.length && !linking && <Empty>{t("franchise.none")}</Empty>}
-      {tab === "movies" && <FranchiseMovies tvdbId={tvdbId} movies={s.movies} adding={linking} setAdding={setLinking} onChanged={() => void d.reload()} />}
+      {tab === "movies" && (
+        <FranchiseMovies tvdbId={tvdbId} movies={s.movies} adding={linking} setAdding={setLinking} onChanged={() => void d.reload()} />
+      )}
       {tab === "details" && (
         <>
           {h.native && <p className="muted small">{t("add.nativeNote")}</p>}
@@ -309,151 +411,230 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       {tab === "episodes" && (
         <>
           {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
-      {seasons.map(([season, rows], i) => {
-        // A file in the wrong language (managed shows) is wanted like a missing one: ⚡ searches for a replacement.
-        const missing = rows.filter((r) => (r.status === "missing" || r.status === "wrong-lang") && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless");
-        const wrongLang = rows.filter((r) => r.status === "wrong-lang");
-        const openings = season === 0 ? rows.filter((r) => r.special?.cls === "creditless").sort((a, b) => a.episode - b.episode) : [];
-        const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
-        const aired = rows.filter((r) => r.status !== "unaired");
-        const have = rows.filter((r) => r.status === "have");
-        const noLang = have.filter((r) => r.file && langOf(r.file, lang) === "no");
-        const unknownLang = have.filter((r) => r.file && langOf(r.file, lang) === "unknown" && r.file.lang?.code !== "untagged");
-        const untaggedLang = have.filter((r) => r.file?.lang?.code === "untagged");
-        // When most of the season shares the same language problem, the season tag says it once; rows keep their dot.
-        const quietLang = noLang.length >= Math.max(3, have.length * 0.6);
-        const dl = rows.filter((r) => r.status === "downloading");
-        const attention = rows.filter((r) => r.status === "attention");
-        const attentionWhy = [...new Set(attention.map((r) => r.attention?.summary).filter(Boolean))].join(" · ");
-        const quiet = !missing.length && !noLang.length && !unknownLang.length && !untaggedLang.length && !dl.length && !attention.length && !wrongLang.length && have.length === aired.length;
-        const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
-        const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
-        // The latest season that has aired opens by default (older seasons show their issues as header tags).
-        const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "unaired"));
-        const ordered_ = ordered(season === 0 ? rows.filter((r) => r.special?.cls !== "junk" && r.special?.cls !== "creditless") : rows, nextId);
-        return (
-          <SeasonWrap key={season} className={`season-wrap${missing.length ? " has-search" : ""}`}>
-            {/* Buttons sit outside the <summary> (no interactive content inside it), over its right end. */}
-            <div className="season-right season-actions">
-              {!!missing.length && <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />}
-              {selecting && (
-                <button className="small ghost" onClick={() => setSel((x) => new Set([...x, ...rows.map((r) => r.id)]))}>
-                  {t("shows.selectAll")}
-                </button>
-              )}
-              {!selecting && (
-                <Menu
-                  label={t("replace.menuFor", { n: season })}
-                  items={[
-                    { label: t("replace.menu"), onSelect: () => setReplacing(season), hidden: !(season > 0 && have.length > 0) },
-                    { label: t("metasrc.menu"), onSelect: () => setMetaSeason(season) },
-                  ]}
-                />
-              )}
-            </div>
-          <details className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
-            <summary className="season-head">
-              <span className="season-chev" aria-hidden="true" />
-              <h2 className="season-name-h">{season === 0 ? t("series.specials") : t("common.season", { n: season })}</h2>
-              {!!years.length && <span className="muted small tnum hide-phone">{years.length > 1 ? `${years[0]} – ${years[years.length - 1]}` : years[0]}</span>}
-              <span className="season-prog hide-phone" aria-hidden="true">
-                <i style={{ width: `${aired.length ? Math.round((have.length / aired.length) * 100) : 0}%` }} />
-              </span>
-              <span className="muted small tnum">
-                {have.length} / {aired.length}
-              </span>
-              {quiet && aired.length > 0 && (
-                <span className="tag good">
-                  <Check className="lucide" aria-hidden="true" /> {t("show.allQuiet")}
-                </span>
-              )}
-              {unmonitored && <span className="tag neutral">{t("show.notMonitored")}</span>}
-              {!!noLang.length && (
-                <span className="tag warn">
-                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.noLangCount", { n: noLang.length, lang: languageName(lang) })}
-                </span>
-              )}
-              {!!untaggedLang.length && <span className="tag neutral">{t("show.untaggedCount", { n: untaggedLang.length })}</span>}
-              {!!unknownLang.length && <span className="tag neutral">{t("show.unknownLangCount", { n: unknownLang.length })}</span>}
-              {!!dl.length && (
-                <span className="tag info">
-                  <Download className="lucide" aria-hidden="true" /> {t("show.dlCount", { n: dl.length })}
-                </span>
-              )}
-              {!!wrongLang.length && (
-                <span className="tag warn" title={wrongLang[0].file?.lang?.why}>
-                  <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.wrongLangCount", { n: wrongLang.length })}
-                </span>
-              )}
-              {!!attention.length && (
-                <span className="tag bad" title={attentionWhy || undefined}>
-                  {t("show.attentionCount", { n: attention.length })}
-                </span>
-              )}
-            </summary>
-            {grid ? (
-              <div className="ep-grid">
-                {[...rows].reverse().map((r) => (
-                  <button key={r.id} className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`} onClick={() => (selecting ? toggle(r.id) : openEp(r.id))} aria-pressed={selecting ? sel.has(r.id) : undefined} title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}${r.status === "attention" && r.attention ? ` · ${r.attention.summary}` : ""}`}>
-                    {r.episode}
-                    <span className="sr-only"> {t(`ep.status.${r.status}`)}</span>
-                  </button>
-                ))}
-                <p className="legend small muted">
-                  ✓ {t("ep.status.have")} · ! {t("ep.status.missing")} · ↓ {t("ep.status.downloading")} · ◷ {t("ep.status.unaired")} · ⚠ {t("ep.status.attention")} · ! {t("ep.status.wrong-lang")}
-                </p>
-              </div>
-            ) : (
-              <ul className="ep-list">
-                {ordered_.main.map((r) => (
-                  <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} quietLang={quietLang} next={r.id === nextId} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={(f) => openEp(r.id, f)} />
-                ))}
-              </ul>
-            )}
-            {!grid && !!openings.length && (
-              <details className="later openings" open>
-                <summary className="small">
-                  <b>{t("special.openings", { n: openings.length })}</b>
-                  <span className="muted"> · {t("special.openingsHave", { have: openings.filter((r) => r.status === "have").length, n: openings.length })}</span>
-                </summary>
-                {openings.some((r) => r.status === "missing") && (
-                  <div className="openings-find">
-                    <SeasonSearch tvdbId={tvdbId} missing={openings.filter((r) => r.status === "missing")} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />
-                  </div>
-                )}
-                <ul className="ep-list">
-                  {openings.map((r) => (
-                    <EpRow key={r.id} r={{ ...r, title: `${opLabel(r.title)} ${r.title ?? ""}`.trim() }} lang={lang} showTitle={h.title} selecting={selecting} selected={sel.has(r.id)} onToggle={() => toggle(r.id)} onOpen={(f) => openEp(r.id, f)} />
-                  ))}
-                </ul>
-              </details>
-            )}
-            {!grid && season === 0 && rows.some((r) => r.special?.cls === "junk") && (
-              <details className="later">
-                <summary className="muted small">{t("special.minor", { n: rows.filter((r) => r.special?.cls === "junk").length })}</summary>
-                <ul className="ep-list">
-                  {rows
-                    .filter((r) => r.special?.cls === "junk")
-                    .map((r) => (
-                      <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={(f) => openEp(r.id, f)} />
-                    ))}
-                </ul>
-              </details>
-            )}
-            {!grid && ordered_.later.length > 0 && (
-              <details className="later">
-                <summary className="muted small">{t("ep.upcoming", { n: ordered_.later.length })}</summary>
-                <ul className="ep-list">
-                  {ordered_.later.map((r) => (
-                    <EpRow key={r.id} r={r} lang={lang} showTitle={h.title} selecting={false} selected={false} onToggle={() => undefined} onOpen={(f) => openEp(r.id, f)} />
-                  ))}
-                </ul>
-              </details>
-            )}
-          </details>
-          </SeasonWrap>
-        );
-      })}
+          {seasons.map(([season, rows], i) => {
+            // A file in the wrong language (managed shows) is wanted like a missing one: ⚡ searches for a replacement.
+            const missing = rows.filter(
+              (r) =>
+                (r.status === "missing" || r.status === "wrong-lang") &&
+                !r.movie &&
+                r.special?.cls !== "junk" &&
+                r.special?.cls !== "creditless",
+            );
+            const wrongLang = rows.filter((r) => r.status === "wrong-lang");
+            const openings = season === 0 ? rows.filter((r) => r.special?.cls === "creditless").sort((a, b) => a.episode - b.episode) : [];
+            const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
+            const aired = rows.filter((r) => r.status !== "unaired");
+            const have = rows.filter((r) => r.status === "have");
+            const noLang = have.filter((r) => r.file && langOf(r.file, lang) === "no");
+            const unknownLang = have.filter((r) => r.file && langOf(r.file, lang) === "unknown" && r.file.lang?.code !== "untagged");
+            const untaggedLang = have.filter((r) => r.file?.lang?.code === "untagged");
+            // When most of the season shares the same language problem, the season tag says it once; rows keep their dot.
+            const quietLang = noLang.length >= Math.max(3, have.length * 0.6);
+            const dl = rows.filter((r) => r.status === "downloading");
+            const attention = rows.filter((r) => r.status === "attention");
+            const attentionWhy = [...new Set(attention.map((r) => r.attention?.summary).filter(Boolean))].join(" · ");
+            const quiet =
+              !missing.length &&
+              !noLang.length &&
+              !unknownLang.length &&
+              !untaggedLang.length &&
+              !dl.length &&
+              !attention.length &&
+              !wrongLang.length &&
+              have.length === aired.length;
+            const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
+            const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
+            // The latest season that has aired opens by default (older seasons show their issues as header tags).
+            const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "unaired"));
+            const ordered_ = ordered(
+              season === 0 ? rows.filter((r) => r.special?.cls !== "junk" && r.special?.cls !== "creditless") : rows,
+              nextId,
+            );
+            return (
+              <SeasonWrap key={season} className={`season-wrap${missing.length ? " has-search" : ""}`}>
+                {/* Buttons sit outside the <summary> (no interactive content inside it), over its right end. */}
+                <div className="season-right season-actions">
+                  {!!missing.length && (
+                    <SeasonSearch tvdbId={tvdbId} missing={missing} dryRun={dryRun} onDone={() => (void d.reload(), void act.reload())} />
+                  )}
+                  {selecting && (
+                    <button className="small ghost" onClick={() => setSel((x) => new Set([...x, ...rows.map((r) => r.id)]))}>
+                      {t("shows.selectAll")}
+                    </button>
+                  )}
+                  {!selecting && (
+                    <Menu
+                      label={t("replace.menuFor", { n: season })}
+                      items={[
+                        { label: t("replace.menu"), onSelect: () => setReplacing(season), hidden: !(season > 0 && have.length > 0) },
+                        { label: t("metasrc.menu"), onSelect: () => setMetaSeason(season) },
+                      ]}
+                    />
+                  )}
+                </div>
+                <details className="season card" open={selecting || i === (firstOpen < 0 ? 0 : firstOpen)}>
+                  <summary className="season-head">
+                    <span className="season-chev" aria-hidden="true" />
+                    <h2 className="season-name-h">{season === 0 ? t("series.specials") : t("common.season", { n: season })}</h2>
+                    {!!years.length && (
+                      <span className="muted small tnum hide-phone">
+                        {years.length > 1 ? `${years[0]} – ${years[years.length - 1]}` : years[0]}
+                      </span>
+                    )}
+                    <span className="season-prog hide-phone" aria-hidden="true">
+                      <i style={{ width: `${aired.length ? Math.round((have.length / aired.length) * 100) : 0}%` }} />
+                    </span>
+                    <span className="muted small tnum">
+                      {have.length} / {aired.length}
+                    </span>
+                    {quiet && aired.length > 0 && (
+                      <span className="tag good">
+                        <Check className="lucide" aria-hidden="true" /> {t("show.allQuiet")}
+                      </span>
+                    )}
+                    {unmonitored && <span className="tag neutral">{t("show.notMonitored")}</span>}
+                    {!!noLang.length && (
+                      <span className="tag warn">
+                        <CaptionsOff className="lucide" aria-hidden="true" />{" "}
+                        {t("show.noLangCount", { n: noLang.length, lang: languageName(lang) })}
+                      </span>
+                    )}
+                    {!!untaggedLang.length && <span className="tag neutral">{t("show.untaggedCount", { n: untaggedLang.length })}</span>}
+                    {!!unknownLang.length && <span className="tag neutral">{t("show.unknownLangCount", { n: unknownLang.length })}</span>}
+                    {!!dl.length && (
+                      <span className="tag info">
+                        <Download className="lucide" aria-hidden="true" /> {t("show.dlCount", { n: dl.length })}
+                      </span>
+                    )}
+                    {!!wrongLang.length && (
+                      <span className="tag warn" title={wrongLang[0].file?.lang?.why}>
+                        <CaptionsOff className="lucide" aria-hidden="true" /> {t("show.wrongLangCount", { n: wrongLang.length })}
+                      </span>
+                    )}
+                    {!!attention.length && (
+                      <span className="tag bad" title={attentionWhy || undefined}>
+                        {t("show.attentionCount", { n: attention.length })}
+                      </span>
+                    )}
+                  </summary>
+                  {grid ? (
+                    <div className="ep-grid">
+                      {[...rows].reverse().map((r) => (
+                        <button
+                          key={r.id}
+                          className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`}
+                          onClick={() => (selecting ? toggle(r.id) : openEp(r.id))}
+                          aria-pressed={selecting ? sel.has(r.id) : undefined}
+                          title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}${r.status === "attention" && r.attention ? ` · ${r.attention.summary}` : ""}`}
+                        >
+                          {r.episode}
+                          <span className="sr-only"> {t(`ep.status.${r.status}`)}</span>
+                        </button>
+                      ))}
+                      <p className="legend small muted">
+                        ✓ {t("ep.status.have")} · ! {t("ep.status.missing")} · ↓ {t("ep.status.downloading")} · ◷ {t("ep.status.unaired")} ·
+                        ⚠ {t("ep.status.attention")} · ! {t("ep.status.wrong-lang")}
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="ep-list">
+                      {ordered_.main.map((r) => (
+                        <EpRow
+                          key={r.id}
+                          r={r}
+                          lang={lang}
+                          showTitle={h.title}
+                          quietLang={quietLang}
+                          next={r.id === nextId}
+                          selecting={selecting}
+                          selected={sel.has(r.id)}
+                          onToggle={() => toggle(r.id)}
+                          onOpen={(f) => openEp(r.id, f)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  {!grid && !!openings.length && (
+                    <details className="later openings" open>
+                      <summary className="small">
+                        <b>{t("special.openings", { n: openings.length })}</b>
+                        <span className="muted">
+                          {" "}
+                          · {t("special.openingsHave", { have: openings.filter((r) => r.status === "have").length, n: openings.length })}
+                        </span>
+                      </summary>
+                      {openings.some((r) => r.status === "missing") && (
+                        <div className="openings-find">
+                          <SeasonSearch
+                            tvdbId={tvdbId}
+                            missing={openings.filter((r) => r.status === "missing")}
+                            dryRun={dryRun}
+                            onDone={() => (void d.reload(), void act.reload())}
+                          />
+                        </div>
+                      )}
+                      <ul className="ep-list">
+                        {openings.map((r) => (
+                          <EpRow
+                            key={r.id}
+                            r={{ ...r, title: `${opLabel(r.title)} ${r.title ?? ""}`.trim() }}
+                            lang={lang}
+                            showTitle={h.title}
+                            selecting={selecting}
+                            selected={sel.has(r.id)}
+                            onToggle={() => toggle(r.id)}
+                            onOpen={(f) => openEp(r.id, f)}
+                          />
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  {!grid && season === 0 && rows.some((r) => r.special?.cls === "junk") && (
+                    <details className="later">
+                      <summary className="muted small">
+                        {t("special.minor", { n: rows.filter((r) => r.special?.cls === "junk").length })}
+                      </summary>
+                      <ul className="ep-list">
+                        {rows
+                          .filter((r) => r.special?.cls === "junk")
+                          .map((r) => (
+                            <EpRow
+                              key={r.id}
+                              r={r}
+                              lang={lang}
+                              showTitle={h.title}
+                              selecting={false}
+                              selected={false}
+                              onToggle={() => undefined}
+                              onOpen={(f) => openEp(r.id, f)}
+                            />
+                          ))}
+                      </ul>
+                    </details>
+                  )}
+                  {!grid && ordered_.later.length > 0 && (
+                    <details className="later">
+                      <summary className="muted small">{t("ep.upcoming", { n: ordered_.later.length })}</summary>
+                      <ul className="ep-list">
+                        {ordered_.later.map((r) => (
+                          <EpRow
+                            key={r.id}
+                            r={r}
+                            lang={lang}
+                            showTitle={h.title}
+                            selecting={false}
+                            selected={false}
+                            onToggle={() => undefined}
+                            onOpen={(f) => openEp(r.id, f)}
+                          />
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </details>
+              </SeasonWrap>
+            );
+          })}
         </>
       )}
 
@@ -474,7 +655,18 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </div>
       )}
       {bulk.ui}
-      {open !== null && <EpisodeSheet key={`${open}-${openFocus ?? ""}`} episodeId={open} focus={openFocus} onClose={() => setOpen(null)} onChanged={() => (void d.reload(), void act.reload())} managedLive={managedLive} dryRun={dryRun} lang={lang} />}
+      {open !== null && (
+        <EpisodeSheet
+          key={`${open}-${openFocus ?? ""}`}
+          episodeId={open}
+          focus={openFocus}
+          onClose={() => setOpen(null)}
+          onChanged={() => (void d.reload(), void act.reload())}
+          managedLive={managedLive}
+          dryRun={dryRun}
+          lang={lang}
+        />
+      )}
 
       {/* ---------------- the ⋯ tools, each in its own dialog */}
       {panel === "scope" && (
@@ -503,9 +695,24 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           <TagPicker endpoint={`/series/${tvdbId}/tags`} value={d.data.tags} onChanged={() => void d.reload()} />
         </Modal>
       )}
-      {metaSeason !== null && <MetaSource tvdbId={tvdbId} season={metaSeason} episodes={(seasons.find(([n]) => n === metaSeason)?.[1] ?? []).map((r) => ({ episode: r.episode, title: r.title }))} onClose={() => setMetaSeason(null)} />}
+      {metaSeason !== null && (
+        <MetaSource
+          tvdbId={tvdbId}
+          season={metaSeason}
+          episodes={(seasons.find(([n]) => n === metaSeason)?.[1] ?? []).map((r) => ({ episode: r.episode, title: r.title }))}
+          onClose={() => setMetaSeason(null)}
+        />
+      )}
       {replacing !== null && <ReplaceSeason tvdbId={tvdbId} season={replacing} onClose={() => setReplacing(null)} />}
-      {panel === "drop" && <DropShow tvdbId={tvdbId} title={h.title} sonarr={!h.native && !!h.monitoredInSonarr} onClose={() => setPanel(null)} onDone={() => void d.reload()} />}
+      {panel === "drop" && (
+        <DropShow
+          tvdbId={tvdbId}
+          title={h.title}
+          sonarr={!h.native && !!h.monitoredInSonarr}
+          onClose={() => setPanel(null)}
+          onDone={() => void d.reload()}
+        />
+      )}
       {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
     </section>
   );
@@ -531,12 +738,45 @@ function Synopsis({ text }: { text: string }) {
  * One episode row: a status dot in the number column, title + date · group, then quality and size as columns on
  * desktop; a chip only when something needs you (no subs, downloading, missing, attention).
  */
-function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selecting, selected, onToggle, onOpen }: { r: EpisodeRow; lang: string; showTitle?: string; quietLang?: boolean; next?: boolean; selecting: boolean; selected: boolean; onToggle: () => void; onOpen: (focus?: "fix") => void }) {
+function EpRow({
+  r,
+  lang,
+  showTitle = "",
+  quietLang = false,
+  next = false,
+  selecting,
+  selected,
+  onToggle,
+  onOpen,
+}: {
+  r: EpisodeRow;
+  lang: string;
+  showTitle?: string;
+  quietLang?: boolean;
+  next?: boolean;
+  selecting: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  onOpen: (focus?: "fix") => void;
+}) {
   const toast = useToast();
   const ls = r.status === "have" && r.file ? langOf(r.file, lang) : "ok";
   const noLang = ls !== "ok";
-  const dot = r.status === "have" ? (ls === "no" ? "warn" : ls === "unknown" ? "off" : "good") : r.status === "downloading" ? "info" : r.status === "missing" ? "bad" : r.status === "attention" || r.status === "wrong-lang" ? "warn" : "off";
-  const quality = r.file ? (r.file.resolution ? resLabel(r.file.resolution) : r.file.quality) ?? "" : "";
+  const dot =
+    r.status === "have"
+      ? ls === "no"
+        ? "warn"
+        : ls === "unknown"
+          ? "off"
+          : "good"
+      : r.status === "downloading"
+        ? "info"
+        : r.status === "missing"
+          ? "bad"
+          : r.status === "attention" || r.status === "wrong-lang"
+            ? "warn"
+            : "off";
+  const quality = r.file ? ((r.file.resolution ? resLabel(r.file.resolution) : r.file.quality) ?? "") : "";
   return (
     <li className={`ep-row${next ? " next" : ""}${selected ? " selected" : ""}`}>
       {selecting && <input type="checkbox" checked={selected} onChange={onToggle} aria-label={sxe(r.season, r.episode)} />}
@@ -549,17 +789,46 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
           <span className="ep-title clamp1" title={r.title ?? undefined}>
             {r.title ?? t("ep.tba")}
             {r.movie && <span className="tag info inline">{t("ep.movieChip")}</span>}
-            {r.file?.changed && <span className="tag neutral inline" title={t("ep.changed")}>{t("ep.reencodedChip")}</span>}
+            {r.file?.changed && (
+              <span className="tag neutral inline" title={t("ep.changed")}>
+                {t("ep.reencodedChip")}
+              </span>
+            )}
             {r.special && !r.movie && <span className="tag neutral inline">{t(`special.${r.special.type}` as I18nKey)}</span>}
           </span>
           <span className="ep-meta muted small">
-            {r.file && r.airUtc && r.airUtc > Date.now() ? <span title={t("ep.outEarlyHelp")}>{t("ep.outEarlyShort")}</span> : airLabel(r.airUtc)}
+            {r.file && r.airUtc && r.airUtc > Date.now() ? (
+              <span title={t("ep.outEarlyHelp")}>{t("ep.outEarlyShort")}</span>
+            ) : (
+              airLabel(r.airUtc)
+            )}
             {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
             {r.status === "missing" && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
             {/* Why it needs you, right on the row (the sheet has the buttons); a good file only gets a quiet note. */}
-            {r.status === "attention" && r.attention ? <span className="miss-why" title={r.attention.summary}> · {r.attention.summary}</span> : ""}
-            {r.status === "have" && r.attention ? <span className="muted" title={r.attention.summary}> · {t("ep.replaceNote")}</span> : ""}
-            {r.status === "wrong-lang" && r.file?.lang ? <span className="miss-why" title={t("ep.wrongLangHelp", { why: r.file.lang.why })}> · {r.file.lang.why}</span> : ""}
+            {r.status === "attention" && r.attention ? (
+              <span className="miss-why" title={r.attention.summary}>
+                {" "}
+                · {r.attention.summary}
+              </span>
+            ) : (
+              ""
+            )}
+            {r.status === "have" && r.attention ? (
+              <span className="muted" title={r.attention.summary}>
+                {" "}
+                · {t("ep.replaceNote")}
+              </span>
+            ) : (
+              ""
+            )}
+            {r.status === "wrong-lang" && r.file?.lang ? (
+              <span className="miss-why" title={t("ep.wrongLangHelp", { why: r.file.lang.why })}>
+                {" "}
+                · {r.file.lang.why}
+              </span>
+            ) : (
+              ""
+            )}
             <span className="phone-meta">
               {quality ? ` · ${quality}` : ""}
               {r.file?.size ? ` · ${fmtSize(r.file.size)}` : ""}
@@ -570,7 +839,11 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
         <span className="ep-sz muted small tnum">{r.file?.size ? fmtSize(r.file.size) : ""}</span>
         <span className="ep-status">
           {next ? <span className="tag next">{t("ep.next")}</span> : null}
-          {(r.status === "have" && (!noLang || (quietLang && ls === "no"))) || (r.status === "unaired" && !next) ? <span className="sr-only">{t(`ep.status.${r.status}` as I18nKey)}</span> : !next || r.status !== "unaired" ? <StatusPill e={r} lang={lang} /> : null}
+          {(r.status === "have" && (!noLang || (quietLang && ls === "no"))) || (r.status === "unaired" && !next) ? (
+            <span className="sr-only">{t(`ep.status.${r.status}` as I18nKey)}</span>
+          ) : !next || r.status !== "unaired" ? (
+            <StatusPill e={r} lang={lang} />
+          ) : null}
         </span>
       </button>
       {r.file && !selecting && (
@@ -578,7 +851,10 @@ function EpRow({ r, lang, showTitle = "", quietLang = false, next = false, selec
           className="ep-menu"
           label={t("ep.moreFor", { ep: sxe(r.season, r.episode) })}
           items={[
-            { label: `▶ ${t("watch.in", { server: "Plex" })}`, onSelect: () => void openInMediaServer(r.file!.path, showTitle, "episode", toast) },
+            {
+              label: `▶ ${t("watch.in", { server: "Plex" })}`,
+              onSelect: () => void openInMediaServer(r.file!.path, showTitle, "episode", toast),
+            },
             { label: t("fix.title"), onSelect: () => onOpen("fix") },
           ]}
         />
@@ -656,11 +932,26 @@ function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number;
             className="row"
             onSubmit={(e) => {
               e.preventDefault();
-              void call(() => api("/aliases", { body: { tvdbId, title: alias.title, season: alias.season ? Number(alias.season) : null } })).then(() => setAlias({ title: "", season: "" }));
+              void call(() =>
+                api("/aliases", { body: { tvdbId, title: alias.title, season: alias.season ? Number(alias.season) : null } }),
+              ).then(() => setAlias({ title: "", season: "" }));
             }}
           >
-            <input className="grow" value={alias.title} onChange={(e) => setAlias({ ...alias, title: e.target.value })} placeholder={t("show.aliasAdd")} aria-label={t("show.aliasAdd")} />
-            <input className="narrow" inputMode="numeric" value={alias.season} onChange={(e) => setAlias({ ...alias, season: e.target.value })} placeholder={t("show.aliasSeason")} aria-label={t("show.aliasSeason")} />
+            <input
+              className="grow"
+              value={alias.title}
+              onChange={(e) => setAlias({ ...alias, title: e.target.value })}
+              placeholder={t("show.aliasAdd")}
+              aria-label={t("show.aliasAdd")}
+            />
+            <input
+              className="narrow"
+              inputMode="numeric"
+              value={alias.season}
+              onChange={(e) => setAlias({ ...alias, season: e.target.value })}
+              placeholder={t("show.aliasSeason")}
+              aria-label={t("show.aliasSeason")}
+            />
             <button>{t("common.add")}</button>
           </form>
         </div>
@@ -685,7 +976,17 @@ function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number;
             className="form"
             onSubmit={(e) => {
               e.preventDefault();
-              void call(() => api("/rules", { body: { tvdbId, mode: rule.mode, season: rule.season ? Number(rule.season) : null, offset: Number(rule.offset) || 0, group: rule.group } }));
+              void call(() =>
+                api("/rules", {
+                  body: {
+                    tvdbId,
+                    mode: rule.mode,
+                    season: rule.season ? Number(rule.season) : null,
+                    offset: Number(rule.offset) || 0,
+                    group: rule.group,
+                  },
+                }),
+              );
             }}
           >
             <label>
@@ -738,9 +1039,24 @@ function Advanced({ s, tvdbId, path, onChanged }: { s: ShowData; tvdbId: number;
 }
 
 /** The franchise's movies (Radarr keeps the files; AnimeArr shows them with their show). Links can be corrected. */
-function FranchiseMovies({ tvdbId, movies, adding, setAdding, onChanged }: { tvdbId: number; movies: FranchiseMovie[]; adding: boolean; setAdding: (v: boolean) => void; onChanged: () => void }) {
+function FranchiseMovies({
+  tvdbId,
+  movies,
+  adding,
+  setAdding,
+  onChanged,
+}: {
+  tvdbId: number;
+  movies: FranchiseMovie[];
+  adding: boolean;
+  setAdding: (v: boolean) => void;
+  onChanged: () => void;
+}) {
   const toast = useToast();
-  const all = useLoad(() => (adding ? api<{ id: number; title: string; year: number | null }[]>("/movies") : Promise.resolve([])), [adding]);
+  const all = useLoad(
+    () => (adding ? api<{ id: number; title: string; year: number | null }[]>("/movies") : Promise.resolve([])),
+    [adding],
+  );
   const link = async (movieId: number, on: boolean) => {
     try {
       await api("/franchise/link", { method: "PUT", body: { tvdbId, movieId, on } });
@@ -796,13 +1112,28 @@ function FranchiseMovies({ tvdbId, movies, adding, setAdding, onChanged }: { tvd
               )}
               <div className="poster-body row between">
                 <div className="chips">
-                  {!m.inRadarr ? <Chip tone="warn">{t("franchise.notInRadarr")}</Chip> : m.hasFile ? <span className="quiet-status"><span className="dot good" aria-hidden="true" />{t("ep.status.have")}</span> : <Chip tone="bad">! {t("ep.status.missing")}</Chip>}
+                  {!m.inRadarr ? (
+                    <Chip tone="warn">{t("franchise.notInRadarr")}</Chip>
+                  ) : m.hasFile ? (
+                    <span className="quiet-status">
+                      <span className="dot good" aria-hidden="true" />
+                      {t("ep.status.have")}
+                    </span>
+                  ) : (
+                    <Chip tone="bad">! {t("ep.status.missing")}</Chip>
+                  )}
                   {m.s0Episode !== null && <Chip>{t("franchise.s0", { n: m.s0Episode })}</Chip>}
                 </div>
                 {m.movieId && (
                   <Menu
                     label={`${m.title}: ${t("common.moreActions")}`}
-                    items={[{ label: t("franchise.unlink"), danger: true, onSelect: () => window.confirm(t("franchise.unlinkConfirm", { title: m.title })) && void link(m.movieId!, false) }]}
+                    items={[
+                      {
+                        label: t("franchise.unlink"),
+                        danger: true,
+                        onSelect: () => window.confirm(t("franchise.unlinkConfirm", { title: m.title })) && void link(m.movieId!, false),
+                      },
+                    ]}
                   />
                 )}
               </div>
@@ -815,22 +1146,73 @@ function FranchiseMovies({ tvdbId, movies, adding, setAdding, onChanged }: { tvd
 }
 
 /** "Find missing (n)" for a season or the whole show: finds automatically (asks once; prefers a season pack); the caret picks a release. */
-function SeasonSearch({ tvdbId, missing, dryRun, onDone, primary = false, big = false }: { tvdbId: number; missing: EpisodeRow[]; dryRun: boolean; onDone: () => void; primary?: boolean; big?: boolean }) {
+function SeasonSearch({
+  tvdbId,
+  missing,
+  dryRun,
+  onDone,
+  primary = false,
+  big = false,
+}: {
+  tvdbId: number;
+  missing: EpisodeRow[];
+  dryRun: boolean;
+  onDone: () => void;
+  primary?: boolean;
+  big?: boolean;
+}) {
   const list = missing.slice(0, 26);
-  const a = useEpisodeActions({ tvdbId, episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })), managedLive: false, dryRun, onDone });
+  const a = useEpisodeActions({
+    tvdbId,
+    episodes: list.map((r) => ({ id: r.id, label: sxe(r.season, r.episode) })),
+    managedLive: false,
+    dryRun,
+    onDone,
+  });
   return (
     <span className="season-search" onClick={(e) => e.preventDefault()}>
-      <SplitButton small={!big} primary={primary} label={list.length < missing.length ? t("ep.findFirst", { n: list.length, total: missing.length }) : t("ep.findMissing", { n: list.length })} onClick={a.auto} disabled={a.autoBusy} items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]} />
+      <SplitButton
+        small={!big}
+        primary={primary}
+        label={
+          list.length < missing.length
+            ? t("ep.findFirst", { n: list.length, total: missing.length })
+            : t("ep.findMissing", { n: list.length })
+        }
+        onClick={a.auto}
+        disabled={a.autoBusy}
+        items={[{ label: t("auto.chooseRelease"), onSelect: a.search }]}
+      />
       {a.ui}
     </span>
   );
 }
 
-interface CatalogEntry { anilistId: number; kind: string | null; title: string; titleRomaji: string | null; titleNative: string | null; status: string | null; year: number | null; episodes: number | null; cover: string | null; tvdbSeason: string | null; nextEpisode: number | null; nextAt: number | null; country: string | null }
+interface CatalogEntry {
+  anilistId: number;
+  kind: string | null;
+  title: string;
+  titleRomaji: string | null;
+  titleNative: string | null;
+  status: string | null;
+  year: number | null;
+  episodes: number | null;
+  cover: string | null;
+  tvdbSeason: string | null;
+  nextEpisode: number | null;
+  nextAt: number | null;
+  country: string | null;
+}
 
 /** The show's AniList entries (seasons/cours) and the rest of its franchise, from AnimeArr's own catalog. */
 function Franchise({ tvdbId }: { tvdbId: number }) {
-  const d = useLoad(() => api<{ franchise: { id: number; title: string } | null; entries: CatalogEntry[]; related: CatalogEntry[] }>(`/series/${tvdbId}/catalog`), [tvdbId]);
+  const d = useLoad(
+    () =>
+      api<{ franchise: { id: number; title: string } | null; entries: CatalogEntry[]; related: CatalogEntry[] }>(
+        `/series/${tvdbId}/catalog`,
+      ),
+    [tvdbId],
+  );
   if (!d.data || (!d.data.entries.length && !d.data.related.length)) return null;
   const row = (e: CatalogEntry) => (
     <li key={e.anilistId} className="franchise-entry">
@@ -839,13 +1221,26 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
         <a href={`https://anilist.co/anime/${e.anilistId}`} target="_blank" rel="noreferrer" className="strong clamp2">
           {e.title}
         </a>
-        {e.titleNative && <span className="muted small">{e.titleRomaji && e.titleRomaji !== e.title ? `${e.titleRomaji} · ` : ""}{e.titleNative}</span>}
+        {e.titleNative && (
+          <span className="muted small">
+            {e.titleRomaji && e.titleRomaji !== e.title ? `${e.titleRomaji} · ` : ""}
+            {e.titleNative}
+          </span>
+        )}
         <span className="chips">
           {e.kind && <Chip>{t(`catalog.kind.${e.kind}` as I18nKey)}</Chip>}
           {e.year && <Chip>{e.year}</Chip>}
           {e.episodes ? <Chip>{t("catalog.eps", { n: e.episodes })}</Chip> : null}
           {e.status && <Chip tone={e.status === "RELEASING" ? "good" : "info"}>{t(`catalog.status.${e.status}` as I18nKey)}</Chip>}
-          {e.tvdbSeason && <Chip>{e.tvdbSeason === "a" ? t("catalog.absolute") : e.tvdbSeason === "0" ? t("series.specials") : t("common.season", { n: Number(e.tvdbSeason) })}</Chip>}
+          {e.tvdbSeason && (
+            <Chip>
+              {e.tvdbSeason === "a"
+                ? t("catalog.absolute")
+                : e.tvdbSeason === "0"
+                  ? t("series.specials")
+                  : t("common.season", { n: Number(e.tvdbSeason) })}
+            </Chip>
+          )}
           {e.country === "CN" && <Chip>{t("catalog.donghua")}</Chip>}
         </span>
       </span>
@@ -854,7 +1249,14 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
   return (
     <details className="card pad stack" open>
       <summary>
-        <strong className="clamp1">{t("catalog.title", { name: d.data.franchise?.title ?? d.data.entries[0]?.title ?? d.data.related[0]?.title ?? "" })}</strong> <span className="muted small">{t(d.data.entries.length + d.data.related.length === 1 ? "catalog.countOne" : "catalog.count", { n: d.data.entries.length + d.data.related.length })}</span>
+        <strong className="clamp1">
+          {t("catalog.title", { name: d.data.franchise?.title ?? d.data.entries[0]?.title ?? d.data.related[0]?.title ?? "" })}
+        </strong>{" "}
+        <span className="muted small">
+          {t(d.data.entries.length + d.data.related.length === 1 ? "catalog.countOne" : "catalog.count", {
+            n: d.data.entries.length + d.data.related.length,
+          })}
+        </span>
       </summary>
       <ul className="plain stack">{d.data.entries.map(row)}</ul>
       {!!d.data.related.length && (
@@ -868,7 +1270,19 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
 }
 
 /** "Drop this show": AnimeArr stops managing it and never grabs, fills in or re-adds it. Files are kept. */
-function DropShow({ tvdbId, title, sonarr, onClose, onDone }: { tvdbId: number; title: string; sonarr: boolean; onClose: () => void; onDone: () => void }) {
+function DropShow({
+  tvdbId,
+  title,
+  sonarr,
+  onClose,
+  onDone,
+}: {
+  tvdbId: number;
+  title: string;
+  sonarr: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const [unmonitor, setUnmonitor] = useState(true);
   return (
@@ -896,7 +1310,16 @@ function DropShow({ tvdbId, title, sonarr, onClose, onDone }: { tvdbId: number; 
   );
 }
 
-interface ReplacePreview { title: string; season: number; episodeIds: number[]; files: number; missing: number; why: Record<string, number>; groups: string[]; recycle: { path: string; days: number } }
+interface ReplacePreview {
+  title: string;
+  season: number;
+  episodeIds: number[];
+  files: number;
+  missing: number;
+  why: Record<string, number>;
+  groups: string[];
+  recycle: { path: string; days: number };
+}
 
 /** "Replace season…": what would be replaced and why, then the search for a season pack (grabbed as a replacement). */
 function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: number; onClose: () => void }) {
@@ -912,7 +1335,11 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
       title={t("replace.title", { n: season })}
       confirmLabel={t("replace.find")}
       onClose={onClose}
-      onConfirm={() => (p.data?.episodeIds.length ? navigate(`/search?tvdbId=${tvdbId}&eps=${p.data.episodeIds.join(",")}&replace=1&season=${season}`) : undefined)}
+      onConfirm={() =>
+        p.data?.episodeIds.length
+          ? navigate(`/search?tvdbId=${tvdbId}&eps=${p.data.episodeIds.join(",")}&replace=1&season=${season}`)
+          : undefined
+      }
     >
       {p.error && <p className="error">{String(p.error)}</p>}
       {!p.data ? (
@@ -926,7 +1353,11 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
           </p>
           {p.data.groups.length > 1 && <p className="small">{t("replace.groups", { n: p.data.groups.length })}</p>}
           <p className="small" title={p.data.recycle.path ?? undefined}>
-            {p.data.recycle.path ? (p.data.recycle.days ? t("replace.bin", { days: p.data.recycle.days }) : t("replace.binForever")) : t("replace.noBin")}
+            {p.data.recycle.path
+              ? p.data.recycle.days
+                ? t("replace.bin", { days: p.data.recycle.days })
+                : t("replace.binForever")
+              : t("replace.noBin")}
           </p>
           <p className="small muted">{t("replace.how")}</p>
         </>

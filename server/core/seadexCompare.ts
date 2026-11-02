@@ -26,7 +26,11 @@ export function pickOfRelease(release: string, entry: SeadexEntry | null | undef
   return seadexPick(p.group, entry, mode, p.source)?.level ?? null;
 }
 
-export function compareToSeadex(releases: string[], entry: SeadexEntry | null | undefined, mode: WatchMode = "sub"): SeadexComparison | null {
+export function compareToSeadex(
+  releases: string[],
+  entry: SeadexEntry | null | undefined,
+  mode: WatchMode = "sub",
+): SeadexComparison | null {
   const top: SeadexTorrent | null = entry ? seadexTop(entry, mode) : null;
   if (!entry || !top || !releases.length) return null;
   const counts = { best: 0, alt: 0, other: 0 };

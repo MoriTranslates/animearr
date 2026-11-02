@@ -10,7 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { ClientCfg } from "../settings.js";
+import type { ClientCfg } from "../system/settings.js";
 import type { ClientStatus } from "./clients.js";
 
 export const isBlackhole = (type: string | null | undefined) => type === "blackhole-usenet" || type === "blackhole-torrent";
@@ -21,9 +21,18 @@ const TEMP_PREFIX = /^(_UNPACK_|_FAILED_|\.)/i;
 export const isTempName = (n: string) => TEMP.test(n) || TEMP_PREFIX.test(n);
 
 /** File-name safe form of a release name (the watch file's name). */
-export const sanitizeName = (name: string) => name.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim().slice(0, 200) || "release";
+export const sanitizeName = (name: string) =>
+  name
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200) || "release";
 /** Release-name matching: lower-case letters and digits only, without a video/container extension. */
-export const normName = (n: string) => n.toLowerCase().replace(/\.(mkv|mp4|avi|m4v|ts|webm|nzb|torrent|magnet)$/i, "").replace(/[^a-z0-9]+/g, "");
+export const normName = (n: string) =>
+  n
+    .toLowerCase()
+    .replace(/\.(mkv|mp4|avi|m4v|ts|webm|nzb|torrent|magnet)$/i, "")
+    .replace(/[^a-z0-9]+/g, "");
 
 /** The job's ref: when it was dropped, and the release name it is matched by. */
 export const bhRef = (at: number, name: string) => `${at}:${sanitizeName(name)}`;
@@ -123,7 +132,8 @@ export function blackholeDriver(deps: BlackholeDeps) {
       if (src.data) writeNew(dir, sanitizeName(name), ".torrent", src.data);
       else if (src.magnet) {
         // "refused" lets the grab fall back to the next torrent client (or the next release).
-        if (!c.saveMagnets) throw new Error(`${c.name} refused a magnet-only release (turn on "Save magnet links as .magnet files" to take them)`);
+        if (!c.saveMagnets)
+          throw new Error(`${c.name} refused a magnet-only release (turn on "Save magnet links as .magnet files" to take them)`);
         writeNew(dir, sanitizeName(name), ".magnet", src.magnet);
       } else throw new Error(`Nothing to send to ${c.name}`);
       return { ref: bhRef(deps.now(), name) };
@@ -132,7 +142,14 @@ export function blackholeDriver(deps: BlackholeDeps) {
       const { at, name } = parseRef(ref);
       const want = normName(name);
       const timeoutH = c.timeoutHours ?? 24;
-      const waiting = (clientStatus = "Waiting for download…"): ClientStatus => ({ state: "queued", progress: 0, clientStatus, etaSec: null, speed: null, seeders: null });
+      const waiting = (clientStatus = "Waiting for download…"): ClientStatus => ({
+        state: "queued",
+        progress: 0,
+        clientStatus,
+        etaSec: null,
+        speed: null,
+        seeders: null,
+      });
       if (!c.completedFolder) return { state: "error", progress: 0, message: `${c.name} has no completed folder` };
       const done = deps.local(c.completedFolder);
       let entries: string[];
@@ -144,7 +161,12 @@ export function blackholeDriver(deps: BlackholeDeps) {
       const hit = entries.find((n) => !isTempName(n) && normName(n) === want);
       if (!hit) {
         seen.delete(ref);
-        if (deps.now() - at > timeoutH * 3_600_000) return { state: "failed", progress: 0, message: `nothing named like it arrived in ${c.name}'s completed folder within ${timeoutH} h` };
+        if (deps.now() - at > timeoutH * 3_600_000)
+          return {
+            state: "failed",
+            progress: 0,
+            message: `nothing named like it arrived in ${c.name}'s completed folder within ${timeoutH} h`,
+          };
         return waiting();
       }
       let size: number;
@@ -157,7 +179,12 @@ export function blackholeDriver(deps: BlackholeDeps) {
       const now = deps.now();
       if (size > 0 && prev && prev.size === size && now - prev.at >= STABLE_MS) {
         seen.delete(ref);
-        return { state: "completed", progress: 1, path: `${c.completedFolder.replace(/\/+$/, "")}/${hit}`, clientStatus: "found in the completed folder" };
+        return {
+          state: "completed",
+          progress: 1,
+          path: `${c.completedFolder.replace(/\/+$/, "")}/${hit}`,
+          clientStatus: "found in the completed folder",
+        };
       }
       if (!prev || prev.size !== size) seen.set(ref, { size, at: now });
       return waiting("Waiting for download… (finishing)");

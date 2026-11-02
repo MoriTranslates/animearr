@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, type MediaSettings, type Settings as S } from "./api";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { ImportBrowser } from "./importBrowser";
 import { Chip, Confirm, ErrorBox, NumberInput, Spinner, Toggle, useLoad, useToast } from "./ui";
 
 type Upd = (fn: (x: S) => S) => void;
-type Preview = Record<"standard" | "daily" | "anime" | "multi" | "seriesFolder" | "seasonFolder" | "specialsFolder" | "movie" | "movieFolder", string>;
+type Preview = Record<
+  "standard" | "daily" | "anime" | "multi" | "seriesFolder" | "seasonFolder" | "specialsFolder" | "movie" | "movieFolder",
+  string
+>;
 
 const COLON: MediaSettings["colonReplacement"][] = ["smart", "delete", "dash", "spaceDash", "spaceDashSpace"];
 const MULTI: MediaSettings["multiEpisodeStyle"][] = ["prefixedRange", "extend", "duplicate", "repeat", "scene", "range"];
@@ -50,20 +53,20 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="row">
         {/* Only with Sonarr or Radarr set up (without them it could only fail). */}
         {!!((s.sonarr.url && s.sonarr.apiKey) || (s.radarr.url && s.radarr.apiKey)) && (
-        <button
-          className="small"
-          onClick={async () => {
-            try {
-              const r = await api<{ sonarr: boolean; radarr: boolean; media: MediaSettings }>("/media/import-defaults", { body: {} });
-              upd((x) => ({ ...x, media: r.media }));
-              toast(t("media.copied"));
-            } catch (e) {
-              toast((e as Error).message, true);
-            }
-          }}
-        >
-          ⇣ {t("media.copyFromArr")}
-        </button>
+          <button
+            className="small"
+            onClick={async () => {
+              try {
+                const r = await api<{ sonarr: boolean; radarr: boolean; media: MediaSettings }>("/media/import-defaults", { body: {} });
+                upd((x) => ({ ...x, media: r.media }));
+                toast(t("media.copied"));
+              } catch (e) {
+                toast((e as Error).message, true);
+              }
+            }}
+          >
+            ⇣ {t("media.copyFromArr")}
+          </button>
         )}
         <Toggle checked={adv} onChange={setAdv} label={t("media.showAdvanced")} />
       </div>
@@ -71,7 +74,11 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="card pad form">
         <h2>{t("media.episodeNaming")}</h2>
         <Toggle checked={m.renameEpisodes} onChange={(v) => set({ renameEpisodes: v })} label={t("media.renameEpisodes")} />
-        <Toggle checked={m.replaceIllegalCharacters} onChange={(v) => set({ replaceIllegalCharacters: v })} label={t("media.replaceIllegal")} />
+        <Toggle
+          checked={m.replaceIllegalCharacters}
+          onChange={(v) => set({ replaceIllegalCharacters: v })}
+          label={t("media.replaceIllegal")}
+        />
         {sel("colonReplacement", "media.colon", COLON)}
         {fmt("standardEpisodeFormat", "media.standardFormat", "standard")}
         {fmt("dailyEpisodeFormat", "media.dailyFormat", "daily")}
@@ -89,7 +96,10 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
         </label>
         <label>
           {t("media.multiStyle")}
-          <select value={m.multiEpisodeStyle} onChange={(e) => set({ multiEpisodeStyle: e.target.value as MediaSettings["multiEpisodeStyle"] })}>
+          <select
+            value={m.multiEpisodeStyle}
+            onChange={(e) => set({ multiEpisodeStyle: e.target.value as MediaSettings["multiEpisodeStyle"] })}
+          >
             {MULTI.map((o) => (
               <option key={o} value={o}>
                 {t(`media.opt.${o}` as I18nKey)}
@@ -112,20 +122,43 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <div className="card pad form">
         <h2>{t("media.folders")}</h2>
         <Toggle checked={m.createEmptyFolders} onChange={(v) => set({ createEmptyFolders: v })} label={t("media.createEmpty")} />
-        <Toggle checked={m.deleteEmptyFolders} onChange={(v) => set({ deleteEmptyFolders: v })} label={t("media.deleteEmpty")} help={t("media.deleteEmptyHelp")} />
+        <Toggle
+          checked={m.deleteEmptyFolders}
+          onChange={(v) => set({ deleteEmptyFolders: v })}
+          label={t("media.deleteEmpty")}
+          help={t("media.deleteEmptyHelp")}
+        />
       </div>
 
       <div className="card pad form">
         <h2>{t("media.importing")}</h2>
         {sel("episodeTitleRequired", "media.titleRequired", ["always", "bulkSeasonReleases", "never"])}
-        {adv && <Toggle checked={m.skipFreeSpaceCheck} onChange={(v) => set({ skipFreeSpaceCheck: v })} label={t("media.skipFreeSpace")} help={t("media.freeSpaceHelp")} />}
+        {adv && (
+          <Toggle
+            checked={m.skipFreeSpaceCheck}
+            onChange={(v) => set({ skipFreeSpaceCheck: v })}
+            label={t("media.skipFreeSpace")}
+            help={t("media.freeSpaceHelp")}
+          />
+        )}
         {adv && (
           <label>
             {t("media.minFreeSpace")}
-            <NumberInput value={m.minimumFreeSpaceMb} min={0} max={1_000_000} onChange={(v) => set({ minimumFreeSpaceMb: v })} label={t("media.minFreeSpace")} />
+            <NumberInput
+              value={m.minimumFreeSpaceMb}
+              min={0}
+              max={1_000_000}
+              onChange={(v) => set({ minimumFreeSpaceMb: v })}
+              label={t("media.minFreeSpace")}
+            />
           </label>
         )}
-        <Toggle checked={m.useHardlinks} onChange={(v) => set({ useHardlinks: v })} label={t("media.hardlinks")} help={t("media.hardlinksHelp")} />
+        <Toggle
+          checked={m.useHardlinks}
+          onChange={(v) => set({ useHardlinks: v })}
+          label={t("media.hardlinks")}
+          help={t("media.hardlinksHelp")}
+        />
         <Toggle checked={m.importExtraFiles} onChange={(v) => set({ importExtraFiles: v })} label={t("media.extraFiles")} />
         {m.importExtraFiles && (
           <label>
@@ -135,7 +168,12 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
         )}
         {sel("propers", "media.propers", ["preferAndUpgrade", "doNotUpgrade", "doNotPrefer"])}
         <p className="muted small">{t("media.propersHelp")}</p>
-        <Toggle checked={m.renameAfterReencode} onChange={(v) => set({ renameAfterReencode: v })} label={t("media.renameAfterReencode")} help={t("media.renameAfterReencodeHelp")} />
+        <Toggle
+          checked={m.renameAfterReencode}
+          onChange={(v) => set({ renameAfterReencode: v })}
+          label={t("media.renameAfterReencode")}
+          help={t("media.renameAfterReencodeHelp")}
+        />
       </div>
 
       <div className="card pad form">
@@ -160,7 +198,13 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
         </label>
         <label>
           {t("media.recycleDays")}
-          <NumberInput value={m.recycleBinCleanupDays} min={0} max={365} onChange={(v) => set({ recycleBinCleanupDays: v })} label={t("media.recycleDays")} />
+          <NumberInput
+            value={m.recycleBinCleanupDays}
+            min={0}
+            max={365}
+            onChange={(v) => set({ recycleBinCleanupDays: v })}
+            label={t("media.recycleDays")}
+          />
         </label>
       </div>
 
@@ -173,7 +217,11 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
             <>
               <label>
                 {t("media.chmod")}
-                <input value={m.chmodFolder} onChange={(e) => set({ chmodFolder: e.target.value.replace(/[^0-7]/g, "").slice(0, 4) })} inputMode="numeric" />
+                <input
+                  value={m.chmodFolder}
+                  onChange={(e) => set({ chmodFolder: e.target.value.replace(/[^0-7]/g, "").slice(0, 4) })}
+                  inputMode="numeric"
+                />
                 <span className="muted small">{t("media.chmodHelp")}</span>
               </label>
               <label>
@@ -225,12 +273,21 @@ function ImporterCard({ s }: { s: S }) {
         })}
       </div>
       <p className="small">
-        <b>{t("media.mode.now", { mode: t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}` as I18nKey) })}</b> {t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}.help` as I18nKey)}
+        <b>
+          {t("media.mode.now", { mode: t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}` as I18nKey) })}
+        </b>{" "}
+        {t(`media.mode.${!imp.allowReal ? "preview" : !imp.allowRename ? "import" : "rename"}.help` as I18nKey)}
       </p>
       {imp.allowReal && imp.realBudget >= 0 && <Chip tone="warn">{t("media.budget", { n: imp.realBudget })}</Chip>}
       <p className="muted small">{t("media.importerHelp")}</p>
       {ask && (
-        <Confirm title={t("media.confirmTitle")} confirmLabel={t("common.save")} danger={!!(ask.allowReal || ask.allowRename || ask.engine === "animearr")} onClose={() => setAsk(null)} onConfirm={async () => (await put(ask), setAsk(null))}>
+        <Confirm
+          title={t("media.confirmTitle")}
+          confirmLabel={t("common.save")}
+          danger={!!(ask.allowReal || ask.allowRename || ask.engine === "animearr")}
+          onClose={() => setAsk(null)}
+          onConfirm={async () => (await put(ask), setAsk(null))}
+        >
           <p>{t("media.confirmBody")}</p>
         </Confirm>
       )}
@@ -241,7 +298,11 @@ function ImporterCard({ s }: { s: S }) {
 /** Bulk: which shows have files whose names differ from the naming settings. */
 function RenameAll() {
   const [go, setGo] = useState(false);
-  const d = useLoad(() => (go ? api<{ series: { tvdbId: number; title: string; count: number }[]; total: number }>("/media/rename-all") : Promise.resolve(null)), [go]);
+  const d = useLoad(
+    () =>
+      go ? api<{ series: { tvdbId: number; title: string; count: number }[]; total: number }>("/media/rename-all") : Promise.resolve(null),
+    [go],
+  );
   return (
     <div className="card pad stack">
       <h2>{t("media.renameAll")}</h2>
@@ -269,13 +330,23 @@ function RenameAll() {
   );
 }
 
-interface RenameItem { fileId: number; from: string; to: string; episodes: string; problem: string | null; sidecars: { from: string; to: string }[] }
+interface RenameItem {
+  fileId: number;
+  from: string;
+  to: string;
+  episodes: string;
+  problem: string | null;
+  sidecars: { from: string; to: string }[];
+}
 
 /** Show page: "Preview rename" — old → new per file, pick which to apply. */
 export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: number; onDone: () => void; initiallyOpen?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(!!initiallyOpen);
-  const d = useLoad(() => (open ? api<{ route: "sonarr" | "animearr"; items: RenameItem[] }>(`/series/${tvdbId}/rename`) : Promise.resolve(null)), [open, tvdbId]);
+  const d = useLoad(
+    () => (open ? api<{ route: "sonarr" | "animearr"; items: RenameItem[] }>(`/series/${tvdbId}/rename`) : Promise.resolve(null)),
+    [open, tvdbId],
+  );
   const [pick, setPick] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   useEffect(() => setPick(new Set((d.data?.items ?? []).filter((i) => !i.problem).map((i) => i.fileId))), [d.data]);
@@ -297,12 +368,14 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
                     type="checkbox"
                     disabled={!!i.problem}
                     checked={pick.has(i.fileId)}
-                    onChange={(e) => setPick((p) => {
-                      const n = new Set(p);
-                      if (e.target.checked) n.add(i.fileId);
-                      else n.delete(i.fileId);
-                      return n;
-                    })}
+                    onChange={(e) =>
+                      setPick((p) => {
+                        const n = new Set(p);
+                        if (e.target.checked) n.add(i.fileId);
+                        else n.delete(i.fileId);
+                        return n;
+                      })
+                    }
                   />
                   <span className="stack">
                     <span className="muted mono">− {base(i.from)}</span>
@@ -321,9 +394,14 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const r = await api<{ results: { done: boolean; why: string }[] }>(`/series/${tvdbId}/rename`, { body: { fileIds: [...pick] } });
+                  const r = await api<{ results: { done: boolean; why: string }[] }>(`/series/${tvdbId}/rename`, {
+                    body: { fileIds: [...pick] },
+                  });
                   const ok = r.results.filter((x) => x.done).length;
-                  toast(t(d.data?.route === "sonarr" ? "rename.doneSonarr" : "rename.done", { ok, total: r.results.length }), ok < r.results.length);
+                  toast(
+                    t(d.data?.route === "sonarr" ? "rename.doneSonarr" : "rename.done", { ok, total: r.results.length }),
+                    ok < r.results.length,
+                  );
                   await d.reload();
                   onDone();
                 } catch (e) {
@@ -342,7 +420,15 @@ export function RenamePreview({ tvdbId, onDone, initiallyOpen }: { tvdbId: numbe
   );
 }
 
-interface PlanItem { source: string; destArr: string; label: string; action: string; sidecars: unknown[]; replaces: string | null; problem: string | null }
+interface PlanItem {
+  source: string;
+  destArr: string;
+  label: string;
+  action: string;
+  sidecars: unknown[];
+  replaces: string | null;
+  problem: string | null;
+}
 
 /** Show page: manual import of a folder or file (plan first; importing needs real imports switched on). */
 export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number; onDone: () => void; initiallyOpen?: boolean }) {
@@ -353,9 +439,12 @@ export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number
   const run = async (dryRun: boolean) => {
     setBusy(true);
     try {
-      if (dryRun) setPlan({ ...(await api<{ items: PlanItem[]; notes: string[] }>(`/import/plan`, { body: { tvdbId, path: p } })), path: p });
+      if (dryRun)
+        setPlan({ ...(await api<{ items: PlanItem[]; notes: string[] }>(`/import/plan`, { body: { tvdbId, path: p } })), path: p });
       else {
-        const r = await api<{ results: { label: string; done: boolean; why: string }[] }>(`/import/run`, { body: { tvdbId, path: plan?.path ?? p, dryRun: false, only: plan?.items.filter((i) => !i.problem).map((i) => i.source) } });
+        const r = await api<{ results: { label: string; done: boolean; why: string }[] }>(`/import/run`, {
+          body: { tvdbId, path: plan?.path ?? p, dryRun: false, only: plan?.items.filter((i) => !i.problem).map((i) => i.source) },
+        });
         const ok = r.results.filter((x) => x.done).length;
         toast(t("import.done", { ok, total: r.results.length }), ok < r.results.length);
         setPlan(null);
@@ -374,7 +463,14 @@ export function ManualImport({ tvdbId, onDone, initiallyOpen }: { tvdbId: number
       <ImportBrowser selected={p} onSelect={(x) => (setP(x), setPlan(null))} />
       <details className="small">
         <summary>{t("import.typePath")}</summary>
-        <input value={p} onChange={(e) => (setP(e.target.value), setPlan(null))} placeholder="/data/completed/animearr/…" aria-label={t("import.path")} className="grow" spellCheck={false} />
+        <input
+          value={p}
+          onChange={(e) => (setP(e.target.value), setPlan(null))}
+          placeholder="/data/completed/animearr/…"
+          aria-label={t("import.path")}
+          className="grow"
+          spellCheck={false}
+        />
       </details>
       <div className="row">
         {p && (

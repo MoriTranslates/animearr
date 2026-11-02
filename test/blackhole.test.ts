@@ -8,13 +8,13 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bh-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db, cache } = await import("../server/db.js");
-const { patchSettings, getSettings } = await import("../server/settings.js");
-const { saveClient } = await import("../server/connectionsAdmin.js");
+const { db, cache } = await import("../server/system/db.js");
+const { patchSettings, getSettings } = await import("../server/system/settings.js");
+const { saveClient } = await import("../server/system/connectionsAdmin.js");
 const { clientsFor, partialCapable } = await import("../server/arr/clients.js");
 const { blackholeDriver, normName, isTempName, STABLE_MS } = await import("../server/arr/blackhole.js");
-const { cleanupGrab } = await import("../server/downloads.js");
-type Cfg = import("../server/settings.js").ClientCfg;
+const { cleanupGrab } = await import("../server/grabs/downloads.js");
+type Cfg = import("../server/system/settings.js").ClientCfg;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bh-data-"));
 const WATCH = path.join(tmp, "bh", "watch");
@@ -22,7 +22,12 @@ const DONE = path.join(tmp, "bh", "completed");
 before(() => {
   fs.mkdirSync(WATCH, { recursive: true });
   fs.mkdirSync(DONE, { recursive: true });
-  patchSettings((s) => ({ ...s, localPathMappings: [{ from: "/data", to: tmp }], importer: { ...s.importer, sourceRoots: ["/data/completed/animearr"] }, downloads: { ...s.downloads, cleanup: "auto", allowDelete: true } }));
+  patchSettings((s) => ({
+    ...s,
+    localPathMappings: [{ from: "/data", to: tmp }],
+    importer: { ...s.importer, sourceRoots: ["/data/completed/animearr"] },
+    downloads: { ...s.downloads, cleanup: "auto", allowDelete: true },
+  }));
 });
 
 test("a new blackhole starts off, and can't be turned on until its folders pass (completed folder must be a source root)", () => {
@@ -39,21 +44,53 @@ test("a new blackhole starts off, and can't be turned on until its folders pass 
 test("never picked automatically while a real client of the protocol is on, unless it is the preferred one", () => {
   const bh = getSettings().extraClients.find((x) => x.type === "blackhole-torrent")!;
   // No real torrent client: the blackhole is used.
-  assert.deepEqual(clientsFor("torrent").map((c) => c.id), [bh.id]);
+  assert.deepEqual(
+    clientsFor("torrent").map((c) => c.id),
+    [bh.id],
+  );
   // qBittorrent configured and on (priority 1); the blackhole at priority 50, then at the same priority 1: never picked.
   patchSettings((s) => ({ ...s, qbittorrent: { ...s.qbittorrent, url: "http://qb:8080" } }));
-  assert.deepEqual(clientsFor("torrent").map((c) => c.id), ["qbittorrent"]);
+  assert.deepEqual(
+    clientsFor("torrent").map((c) => c.id),
+    ["qbittorrent"],
+  );
   saveClient(bh.id, { ...bh, priority: 1 });
-  assert.deepEqual(clientsFor("torrent").map((c) => c.id), ["qbittorrent"]);
+  assert.deepEqual(
+    clientsFor("torrent").map((c) => c.id),
+    ["qbittorrent"],
+  );
   // Preferred: a better priority than every real client.
   patchSettings((s) => ({ ...s, clientPrefs: { ...s.clientPrefs, qbittorrent: { priority: 5, enabled: true } } }));
-  assert.deepEqual(clientsFor("torrent").map((c) => c.id), [bh.id, "qbittorrent"]);
+  assert.deepEqual(
+    clientsFor("torrent").map((c) => c.id),
+    [bh.id, "qbittorrent"],
+  );
   // qBittorrent switched off: the blackhole is the only one again.
   patchSettings((s) => ({ ...s, clientPrefs: { ...s.clientPrefs, qbittorrent: { priority: 5, enabled: false } } }));
-  assert.deepEqual(clientsFor("torrent").map((c) => c.id), [bh.id]);
+  assert.deepEqual(
+    clientsFor("torrent").map((c) => c.id),
+    [bh.id],
+  );
 });
 
-const cfg = (o: Partial<Cfg> = {}): Cfg => ({ id: "bh1", type: "blackhole-torrent", name: "Torrent Blackhole", url: "", username: "", password: "", category: "animearr", priority: 50, enabled: true, removeCompleted: false, pathMappings: [], watchFolder: "/data/bh/watch", completedFolder: "/data/bh/completed", saveMagnets: false, timeoutHours: 24, ...o });
+const cfg = (o: Partial<Cfg> = {}): Cfg => ({
+  id: "bh1",
+  type: "blackhole-torrent",
+  name: "Torrent Blackhole",
+  url: "",
+  username: "",
+  password: "",
+  category: "animearr",
+  priority: 50,
+  enabled: true,
+  removeCompleted: false,
+  pathMappings: [],
+  watchFolder: "/data/bh/watch",
+  completedFolder: "/data/bh/completed",
+  saveMagnets: false,
+  timeoutHours: 24,
+  ...o,
+});
 
 test("grab drops the file named after the release; magnets only with .magnet files on", async () => {
   let now = 1_000_000;
@@ -106,10 +143,20 @@ test("completion: waits, ignores temp names, needs the same size twice a minute 
 });
 
 test("Usenet blackhole: after a confirmed import its finished folder goes (inside a source root, deleting on); torrents never", async () => {
-  patchSettings((s) => ({ ...s, extraClients: [...s.extraClients, cfg({ id: "bhu", type: "blackhole-usenet" }), cfg({ id: "bht", type: "blackhole-torrent" })] }));
+  patchSettings((s) => ({
+    ...s,
+    extraClients: [...s.extraClients, cfg({ id: "bhu", type: "blackhole-usenet" }), cfg({ id: "bht", type: "blackhole-torrent" })],
+  }));
   fs.mkdirSync(path.join(DONE, "Show.S01E04.1080p"), { recursive: true });
   fs.writeFileSync(path.join(DONE, "Show.S01E04.1080p", "show.nfo"), "x");
-  const ins = (client: string, release: string) => Number(db.prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (0, 0, 1, 1, '[]', ?, 'g', 'usenet', ?, ?, 'done', 0, 'manual', '', '[]')").run(release, client, `1:${release}`).lastInsertRowid);
+  const ins = (client: string, release: string) =>
+    Number(
+      db
+        .prepare(
+          "INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (0, 0, 1, 1, '[]', ?, 'g', 'usenet', ?, ?, 'done', 0, 'manual', '', '[]')",
+        )
+        .run(release, client, `1:${release}`).lastInsertRowid,
+    );
   const none = { torrents: async () => [], sab: async () => [], remove: async () => undefined };
   assert.match((await cleanupGrab(ins("bhu", "Show.S01E04.1080p"), "imported", none))!, /deleted the download folder/);
   assert.equal(fs.existsSync(path.join(DONE, "Show.S01E04.1080p")), false);

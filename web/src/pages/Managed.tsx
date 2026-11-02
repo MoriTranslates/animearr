@@ -1,12 +1,36 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, relTime, Spinner, useLoad, usePageTitle, usePoll, useToast, Why } from "../ui";
+import {
+  Chip,
+  Confirm,
+  Cover,
+  dateTime,
+  Empty,
+  ErrorBox,
+  Menu,
+  relTime,
+  Spinner,
+  useLoad,
+  usePageTitle,
+  usePoll,
+  useToast,
+  Why,
+} from "../ui";
 import { ReleaseLine, StateChip } from "./Queue";
 
-const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { waiting: "info", retry: "warn", "would-grab": "accent", grabbed: "good", "gave-up": "bad", done: "good", backlog: "info", replace: "warn" };
+const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = {
+  waiting: "info",
+  retry: "warn",
+  "would-grab": "accent",
+  grabbed: "good",
+  "gave-up": "bad",
+  done: "good",
+  backlog: "info",
+  replace: "warn",
+};
 
 export function Managed({ status }: { status: Status }) {
   usePageTitle(t("managed.title"));
@@ -42,17 +66,24 @@ export function Managed({ status }: { status: Status }) {
             </span>
           </span>
         </ShowLink>
-        <Menu label={`${m.title}: ${t("common.moreActions")}`} items={[{ label: t("managed.sonarrMonitor"), onSelect: () => setConfirm(m), hidden: m.unmonitoredInSonarr }]} />
+        <Menu
+          label={`${m.title}: ${t("common.moreActions")}`}
+          items={[{ label: t("managed.sonarrMonitor"), onSelect: () => setConfirm(m), hidden: m.unmonitoredInSonarr }]}
+        />
       </div>
       <ul className="sched show-body">
-        {m.schedule.filter((s) => s.state !== "done").map((s) => (
-          <li key={s.episodeId}>
-            <span className="mono">{sxe(s.season, s.episode)}</span>
-            <Chip tone={STATE_TONE[s.state] ?? "info"}>{t(`managed.state.${s.state}` as I18nKey)}</Chip>
-            {(s.state === "waiting" || s.state === "retry") && <span className="muted small">{t("managed.nextAt", { when: dateTime(s.nextAt) })}</span>}
-            {s.why && <Why lines={[s.why]} />}
-          </li>
-        ))}
+        {m.schedule
+          .filter((s) => s.state !== "done")
+          .map((s) => (
+            <li key={s.episodeId}>
+              <span className="mono">{sxe(s.season, s.episode)}</span>
+              <Chip tone={STATE_TONE[s.state] ?? "info"}>{t(`managed.state.${s.state}` as I18nKey)}</Chip>
+              {(s.state === "waiting" || s.state === "retry") && (
+                <span className="muted small">{t("managed.nextAt", { when: dateTime(s.nextAt) })}</span>
+              )}
+              {s.why && <Why lines={[s.why]} />}
+            </li>
+          ))}
       </ul>
     </article>
   );
@@ -84,8 +115,14 @@ export function Managed({ status }: { status: Status }) {
       </div>
       {data.error && <ErrorBox error={data.error} retry={data.reload} />}
       {data.loading && !data.data && <Spinner label={t("app.loading")} />}
-      {data.data && !shows.length && <Empty icon="★" action={{ label: t("managed.choose"), run: () => navigate("/shows") }}>{t("managed.empty")}</Empty>}
-      {!!sonarrToo.length && status.connected?.sonarr && <p className="muted small">{t("managed.sonarrTooNote", { n: sonarrToo.length })}</p>}
+      {data.data && !shows.length && (
+        <Empty icon="★" action={{ label: t("managed.choose"), run: () => navigate("/shows") }}>
+          {t("managed.empty")}
+        </Empty>
+      )}
+      {!!sonarrToo.length && status.connected?.sonarr && (
+        <p className="muted small">{t("managed.sonarrTooNote", { n: sonarrToo.length })}</p>
+      )}
       {!!attention.length && (
         <>
           <h2 className="section-title">{t("managed.group.attention", { n: attention.length })}</h2>
@@ -188,10 +225,18 @@ export function Managed({ status }: { status: Status }) {
 export function AutomateTabs({ current }: { current: "managed" | "fillin" }) {
   return (
     <div className="seg" role="group" aria-label={t("nav.group.automate")}>
-      <button className={current === "managed" ? "on" : ""} aria-pressed={current === "managed"} onClick={() => current !== "managed" && navigate("/managed")}>
+      <button
+        className={current === "managed" ? "on" : ""}
+        aria-pressed={current === "managed"}
+        onClick={() => current !== "managed" && navigate("/managed")}
+      >
         {t("nav.managed")}
       </button>
-      <button className={current === "fillin" ? "on" : ""} aria-pressed={current === "fillin"} onClick={() => current !== "fillin" && navigate("/fillin")}>
+      <button
+        className={current === "fillin" ? "on" : ""}
+        aria-pressed={current === "fillin"}
+        onClick={() => current !== "fillin" && navigate("/fillin")}
+      >
         {t("nav.fillin")}
       </button>
     </div>

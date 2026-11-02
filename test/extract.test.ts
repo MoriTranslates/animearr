@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cleanUnpacked, extractIfNeeded, firstVolumes, UNPACK_DIR, type ExtractOutcome } from "../server/extract.js";
+import { cleanUnpacked, extractIfNeeded, firstVolumes, UNPACK_DIR, type ExtractOutcome } from "../server/grabs/extract.js";
 
 async function settle(dir: string, key: string, opts: Parameters<typeof extractIfNeeded>[2] = {}): Promise<ExtractOutcome> {
   for (let i = 0; i < 200; i++) {
@@ -17,7 +17,18 @@ async function settle(dir: string, key: string, opts: Parameters<typeof extractI
 
 test("first volumes only", () => {
   assert.deepEqual(
-    firstVolumes(["a/x.part01.rar", "a/x.part02.rar", "a/x.r00", "b/y.rar", "c/z.7z.001", "c/z.7z.002", "d/w.zip", "e/v.7z", "sample/s.rar", `${UNPACK_DIR}/1/q.zip`]),
+    firstVolumes([
+      "a/x.part01.rar",
+      "a/x.part02.rar",
+      "a/x.r00",
+      "b/y.rar",
+      "c/z.7z.001",
+      "c/z.7z.002",
+      "d/w.zip",
+      "e/v.7z",
+      "sample/s.rar",
+      `${UNPACK_DIR}/1/q.zip`,
+    ]),
     ["a/x.part01.rar", "b/y.rar", "c/z.7z.001", "d/w.zip", "e/v.7z"],
   );
 });

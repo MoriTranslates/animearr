@@ -750,6 +750,9 @@ Endpoints present (all under `/api/v3`):
 
 Query parameter names are matched in any case, as Sonarr does (`seriesId`, `seriesID` and `SERIESID` are the same).
 
+"Monitored" on a series means managed by AnimeArr. `PUT series`, `PUT series/{id}` and `PUT series/editor` all treat
+`monitored: false` the same way: the show is no longer managed (its files stay), and `monitored: true` manages it.
+
 There is no Radarr-side API (so movie requests are not possible).
 
 ## Building a dashboard widget

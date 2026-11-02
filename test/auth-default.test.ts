@@ -9,11 +9,13 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-au
 process.env.ANIMEARR_NO_LOCK = "1";
 delete process.env.ANIMEARR_LOCAL_NETWORKS;
 delete process.env.TRUST_PROXY;
-const { usingDefaultPassword, setAccount, getSettings, patchSettings, checkPassword, ensureDefaultAccount, DEFAULT_LOGIN } = await import("../server/settings.js");
-const { defaultLoginRefusal, DEFAULT_REMOTE_REFUSED } = await import("../server/auth.js");
+const { usingDefaultPassword, setAccount, getSettings, patchSettings, checkPassword, ensureDefaultAccount, DEFAULT_LOGIN } =
+  await import("../server/system/settings.js");
+const { defaultLoginRefusal, DEFAULT_REMOTE_REFUSED } = await import("../server/system/auth.js");
 
 /** A request as Fastify would see it: the client IP, the socket peer, and the Host header. */
-const req = (ip: string, headers: Record<string, string> = {}) => ({ ip, socket: { remoteAddress: ip }, headers: { host: "192.168.1.10:8484", ...headers } }) as unknown as FastifyRequest;
+const req = (ip: string, headers: Record<string, string> = {}) =>
+  ({ ip, socket: { remoteAddress: ip }, headers: { host: "192.168.1.10:8484", ...headers } }) as unknown as FastifyRequest;
 
 test("fresh install gets the default login captain/morebooty; the flag clears once the password changes", async () => {
   assert.deepEqual({ ...DEFAULT_LOGIN }, { username: "captain", password: "morebooty" });
@@ -41,8 +43,10 @@ test("existing installs: an account that already exists is never reset or altere
 });
 
 test("safety rule: while the password is the default, logins are refused from outside the home network", () => {
-  for (const ip of ["192.168.1.20", "10.0.0.5", "::ffff:192.168.1.9", "fd00::1234", "fe80::1"]) assert.equal(defaultLoginRefusal(req(ip), true), null, `${ip} is home`);
-  for (const ip of ["8.8.8.8", "203.0.113.7", "::ffff:1.2.3.4", "2001:db8::1", "100.64.0.1"]) assert.equal(defaultLoginRefusal(req(ip), true), DEFAULT_REMOTE_REFUSED, `${ip} is not home`);
+  for (const ip of ["192.168.1.20", "10.0.0.5", "::ffff:192.168.1.9", "fd00::1234", "fe80::1"])
+    assert.equal(defaultLoginRefusal(req(ip), true), null, `${ip} is home`);
+  for (const ip of ["8.8.8.8", "203.0.113.7", "::ffff:1.2.3.4", "2001:db8::1", "100.64.0.1"])
+    assert.equal(defaultLoginRefusal(req(ip), true), DEFAULT_REMOTE_REFUSED, `${ip} is not home`);
   assert.equal(DEFAULT_REMOTE_REFUSED, "The default password only works from your home network. Log in from home and change it first.");
   // Docker's 172.16/12 and loopback don't count by default (a reverse proxy or tunnel would look local).
   assert.equal(defaultLoginRefusal(req("172.17.0.1"), true), DEFAULT_REMOTE_REFUSED);

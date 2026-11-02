@@ -46,7 +46,8 @@ export const viewStrings = {
   "import.picked": "Selected",
   "import.check": "Check where it goes",
   "import.checking": "Checking…",
-  "import.reviewHelp": "Every file in the download, with the episode AnimeArr thinks it is. Untick what shouldn't be imported (creditless openings/endings, extras), or pick another episode.",
+  "import.reviewHelp":
+    "Every file in the download, with the episode AnimeArr thinks it is. Untick what shouldn't be imported (creditless openings/endings, extras), or pick another episode.",
   "import.episodeFor": "Episode for {file}",
   "import.notAnEpisode": "Not an episode (skip)",
   "import.runN": "Import {n} {n|file|files}",

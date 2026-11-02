@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { tmdbFetch, tmdbKeyKind, testTmdb } = await import("../server/catalog.js");
+const { tmdbFetch, tmdbKeyKind, testTmdb } = await import("../server/metadata/catalog.js");
 const { redactUrl } = await import("../server/arr/http.js");
 
 const KEY = "0123456789abcdef".repeat(2); // a dummy key (built at runtime so the secret scan stays meaningful)
@@ -19,7 +19,10 @@ test("auto-detects the credential and sends it the right way", async () => {
   assert.equal(tmdbKeyKind(JWT), "token");
   assert.equal(tmdbKeyKind("nope"), "unknown");
   const calls: { url: string; init: RequestInit }[] = [];
-  const f = (async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response("{}", { status: 200 }))) as unknown as typeof fetch;
+  const f = (async (url: string, init: RequestInit) => (
+    calls.push({ url, init }),
+    new Response("{}", { status: 200 })
+  )) as unknown as typeof fetch;
   await tmdbFetch("/configuration", KEY, f);
   await tmdbFetch("/tv/1/season/1?language=en-US", JWT, f);
   assert.match(calls[0].url, /\/3\/configuration\?api_key=0123/);

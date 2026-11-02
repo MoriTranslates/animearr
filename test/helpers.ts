@@ -20,6 +20,10 @@ export function fixtureContext(now = Date.parse("2026-10-25T12:00:00Z")): Identi
   const animeList = parseAnimeList(fs.readFileSync(path.join(dir, "anime-list.xml"), "utf8"));
   const index = new AliasIndex({ library: library.series, anidb, animeList });
   const eps = new Map<number, LibEpisode[]>();
-  for (const [tvdb, list] of Object.entries(library.episodes)) eps.set(Number(tvdb), list.map((e) => ({ ...e, airUtc: e.airUtc ? Date.parse(e.airUtc) : null })));
+  for (const [tvdb, list] of Object.entries(library.episodes))
+    eps.set(
+      Number(tvdb),
+      list.map((e) => ({ ...e, airUtc: e.airUtc ? Date.parse(e.airUtc) : null })),
+    );
   return { index, library, now, episodesFor: (t) => eps.get(t) ?? [] };
 }

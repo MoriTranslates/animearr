@@ -4,8 +4,10 @@
  */
 export const setupStrings = {
   "managed.group.older": "Older episodes missing ({n})",
-  "managed.olderOn": "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search works through them a few per hour.",
-  "managed.olderOff": "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search finds them once it's switched on, or tap ⚡ on the show's page.",
+  "managed.olderOn":
+    "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search works through them a few per hour.",
+  "managed.olderOff":
+    "These shows have nothing on the 30-day schedule, but older episodes are missing. The missing-episode search finds them once it's switched on, or tap ⚡ on the show's page.",
   "managed.olderOpen": "Switch it on",
   "managed.olderN": "{n} missing",
   "wiz.stepDone": "done",
@@ -15,7 +17,8 @@ export const setupStrings = {
   "folders.chosen": "Already chosen",
   "folders.notLibrary": "Can't use this one",
   "folders.notHere": "not for your library",
-  "folders.readOnlyHelp": "AnimeArr can't write here, so it can't put shows in this folder. Pick another one, or give the container write access to it.",
+  "folders.readOnlyHelp":
+    "AnimeArr can't write here, so it can't put shows in this folder. Pick another one, or give the container write access to it.",
   "folders.fromArr": "Folders Sonarr and Radarr use",
   "wiz.done.clientFails": "{name} is set up but isn't working: {why}",
   "wiz.done.notWorking": "not working: {names}",
@@ -24,8 +27,10 @@ export const setupStrings = {
   "wiz.preferUsenet": "You set up Usenet only, so Usenet is now tried first (Prefer Usenet or torrents, in Language profiles).",
   "shows.emptyLibrary": "Your library is empty. Add a show with Find & add, or connect Sonarr in Settings → Migration to bring yours in.",
   "media.mode.now": "Now: {mode}.",
-  "media.freeSpaceHelp": "Before each import AnimeArr checks the library disk keeps this much space free. (The Download folders free-space rule is different: it pauses new downloads.)",
-  "media.permissionsHelp": "Only if other apps (Plex, your PC) can't open the files AnimeArr imports. Most setups, Unraid included, leave this off.",
+  "media.freeSpaceHelp":
+    "Before each import AnimeArr checks the library disk keeps this much space free. (The Download folders free-space rule is different: it pauses new downloads.)",
+  "media.permissionsHelp":
+    "Only if other apps (Plex, your PC) can't open the files AnimeArr imports. Most setups, Unraid included, leave this off.",
   "media.chmodHelp": "Who may read and change new folders, as a number: 775 = you and your group can change them, everyone can read.",
   "media.chownHelp": "Optional: the group new files belong to (e.g. users). Leave empty if unsure.",
   "jackett.needUrl": "Enter Jackett's address first, e.g. http://192.168.1.10:9117",
@@ -34,8 +39,10 @@ export const setupStrings = {
   "meta.anidbLink": "AniDB's client registration page",
   "plex.tokenLink": "How to find your Plex token",
   "fill.removeTitle": "Remove {title} from the fill-in queue?",
-  "fill.removeBody": "It leaves the queue entirely (Skip would keep it listed so you can queue it again). The show stays in your library and stays managed; files aren't touched.",
-  "dry.showOffDoneGlobal": "Practice mode ended for this show, but practice mode is still on for everything (Settings → Automation & safety), so nothing downloads yet.",
+  "fill.removeBody":
+    "It leaves the queue entirely (Skip would keep it listed so you can queue it again). The show stays in your library and stays managed; files aren't touched.",
+  "dry.showOffDoneGlobal":
+    "Practice mode ended for this show, but practice mode is still on for everything (Settings → Automation & safety), so nothing downloads yet.",
   "dry.showsGlobalOn": "Practice mode is on for everything right now, so these per-show switches only matter once it's off.",
   "dry.showToggleOn": "{title}: practice mode on",
   "undo.confirmTitle": "Undo this?",
@@ -57,13 +64,15 @@ export const setupStrings = {
   "ix.advanced": "Advanced",
   "ix.apiPathHelp": "Leave /api unless the indexer's page says otherwise.",
   "ix.categoryNumbers": "Category numbers",
-  "paths.containerHint": "Use paths as AnimeArr sees them inside its container (AnimeArr paths, e.g. /data/downloads), not your NAS share names.",
+  "paths.containerHint":
+    "Use paths as AnimeArr sees them inside its container (AnimeArr paths, e.g. /data/downloads), not your NAS share names.",
   "wiz.preview.clientUsenet": "{name} (Usenet)",
   "wiz.preview.clientTorrent": "{name} (torrents)",
   "wiz.preview.at": "at {addr}",
   "cut.searchShows": "Search shows and movies",
-  "cut.searchNone": "Nothing matches \"{q}\".",
-  "meta.countsDetail": "{entries} entries in {franchises} franchises · {episodes} episodes ({titles} with titles) · {noTvdb} series without a TVDB match · {donghua} donghua (Chinese anime)",
+  "cut.searchNone": 'Nothing matches "{q}".',
+  "meta.countsDetail":
+    "{entries} entries in {franchises} franchises · {episodes} episodes ({titles} with titles) · {noTvdb} series without a TVDB match · {donghua} donghua (Chinese anime)",
   "conn.synced": "Synced with Prowlarr ✓",
   "wiz.starterAlready": "Already added: the starter picks are in your list.",
   "files.unreadable": "Couldn't read this file; it may be damaged or still being copied.",
@@ -92,16 +101,21 @@ export const setupStrings = {
   "update.newer": "Version {version} is out. Update the container (on Unraid: Docker → Check for updates) to get it.",
   "update.see": "What's new",
   "update.offline": "Couldn't reach GitHub to check for updates. Try again later.",
-  "settings.system.metaPlain": "AnimeArr keeps its own anime lists (titles, episodes, how seasons are numbered) and refreshes them by itself every day.",
+  "settings.system.metaPlain":
+    "AnimeArr keeps its own anime lists (titles, episodes, how seasons are numbered) and refreshes them by itself every day.",
   "settings.system.refreshing": "Refreshing the anime lists in the background.",
   "settings.system.backedUp": "Backup made.",
   "settings.system.rebuilding": "Rebuilding: AnimeArr reads your library again in the background.",
-  "settings.system.rebuildConfirm": "Rebuild the cache? AnimeArr forgets what it read from Sonarr, Radarr and the metadata sites and reads it all again (a few minutes; pages may look empty meanwhile). Your settings, shows, history and files are not touched.",
+  "settings.system.rebuildConfirm":
+    "Rebuild the cache? AnimeArr forgets what it read from Sonarr, Radarr and the metadata sites and reads it all again (a few minutes; pages may look empty meanwhile). Your settings, shows, history and files are not touched.",
   "settings.system.restorePw": "Your AnimeArr password",
-  "settings.system.restorePwHelp": "The one you sign in to AnimeArr with (Settings → Security), not Sonarr's or a download client's. Never set one? Set it in Settings → Security first.",
-  "settings.system.logoutHome": "You're on your home network, so no password is needed and Log out has nothing to do. Log out only matters away from home (Settings → Security).",
+  "settings.system.restorePwHelp":
+    "The one you sign in to AnimeArr with (Settings → Security), not Sonarr's or a download client's. Never set one? Set it in Settings → Security first.",
+  "settings.system.logoutHome":
+    "You're on your home network, so no password is needed and Log out has nothing to do. Log out only matters away from home (Settings → Security).",
   "import.title": "Import existing folders",
-  "import.help": "Already have an anime library on disk? Pick a library folder and AnimeArr matches each show folder to a show. You review the matches, then add them. Folders are added where they are: nothing is moved, renamed or deleted (renaming stays a separate choice). Series only; movies are added from the movie side.",
+  "import.help":
+    "Already have an anime library on disk? Pick a library folder and AnimeArr matches each show folder to a show. You review the matches, then add them. Folders are added where they are: nothing is moved, renamed or deleted (renaming stays a separate choice). Series only; movies are added from the movie side.",
   "import.noRoots": "Add a library folder first (Settings → Automation & safety).",
   "import.root": "Library folder",
   "import.scan": "Find folders",

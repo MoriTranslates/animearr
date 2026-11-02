@@ -5,7 +5,11 @@
 // Usage (server running): node scripts/acceptance-magister.mjs
 const base = process.env.ANIMEARR_URL ?? "http://127.0.0.1:8484";
 const H = { "Content-Type": "application/json", "X-AnimeArr": "1" };
-const login = await fetch(base + "/api/auth/login", { method: "POST", headers: H, body: JSON.stringify({ username: "admin", password: process.env.ANIMEARR_PW ?? "changeme" }) });
+const login = await fetch(base + "/api/auth/login", {
+  method: "POST",
+  headers: H,
+  body: JSON.stringify({ username: "admin", password: process.env.ANIMEARR_PW ?? "changeme" }),
+});
 const C = { ...H, Cookie: (login.headers.get("set-cookie") ?? "").split(";")[0] };
 const get = async (p) => (await fetch(base + p, { headers: C })).json();
 const post = async (p, b) => {
@@ -38,10 +42,16 @@ for (let n = 1; n <= 12; n++) {
     continue;
   }
   const want = `S06E${String(n).padStart(2, "0")}`;
-  check(x.label === want && x.rank.flags.some((f) => f.label === "English burned-in (720p)") && x.protocol === "usenet", `${t} → ${x.label} [${x.rank.flags.map((f) => f.label).join(", ")}]`);
+  check(
+    x.label === want && x.rank.flags.some((f) => f.label === "English burned-in (720p)") && x.protocol === "usenet",
+    `${t} → ${x.label} [${x.rank.flags.map((f) => f.label).join(", ")}]`,
+  );
 }
 const pack = qz.find((q) => /S6\.-\.1-12/.test(q.title));
 check(!!pack && pack.label === "S06E01-E12", `pack ${pack?.title ?? "(not found)"} → ${pack?.label}`);
-check(!r.results.some((x) => /^Quan\.Zhi\.Fa\.Shi\.S6/.test(x.title) && (/S01E|whole season/.test(x.label))), "no S6 release mapped to S01Exx or a whole season");
+check(
+  !r.results.some((x) => /^Quan\.Zhi\.Fa\.Shi\.S6/.test(x.title) && /S01E|whole season/.test(x.label)),
+  "no S6 release mapped to S01Exx or a whole season",
+);
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nACCEPTANCE PASSED");
 process.exit(fails ? 1 : 0);
