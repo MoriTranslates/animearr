@@ -17,6 +17,7 @@
  * under a temporary name, and comes back if the swap fails.
  */
 import { binFolder, noteBinned, pinBinned } from "./binpurge.js";
+import { movePathRows } from "./pathRows.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
 import { isTorrentClient } from "../arr/clients.js";
 import fs from "node:fs";
@@ -55,6 +56,7 @@ export interface PlanItem {
   action: "hardlink" | "copy" | "move";
   sidecars: { source: string; dest: string }[];
   replaces: string | null; // local path of the file it replaces (goes to the recycle bin)
+  replacesArr?: string | null; // its library path (its per-file rows go to the bin with it)
   problem: string | null; // set → this item is skipped
 }
 export interface ImportPlan {
@@ -459,6 +461,7 @@ export async function planImport(
       destArr,
       sidecars: m.importExtraFiles ? sidecarsFor(f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix })) : [],
       replaces: currentLocal,
+      replacesArr: currentLocal ? current : null,
       problem,
     });
   }
@@ -758,6 +761,19 @@ async function placeItems(
         done: true,
         why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}`,
       });
+      // The replaced file's own rows (track corrections, burned-in mark, release details) go to the bin with it: the new
+      // file, often at the same name, must not inherit them.
+      if (binned.length && it.replacesArr)
+        try {
+          movePathRows(it.replacesArr, binned[0].to);
+        } catch (e) {
+          logDecision("fail", {
+            tvdbId: target.tvdbId ?? null,
+            title: target.title,
+            episodeIds: it.episodeIds,
+            why: `Imported ${it.label}, but the replaced file's track corrections and marks couldn't be moved off ${it.replacesArr} (${(e as Error).message}): check the new file's tracks`,
+          });
+        }
       try {
         setPerms(path.dirname(it.dest));
         if (target.tvdbId && it.episodeIds.length) applyFileDate(it.dest, it.episodeIds); // "Change file date"
@@ -1008,6 +1024,7 @@ export async function planMovieImport(
           ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix }))
           : [],
         replaces: currentLocal,
+        replacesArr: currentLocal ? currentArr : null,
         problem,
       },
     ],
@@ -1188,6 +1205,14 @@ export async function applyRenameRouted(
     done: status === "completed" && !still.has(i.fileId),
     why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}`,
   }));
+  // Sonarr renamed them: their per-file rows follow (the files are already renamed, so a failure is reported).
+  for (const r of results.filter((x) => x.done))
+    try {
+      movePathRows(r.from, r.to);
+    } catch (e) {
+      r.why = `renamed by Sonarr, but its episode links and track corrections couldn't follow (${(e as Error).message})`;
+      logDecision("fail", { tvdbId, title: s.title, why: `${path.posix.basename(r.to)} was ${r.why}` });
+    }
   const n = results.filter((r) => r.done).length;
   if (n)
     logDecision("info", {
@@ -1201,6 +1226,28 @@ export async function applyRenameRouted(
     });
   void scanFolder(s.path).catch(() => undefined);
   return { route, results };
+}
+
+/**
+ * Renames a library file (local paths a → b) and moves its per-file rows (library paths) with it. If the rows can't
+ * follow, the file goes back to its old name, so the file and its track corrections never part.
+ */
+async function renameWithRows(a: string, b: string, fromArr: string | undefined, toArr: string | undefined) {
+  await moveNoClobber(a, b);
+  if (!fromArr || !toArr) return; // an undo logged before the rows moved with renames: only the file goes back
+  try {
+    movePathRows(fromArr, toArr);
+  } catch (e) {
+    try {
+      await moveNoClobber(b, a);
+    } catch (re) {
+      throw new Error(
+        `renamed to ${path.basename(b)}, but its episode links and track corrections couldn't follow (${(e as Error).message}) and it couldn't be renamed back (${(re as Error).message})`,
+        { cause: e },
+      );
+    }
+    throw new Error(`not renamed: its episode links and track corrections couldn't be moved (${(e as Error).message})`, { cause: e });
+  }
 }
 
 /** Renames the chosen files (and their sidecars); every rename is logged with undo. */
@@ -1221,7 +1268,7 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
       const a = localPath(it.from)!;
       const b = mappedPath(it.to);
       if (!under(a, seriesLocal) || !under(b, seriesLocal)) throw new Error("outside the show's folder");
-      await moveNoClobber(a, b);
+      await renameWithRows(a, b, it.from, it.to);
       applyFileDate(
         b,
         (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id),
@@ -1247,7 +1294,10 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
         tvdbId,
         title: s.title,
         why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`,
-        undo: { action: "rename-back", args: { tvdbId, from: b, to: a, size: st.size, mtime: st.mtimeMs, sidecars: sides } },
+        undo: {
+          action: "rename-back",
+          args: { tvdbId, from: b, to: a, fromArr: it.to, toArr: it.from, size: st.size, mtime: st.mtimeMs, sidecars: sides },
+        },
       });
     } catch (e) {
       out.push({ from: it.from, to: it.to, done: false, why: (e as Error).message });
@@ -1267,6 +1317,8 @@ export async function renameBack(args: {
   tvdbId?: number;
   from: string;
   to: string;
+  fromArr?: string;
+  toArr?: string;
   size?: number;
   mtime?: number;
   sidecars?: { from: string; to: string }[];
@@ -1278,7 +1330,7 @@ export async function renameBack(args: {
   if (all.some((x) => !under(x.from, root) || !under(x.to, root))) throw new Error("outside the show's folder; not renamed back");
   const st = fs.statSync(args.from);
   if (args.size !== undefined && st.size !== args.size) throw new Error("the file changed since the rename; not renamed back");
-  await moveNoClobber(args.from, args.to);
+  await renameWithRows(args.from, args.to, args.fromArr, args.toArr);
   for (const x of args.sidecars ?? []) {
     try {
       if (fs.existsSync(x.from)) await moveNoClobber(x.from, x.to);
