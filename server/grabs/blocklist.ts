@@ -3,8 +3,8 @@
  * show/movie, reason, date, protocol and indexer. Removing an entry lets the release be picked again.
  */
 import type { FastifyInstance } from "fastify";
-import { logDecision } from "./system/activity.js";
-import { cache, db, dbState } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db, dbState } from "../system/db.js";
 
 export interface BlocklistEntry {
   id: number;

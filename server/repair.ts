@@ -31,7 +31,7 @@ import { listManaged } from "./managedList.js";
 import { localPath } from "./system/paths.js";
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./system/settings.js";
-import { ffprobe, judge, type ProbeResult, type VerifyVerdict } from "./verify.js";
+import { ffprobe, judge, type ProbeResult, type VerifyVerdict } from "./grabs/verify.js";
 
 export interface RepairDeps {
   history(since: Date): Promise<sonarr.HistoryItem[]>;

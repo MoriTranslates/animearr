@@ -16,11 +16,11 @@ const { patchSettings } = await import("../server/system/settings.js");
 // These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
 // These cover the first-timeout path (strikes have their own tests in malware.test.ts).
 patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" }, queueHealth: { ...s.queueHealth, strikes: 1 } }));
-const { startGrab, pipelineTick, recoverGrabs, removeGrab } = await import("../server/pipeline.js");
-const { STALL_MS } = await import("../server/pipelineState.js");
-const { queueView, grabHistory } = await import("../server/queue.js");
+const { startGrab, pipelineTick, recoverGrabs, removeGrab } = await import("../server/grabs/pipeline.js");
+const { STALL_MS } = await import("../server/grabs/pipelineState.js");
+const { queueView, grabHistory } = await import("../server/grabs/queue.js");
 const { releaseDryRunDecisions } = await import("../server/managed.js");
-type Deps = import("../server/pipelineState.js").PipelineDeps;
+type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
 const TVDB = 500001;
 const removed: string[] = [];
@@ -342,7 +342,7 @@ test("queue health: waiting in the client's queue isn't a stall; a torrent witho
 });
 
 test("Sonarr queue problems: only allowed roots; failed, import-blocked and not-started items are reported", async () => {
-  const { sonarrQueueProblems } = await import("../server/queue.js");
+  const { sonarrQueueProblems } = await import("../server/grabs/queue.js");
   patchSettings((s) => ({ ...s, sonarr: { ...s.sonarr, url: "http://sonarr.test", apiKey: "k" } }));
   const series = { title: "Test Show", tvdbId: TVDB, path: "/media/AnimeArr/Test Show" };
   const old = new Date(Date.now() - 10 * 3_600_000).toISOString();

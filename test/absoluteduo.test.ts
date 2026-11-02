@@ -7,7 +7,7 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-aduo-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { judge } = await import("../server/verify.js");
+const { judge } = await import("../server/grabs/verify.js");
 const { probeOf } = await import("../server/mediafiles.js");
 
 const SUB = { subLangs: ["en"], dubLangs: ["en"], watchMode: "sub" as const, originalLangs: ["ja"] };

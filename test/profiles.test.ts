@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseRelease } from "../server/core/parser.js";
 import { rankRelease, type Profile } from "../server/core/rank.js";
-import { judge } from "../server/verify.js";
+import { judge } from "../server/grabs/verify.js";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-prof-"));
 process.env.ANIMEARR_NO_LOCK = "1";
@@ -143,7 +143,7 @@ test("profiles: the old single profile migrates to the seeded default; per-show 
 
 test("review fixes: forced sidecars, full-dialogue titles, cmn audio, either/dual edge cases", async () => {
   const { sidecarLang, toLang } = await import("../server/core/langs.js");
-  const { PARTIAL_TRACK } = await import("../server/verify.js");
+  const { PARTIAL_TRACK } = await import("../server/grabs/verify.js");
   assert.equal(sidecarLang("Show - S01E01.eng.forced.srt"), null);
   assert.equal(sidecarLang("Show - S01E01.en.signs.ass"), null);
   assert.equal(sidecarLang("Show - S01E01.en.ass"), "en");

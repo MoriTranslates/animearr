@@ -14,7 +14,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { cleanupGrab, sweepExtraClients } = await import("../server/downloads.js");
+const { cleanupGrab, sweepExtraClients } = await import("../server/grabs/downloads.js");
 const { realClients } = await import("../server/arr/clients.js");
 type Cfg = import("../server/system/settings.js").ClientCfg;
 

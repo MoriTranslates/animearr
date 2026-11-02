@@ -7,7 +7,7 @@ import { coverFor } from "../metadata/covers.js";
 import { setManaged, unmonitorInSonarr } from "../managed.js";
 import { invalidateIndex } from "../metadata/metadata.js";
 import { summarize } from "../system/summary.js";
-import { registerBlocklistApi } from "../blocklist.js";
+import { registerBlocklistApi } from "../grabs/blocklist.js";
 import { registerFileMarksApi } from "../fileMarks.js";
 import { registerMetaOverrideApi } from "../metadata/metaoverride.js";
 

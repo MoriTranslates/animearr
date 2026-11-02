@@ -15,7 +15,7 @@ const { clearQueryCache, schedulerStats } = await import("../server/search/searc
 const { searchAll, indexerNumId } = await import("../server/search/indexers.js");
 const { deepSearch, clearlyBest } = await import("../server/search/search.js");
 const { saveSeadex } = await import("../server/metadata/seadex.js");
-const { startGrab } = await import("../server/pipeline.js");
+const { startGrab } = await import("../server/grabs/pipeline.js");
 type SR = import("../server/search/search.js").SearchResult;
 
 const realFetch = globalThis.fetch;

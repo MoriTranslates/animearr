@@ -13,7 +13,7 @@ const { patchSettings, getSettings } = await import("../server/system/settings.j
 const { saveClient } = await import("../server/system/connectionsAdmin.js");
 const { clientsFor, partialCapable } = await import("../server/arr/clients.js");
 const { blackholeDriver, normName, isTempName, STABLE_MS } = await import("../server/arr/blackhole.js");
-const { cleanupGrab } = await import("../server/downloads.js");
+const { cleanupGrab } = await import("../server/grabs/downloads.js");
 type Cfg = import("../server/system/settings.js").ClientCfg;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bh-data-"));

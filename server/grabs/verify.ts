@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { sidecarLang, toLang } from "./core/langs.js";
+import { sidecarLang, toLang } from "../core/langs.js";
 
 export interface ProbeResult {
   subs: string[];

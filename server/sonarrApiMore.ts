@@ -19,7 +19,7 @@ import { cache, db, dbState } from "./system/db.js";
 import { breakerList } from "./search/health.js";
 import { recordFor } from "./mediafiles.js";
 import { mappedPath } from "./system/paths.js";
-import { type Candidate, type GrabRow } from "./pipelineState.js";
+import { type Candidate, type GrabRow } from "./grabs/pipelineState.js";
 import { upgradeUnits } from "./search/qualityUpgrade.js";
 import type { SearchResult } from "./search/search.js";
 import { scopedEpisodeIds } from "./scope.js";

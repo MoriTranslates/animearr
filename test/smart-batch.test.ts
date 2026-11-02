@@ -14,12 +14,12 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQuality } = await import("../server/batch.js");
-const { startGrab, pipelineTick } = await import("../server/pipeline.js");
-const { cleanupGrab, removeJobFolder } = await import("../server/downloads.js");
+const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQuality } = await import("../server/grabs/batch.js");
+const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
+const { cleanupGrab, removeJobFolder } = await import("../server/grabs/downloads.js");
 const { transmissionDriver } = await import("../server/arr/moreClients.js");
-type Deps = import("../server/pipelineState.js").PipelineDeps;
-type ExistingFile = import("../server/batch.js").ExistingFile;
+type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
+type ExistingFile = import("../server/grabs/batch.js").ExistingFile;
 type ClientFile = import("../server/arr/clients.js").ClientFile;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-batch-dl-"));

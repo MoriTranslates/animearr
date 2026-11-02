@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { measure, evaluate, grabGate, cleanupPlan, runCleanup } = await import("../server/downloads.js");
+const { measure, evaluate, grabGate, cleanupPlan, runCleanup } = await import("../server/grabs/downloads.js");
 type OwnTorrent = import("../server/arr/clients.js").OwnTorrent;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-dl-"));
@@ -165,7 +165,7 @@ test("running the clean-up: deletions gated; torrents only through the client; m
 });
 
 test("free space on Unraid: the cache pool counts when downloads sit on the FUSE union (shfs)", async () => {
-  const { mountOf, freeSpaceTarget } = await import("../server/downloads.js");
+  const { mountOf, freeSpaceTarget } = await import("../server/grabs/downloads.js");
   const mounts = "rootfs / rootfs rw 0 0\nshfs /data fuse.shfs rw 0 0\n/dev/nvme0n1p1 /unraid/cache btrfs ro 0 0\n";
   assert.deepEqual(mountOf("/data/completed/animearr", mounts), { point: "/data", type: "fuse.shfs" });
   const cache = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-cache-"));

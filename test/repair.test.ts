@@ -13,7 +13,7 @@ const { patchSettings } = await import("../server/system/settings.js");
 const { checkNewImports } = await import("../server/repair.js");
 const { planSchedule } = await import("../server/managed.js");
 type Deps = import("../server/repair.js").RepairDeps;
-type Probe = import("../server/verify.js").ProbeResult;
+type Probe = import("../server/grabs/verify.js").ProbeResult;
 
 before(() => {
   cache

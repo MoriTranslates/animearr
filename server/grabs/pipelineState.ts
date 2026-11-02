@@ -3,15 +3,15 @@
  * and fetching a release. A leaf under pipeline.ts, movies.ts and downloads.ts, so those modules share it without
  * importing each other.
  */
-import type { DownloadClients } from "./arr/clients.js";
-import { isTorrentClient } from "./arr/clients.js";
-import type { ProwlarrRelease } from "./arr/prowlarr.js";
-import type * as radarr from "./arr/radarr.js";
-import type * as sonarr from "./arr/sonarr.js";
-import { db } from "./system/db.js";
+import type { DownloadClients } from "../arr/clients.js";
+import { isTorrentClient } from "../arr/clients.js";
+import type { ProwlarrRelease } from "../arr/prowlarr.js";
+import type * as radarr from "../arr/radarr.js";
+import type * as sonarr from "../arr/sonarr.js";
+import { db } from "../system/db.js";
 import type { ExtractOutcome } from "./extract.js";
-import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./search/health.js";
-import type { SearchResult } from "./search/search.js";
+import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "../search/health.js";
+import type { SearchResult } from "../search/search.js";
 import type { ProbeResult } from "./verify.js";
 
 export interface PipelineDeps {

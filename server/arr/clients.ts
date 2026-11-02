@@ -373,7 +373,7 @@ const primary = {
       if (hs.category !== cat) throw new Error(`that SABnzbd job is in category "${hs.category}", not "${cat}"; leaving it alone`);
       await sab({ mode: "history", name: "delete", value: job.ref, del_files: "1" });
       // A finished job's files survive del_files: AnimeArr removes the job's folder itself (same rules as the clean-up).
-      if (hs.storage) await import("../downloads.js").then((m) => m.removeJobFolder(hs.storage)).catch(() => undefined);
+      if (hs.storage) await import("../grabs/downloads.js").then((m) => m.removeJobFolder(hs.storage)).catch(() => undefined);
       return;
     }
     const cat = getSettings().qbittorrent.category;

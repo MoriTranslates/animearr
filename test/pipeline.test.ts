@@ -16,8 +16,8 @@ const { patchSettings } = await import("../server/system/settings.js");
 
 // These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
 patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" } }));
-const { startGrab, pipelineTick } = await import("../server/pipeline.js");
-type Deps = import("../server/pipelineState.js").PipelineDeps;
+const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
+type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
 const TVDB = 328670;
 const EP = { s6e1: 9001, s6e2: 9002 };
@@ -208,7 +208,7 @@ test("import problems that aren't the release's fault: needs attention, no block
   assert.equal(g.state, "needs-attention");
   assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get("[OKGroup] Quanzhi Fashi S6 - 02"), undefined);
   assert.deepEqual(calls.fetched, ["[OKGroup] Quanzhi Fashi S6 - 02"]);
-  const { retryImport } = await import("../server/pipelineState.js");
+  const { retryImport } = await import("../server/grabs/pipelineState.js");
   retryImport(r.id);
   await pipelineTick(deps);
   assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "done");

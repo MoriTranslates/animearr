@@ -1,7 +1,7 @@
 /** Routes: Status, login/logout, account and API key. */
 import { wizardState } from "../system/wizard.js";
 import { airingShowCount } from "../home.js";
-import { downloadsStatus } from "../downloads.js";
+import { downloadsStatus } from "../grabs/downloads.js";
 import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library.js";

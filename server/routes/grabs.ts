@@ -2,15 +2,15 @@
 import { replaceSeasonPreview } from "../episodes.js";
 import crypto from "node:crypto";
 import { searchConfigured } from "../search/indexers.js";
-import { cleanupPlan, downloadsStatus, measure, PRESETS, runCleanup } from "../downloads.js";
+import { cleanupPlan, downloadsStatus, measure, PRESETS, runCleanup } from "../grabs/downloads.js";
 import { cache } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
 import { profileFor, saveProfile } from "../profiles.js";
 import { identify } from "../core/identify.js";
 import { backlogSummary } from "../managed.js";
 import { listManaged } from "../managedList.js";
-import { listGrabs, startGrab } from "../pipeline.js";
-import { type Candidate } from "../pipelineState.js";
+import { listGrabs, startGrab } from "../grabs/pipeline.js";
+import { type Candidate } from "../grabs/pipelineState.js";
 import { upgradeList } from "../search/upgrade.js";
 import { GOAL_IDS, GOALS, goalLabel, isGoal, seadexSource } from "../core/quality.js";
 import { locksFor, setLock, TDARR_GUARD } from "../search/qualityLocks.js";

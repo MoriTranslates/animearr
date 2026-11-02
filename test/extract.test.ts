@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cleanUnpacked, extractIfNeeded, firstVolumes, UNPACK_DIR, type ExtractOutcome } from "../server/extract.js";
+import { cleanUnpacked, extractIfNeeded, firstVolumes, UNPACK_DIR, type ExtractOutcome } from "../server/grabs/extract.js";
 
 async function settle(dir: string, key: string, opts: Parameters<typeof extractIfNeeded>[2] = {}): Promise<ExtractOutcome> {
   for (let i = 0; i < 200; i++) {

@@ -9,7 +9,7 @@
  */
 import { animeTiers } from "./metadata/seadex.js";
 import { seedLimitsFor } from "./search/indexers.js";
-import { grabGate, GrabsPausedError } from "./downloads.js";
+import { grabGate, GrabsPausedError } from "./grabs/downloads.js";
 import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";
 import { isNativeMovieId } from "./nativeIds.js";
 import fs from "node:fs";
@@ -37,9 +37,9 @@ import {
   type Candidate,
   type GrabRow,
   type PipelineDeps,
-} from "./pipelineState.js";
-import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "./grabSteps.js";
-import type { BatchInfo, FileMapOpts } from "./batch.js";
+} from "./grabs/pipelineState.js";
+import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "./grabs/grabSteps.js";
+import type { BatchInfo, FileMapOpts } from "./grabs/batch.js";
 import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./system/paths.js";
@@ -49,7 +49,7 @@ import { tagsOf } from "./tags.js";
 import { seriesForMovie } from "./franchise.js";
 import type { SearchResult } from "./search/search.js";
 import { getSettings, underAllowedRoot } from "./system/settings.js";
-import { judge } from "./verify.js";
+import { judge } from "./grabs/verify.js";
 import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
 import { indexerHealth } from "./search/health.js";
 import { ownFile, probeFile, probeOf } from "./mediafiles.js";

@@ -16,7 +16,7 @@ const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
 const { planSchedule } = await import("../server/managed.js");
 const { missingInScope } = await import("../server/fillin.js");
 const { upgradeUnits } = await import("../server/search/qualityUpgrade.js");
-const { startGrab } = await import("../server/pipeline.js");
+const { startGrab } = await import("../server/grabs/pipeline.js");
 
 const DAY = 86_400_000;
 const now = Date.now();

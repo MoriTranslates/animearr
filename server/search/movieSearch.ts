@@ -9,14 +9,14 @@
  * - Same acceptance as the episode scheduler: accepted, confident match, likely the profile's language, no burn-in,
  *   torrents with seeders. Off by default (it grabs for real).
  */
-import { grabGate } from "../downloads.js";
+import { grabGate } from "../grabs/downloads.js";
 import { isNativeMovieId, nativeMovies } from "../native.js";
 import { logDecision } from "../system/activity.js";
 import { searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "../arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "../movies.js";
-import { FETCH_PREFIX, type Candidate } from "../pipelineState.js";
+import { FETCH_PREFIX, type Candidate } from "../grabs/pipelineState.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
 
 const HOUR = 3_600_000;

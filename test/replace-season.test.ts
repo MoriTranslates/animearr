@@ -14,9 +14,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { importAndVerify } = await import("../server/pipeline.js");
-type Deps = import("../server/pipelineState.js").PipelineDeps;
-type Row = import("../server/pipelineState.js").GrabRow;
+const { importAndVerify } = await import("../server/grabs/pipeline.js");
+type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
+type Row = import("../server/grabs/pipelineState.js").GrabRow;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rs-"));
 const LIB = path.join(tmp, "lib");
@@ -142,7 +142,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
 });
 
 test("clean-up right after the outcome: an imported torrent goes once seeding is done; nothing when switched off", async () => {
-  const { cleanupGrab } = await import("../server/downloads.js");
+  const { cleanupGrab } = await import("../server/grabs/downloads.js");
   const gid = Number(
     db
       .prepare(
@@ -178,7 +178,7 @@ test("clean-up right after the outcome: an imported torrent goes once seeding is
 });
 
 test("Replace season moves on to another season pack only, never to a single episode under the season's ids", async () => {
-  const { startGrab } = await import("../server/pipeline.js");
+  const { startGrab } = await import("../server/grabs/pipeline.js");
   const sent: string[] = [];
   const deps = {
     clients: {

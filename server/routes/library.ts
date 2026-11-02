@@ -14,7 +14,7 @@ import { syncLibrary } from "../library.js";
 import { candidates, managePreview, managedTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "../managed.js";
 import { listManaged } from "../managedList.js";
 import { aliasIndex, invalidateIndex } from "../metadata/metadata.js";
-import { listGrabs } from "../pipeline.js";
+import { listGrabs } from "../grabs/pipeline.js";
 import { moviesForSeries, setLink } from "../franchise.js";
 import { lastFolderScan, scanFolder } from "../mediafiles.js";
 import { missingScoped } from "../scope.js";

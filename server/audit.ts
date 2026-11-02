@@ -17,7 +17,7 @@ import { sidecarLang } from "./core/langs.js";
 import { animeListEntries } from "./metadata/metadata.js";
 import { coverFor } from "./metadata/covers.js";
 import { profileFor } from "./profiles.js";
-import { judge } from "./verify.js";
+import { judge } from "./grabs/verify.js";
 import { localPath } from "./system/paths.js";
 import { isMissing } from "./scope.js";
 

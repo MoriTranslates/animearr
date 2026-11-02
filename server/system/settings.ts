@@ -335,7 +335,7 @@ export interface Settings {
   };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
   downloads: {
-    rules: import("../downloads.js").FolderRule[];
+    rules: import("../grabs/downloads.js").FolderRule[];
     /** Always on: under this many GB free on the download disk, every grab pauses. */
     freeSpaceGb: number;
     /** Where to measure free space ("" = automatic: Unraid's cache pool at /unraid/cache when downloads are on the FUSE union). */

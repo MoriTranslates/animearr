@@ -15,7 +15,7 @@ import {
 } from "./core/quality.js";
 import { autoSearchEpisodes, searchMissingNow } from "./search/autosearch.js";
 import { deepSearch } from "./search/search.js";
-import { removeGrab, startGrab } from "./pipeline.js";
+import { removeGrab, startGrab } from "./grabs/pipeline.js";
 import { backupNow } from "./system/db.js";
 import { rssTick } from "./managed.js";
 import { scanFolder } from "./mediafiles.js";
@@ -26,7 +26,7 @@ import { mediaByIds } from "./metadata/anilist.js";
 import { animeListEntries } from "./metadata/metadata.js";
 import { NATIVE_BASE, searchAdd } from "./native.js";
 import { profileFor } from "./profiles.js";
-import { queueView } from "./queue.js";
+import { queueView } from "./grabs/queue.js";
 import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "./scope.js";
 import { getSettings, type LanguageProfile } from "./system/settings.js";
 import { setTags, tagsOf } from "./tags.js";

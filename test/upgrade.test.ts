@@ -21,10 +21,10 @@ beforeEach(() => {
 });
 const { setSeriesPrefs } = await import("../server/profiles.js");
 const { placeholders, qualifies, upgradePass } = await import("../server/search/upgrade.js");
-const { startGrab, pipelineTick } = await import("../server/pipeline.js");
+const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
 type Deps = import("../server/search/upgrade.js").UpgradeDeps;
 type SR = import("../server/search/search.js").SearchResult;
-type PDeps = import("../server/pipelineState.js").PipelineDeps;
+type PDeps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
 const DAY = 86_400_000;
 const now = Date.now();

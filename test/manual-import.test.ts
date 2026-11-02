@@ -16,10 +16,10 @@ const { patchSettings } = await import("../server/system/settings.js");
 const { movieSubtitles, namesSubtitle, fileForMovie, looksLikeEpisodes } = await import("../server/core/movieTitle.js");
 const { browseImport, clearStalePart, planMovieImport } = await import("../server/importer.js");
 const { searchMovie, startMovieGrab } = await import("../server/movies.js");
-const { pipelineTick } = await import("../server/pipeline.js");
+const { pipelineTick } = await import("../server/grabs/pipeline.js");
 const { fixesFor } = await import("../server/system/fixes.js");
 const { asciiJson } = await import("../server/system/json.js");
-type Deps = import("../server/pipelineState.js").PipelineDeps;
+type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-manual-fs-"));
 const DL = path.join(tmp, "dl");
@@ -361,7 +361,7 @@ test("JSON responses are ASCII-only (a client that decodes as cp1252 can't garbl
 });
 
 test("a manual import from a grab's fix finishes that grab (and cleans up by the usual rule)", async () => {
-  const { finishGrabByHand } = await import("../server/pipeline.js");
+  const { finishGrabByHand } = await import("../server/grabs/pipeline.js");
   const g = db.prepare("SELECT id FROM grabs WHERE state = 'needs-attention' ORDER BY id DESC LIMIT 1").get() as { id: number };
   const cleaned: [number, string][] = [];
   assert.equal(

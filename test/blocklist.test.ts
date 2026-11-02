@@ -10,8 +10,8 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
-const { registerBlocklistApi } = await import("../server/blocklist.js");
-const { isBlocked } = await import("../server/pipelineState.js");
+const { registerBlocklistApi } = await import("../server/grabs/blocklist.js");
+const { isBlocked } = await import("../server/grabs/pipelineState.js");
 
 const app = Fastify();
 registerBlocklistApi(app);

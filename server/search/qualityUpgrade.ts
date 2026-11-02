@@ -39,8 +39,8 @@ import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from 
 import { ownedElsewhere } from "../duplicates.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged } from "../managedList.js";
-import { toCandidate } from "../pipelineState.js";
-import { startGrab } from "../pipeline.js";
+import { toCandidate } from "../grabs/pipelineState.js";
+import { startGrab } from "../grabs/pipeline.js";
 import { profileFor } from "../profiles.js";
 import { fileRevision, properMode } from "./propers.js";
 import { isLocked } from "./qualityLocks.js";

@@ -12,7 +12,7 @@ import { thumb, type ThumbSize } from "../metadata/img.js";
 import { invalidateConnections } from "../system/connections.js";
 import { testTmdb } from "../metadata/catalog.js";
 import { metadataSyncRunning, syncAllMetadata, syncSeriesMetadata } from "../mediaout.js";
-import { reevaluate } from "../downloads.js";
+import { reevaluate } from "../grabs/downloads.js";
 import fs from "node:fs";
 import path from "node:path";
 import { authState } from "../system/auth.js";

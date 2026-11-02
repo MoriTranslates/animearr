@@ -574,7 +574,8 @@ export const rtorrentDriver = {
     await rtorrent(c, "d.stop", [ref.toUpperCase()]).catch(() => undefined);
     await rtorrent(c, "d.close", [ref.toUpperCase()]).catch(() => undefined);
     await rtorrent(c, "d.erase", [ref.toUpperCase()]);
-    if (withData && base) await import("../downloads.js").then((m) => m.removeDownloadPath(mapClientPath(base, c))).catch(() => undefined);
+    if (withData && base)
+      await import("../grabs/downloads.js").then((m) => m.removeDownloadPath(mapClientPath(base, c))).catch(() => undefined);
   },
   async listFiles(c: ClientCfg, ref: string): Promise<ClientFile[] | null> {
     const t = await rtTorrent(c, ref);

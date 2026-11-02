@@ -11,7 +11,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { indexerHealth, recordIndexerFailure, isTitleEncodingError } = await import("../server/search/health.js");
 const { rankRelease } = await import("../server/core/rank.js");
 const { parseRelease } = await import("../server/core/parser.js");
-const { fetchOrNote } = await import("../server/pipelineState.js");
+const { fetchOrNote } = await import("../server/grabs/pipelineState.js");
 
 const prof = {
   subLangs: ["en"],

@@ -16,16 +16,16 @@
  * takes only the wanted files, and the leftovers are cleaned after a confirmed import.
  */
 import path from "node:path";
-import { logDecision } from "./system/activity.js";
-import type { ClientJob, DownloadClients } from "./arr/clients.js";
-import { fileForMovie } from "./core/movieTitle.js";
-import { parseRelease, type Source } from "./core/parser.js";
-import { isNewerRevision, type ProperMode } from "./core/propers.js";
-import { isCreditlessTitle } from "./core/resolver.js";
-import { cache, db } from "./system/db.js";
-import { haveRevisions } from "./search/propers.js";
-import { profileFor } from "./profiles.js";
-import { getSettings } from "./system/settings.js";
+import { logDecision } from "../system/activity.js";
+import type { ClientJob, DownloadClients } from "../arr/clients.js";
+import { fileForMovie } from "../core/movieTitle.js";
+import { parseRelease, type Source } from "../core/parser.js";
+import { isNewerRevision, type ProperMode } from "../core/propers.js";
+import { isCreditlessTitle } from "../core/resolver.js";
+import { cache, db } from "../system/db.js";
+import { haveRevisions } from "../search/propers.js";
+import { profileFor } from "../profiles.js";
+import { getSettings } from "../system/settings.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 
@@ -360,7 +360,7 @@ export function planBatch(input: {
 
 /** The season's files from the cache, with their language verdict (failed = the check says "no"). */
 export async function existingFiles(seriesId: number, season: number): Promise<ExistingFile[]> {
-  const { episodeRows } = await import("./episodes.js");
+  const { episodeRows } = await import("../episodes.js");
   const tvdbId = (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id;
   const hasFile = (id: number) =>
     !!(cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
