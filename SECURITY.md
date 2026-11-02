@@ -42,6 +42,10 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
 - Deliberate (won't fix): a remote login with the default password gets its own "only works from your home network"
   message instead of "wrong password", so an outsider can tell the install still uses the default. That message is how
   you find out why your own remote login fails, and the default password can't be used remotely anyway.
+- Deliberate trade-off in the login throttle: your real user name always keeps its own back-off, so junk logins from
+  the same address (everyone behind one proxy) can't lock you out. While an address floods made-up names, those get
+  "too many attempts" (429) but the real name still answers "wrong password" (401), which can reveal the user name to
+  that flooder. The password is still needed, and guessing it is throttled on its own.
 - Only a salted scrypt hash is stored; "still the default" is a comparison against that hash. The plaintext is never
   saved.
 - The default is only created when there is no account. Updating an install that already has an account never resets

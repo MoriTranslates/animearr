@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { getSettings, safeEqual } from "./settings.js";
+import { checkPassword, getSettings, safeEqual } from "./settings.js";
 import { hextets } from "./outbound.js";
 
 export const COOKIE = "animearr_session";
@@ -323,7 +323,11 @@ export function loginAllowed(rawIp: string, user: string) {
   const now = Date.now();
   if (now - swept > 60_000) sweep(now);
   let key = throttleKey(ip, user);
-  if (!attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
+  // The account's own user name always keeps its own entry: junk names from a shared address (everyone behind one
+  // proxy) must not push it into that address's throttled shared bucket. Trade-off: while an address floods made-up
+  // names, the real name answers 401 where junk names get 429; the password is still throttled on its own entry.
+  const own = user.toLowerCase() === getSettings().auth.username.toLowerCase();
+  if (!own && !attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
   let a = attempts.get(key);
   if (!a) {
     if (attempts.size >= LOGIN_THROTTLE_MAX && !makeRoom(now)) return false;
@@ -344,6 +348,29 @@ export function loginSucceeded(ip: string, user: string) {
 }
 /** For tests: how many throttle entries are held. */
 export const throttleSize = () => attempts.size;
+
+// scrypt is deliberately slow; unbounded parallel checks let a burst of logins tie up the thread pool. Checks run in a
+// limited lane with a bounded queue (more are refused with 429). A login for the account's own user name has its own
+// one-slot lane and queue, so junk logins filling the shared queue can't refuse or delay it.
+const SCRYPT_SLOTS = 2;
+const SCRYPT_QUEUE = 16;
+const lanes = { shared: { active: 0, waiting: [] as (() => void)[] }, owner: { active: 0, waiting: [] as (() => void)[] } };
+export async function checkPasswordLimited(pw: string, stored: string, owner: boolean) {
+  const lane = owner ? lanes.owner : lanes.shared;
+  if (lane.active < (owner ? 1 : SCRYPT_SLOTS)) lane.active++;
+  else {
+    if (lane.waiting.length >= SCRYPT_QUEUE)
+      throw Object.assign(new Error("Too many login attempts at once, wait a few seconds and try again"), { statusCode: 429 });
+    await new Promise<void>((r) => lane.waiting.push(r)); // the finishing check hands its slot over
+  }
+  try {
+    return await checkPassword(pw, stored);
+  } finally {
+    const next = lane.waiting.shift();
+    if (next) next();
+    else lane.active--;
+  }
+}
 
 export const DEFAULT_REMOTE_REFUSED = "The default password only works from your home network. Log in from home and change it first.";
 

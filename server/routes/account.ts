@@ -2,13 +2,12 @@
 import { wizardState } from "../system/wizard.js";
 import { airingShowCount } from "../library/home.js";
 import { downloadsStatus } from "../grabs/downloads.js";
-import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
+import { authState, checkPasswordLimited, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
 
 import {
-  checkPassword,
   DEFAULT_LOGIN,
   endAllSessions,
   getSettings,
@@ -115,7 +114,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
       if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
       const a = getSettings().auth;
       const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
-      const okPass = await checkPassword(String(req.body?.password ?? ""), a.passwordHash || "00:00");
+      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", okUser);
       if (!okUser || !okPass) throw fail("Wrong username or password", 401);
       // Safety rule: the default password only works from the home network, until it's changed.
       const refused = defaultLoginRefusal(req, await usingDefaultPassword());
@@ -138,7 +137,8 @@ export function registerAccountRoutes(app: FastifyInstance) {
     writable();
     const a = getSettings().auth;
     if (!loginAllowed(req.ip, a.username)) throw fail("Too many attempts, wait a few seconds and try again", 429);
-    if (!(await checkPassword(String(req.body?.currentPassword ?? ""), a.passwordHash))) throw fail("Current password is wrong", 403);
+    if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, true)))
+      throw fail("Current password is wrong", 403);
     loginSucceeded(req.ip, a.username);
     const username = String(req.body?.username ?? a.username).trim() || a.username;
     const password = String(req.body?.password ?? "");
