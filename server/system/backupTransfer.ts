@@ -15,6 +15,7 @@ import {
   backupNow,
   db,
   dbState,
+  freeBackupName,
   keepDamaged,
   listBackups,
   needsRestart,
@@ -250,15 +251,19 @@ const SAVED_KEY = /^animearr-prerestore-.*\.secret\.key$/;
 
 /** Keeps a copy of the live key: the safety copies made before a restore can't be opened without it. */
 function saveKeyCopy() {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.secret.key`));
-  for (const old of fs
+  // Never over an earlier copy (that one may be the only key for older backups).
+  fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, freeBackupName("animearr-prerestore-", ".secret.key")), fs.constants.COPYFILE_EXCL);
+  for (const old of savedKeys().slice(3)) fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
+}
+
+/** The saved key copies, newest first (by time written: old one-second and new millisecond names sort alike). */
+function savedKeys() {
+  return fs
     .readdirSync(BACKUP_DIR)
     .filter((f) => SAVED_KEY.test(f))
-    .sort()
-    .reverse()
-    .slice(3))
-    fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
+    .map((f) => ({ f, at: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.at - a.at || b.f.localeCompare(a.f))
+    .map((x) => x.f);
 }
 
 /**
@@ -304,11 +309,7 @@ export function restoreSaved(name: string) {
     }
   };
   if (!sealed || !isSealed(sealed) || opens(fs.readFileSync(KEY_FILE, "utf8").trim())) return restoreBackup(name);
-  const key = fs
-    .readdirSync(BACKUP_DIR)
-    .filter((f) => SAVED_KEY.test(f))
-    .sort()
-    .reverse()
+  const key = savedKeys()
     .map((f) => fs.readFileSync(path.join(BACKUP_DIR, f), "utf8").trim())
     .find((k) => /^[0-9a-f]{64}$/i.test(k) && opens(k));
   if (!key)

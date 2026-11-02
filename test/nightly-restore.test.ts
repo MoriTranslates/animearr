@@ -16,13 +16,17 @@ test("when the safety copy of the current database fails, nothing is restored", 
   mark("before");
   const name = backupNow("nightly")!;
   mark("after");
-  // Block the safety copy: a non-empty file already sits at every name it could take in the next seconds.
-  const now = Date.now();
-  for (let s = 0; s < 6; s++) {
-    const stamp = new Date(now + s * 1000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    fs.writeFileSync(path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.db`), "in the way");
+  // The safety copy fails (a full disk): VACUUM INTO throws. (Name clashes can't block it any more: see backup-names.)
+  const realExec = db.exec.bind(db);
+  db.exec = (sql: string) => {
+    if (/^VACUUM INTO/.test(sql)) throw new Error("database or disk is full");
+    return realExec(sql);
+  };
+  try {
+    assert.throws(() => restoreBackup(name), /Couldn't save a copy of the current database first.*disk is full.*nothing was restored/);
+  } finally {
+    db.exec = realExec;
   }
-  assert.throws(() => restoreBackup(name), /Couldn't save a copy of the current database first.*nothing was restored/);
   assert.equal(
     (db.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value,
     "after",

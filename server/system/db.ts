@@ -192,11 +192,24 @@ export function listBackups() {
     .sort((a, b) => b.at - a.at);
 }
 
+/**
+ * A name in BACKUP_DIR that nothing has yet: the time to the millisecond, then -2, -3, … (two backups of one kind in
+ * the same moment must both work: a safety copy that fails on a name clash aborts the restore it protects).
+ */
+export function freeBackupName(prefix: string, ext: string) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
+  for (let i = 1; i < 1000; i++) {
+    const name = `${prefix}${stamp}${i > 1 ? `-${i}` : ""}${ext}`;
+    if (!fs.existsSync(path.join(BACKUP_DIR, name))) return name;
+  }
+  throw new Error(`no free backup name for ${prefix}${stamp}`);
+}
+
 /** Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind. */
 export function backupNow(kind: BackupKind, label = ""): string | null {
   if (dbState.corrupt) return null;
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const name = `animearr-${kind}-${stamp}${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`;
+  // VACUUM INTO refuses an existing file, so the name below is never overwritten.
+  const name = freeBackupName(`animearr-${kind}-`, `${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`);
   const file = path.join(BACKUP_DIR, name);
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   for (const old of listBackups()
@@ -212,7 +225,7 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
  */
 export function keepDamaged(): string | null {
   if (!fs.existsSync(USER_DB)) return null;
-  const name = `animearr-damaged-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23)}.db`;
+  const name = freeBackupName("animearr-damaged-", ".db");
   fs.copyFileSync(USER_DB, path.join(BACKUP_DIR, name), fs.constants.COPYFILE_EXCL);
   if (fs.existsSync(`${USER_DB}-wal`)) fs.copyFileSync(`${USER_DB}-wal`, path.join(BACKUP_DIR, `${name}-wal`), fs.constants.COPYFILE_EXCL);
   return name;
