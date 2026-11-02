@@ -292,3 +292,45 @@ test("a permanent delete (no bin) or an unknown bin leaves the rows where they a
     assert.deepEqual(rowsAt(arr), ALL);
   }
 });
+
+// ---------------------------------------------------------------- rename undo: only the file AnimeArr renamed (L9)
+
+/** Renames file `id` and returns its undo args, as Activity stores them. */
+async function renamedWithUndo(id: number, name: string, ep: number) {
+  libraryFile(id, name, [ep]);
+  const res = await applyRename(424536, [id]);
+  assert.equal(res[0].done, true, res[0].why);
+  const undo = (db.prepare("SELECT undo FROM decisions WHERE undo LIKE '%rename-back%' ORDER BY id DESC LIMIT 1").get() as { undo: string })
+    .undo;
+  return JSON.parse(undo).args as { from: string; to: string; size: number; mtime?: number; ino?: number };
+}
+
+test("L9: the undo refuses when another file of the same size now has the new name", async () => {
+  const args = await renamedWithUndo(512, "frieren 12.mkv", 103);
+  // Replaced meanwhile by a different file of exactly the same size.
+  const content = fs.readFileSync(args.from);
+  fs.rmSync(args.from);
+  fs.writeFileSync(args.from, Buffer.alloc(content.length, 0x41));
+  fs.utimesSync(args.from, new Date(2020, 0, 1), new Date(2020, 0, 1));
+  await assert.rejects(renameBack(args), /isn't the file AnimeArr renamed|changed since the rename/);
+  assert.ok(fs.existsSync(args.from), "the other file stays where it is");
+  assert.equal(fs.existsSync(args.to), false, "nothing is renamed back");
+});
+
+test("L9: the undo refuses when the renamed file was changed in place (same size, new time)", async () => {
+  const args = await renamedWithUndo(513, "frieren 13.mkv", 104);
+  const later = new Date(Date.now() + 3_600_000);
+  fs.utimesSync(args.from, later, later);
+  await assert.rejects(renameBack(args), /changed since the rename/);
+  assert.ok(fs.existsSync(args.from));
+});
+
+test("L9: an undo logged before mtime was kept still works by size, and says so", async () => {
+  const args = await renamedWithUndo(514, "frieren 14.mkv", 106);
+  const { mtime: _m, ino: _i, ...old } = args;
+  await renameBack(old);
+  assert.ok(fs.existsSync(args.to), "renamed back");
+  const note = db.prepare("SELECT why FROM decisions WHERE why LIKE '%by its size only%' ORDER BY id DESC LIMIT 1").get() as
+    { why: string } | undefined;
+  assert.ok(note, "a note says it was checked by size only");
+});

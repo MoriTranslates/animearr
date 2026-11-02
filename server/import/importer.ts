@@ -1262,7 +1262,17 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
         why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`,
         undo: {
           action: "rename-back",
-          args: { tvdbId, from: b, to: a, fromArr: it.to, toArr: it.from, size: st.size, mtime: st.mtimeMs, sidecars: sides },
+          args: {
+            tvdbId,
+            from: b,
+            to: a,
+            fromArr: it.to,
+            toArr: it.from,
+            size: st.size,
+            mtime: st.mtimeMs,
+            ino: st.ino,
+            sidecars: sides,
+          },
         },
       });
     } catch (e) {
@@ -1287,6 +1297,7 @@ export async function renameBack(args: {
   toArr?: string;
   size?: number;
   mtime?: number;
+  ino?: number;
   sidecars?: { from: string; to: string }[];
 }) {
   const s = args.tvdbId ? seriesRow(args.tvdbId) : undefined;
@@ -1294,9 +1305,20 @@ export async function renameBack(args: {
   const root = mappedPath(s.path);
   const all = [args, ...(args.sidecars ?? [])];
   if (all.some((x) => !under(x.from, root) || !under(x.to, root))) throw new Error("outside the show's folder; not renamed back");
+  // Only the very file AnimeArr renamed goes back: same size, same time, and (when recorded) the same file on disk.
   const st = fs.statSync(args.from);
+  if (args.ino !== undefined && st.ino !== args.ino)
+    throw new Error(`the file now called ${path.basename(args.from)} isn't the file AnimeArr renamed; not renamed back`);
   if (args.size !== undefined && st.size !== args.size) throw new Error("the file changed since the rename; not renamed back");
+  if (args.mtime !== undefined && Math.abs(st.mtimeMs - args.mtime) > 1)
+    throw new Error("the file changed since the rename (its date is different); not renamed back");
   await renameWithRows(args.from, args.to, args.fromArr, args.toArr);
+  if (args.mtime === undefined)
+    logDecision("info", {
+      tvdbId: args.tvdbId ?? null,
+      title: s.title,
+      why: `Renamed ${path.basename(args.from)} back to ${path.basename(args.to)}. This undo entry is from an older version, so the file was checked by its size only`,
+    });
   for (const x of args.sidecars ?? []) {
     try {
       if (fs.existsSync(x.from)) await moveNoClobber(x.from, x.to);
