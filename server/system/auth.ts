@@ -177,6 +177,32 @@ export function authState(req: FastifyRequest) {
   return { setupRequired, ok: false, via: null };
 }
 
+/**
+ * Browser-only routes the API key may not call (403): they change settings, sign-in or connection secrets, or delete
+ * files. The key is for the Sonarr-compatible API and automation (docs/API.md marks those routes stable); none of these
+ * are, so a leaked or over-shared key can't rewire AnimeArr or delete a library. A few more routes refuse it in their
+ * own handler (API key regenerate, local-network mode, backups, cache rebuild). Keyed by method + route pattern.
+ */
+export const API_KEY_REFUSED: ReadonlySet<string> = new Set([
+  "PUT /api/settings",
+  "PUT /api/auth/account",
+  "PUT /api/notify/channels",
+  "POST /api/indexers",
+  "PUT /api/indexers/:id",
+  "DELETE /api/indexers/:id",
+  "POST /api/jackett/add",
+  "POST /api/clients",
+  "PUT /api/clients/:id",
+  "DELETE /api/clients/:id",
+  "PUT /api/clients/:id/prefs",
+  "PUT /api/wizard",
+  "POST /api/wizard/arr-apply",
+  "PUT /api/downloads/allow-delete",
+  "POST /api/episodes/delete",
+  "POST /api/series/:tvdbId/seasons/:season/delete",
+  "POST /api/recycle/animearr/empty",
+]);
+
 /** onRequest hook. Decides on the matched route pattern, never the raw URL, and denies /api by default. */
 export async function guard(req: FastifyRequest, reply: FastifyReply) {
   const route = req.routeOptions.url;
@@ -187,6 +213,8 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
   const st = authState(req);
   if (st.setupRequired) return reply.code(401).send({ error: "Create an account first", setupRequired: true });
   if (!st.ok) return reply.code(401).send({ error: "Login required" });
+  if (st.via === "apikey" && API_KEY_REFUSED.has(`${req.method} ${route}`))
+    return reply.code(403).send({ error: "Log in to do this: the API key can't change settings or delete files" });
   if (st.via !== "apikey" && !csrfOk(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
 }
 

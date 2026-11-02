@@ -12,7 +12,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { setAccount, regenerateApiKey } = await import("../server/system/settings.js");
-const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/api/ical.js");
+const { buildIcal, icalEscape, icalFold, icalOptions, icalToken, registerIcal } = await import("../server/api/ical.js");
 const { createTag, setTags } = await import("../server/library/tags.js");
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
@@ -159,15 +159,17 @@ test("tags keep only shows and movies with one of the tags", () => {
   assert.deepEqual(icalOptions({ tags: "999, x" }).tags, [], "unknown tags are ignored");
 });
 
-test("the route needs the API key (query or header) and answers text/calendar", async () => {
+test("the route needs the calendar token (not the API key) and answers text/calendar", async () => {
   const no = await app.inject({ method: "GET", url: "/feed/calendar/animearr.ics" });
   assert.equal(no.statusCode, 401);
-  const bad = await app.inject({ method: "GET", url: "/feed/calendar/animearr.ics?apikey=nope" });
+  const bad = await app.inject({ method: "GET", url: "/feed/calendar/animearr.ics?token=nope" });
   assert.equal(bad.statusCode, 401);
-  const ok = await app.inject({ method: "GET", url: `/feed/calendar/animearr.ics?apikey=${KEY}&unmonitored=true` });
+  const ok = await app.inject({ method: "GET", url: `/feed/calendar/animearr.ics?token=${icalToken()}&unmonitored=true` });
   assert.equal(ok.statusCode, 200);
   assert.match(String(ok.headers["content-type"]), /^text\/calendar; charset=utf-8/);
   assert.ok(ok.body.startsWith("BEGIN:VCALENDAR\r\n"));
+  // The API key is no calendar token (review H4: it used to be pasted into calendar apps).
+  assert.equal((await app.inject({ method: "GET", url: `/feed/calendar/animearr.ics?apikey=${KEY}` })).statusCode, 401);
   const header = await app.inject({ method: "GET", url: "/feed/calendar/animearr.ics", headers: { "x-api-key": KEY } });
-  assert.equal(header.statusCode, 200);
+  assert.equal(header.statusCode, 401);
 });

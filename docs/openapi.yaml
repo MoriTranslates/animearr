@@ -703,6 +703,7 @@ paths:
   "/api/auth/account":
     put:
       operationId: putAuthAccount
+      x-refused-for-api-key: true
       tags:
         - Auth
       summary: "Change username and password"
@@ -787,6 +788,7 @@ paths:
           "$ref": "#/components/responses/Error"
     put:
       operationId: putSettings
+      x-refused-for-api-key: true
       tags:
         - Settings
       summary: "Update settings"
@@ -987,6 +989,7 @@ paths:
           "$ref": "#/components/responses/Error"
     put:
       operationId: putWizard
+      x-refused-for-api-key: true
       tags:
         - Settings
       summary: "Save wizard progress"
@@ -1032,6 +1035,7 @@ paths:
   "/api/wizard/arr-apply":
     post:
       operationId: postWizardArrApply
+      x-refused-for-api-key: true
       tags:
         - Settings
       summary: "Apply the Sonarr/Radarr preview"
@@ -1960,6 +1964,7 @@ paths:
   "/api/episodes/delete":
     post:
       operationId: postEpisodesDelete
+      x-refused-for-api-key: true
       tags:
         - Library
       summary: "Delete episode files"
@@ -3185,19 +3190,44 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         default:
           "$ref": "#/components/responses/Error"
+  "/api/calendar/ical-token":
+    get:
+      operationId: getCalendarIcalToken
+      tags:
+        - Calendar
+      summary: "The iCalendar feed's read-only token"
+      description: "The token for `/feed/calendar/animearr.ics?token=…`. It opens only the feed. It changes when the API key is regenerated."
+      x-stability: internal
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                required:
+                  - token
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
   "/feed/calendar/animearr.ics":
     get:
       operationId: getFeedCalendarAnimearrIcs
       tags:
         - Calendar
       summary: "iCalendar feed of upcoming episodes and movies"
-      description: "Outside `/api`, but still needs the API key: the local-network bypass does not apply here and a session cookie does not count. 401 `text/plain` without the key. Episodes are events at air time; movies are all-day events."
+      description: "Outside `/api`. Needs the feed's own read-only token (`GET /api/calendar/ical-token`), never the API key: the API key, the local-network bypass and a session cookie do not count here, and the token opens nothing else. 401 `text/plain` without a valid token. Making a new API key also replaces the token. Episodes are events at air time; movies are all-day events."
       x-stability: stable
+      security: []
       parameters:
-        - name: apikey
+        - name: token
           in: query
           required: true
-          description: "Your API key (calendar apps cannot send headers)."
+          description: "The calendar token (calendar apps cannot send headers). Until 0.11 this was `apikey=` with the API key; such links now answer 401."
           schema:
             type: string
         - name: pastDays
@@ -5360,6 +5390,7 @@ paths:
   "/api/downloads/allow-delete":
     put:
       operationId: putDownloadsAllowDelete
+      x-refused-for-api-key: true
       tags:
         - Downloads
       summary: "Allow AnimeArr to delete finished downloads"
@@ -5491,6 +5522,7 @@ paths:
   "/api/recycle/animearr/empty":
     post:
       operationId: postRecycleAnimearrEmpty
+      x-refused-for-api-key: true
       tags:
         - Downloads
       summary: "Empty AnimeArr's recycle bin"
@@ -5561,6 +5593,7 @@ paths:
           "$ref": "#/components/responses/Error"
     post:
       operationId: postIndexers
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Add a direct indexer"
@@ -5587,6 +5620,7 @@ paths:
   "/api/indexers/{id}":
     put:
       operationId: putIndexersId
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Update a direct indexer"
@@ -5619,6 +5653,7 @@ paths:
           "$ref": "#/components/responses/Error"
     delete:
       operationId: deleteIndexersId
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Delete a direct indexer"
@@ -5800,6 +5835,7 @@ paths:
   "/api/jackett/add":
     post:
       operationId: postJackettAdd
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Add a Jackett tracker as an indexer"
@@ -5849,6 +5885,7 @@ paths:
           "$ref": "#/components/responses/Error"
     post:
       operationId: postClients
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Add a download client"
@@ -5875,6 +5912,7 @@ paths:
   "/api/clients/{id}":
     put:
       operationId: putClientsId
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Update a download client"
@@ -5907,6 +5945,7 @@ paths:
           "$ref": "#/components/responses/Error"
     delete:
       operationId: deleteClientsId
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Delete a download client"
@@ -5932,6 +5971,7 @@ paths:
   "/api/clients/{id}/prefs":
     put:
       operationId: putClientsIdPrefs
+      x-refused-for-api-key: true
       tags:
         - "Indexers & clients"
       summary: "Set a client's priority and on/off"
@@ -6021,6 +6061,7 @@ paths:
           "$ref": "#/components/responses/Error"
     put:
       operationId: putNotifyChannels
+      x-refused-for-api-key: true
       tags:
         - "Notification channels"
       summary: "Replace the notification channels"

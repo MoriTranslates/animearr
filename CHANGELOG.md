@@ -21,6 +21,15 @@ All notable changes, newest first. The commit history has the crew's version of 
 - **Cutover:** if Sonarr removes a show but its answer never arrives, AnimeArr finishes the switch on its next start (or
   when you switch the show again) instead of leaving it half done.
 - Service addresses refuse link-local and cloud metadata addresses in every IPv6 spelling too.
+- **The calendar link no longer contains your API key.** The iCal feed has its own read-only token that opens nothing
+  else. **Re-subscribe once:** copy the new link from Calendar → iCal link into Google, Apple or Outlook; old links with
+  `?apikey=` stop working. Making a new API key also changes the calendar link. If you shared an old calendar link,
+  make a new API key (Settings → Security), since the old one was in it.
+- **The API key can't change settings or delete files.** It still works for the Sonarr-compatible API and the
+  documented automation routes, but changing settings, the account, notification channels, indexers, download clients
+  or the setup wizard, deleting episode or season files and emptying the recycling bin now need a signed-in browser.
+- **Notification secrets don't follow a new address.** Pointing a webhook at a new URL, or an email channel at a new
+  server, port or security setting, drops the saved header values or SMTP password unless you type them again.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers
