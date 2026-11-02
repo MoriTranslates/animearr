@@ -53,6 +53,22 @@ test("invalid regular expressions are refused with a clear message, and runaway 
   assert.equal(listRules().length, 0, "nothing saved");
 });
 
+test("a runaway regex the static check misses can't hang the server: it is cut off and then treated as not matching", () => {
+  // Both pass the nested-repeat check, and both backtrack exponentially (30 characters: seconds; a long title: forever).
+  const runaway = ["/((a+))+$/", "/(a|a)*b/"];
+  for (const t of runaway) assert.ok("test" in compileTerm(t), `${t} passes the static check`);
+  const title = "a".repeat(30) + "!";
+  const r = rule({ mustNot: runaway, preferred: [{ term: "/(a|aa)+$/", score: 5 }] });
+  const t0 = Date.now();
+  const first = applyRules(title, [r]);
+  for (let i = 0; i < 20; i++) applyRules(title, [r]); // later calls skip the term at once
+  const ms = Date.now() - t0;
+  assert.ok(ms < 1500, `took ${ms} ms`);
+  assert.equal(first.reject, null);
+  // Ordinary regexes keep working, also after a runaway one was cut off.
+  assert.notEqual(applyRules("Show 1080p x265", [rule({ mustNot: ["/x26[45]/"] })]).reject, null);
+});
+
 test("must: the name needs at least one of the terms; mustNot: none may appear", () => {
   const r = rule({ must: ["1080p", "/2160p/"], mustNot: ["x265"] });
   assert.equal(applyRules("Show 1080p WEB", [r]).reject, null);

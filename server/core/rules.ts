@@ -3,6 +3,8 @@
  * a score. A term is a plain case-insensitive substring, or `/regex/` (always case-insensitive) when wrapped in slashes.
  * Pure: the rules a show falls under (tag scoping) are picked by server/search/releaseRules.ts before they get here.
  */
+import vm from "node:vm";
+
 export interface PreferredTerm {
   term: string;
   score: number;
@@ -26,6 +28,30 @@ export const PREFERRED_CAP = 8;
 const MAX_TERM = 200;
 const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 
+/**
+ * User regexes run with a time limit. The static check above can't catch every runaway pattern ("((a+))+$",
+ * "(a|a)*b" backtrack exponentially), and JavaScript has no regex timeout, so the match runs as a vm script with one.
+ * A term that hits the limit is remembered and from then on treated as not matching, so it costs the limit only once.
+ */
+const REGEX_LIMIT_MS = 50;
+const regexRun = new vm.Script("re.test(title)");
+const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
+const runaway = new Set<string>();
+function guardedTest(term: string, re: RegExp, title: string): boolean {
+  if (runaway.has(term)) return false;
+  regexCtx.re = re;
+  regexCtx.title = title;
+  try {
+    return regexRun.runInContext(regexCtx, { timeout: REGEX_LIMIT_MS }) === true;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
+    runaway.add(term);
+    return false;
+  } finally {
+    regexCtx.title = "";
+  }
+}
+
 /** A term as a matcher, or an error message in plain words. */
 export function compileTerm(raw: string): { test: (title: string) => boolean } | { error: string } {
   const term = raw.trim();
@@ -40,7 +66,7 @@ export function compileTerm(raw: string): { test: (title: string) => boolean } |
   if (/\([^)]*[+*][^)]*\)[+*{]/.test(m[1])) return { error: `The regular expression ${term} is too complex (nested repeats); simplify it` };
   try {
     const re = new RegExp(m[1], "i");
-    return { test: (title) => re.test(title) };
+    return { test: (title) => guardedTest(term, re, title) };
   } catch (e) {
     return { error: `${term} isn't a valid regular expression: ${(e as Error).message.replace(/^Invalid regular expression: /, "")}` };
   }
