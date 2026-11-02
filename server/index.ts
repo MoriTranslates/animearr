@@ -1,5 +1,6 @@
 import os from "node:os";
-import { binStatus, binTick, purgeBin } from "./binpurge.js";
+import { binStatus, binTick, purgeBin, unpinBinned } from "./binpurge.js";
+import { blockedOutboundHost } from "./outbound.js";
 import { replaceSeasonPreview } from "./episodes.js";
 import crypto from "node:crypto";
 import { setIndexerUse } from "./indexerPick.js";
@@ -24,7 +25,7 @@ import { bell, channelStatus, markRead, send, testChannel } from "./notify.js";
 import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "./backupTransfer.js";
 import { getLogs, installLogCapture, logStream, logText } from "./logs.js";
 import { cleanChannels, maskChannel, CHANNEL_TYPES } from "./notifyChannels.js";
-import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
+import { ackSpecials, adoptMovies, adoptShows, allShowCuts, autoMatchMovies, cutoverCachedAt, cutoverPlan, invalidateCutover, matchMovieManual, matchShow, refreshCuts, resumeCutovers, setArrWrites, switchToAnimeArr, unmatch } from "./cutover.js";
 import { testPlex } from "./plex.js";
 import { testEmbyLike, testKodi } from "./mediaservers.js";
 import { metadataSyncRunning, syncAllMetadata, syncSeriesMetadata } from "./mediaout.js";
@@ -108,6 +109,12 @@ import { ROOT_DIR, VERSION } from "./version.js";
 // UMASK (like the *arr images): files and folders AnimeArr's importer creates get the usual 775/664 with UMASK=002.
 if (/^0?[0-7]{3}$/.test(process.env.UMASK ?? "")) process.umask(parseInt(process.env.UMASK!, 8));
 
+/**
+ * ANIMEARR_TEST_APP=1: the routes are built (and `app` exported) but nothing is started: no background jobs, no
+ * startup work, no listening socket. Only the route tests use it (test/routes-guard.test.ts).
+ */
+const TEST_APP = process.env.ANIMEARR_TEST_APP === "1";
+const later = (fn: () => void, ms: number) => (TEST_APP ? undefined : setTimeout(fn, ms));
 const WEB_DIR = path.join(ROOT_DIR, "dist", "web");
 const PORT = Number(process.env.PORT ?? 8484);
 const STARTED = Date.now();
@@ -135,6 +142,11 @@ const app = Fastify({
   bodyLimit: 1_000_000,
   // Sonarr matches paths regardless of case and its clients rely on it (nzb360 asks for /api/v3/episodeFile).
   routerOptions: { caseSensitive: false },
+});
+/** Every route as registered (method, path, config): the route tests check each one against the auth guard. */
+export const registeredRoutes: { method: string; url: string; config: { public?: boolean; setup?: boolean } }[] = [];
+app.addHook("onRoute", (r) => {
+  for (const m of [r.method].flat()) registeredRoutes.push({ method: String(m), url: r.url, config: (r.config ?? {}) as { public?: boolean; setup?: boolean } });
 });
 await app.register(fastifyCookie);
 // JSON goes out as plain ASCII (non-ASCII as \uXXXX escapes): a client that decodes the body as Latin-1/cp1252 instead
@@ -189,7 +201,7 @@ function checkOutbound(url: string) {
     throw fail(`"${url}" isn't a full address. It should look like http://192.168.1.10:8080 (with http:// and the port).`);
   }
   if (!/^https?:$/.test(u.protocol)) throw fail("Address must start with http:// or https://");
-  if (/^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw fail("That address isn't allowed");
+  if (blockedOutboundHost(u.hostname)) throw fail("That address isn't allowed");
   return url;
 }
 
@@ -1192,7 +1204,7 @@ app.get<{ Querystring: { path?: string; grabId?: string } }>("/api/import/browse
   const grabPath = req.query.grabId ? await grabDownloadPath(id(req.query.grabId)) : null;
   // No path asked: start in the grab's download (when known); an empty path lists the roots.
   const want = req.query.path ?? grabPath ?? "";
-  return { ...browseImport({ path: want, extra: [grabPath] }), grabPath };
+  return { ...(await browseImport({ path: want, extra: [grabPath] })), grabPath };
 });
 /** Movie import plan (a dry run; nothing is changed). */
 app.post<{ Body: { movieId: number; path: string; release?: string; client?: string | null; grabId?: number | null } }>("/api/import/movie-plan", async (req) => {
@@ -1337,6 +1349,12 @@ app.post<{ Body: { confirm?: boolean } }>("/api/recycle/animearr/empty", async (
   writable();
   if (req.body?.confirm !== true) throw fail("Confirm emptying the bin first", 400);
   return purgeBin({ all: true });
+});
+// A file an import couldn't put back stays pinned in the bin until the user says they dealt with it.
+app.post<{ Body: { path?: string } }>("/api/recycle/animearr/unpin", async (req) => {
+  writable();
+  if (!unpinBinned(String(req.body?.path ?? ""))) throw fail("That file isn't pinned in the bin", 404);
+  return { ok: true };
 });
 app.get("/api/recycle/setting", async () => {
   try {
@@ -1532,17 +1550,28 @@ app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", 
 });
 // Download / upload a whole backup (database + secret.key). Upload is two steps: the file is checked and staged,
 // then restoring it needs the account password, like restoring one of the automatic backups.
-app.get("/api/system/backup/download", async (req, reply) => {
-  if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
-  const b = createBackup();
+// The file holds secret.key, so "no password on my home network" isn't enough: a logged-in session (GET) or the account
+// password (POST, what the UI sends) is.
+const sendBackup = async (reply: FastifyReply) => {
+  const b = await createBackup();
   reply.header("Content-Type", "application/gzip").header("Content-Disposition", `attachment; filename="${b.name}"`).header("Cache-Control", "no-store");
   return b.data;
+};
+app.get("/api/system/backup/download", async (req, reply) => {
+  if (authState(req).via !== "session") throw fail("Enter your password to download a backup (it holds the key to your saved passwords)", 403);
+  return sendBackup(reply);
+});
+app.post<{ Body: { password?: string } }>("/api/system/backup/download", async (req, reply) => {
+  if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
+  if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+  if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+  return sendBackup(reply);
 });
 app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_BACKUP_BYTES }, (_req, body, done) => done(null, body));
 app.post<{ Body: Buffer }>("/api/system/backup/upload", { bodyLimit: MAX_BACKUP_BYTES }, async (req) => {
   if (authState(req).via === "apikey") throw fail("Log in to restore a backup", 403);
   if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail("Choose a backup file", 400);
-  const parsed = parseBackup(req.body);
+  const parsed = await parseBackup(req.body);
   const m = parsed.manifest;
   return { token: stageBackup(parsed), appVersion: m.appVersion, schema: m.schema, createdAt: m.createdAt, size: req.body.length };
 });
@@ -1607,7 +1636,7 @@ app.setNotFoundHandler((req, reply) => (req.url.startsWith("/api/") ? reply.code
 // ---------------------------------------------------------------- background jobs
 
 const every = (ms: number, fn: () => Promise<unknown> | unknown, name: string) =>
-  setInterval(() => {
+  TEST_APP ? undefined : setInterval(() => {
     try {
       void Promise.resolve(fn()).catch((e) => app.log.warn(`${name}: ${(e as Error).message}`));
     } catch (e) {
@@ -1616,6 +1645,8 @@ const every = (ms: number, fn: () => Promise<unknown> | unknown, name: string) =
   }, ms);
 
 async function startup() {
+  // A cutover cut off between Sonarr's delete and AnimeArr's own switch is finished first.
+  await resumeCutovers().catch((e) => app.log.warn(`cutover journal: ${(e as Error).message}`));
   try {
     await refreshMetadata();
   } catch (e) {
@@ -1624,9 +1655,11 @@ async function startup() {
   const last = lastSync();
   if (getSettings().sonarr.url && (!last || Date.now() - last > getSettings().sync.intervalHours * 3_600_000)) await syncLibrary().then(() => refreshCovers()).catch(() => undefined);
 }
-recoverGrabs();
-materializeAll(); // native shows into the (rebuildable) cache
-setTimeout(() => void startup(), 3_000);
+if (!TEST_APP) {
+  recoverGrabs();
+  materializeAll(); // native shows into the (rebuildable) cache
+}
+later(() => void startup(), 3_000);
 every(60 * 60_000, async () => {
   const s = getSettings();
   const last = lastSync();
@@ -1649,9 +1682,9 @@ every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "f
 every(30 * 60_000, () => fillInTick(), "fill-in");
 every(15 * 60_000, () => importListsTick(), "import lists"); // (each list syncs every lists.intervalHours)
 every(6 * 3_600_000, () => catalogTick(), "catalog");
-setTimeout(() => void catalogTick().catch(() => undefined), 5 * 60_000);
-setTimeout(() => void fileScanTick().catch(() => undefined), 90_000);
-setTimeout(() => void importMediaDefaultsOnce(), 20_000);
+later(() => void catalogTick().catch(() => undefined), 5 * 60_000);
+later(() => void fileScanTick().catch(() => undefined), 90_000);
+later(() => void importMediaDefaultsOnce(), 20_000);
 every(5 * 60_000, () => managedTick(), "managed");
 every(5 * 60_000, () => downloadsTick(), "download rules");
 // AniDB: a few library entries every 15 minutes (never a crawl); shows blocked in the cutover first.
@@ -1683,7 +1716,7 @@ app.put<{ Params: { tvdbId: string }; Body: { aid: number; season?: number | nul
   materializeAll();
   return { entries: anidbView(id(req.params.tvdbId)) };
 });
-setTimeout(() => void downloadsTick().catch(() => undefined), 30_000);
+later(() => void downloadsTick().catch(() => undefined), 30_000);
 let lastRss = 0;
 every(60_000, async () => {
   const m = getSettings().managed.rssMin;
@@ -1696,6 +1729,8 @@ every(60_000, async () => {
 // First start: the default login. It only works from the home network until it's changed (see defaultLoginRefusal),
 // so a port forward doesn't open a known password to the internet. Installs that already have an account are untouched.
 // (This replaces the old one-time setup code: with a home-network-only default there is nothing left to claim remotely.)
-if (await ensureDefaultAccount()) app.log.warn(`First start: log in with ${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password} from your home network, then change the password (Settings → Security).`);
-await app.listen({ host: "0.0.0.0", port: PORT });
-if (await usingDefaultPassword()) app.log.warn(`The login is still the default password (${DEFAULT_LOGIN.password}). It only works from your home network until you change it in Settings → Security.`);
+export { app };
+if (TEST_APP) await app.ready();
+else if (await ensureDefaultAccount()) app.log.warn(`First start: log in with ${DEFAULT_LOGIN.username} / ${DEFAULT_LOGIN.password} from your home network, then change the password (Settings → Security).`);
+if (!TEST_APP) await app.listen({ host: "0.0.0.0", port: PORT });
+if (!TEST_APP && (await usingDefaultPassword())) app.log.warn(`The login is still the default password (${DEFAULT_LOGIN.password}). It only works from your home network until you change it in Settings → Security.`);

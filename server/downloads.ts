@@ -19,7 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
 import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "./arr/clients.js";
-import { cache, db, dbState } from "./db.js";
+import { allRows, cache, CONFIG_DIR, db, dbState } from "./db.js";
 import { clientToSonarr, mappedPath } from "./paths.js";
 import { ACTIVE, retryImport } from "./pipeline.js";
 import { libraryRoots } from "./mediafiles.js";
@@ -156,7 +156,7 @@ export async function measure(opts: { fresh?: boolean } = {}, deps: MeasureDeps 
   }
   const tPaths = torrents.map((t) => ({ t, p: clientToSonarr(t.contentPath).replace(/\/+$/, "") }));
   const sabPaths = sab.map((h) => ({ h, p: clientToSonarr(h.storage).replace(/\/+$/, "") }));
-  const grabs = db.prepare("SELECT id, release, client, client_ref, state, movie_id FROM grabs WHERE dry_run = 0 ORDER BY id DESC LIMIT 5000").all() as unknown as Grab[];
+  const grabs = allRows<Grab>(db.prepare("SELECT id, release, client, client_ref, state, movie_id FROM grabs WHERE dry_run = 0 ORDER BY id DESC LIMIT 5000"));
   const byRef = new Map(grabs.filter((g) => g.client_ref).map((g) => [g.client_ref!.toLowerCase(), g]));
   const items: Item[] = [];
   for (const r of roots()) {
@@ -297,14 +297,35 @@ function seedingDone(t: OwnTorrent, now = Date.now()) {
   return (t.ratio >= s.minRatio && days >= s.minSeedDays) || days >= s.maxSeedDays || (t.completedOn !== null && now - t.completedOn > s.maxSeedDays * 86_400_000);
 }
 
-const NOT_RETRYABLE = /paused for a review|restarted|outside the allowed|several large|couldn't tell|two files|can't reach|archive|not from AnimeArr|only a manual import/i;
+const NOT_RETRYABLE = /paused for a review|couldn.t be put back|restarted|outside the allowed|several large|couldn't tell|two files|can't reach|archive|not from AnimeArr|only a manual import/i;
 const retried = new Set<number>();
 
-/** A library or allowed root (or inside one): never deleted by the clean-up, whatever a client says. */
-function inProtected(local: string) {
-  const p = path.resolve(local);
-  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
-  return roots.some((r) => p === r || p.startsWith(r + path.sep));
+/** The real path when it exists (symlinks and Windows short names resolved), else the plain resolved path. */
+function real(p: string) {
+  const r = path.resolve(p);
+  try {
+    return fs.realpathSync.native(r);
+  } catch {
+    return r;
+  }
+}
+const sameOrUnder = (p: string, root: string) => {
+  const a = process.platform === "win32" ? p.toLowerCase() : p;
+  const b = process.platform === "win32" ? root.toLowerCase() : root;
+  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
+};
+
+/**
+ * A library or allowed root, anything inside one, or anything that CONTAINS one (or AnimeArr's config folder): never
+ * deleted by the clean-up, whatever a client says. A client reporting an ancestor of the library as its download path
+ * would otherwise take the library with it. Compared by real path, so a symlink can't hide either side.
+ */
+export function inProtected(local: string) {
+  const p = real(local);
+  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => real(mappedPath(r.replace(/\/+$/, ""))));
+  if (roots.some((r) => sameOrUnder(p, r) || sameOrUnder(r, p))) return true;
+  const config = real(CONFIG_DIR);
+  return sameOrUnder(p, config) || sameOrUnder(config, p);
 }
 const failedAt = (grabId: number) => (db.prepare("SELECT updated_at FROM grabs WHERE id = ?").get(grabId) as { updated_at: number } | undefined)?.updated_at ?? null;
 

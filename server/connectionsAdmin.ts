@@ -11,6 +11,7 @@ import { checkFolders, isBlackhole } from "./arr/blackhole.js";
 import { mappedPath } from "./paths.js";
 import { hostOf, indexerNumId, lastErrors, searchIndexer } from "./indexers.js";
 import { db } from "./db.js";
+import { blockedOutboundHost } from "./outbound.js";
 import { redactUrl } from "./arr/http.js";
 import { logDecision } from "./activity.js";
 
@@ -19,7 +20,7 @@ const httpUrl = (v: unknown, what: string, allowTemplate = false) => {
   const s = String(v ?? "").trim().replace(/\/+$/, "");
   try {
     const u = new URL(allowTemplate ? s.replace("{q}", "x") : s);
-    if (!/^https?:$/.test(u.protocol) || u.username || u.password || /^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw new Error();
+    if (!/^https?:$/.test(u.protocol) || u.username || u.password || blockedOutboundHost(u.hostname)) throw new Error();
   } catch {
     throw bad(`${what}: enter an http(s) address`);
   }

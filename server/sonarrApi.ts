@@ -25,7 +25,7 @@ import { scanFolder } from "./mediafiles.js";
 import { registerSonarrMore } from "./sonarrApiMore.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
-import { cache, db, dbState, tx } from "./db.js";
+import { allRows, cache, db, dbState, tx } from "./db.js";
 import { refuseDropped } from "./dropped.js";
 import { setManaged } from "./managed.js";
 import { mediaByIds } from "./anilist.js";
@@ -36,7 +36,7 @@ import { profileFor, setSeriesPrefs } from "./profiles.js";
 import { queueView } from "./queue.js";
 import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "./scope.js";
 import { getSettings, type LanguageProfile } from "./settings.js";
-import { clearTags, createTag, deleteTag, renameTag, setTags, tagRows, tagsOf } from "./tags.js";
+import { bulkTags, clearTags, createTag, deleteTag, renameTag, setTags, tagRows, tagsOf } from "./tags.js";
 import { VERSION } from "./version.js";
 
 /** What the API reaches outside the database (tests swap these). */
@@ -323,7 +323,7 @@ export function qualityByName(name: string | null | undefined, revision: { versi
   const n = SONARR_QUALITY_IDS[name ?? ""] ? name! : "Unknown";
   return { quality: { id: q.id, name: n, source: q.source, resolution: q.resolution }, revision: { version: revision.version ?? 1, real: revision.real ?? 0, isRepack: !!revision.isRepack } };
 }
-export const qualityResource = (release: string) => qualityByName(sonarrQualityName(release, null), { isRepack: /repack/i.test(release), version: /v(d)/i.test(release) ? Number(/v(d)/i.exec(release)![1]) : 1 });
+export const qualityResource = (release: string) => qualityByName(sonarrQualityName(release, null), { isRepack: /\brepack\b/i.test(release), version: /\bv(\d)\b/i.test(release) ? Number(/\bv(\d)\b/i.exec(release)![1]) : 1 });
 
 // ---------------------------------------------------------------- queue
 
@@ -351,7 +351,7 @@ export async function queueRecords(d: Pick<SonarrApiDeps, "queue"> = realDeps, o
     const status = importing ? "completed" : g.state === "sending" || live?.state === "queued" ? "queued" : failed ? "warning" : "downloading";
     const trackedDownloadState = g.state === "needs-attention" ? "importPending" : importing ? "importing" : failed ? "failedPending" : "downloading";
     const trackedDownloadStatus = g.state === "needs-attention" || failed ? "warning" : "ok";
-    const eps = g.episodeIds.length ? (cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${g.episodeIds.map(() => "?").join(",")})`).all(...g.episodeIds) as unknown as EpRow[]) : [];
+    const eps = g.episodeIds.length ? allRows<EpRow>(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${g.episodeIds.map(() => "?").join(",")})`), ...g.episodeIds) : [];
     const epRes = episodeResources(eps, now);
     for (const [i, e] of eps.entries()) {
       out.push({
@@ -443,10 +443,27 @@ async function runCommand(body: Record<string, unknown>, d: SonarrApiDeps): Prom
 
 // ---------------------------------------------------------------- routes
 
+/** A view of a query object whose keys are found in any case (an exact match wins). */
+export function caseInsensitive<T extends Record<string, unknown>>(q: T): T {
+  const lower = new Map(Object.keys(q).map((k) => [k.toLowerCase(), k]));
+  return new Proxy(q, {
+    get: (t, k) => (typeof k !== "string" || k in t ? Reflect.get(t, k) : Reflect.get(t, lower.get(k.toLowerCase()) ?? k)),
+    has: (t, k) => (typeof k !== "string" ? Reflect.has(t, k) : k in t || lower.has(k.toLowerCase())),
+  });
+}
+
 export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string; deps?: Partial<SonarrApiDeps> }) {
   const d: SonarrApiDeps = { ...realDeps, ...opts.deps };
   const started = new Date().toISOString();
   const V = "/api/v3";
+
+  // Sonarr (ASP.NET) binds query names in any case: seriesID, SeriesId and seriesId are the same parameter. Every
+  // handler here reads the camelCase name, so the query is looked up case-insensitively on these routes.
+  app.addHook("preHandler", async (req) => {
+    if (!req.routeOptions.url?.startsWith(`${V}/`)) return;
+    const q = req.query as Record<string, unknown> | undefined;
+    if (q && typeof q === "object") req.query = caseInsensitive(q);
+  });
 
   // Sonarr 4 on the wire (no language profiles asked for); AnimeArr's own version rides along.
   app.get(`${V}/system/status`, async () => ({
@@ -501,7 +518,7 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
   });
 
   app.get<{ Querystring: { tvdbId?: string } }>(`${V}/series`, async (req) => {
-    const rows = req.query.tvdbId ? (cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE tvdb_id = ?`).all(int(req.query.tvdbId, "tvdbId")) as unknown as SeriesRow[]) : (cache.prepare(`SELECT ${SERIES_COLS} FROM series ORDER BY sort_title`).all() as unknown as SeriesRow[]);
+    const rows = req.query.tvdbId ? allRows<SeriesRow>(cache.prepare(`SELECT ${SERIES_COLS} FROM series WHERE tvdb_id = ?`), int(req.query.tvdbId, "tvdbId")) : allRows<SeriesRow>(cache.prepare(`SELECT ${SERIES_COLS} FROM series ORDER BY sort_title`));
     const now = Date.now();
     return rows.map((s) => seriesResource(s, now));
   });
@@ -542,6 +559,32 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     if (profile && profile.id !== profileFor(s.tvdb_id).id) setSeriesPrefs(s.tvdb_id, profile.id, null);
     return seriesResource(mustSeries(s.id));
   };
+  // Bulk edit (nzb360 / LunaSea "series editor"): monitoring, profile and tags, mapped onto AnimeArr's own. Nothing
+  // that moves or deletes files: deleteFiles and moveFiles are refused, and so is a different root folder.
+  app.put<{ Body: Record<string, unknown> }>(`${V}/series/editor`, async (req, reply) => {
+    writable();
+    const b = req.body ?? {};
+    if (b.deleteFiles === true) throw fail("AnimeArr never deletes files through the API", 400);
+    if (b.moveFiles === true) throw fail("AnimeArr doesn't move shows' files through the API; do it in AnimeArr", 400);
+    if (!Array.isArray(b.seriesIds) || !b.seriesIds.length) throw fail("Pass seriesIds", 400);
+    const rows = b.seriesIds.map((x) => mustSeries(int(x, "series id")));
+    const root = typeof b.rootFolderPath === "string" && b.rootFolderPath.trim() ? b.rootFolderPath.trim().replace(/\/+$/, "") : null;
+    if (root && rows.some((s) => (s.root_folder ?? "").replace(/\/+$/, "") !== root)) throw fail("AnimeArr doesn't change a show's root folder through the API (that would move its files); do it in AnimeArr", 400);
+    const profile = b.qualityProfileId !== undefined ? profileByApiId(b.qualityProfileId) : null;
+    if (b.qualityProfileId !== undefined && !profile) throw fail("Profile not found", 404);
+    const tags = Array.isArray(b.tags) ? b.tags.map((x) => int(x, "tag id")) : null;
+    const how = String(b.applyTags ?? "add").toLowerCase();
+    if (tags && !["add", "remove", "replace"].includes(how)) throw fail("applyTags is add, remove or replace", 400);
+    const tvdbIds = rows.map((s) => s.tvdb_id);
+    if (b.monitored === true || b.monitored === false) setManaged(tvdbIds, b.monitored, { live: true }); // "unmonitored" = not managed; files stay
+    for (const s of rows) {
+      if (profile && profile.id !== profileFor(s.tvdb_id).id) setSeriesPrefs(s.tvdb_id, profile.id, null);
+      if (tags && how === "replace") setSeriesTags(s.tvdb_id, tags);
+    }
+    if (tags && how !== "replace") bulkTags("series", tvdbIds, how === "add" ? tags : [], how === "remove" ? tags : []);
+    reply.code(202);
+    return rows.map((s) => seriesResource(mustSeries(s.id)));
+  });
   app.put<{ Body: Record<string, unknown> }>(`${V}/series`, async (req, reply) => {
     reply.code(202);
     return edit(req.body?.id, req.body ?? {});
@@ -563,10 +606,10 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
 
   app.get<{ Querystring: { seriesId?: string; episodeIds?: string | string[] } }>(`${V}/episode`, async (req) => {
     const q = req.query;
-    if (q.seriesId) return episodeResources(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE series_id = ? ORDER BY season, episode`).all(int(q.seriesId, "seriesId")) as unknown as EpRow[]);
+    if (q.seriesId) return episodeResources(allRows<EpRow>(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE series_id = ? ORDER BY season, episode`), int(q.seriesId, "seriesId")));
     const ids = (Array.isArray(q.episodeIds) ? q.episodeIds : String(q.episodeIds ?? "").split(",")).filter(Boolean).map((x) => int(x, "episode id"));
     if (!ids.length) throw fail("Pass seriesId or episodeIds");
-    return episodeResources(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY season, episode`).all(...ids) as unknown as EpRow[]);
+    return episodeResources(allRows<EpRow>(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY season, episode`), ...ids));
   });
   app.get<{ Params: { id: string } }>(`${V}/episode/:id`, async (req) => {
     const r = cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id = ?`).get(int(req.params.id)) as EpRow | undefined;
@@ -579,7 +622,7 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     writable();
     const ids = (req.body?.episodeIds ?? []).map((x) => int(x, "episode id"));
     const want = req.body?.monitored !== false;
-    const rows = ids.length ? (cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) as unknown as EpRow[]) : [];
+    const rows = ids.length ? allRows<EpRow>(cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${ids.map(() => "?").join(",")})`), ...ids) : [];
     for (const sid of new Set(rows.map((r) => r.series_id))) {
       const s = mustSeries(sid);
       const mine = rows.filter((r) => r.series_id === sid);

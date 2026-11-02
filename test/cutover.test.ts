@@ -79,3 +79,33 @@ test("resolving: a user's AniList pick unblocks a show; specials can be confirme
   ackSpecials(666, true);
   assert.deepEqual(showCut(row).blockers, []);
 });
+
+test("cutover journal: Sonarr removed the show but its answer was lost → the switch is finished later, once", async () => {
+  const { resumeCutovers } = await import("../server/cutover.js");
+  assert.equal(adoptShows([666])[0].ok, true);
+  db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state, attempts) VALUES (801, 666, 1, 'retry', 2)").run();
+  const lost = { removeSeries: async () => { throw new Error("Sonarr DELETE /series/8 timed out"); }, removeMovie: async () => undefined, sonarrQueue: async () => [], radarrQueue: async () => [] };
+  // Sonarr unreachable when asked afterwards: the row waits.
+  let out = await switchToAnimeArr({ tvdbIds: [666], acceptSpecials: true }, { ...lost, sonarrHasSeries: async () => { throw new Error("offline"); } } as never);
+  assert.equal(out[0].ok, false);
+  assert.match(out[0].why, /timed out.*finishes the switch/);
+  assert.ok(db.prepare("SELECT 1 FROM cutover_pending WHERE tvdb_id = 666").get(), "journal written before the DELETE");
+  assert.deepEqual(await resumeCutovers({ sonarrHasSeries: async () => { throw new Error("offline"); } }), []);
+  // Sonarr still has it: the DELETE never happened, the row goes and nothing moves.
+  assert.deepEqual(await resumeCutovers({ sonarrHasSeries: async () => true }), [{ tvdbId: 666, finished: false }]);
+  assert.equal(db.prepare("SELECT 1 FROM cutover_pending").get(), undefined);
+  assert.equal((db.prepare("SELECT episode_id FROM search_state WHERE tvdb_id = 666").get() as { episode_id: number }).episode_id, 801);
+  // Again, and this time Sonarr did delete it; a sync then dropped Sonarr's rows, so the retry can't rebuild the map.
+  await switchToAnimeArr({ tvdbIds: [666], acceptSpecials: true }, { ...lost, sonarrHasSeries: async () => true } as never);
+  assert.ok(db.prepare("SELECT 1 FROM cutover_pending WHERE tvdb_id = 666").get());
+  for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id"]) cache.prepare(`DELETE FROM ${t} = 8`).run();
+  out = await switchToAnimeArr({ tvdbIds: [666] }, { ...lost, sonarrHasSeries: async () => false } as never);
+  assert.equal(out[0].ok, true, out[0].why);
+  assert.match(out[0].why, /already removed/);
+  const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = 666").get() as { id: number };
+  assert.ok(s.id >= NATIVE_BASE, "AnimeArr's copy is live");
+  const ep = cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND season = 1 AND episode = 1").get(s.id) as { id: number };
+  assert.equal((db.prepare("SELECT episode_id FROM search_state WHERE tvdb_id = 666").get() as { episode_id: number }).episode_id, ep.id, "state moved with the saved id map");
+  assert.equal(db.prepare("SELECT 1 FROM cutover_pending").get(), undefined);
+  assert.deepEqual(await resumeCutovers({ sonarrHasSeries: async () => false }), [], "nothing left to finish");
+});
