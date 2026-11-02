@@ -527,6 +527,22 @@ test("an 'Ep' marker is not left in the title (Show Ep 05)", () => {
   assert.equal(parseRelease("Show Ep 05 v2").version, 2);
 });
 
+test("a '#N' in the title before the episode is part of the title (Show #1 - 05)", () => {
+  check([
+    // Was absolute 1 / 2 / 12 / 1 (with the SxxEyy).
+    { name: "Show #1 - 05", title: "Show #1", group: null, absolute: [5] },
+    { name: "[Group] Show #2 - 05 [1080p]", title: "Show #2", group: "Group", absolute: [5] },
+    { name: "[Group] Show #12 - 05", title: "Show #12", group: "Group", absolute: [5] },
+    { name: "[Group] Show #1 S01E05", title: "Show #1", group: "Group", season: 1, episodes: [5] },
+    // Must not change.
+    { name: "[Group] #DRCL midnight children - 05 [1080p]", title: "#DRCL midnight children", group: "Group", absolute: [5] },
+    { name: "[Shark-Raws] Series Title #957 (NBN 1280x720 x264 AAC).mp4", title: "Series Title", group: "Shark-Raws", absolute: [957] },
+    { name: "Show #957", title: "Show", group: null, absolute: [957] },
+    { name: "[Group] Show - #05", title: "Show", group: "Group", absolute: [5] },
+  ]);
+  assert.equal(parseRelease("Show #1 - 05v2").version, 2);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },

@@ -558,6 +558,8 @@ export function parseRelease(input: string): ParsedRelease {
     if (/S\d{1,2}[ ._]?$/i.test(work.slice(Math.max(0, m.index - 4), m.index))) continue;
     // ...nor the "-E03" end of an SxxEyy range ("S01E01-E03").
     if (markers.some((x) => x.episodes && m!.index >= x.at && m!.index < x.end)) continue;
+    // "Show #1 - 05", "Show #1 S01E05": a "#N" followed by the real episode marker is part of the title.
+    if (m[0].startsWith("#") && /^\s+(?:-\s?\d|S\d{1,2}[ ._]?E\d)/i.test(work.slice(m.index + m[0].length))) continue;
     push(m, { absolute: [+(m[1] ?? m[3])], version: Number(m[2] ?? 1) });
   }
   // "[01]" / "[05v2]" episode in brackets (Chinese/Russian style)
