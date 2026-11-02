@@ -220,6 +220,37 @@ test("a movie file without English subtitles fails verification: blocklisted, ne
   assert.deepEqual(fetched, ["[Ohys-Raws] Suzume (2022)", "[Judas] Suzume (2022) v2"]);
 });
 
+test("a movie download with a malware fake is removed, blocklisted, never imported, and the next release is fetched", async () => {
+  cache.prepare("UPDATE movies SET has_file = 0 WHERE id = 1").run();
+  db.prepare("UPDATE grabs SET state = 'failed' WHERE movie_id = 1 AND state NOT IN ('done', 'failed')").run();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-movie-malware-"));
+  fs.writeFileSync(path.join(dir, "Suzume (2022).mkv.exe"), "x");
+  const fetched: string[] = [];
+  const removed: string[] = [];
+  const { d, imports } = deps({
+    fetchRelease: async (r) => (fetched.push(r.title), { data: Buffer.from("x"), filename: r.title }),
+    localPath: () => dir,
+  });
+  d.clients.remove = async (j) => void removed.push(j.ref);
+  const g = await startMovieGrab(
+    { movieId: 1, candidate: cand("[Fake] Suzume (2022) [1080p]"), fallbacks: [cand("[Judas] Suzume (2022) next")], origin: "manual" },
+    d,
+  );
+  await pipelineTick(d);
+  const row = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(g.id) as { state: string; error: string | null };
+  assert.equal(row.state, "failed");
+  assert.match(row.error ?? "", /Suzume \(2022\)\.mkv\.exe/);
+  assert.equal(imports.length, 0, "nothing imported");
+  assert.deepEqual(removed, ["hash1"], "removed from the client");
+  const b = db.prepare("SELECT movie_id, reason FROM blocklist WHERE release = '[Fake] Suzume (2022) [1080p]'").get() as {
+    movie_id: number;
+    reason: string;
+  };
+  assert.equal(b.movie_id, 1);
+  assert.equal(b.reason, row.error);
+  assert.deepEqual(fetched, ["[Fake] Suzume (2022) [1080p]", "[Judas] Suzume (2022) next"], "the movie's next release was sent");
+});
+
 test("a movie that has a file is only grabbed when replacing was confirmed", async () => {
   cache.prepare("UPDATE movies SET has_file = 1 WHERE id = 1").run();
   db.prepare("UPDATE grabs SET state = 'failed' WHERE movie_id = 1 AND state NOT IN ('done', 'failed')").run();
