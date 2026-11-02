@@ -32,7 +32,7 @@ import {
 } from "../importLists.js";
 import { setManaged } from "../managed.js";
 import { invalidateIndex } from "../metadata/metadata.js";
-import { autoSearchMovie, searchMissingNow } from "../autosearch.js";
+import { autoSearchMovie, searchMissingNow } from "../search/autosearch.js";
 import { setScope, validateScope, type Scope } from "../scope.js";
 import { addToQueue } from "../fillin.js";
 

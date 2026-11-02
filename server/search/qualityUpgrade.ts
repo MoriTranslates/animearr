@@ -19,7 +19,7 @@
  * - A show with no Blu-ray release (a DVD-era show, or no BD seen in months) caps its goal at the best that exists.
  * - Honours dry-run (show + global) like every managed grab.
  */
-import { logDecision } from "./system/activity.js";
+import { logDecision } from "../system/activity.js";
 import {
   CATEGORY_NAME,
   beatsCurrent,
@@ -33,21 +33,21 @@ import {
   type GoalId,
   type QualityScore,
   type SeadexEntry,
-} from "./core/quality.js";
-import { cache, db, dbState, setJob } from "./system/db.js";
-import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "./core/propers.js";
-import { ownedElsewhere } from "./duplicates.js";
+} from "../core/quality.js";
+import { cache, db, dbState, setJob } from "../system/db.js";
+import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
+import { ownedElsewhere } from "../duplicates.js";
 import { searchConfigured } from "./indexers.js";
-import { listManaged } from "./managedList.js";
-import { toCandidate } from "./pipelineState.js";
-import { startGrab } from "./pipeline.js";
-import { profileFor } from "./profiles.js";
+import { listManaged } from "../managedList.js";
+import { toCandidate } from "../pipelineState.js";
+import { startGrab } from "../pipeline.js";
+import { profileFor } from "../profiles.js";
 import { fileRevision, properMode } from "./propers.js";
 import { isLocked } from "./qualityLocks.js";
-import { animeTiers, seadexForSeason } from "./metadata/seadex.js";
-import { releaseOf } from "./metadata/seadexFiles.js";
+import { animeTiers, seadexForSeason } from "../metadata/seadex.js";
+import { releaseOf } from "../metadata/seadexFiles.js";
 import { deepSearch, type SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./system/settings.js";
+import { getSettings, underAllowedRoot } from "../system/settings.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;

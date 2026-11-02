@@ -7,7 +7,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import crypto from "node:crypto";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 const laneStore = new AsyncLocalStorage<string>();
 /** Queries outside any lane (scheduled searches, the recent-releases poll) share this one. */

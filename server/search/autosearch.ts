@@ -14,22 +14,22 @@
  * the search runs as a background job (a few at a time, its indexer queries in a lane of the app-wide scheduler) and its
  * outcomes land in Activity, the bell (grabs, failures) and GET /api/autosearch/jobs. Jobs live in memory only.
  */
-import { logDecision } from "./system/activity.js";
-import { cache, db } from "./system/db.js";
-import { radarrMovieSpecials } from "./franchise.js";
-import { automaticPicks } from "./managed.js";
-import { toCandidate } from "./pipelineState.js";
-import { startGrab } from "./pipeline.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db } from "../system/db.js";
+import { radarrMovieSpecials } from "../franchise.js";
+import { automaticPicks } from "../managed.js";
+import { toCandidate } from "../pipelineState.js";
+import { startGrab } from "../pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./system/settings.js";
-import { searchMovie, startMovieGrab } from "./movies.js";
-import type { Candidate } from "./pipelineState.js";
-import { batchPrefersSingles } from "./batch.js";
-import { addToQueue } from "./fillin.js";
-import { searchAgainSoon, wrongLanguageEpisodes } from "./episodes.js";
-import { listManaged } from "./managedList.js";
-import { scopedEpisodeIds } from "./scope.js";
-import { ownedElsewhere, ownedWhy } from "./duplicates.js";
+import { getSettings, underAllowedRoot } from "../system/settings.js";
+import { searchMovie, startMovieGrab } from "../movies.js";
+import type { Candidate } from "../pipelineState.js";
+import { batchPrefersSingles } from "../batch.js";
+import { addToQueue } from "../fillin.js";
+import { searchAgainSoon, wrongLanguageEpisodes } from "../episodes.js";
+import { listManaged } from "../managedList.js";
+import { scopedEpisodeIds } from "../scope.js";
+import { ownedElsewhere, ownedWhy } from "../duplicates.js";
 import { properMode } from "./propers.js";
 import { inLane } from "./searchQueue.js";
 import crypto from "node:crypto";

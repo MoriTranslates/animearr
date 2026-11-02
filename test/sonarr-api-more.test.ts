@@ -14,7 +14,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { guard } = await import("../server/system/auth.js");
 const { registerSonarrApi } = await import("../server/sonarrApi.js");
-type SearchResult = import("../server/search.js").SearchResult;
+type SearchResult = import("../server/search/search.js").SearchResult;
 
 const LIB = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-sonarrmore-lib-"));
 const queueItems: unknown[] = [];

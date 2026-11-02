@@ -10,13 +10,13 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { queueAutoSearch, autoJobs, autoJobsIdle } = await import("../server/autosearch.js");
-const { clearQueryCache, schedulerStats } = await import("../server/searchQueue.js");
-const { searchAll, indexerNumId } = await import("../server/indexers.js");
-const { deepSearch, clearlyBest } = await import("../server/search.js");
+const { queueAutoSearch, autoJobs, autoJobsIdle } = await import("../server/search/autosearch.js");
+const { clearQueryCache, schedulerStats } = await import("../server/search/searchQueue.js");
+const { searchAll, indexerNumId } = await import("../server/search/indexers.js");
+const { deepSearch, clearlyBest } = await import("../server/search/search.js");
 const { saveSeadex } = await import("../server/metadata/seadex.js");
 const { startGrab } = await import("../server/pipeline.js");
-type SR = import("../server/search.js").SearchResult;
+type SR = import("../server/search/search.js").SearchResult;
 
 const realFetch = globalThis.fetch;
 after(() => void (globalThis.fetch = realFetch));

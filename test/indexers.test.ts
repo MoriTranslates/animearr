@@ -8,9 +8,9 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ix-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 const { patchSettings, getSettings, MASK } = await import("../server/system/settings.js");
-const { searchIndexer, searchAll, parseSize, indexerNumId, seedLimitsFor } = await import("../server/indexers.js");
+const { searchIndexer, searchAll, parseSize, indexerNumId, seedLimitsFor } = await import("../server/search/indexers.js");
 const { saveIndexer, listIndexers, indexerDuplicates, saveClient } = await import("../server/system/connectionsAdmin.js");
-const { indexerCatalog } = await import("../server/indexerCatalog.js");
+const { indexerCatalog } = await import("../server/search/indexerCatalog.js");
 const { clientsFor, realClients } = await import("../server/arr/clients.js");
 const { delayLeftMin } = await import("../server/managed.js");
 

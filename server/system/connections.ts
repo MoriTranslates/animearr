@@ -2,8 +2,8 @@
  * Settings → Indexers / Download clients / Media servers / Migration: one overview of every connection with a live
  * status ("Connected · v4.3.2" / "Can't reach: …"), what it's used for (grabs), and indexer health. Read-only.
  */
-import { syncProwlarrSelection, type AnimeFit } from "../indexerPick.js";
-import { breakerList } from "../health.js";
+import { syncProwlarrSelection, type AnimeFit } from "../search/indexerPick.js";
+import { breakerList } from "../search/health.js";
 import { db } from "./db.js";
 import { getSettings } from "./settings.js";
 import { testProwlarr } from "../arr/prowlarr.js";

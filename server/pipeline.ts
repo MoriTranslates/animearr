@@ -13,7 +13,7 @@
  */
 import { refuseDropped } from "./dropped.js";
 import { ownedElsewhere, ownedWhy, type Overlap } from "./duplicates.js";
-import { seedLimitsFor } from "./indexers.js";
+import { seedLimitsFor } from "./search/indexers.js";
 import { supersededBy } from "./system/fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "./importer.js";
@@ -30,9 +30,9 @@ import { cache, db, dbState } from "./system/db.js";
 import { burnedInFact } from "./audit.js";
 import { learnFromVerify, sourceKey } from "./library.js";
 import { clientToSonarr } from "./system/paths.js";
-import { episodesFor, identifyContext, seriesByTvdb } from "./search.js";
+import { episodesFor, identifyContext, seriesByTvdb } from "./search/search.js";
 import { profileFor } from "./profiles.js";
-import { properMode } from "./propers.js";
+import { properMode } from "./search/propers.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./system/settings.js";
 import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";

@@ -66,8 +66,8 @@ test("a new release for a wanted episode or movie brings its search forward (onc
 
 // ---------------------------------------------------------------- files we already have
 
-const { setLock } = await import("../server/qualityLocks.js");
-const { searchAll } = await import("../server/indexers.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
+const { searchAll } = await import("../server/search/indexers.js");
 const { invalidateIndex } = await import("../server/metadata/metadata.js");
 
 const DAY = 86_400_000;

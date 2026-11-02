@@ -1,12 +1,12 @@
 /** Routes: Settings, connection tests, indexers and download clients, media-server files, dropped shows, the indexer circuit breaker, phone addresses and single-file tools. */
 import os from "node:os";
-import { setIndexerUse } from "../indexerPick.js";
+import { setIndexerUse } from "../search/indexerPick.js";
 import { droppedList, dropShow, undropShow } from "../dropped.js";
-import { breakerList, setBreaker, testIndexer as retestIndexer } from "../health.js";
+import { breakerList, setBreaker, testIndexer as retestIndexer } from "../search/health.js";
 import { watchLinks } from "../watchIn.js";
-import { indexerNumId } from "../indexers.js";
+import { indexerNumId } from "../search/indexers.js";
 import { fileDetail, peekFrames, rescanOne, setTrackLanguage, useSidecar } from "../detection.js";
-import { indexerCatalog } from "../indexerCatalog.js";
+import { indexerCatalog } from "../search/indexerCatalog.js";
 import { homeSummary } from "../home.js";
 import { thumb, type ThumbSize } from "../metadata/img.js";
 import { invalidateConnections } from "../system/connections.js";

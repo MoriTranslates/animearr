@@ -18,7 +18,7 @@ import { localPath as realLocalPath } from "./system/paths.js";
 import { blocklist, setState, type GrabRow, type PipelineDeps } from "./pipelineState.js";
 import { inspectFiles, walkFiles } from "./safety.js";
 import { scopeFor } from "./scope.js";
-import { episodesFor, identifyContext, seriesByTvdb } from "./search.js";
+import { episodesFor, identifyContext, seriesByTvdb } from "./search/search.js";
 import { getSettings } from "./system/settings.js";
 import { ffprobe } from "./verify.js";
 

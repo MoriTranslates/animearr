@@ -10,8 +10,8 @@ import type * as radarr from "./arr/radarr.js";
 import type * as sonarr from "./arr/sonarr.js";
 import { db } from "./system/db.js";
 import type { ExtractOutcome } from "./extract.js";
-import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
-import type { SearchResult } from "./search.js";
+import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./search/health.js";
+import type { SearchResult } from "./search/search.js";
 import type { ProbeResult } from "./verify.js";
 
 export interface PipelineDeps {

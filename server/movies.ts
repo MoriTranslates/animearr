@@ -8,7 +8,7 @@
  * a pack or a series release is never taken for the movie.
  */
 import { animeTiers } from "./metadata/seadex.js";
-import { seedLimitsFor } from "./indexers.js";
+import { seedLimitsFor } from "./search/indexers.js";
 import { grabGate, GrabsPausedError } from "./downloads.js";
 import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";
 import { isNativeMovieId } from "./nativeIds.js";
@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./system/activity.js";
 import { type ProwlarrRelease } from "./arr/prowlarr.js";
-import { searchAll } from "./indexers.js";
+import { searchAll } from "./search/indexers.js";
 import { langList } from "./core/langs.js";
 import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
@@ -44,14 +44,14 @@ import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
 import { clientToSonarr } from "./system/paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
-import { releaseRulesFor } from "./releaseRules.js";
+import { releaseRulesFor } from "./search/releaseRules.js";
 import { tagsOf } from "./tags.js";
 import { seriesForMovie } from "./franchise.js";
-import type { SearchResult } from "./search.js";
+import type { SearchResult } from "./search/search.js";
 import { getSettings, underAllowedRoot } from "./system/settings.js";
 import { judge } from "./verify.js";
 import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
-import { indexerHealth } from "./health.js";
+import { indexerHealth } from "./search/health.js";
 import { ownFile, probeFile, probeOf } from "./mediafiles.js";
 
 export interface MovieRow {

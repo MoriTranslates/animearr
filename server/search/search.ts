@@ -4,21 +4,21 @@
  * Read-only: searching never grabs anything.
  */
 import { indexerHealth } from "./health.js";
-import { type ProwlarrRelease } from "./arr/prowlarr.js";
+import { type ProwlarrRelease } from "../arr/prowlarr.js";
 import { searchAll } from "./indexers.js";
-import { identify, type IdentifyContext } from "./core/identify.js";
-import { normalizeTitle, splitSeason } from "./core/normalize.js";
-import { rankRelease, compareRanked, type Known, type Profile, type Ranked } from "./core/rank.js";
-import { animeTiers, seadexForSeason } from "./metadata/seadex.js";
-import type { LibEpisode, NumberingRule } from "./core/resolver.js";
-import { burnedInFact, seasonResolution } from "./audit.js";
-import { coverFor } from "./metadata/covers.js";
-import { cache, db } from "./system/db.js";
-import { learnedFor, sourceKey } from "./library.js";
-import { aliasIndex } from "./metadata/metadata.js";
-import { profileFor } from "./profiles.js";
+import { identify, type IdentifyContext } from "../core/identify.js";
+import { normalizeTitle, splitSeason } from "../core/normalize.js";
+import { rankRelease, compareRanked, type Known, type Profile, type Ranked } from "../core/rank.js";
+import { animeTiers, seadexForSeason } from "../metadata/seadex.js";
+import type { LibEpisode, NumberingRule } from "../core/resolver.js";
+import { burnedInFact, seasonResolution } from "../audit.js";
+import { coverFor } from "../metadata/covers.js";
+import { cache, db } from "../system/db.js";
+import { learnedFor, sourceKey } from "../library.js";
+import { aliasIndex } from "../metadata/metadata.js";
+import { profileFor } from "../profiles.js";
 import { releaseRulesFor } from "./releaseRules.js";
-import { parseRelease, type Source } from "./core/parser.js";
+import { parseRelease, type Source } from "../core/parser.js";
 import { combineHave, haveRevisions, properMode } from "./propers.js";
 import { currentLane, inLane } from "./searchQueue.js";
 

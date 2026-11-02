@@ -17,7 +17,7 @@ import { aliasIndex, animeListEntries } from "./metadata/metadata.js";
 import { localPath } from "./system/paths.js";
 import { VIDEO, scanFolder } from "./mediafiles.js";
 import { hiddenInBrowser } from "./system/roots.js";
-import { identifyContext } from "./search.js";
+import { identifyContext } from "./search/search.js";
 import { getSettings } from "./system/settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });

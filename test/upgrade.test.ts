@@ -20,10 +20,10 @@ beforeEach(() => {
     db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
 });
 const { setSeriesPrefs } = await import("../server/profiles.js");
-const { placeholders, qualifies, upgradePass } = await import("../server/upgrade.js");
+const { placeholders, qualifies, upgradePass } = await import("../server/search/upgrade.js");
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");
-type Deps = import("../server/upgrade.js").UpgradeDeps;
-type SR = import("../server/search.js").SearchResult;
+type Deps = import("../server/search/upgrade.js").UpgradeDeps;
+type SR = import("../server/search/search.js").SearchResult;
 type PDeps = import("../server/pipelineState.js").PipelineDeps;
 
 const DAY = 86_400_000;

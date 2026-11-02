@@ -11,7 +11,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { db, cache } = await import("../server/system/db.js");
 const { parseRelease } = await import("../server/core/parser.js");
 const { matchMovie, liveAction } = await import("../server/movies.js");
-const health = await import("../server/health.js");
+const health = await import("../server/search/health.js");
 const { remainingFallbacks, FetchFailedError, fetchOrNote } = await import("../server/pipelineState.js");
 const { dropShow, isDropped, undropShow, refuseDropped } = await import("../server/dropped.js");
 const { setManaged } = await import("../server/managed.js");
@@ -161,7 +161,7 @@ test("a dropped show is never managed, grabbed, queued or re-added", async () =>
 });
 
 test("Prowlarr indexer selection: anime-fit hints and defaults for new indexers", async () => {
-  const { animeFit, syncProwlarrSelection } = await import("../server/indexerPick.js");
+  const { animeFit, syncProwlarrSelection } = await import("../server/search/indexerPick.js");
   const { getSettings, patchSettings } = await import("../server/system/settings.js");
   assert.equal(animeFit("Nyaa.si"), "great");
   assert.equal(animeFit("Sukebei (Nyaa)"), "not", "Sukebei is checked before Nyaa");
@@ -239,7 +239,7 @@ test("multi-part movies: numbered parts of similar size are imported as pt1/pt2 
 });
 
 test("group consistency: the season's majority group gets a bonus and a why; a mixed season has no group", async () => {
-  const { seasonGroupOf } = await import("../server/search.js");
+  const { seasonGroupOf } = await import("../server/search/search.js");
   const { rankRelease } = await import("../server/core/rank.js");
   cache
     .prepare(

@@ -23,7 +23,7 @@ import { parseRelease, type Source } from "./core/parser.js";
 import { isNewerRevision, type ProperMode } from "./core/propers.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { cache, db } from "./system/db.js";
-import { haveRevisions } from "./propers.js";
+import { haveRevisions } from "./search/propers.js";
 import { profileFor } from "./profiles.js";
 import { getSettings } from "./system/settings.js";
 

@@ -10,8 +10,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { autoSearchEpisodes } = await import("../server/autosearch.js");
-type SR = import("../server/search.js").SearchResult;
+const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
+type SR = import("../server/search/search.js").SearchResult;
 
 before(() => {
   cache

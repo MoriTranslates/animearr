@@ -1,7 +1,7 @@
 /** Routes: Identify, Deep Search and grabbing, quality goals and upgrades, download-folder rules and clean-up. */
 import { replaceSeasonPreview } from "../episodes.js";
 import crypto from "node:crypto";
-import { searchConfigured } from "../indexers.js";
+import { searchConfigured } from "../search/indexers.js";
 import { cleanupPlan, downloadsStatus, measure, PRESETS, runCleanup } from "../downloads.js";
 import { cache } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
@@ -11,17 +11,17 @@ import { backlogSummary } from "../managed.js";
 import { listManaged } from "../managedList.js";
 import { listGrabs, startGrab } from "../pipeline.js";
 import { type Candidate } from "../pipelineState.js";
-import { upgradeList } from "../upgrade.js";
+import { upgradeList } from "../search/upgrade.js";
 import { GOAL_IDS, GOALS, goalLabel, isGoal, seadexSource } from "../core/quality.js";
-import { locksFor, setLock, TDARR_GUARD } from "../qualityLocks.js";
-import { qualityUpgradeView, startNow, upgradeSeasonNow } from "../qualityUpgrade.js";
+import { locksFor, setLock, TDARR_GUARD } from "../search/qualityLocks.js";
+import { qualityUpgradeView, startNow, upgradeSeasonNow } from "../search/qualityUpgrade.js";
 import { seasonComparison } from "../metadata/seadexFiles.js";
 import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason } from "../metadata/seadex.js";
 import { catalogStatus, entriesForSeries } from "../metadata/catalog.js";
 
 import { renamePlan } from "../importer.js";
 import { ownedElsewhere, ownedWhy } from "../duplicates.js";
-import { deepSearch, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "../search.js";
+import { deepSearch, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "../search/search.js";
 import { getSettings, patchSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { catalogRunning, catalogTick, fail, id, writable } from "./common.js";

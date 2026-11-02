@@ -4,13 +4,13 @@
  * name (the scene name, else the release AnimeArr grabbed for it, else its file name) and from Sonarr's quality
  * revision when the cache has one.
  */
-import { LOCK_TAG } from "./core/quality.js";
-import { parseRelease } from "./core/parser.js";
-import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode, type Revision } from "./core/propers.js";
-import { cache, db } from "./system/db.js";
-import { profileFor } from "./profiles.js";
+import { LOCK_TAG } from "../core/quality.js";
+import { parseRelease } from "../core/parser.js";
+import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode, type Revision } from "../core/propers.js";
+import { cache, db } from "../system/db.js";
+import { profileFor } from "../profiles.js";
 import { isLocked } from "./qualityLocks.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 export const properMode = (): ProperMode => getSettings().media.propers ?? "preferAndUpgrade";
 

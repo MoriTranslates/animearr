@@ -12,12 +12,13 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { qualityScore, seadexPick, seadexSource } = await import("../server/core/quality.js");
 const { compareToSeadex, pickOfRelease } = await import("../server/core/seadexCompare.js");
-const { budgetBytes, fitsBudget, qualityUpgradePass, startNow, upgradeSeasonNow, usedBytes } = await import("../server/qualityUpgrade.js");
-const { setLock } = await import("../server/qualityLocks.js");
+const { budgetBytes, fitsBudget, qualityUpgradePass, startNow, upgradeSeasonNow, usedBytes } =
+  await import("../server/search/qualityUpgrade.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
 const { CHECK_COOLDOWN_MS, checkSeadexNow, cooldownLeft, saveSeadex } = await import("../server/metadata/seadex.js");
 const { seasonComparison, filePick } = await import("../server/metadata/seadexFiles.js");
 type SE = import("../server/core/quality.js").SeadexEntry;
-type SR = import("../server/search.js").SearchResult;
+type SR = import("../server/search/search.js").SearchResult;
 
 const DAY = 86_400_000;
 const GB = 1e9;

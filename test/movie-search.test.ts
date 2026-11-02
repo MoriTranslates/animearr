@@ -16,9 +16,9 @@ beforeEach(() => {
   for (const r of cache.prepare("SELECT id, monitored FROM movies").all() as { id: number; monitored: number }[])
     db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
 });
-const { moviePass, planMovies } = await import("../server/movieSearch.js");
+const { moviePass, planMovies } = await import("../server/search/movieSearch.js");
 const { setMoviePrefs } = await import("../server/profiles.js");
-const { upgradePass, moviePlaceholders } = await import("../server/upgrade.js");
+const { upgradePass, moviePlaceholders } = await import("../server/search/upgrade.js");
 type SR = Awaited<ReturnType<typeof import("../server/movies.js").searchMovie>>["results"][number];
 
 const HOUR = 3_600_000;

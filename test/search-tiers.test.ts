@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { comboQueries, queryGrid, shortTitle, tier1Queries } from "../server/search.js";
+import { comboQueries, queryGrid, shortTitle, tier1Queries } from "../server/search/search.js";
 import type { LibEpisode } from "../server/core/resolver.js";
 
 const ep = (season: number, episode: number, id = season * 100 + episode): LibEpisode => ({

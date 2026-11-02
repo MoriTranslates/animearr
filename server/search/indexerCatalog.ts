@@ -1,7 +1,7 @@
 /** The curated indexer catalogue (catalog/indexers.json). A leaf: connectionsAdmin.ts and indexerPick.ts both read it. */
 import fs from "node:fs";
 import path from "node:path";
-import type { IndexerCfg } from "./system/settings.js";
+import type { IndexerCfg } from "../system/settings.js";
 
 let catalogCache: { at: number; v: Catalog } | null = null;
 export interface CatalogEntry {
@@ -34,7 +34,14 @@ export function indexerCatalog(): Catalog {
   if (catalogCache && Date.now() - catalogCache.at < 60_000) return catalogCache.v;
   const file = [
     path.join(process.cwd(), "catalog", "indexers.json"),
-    path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "catalog", "indexers.json"),
+    path.join(
+      path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")),
+      "..",
+      "..",
+      "..",
+      "catalog",
+      "indexers.json",
+    ),
   ].find((f) => fs.existsSync(f));
   const v = file ? (JSON.parse(fs.readFileSync(file, "utf8")) as Catalog) : { version: 0, updated: "", entries: [] };
   catalogCache = { at: Date.now(), v };

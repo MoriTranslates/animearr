@@ -1,5 +1,5 @@
 import { binTick } from "./binpurge.js";
-import { breakerTick } from "./health.js";
+import { breakerTick } from "./search/health.js";
 import { fixesFor } from "./system/fixes.js";
 import { humanizeError } from "./system/errors.js";
 import { asciiJson } from "./system/json.js";
@@ -23,10 +23,10 @@ import { managedTick, rssTick } from "./managed.js";
 import { refreshMetadata } from "./metadata/metadata.js";
 import { pipelineTick, recoverGrabs } from "./pipeline.js";
 import { repairTick } from "./repair.js";
-import { upgradeTick } from "./upgrade.js";
-import { qualityUpgradeTick } from "./qualityUpgrade.js";
+import { upgradeTick } from "./search/upgrade.js";
+import { qualityUpgradeTick } from "./search/qualityUpgrade.js";
 import { seadexTick } from "./metadata/seadex.js";
-import { movieTick } from "./movieSearch.js";
+import { movieTick } from "./search/movieSearch.js";
 import { fileScanTick } from "./mediafiles.js";
 import { fillInTick } from "./fillin.js";
 

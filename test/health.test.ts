@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-health-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { indexerHealth, recordIndexerFailure, isTitleEncodingError } = await import("../server/health.js");
+const { indexerHealth, recordIndexerFailure, isTitleEncodingError } = await import("../server/search/health.js");
 const { rankRelease } = await import("../server/core/rank.js");
 const { parseRelease } = await import("../server/core/parser.js");
 const { fetchOrNote } = await import("../server/pipelineState.js");

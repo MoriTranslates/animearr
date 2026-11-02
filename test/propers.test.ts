@@ -15,11 +15,11 @@ const { rankRelease } = await import("../server/core/rank.js");
 const { decideSeason } = await import("../server/batch.js");
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { fileRevision, haveRevisions, newerVersionOf } = await import("../server/propers.js");
-const { pickUpgrade, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/qualityUpgrade.js");
-const { setLock } = await import("../server/qualityLocks.js");
-type SR = import("../server/search.js").SearchResult;
-type Deps = import("../server/qualityUpgrade.js").QualityDeps;
+const { fileRevision, haveRevisions, newerVersionOf } = await import("../server/search/propers.js");
+const { pickUpgrade, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
+type SR = import("../server/search/search.js").SearchResult;
+type Deps = import("../server/search/qualityUpgrade.js").QualityDeps;
 
 const DAY = 86_400_000;
 const now = Date.now();

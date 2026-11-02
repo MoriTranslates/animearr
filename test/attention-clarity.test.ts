@@ -17,7 +17,7 @@ const { patchSettings } = await import("../server/system/settings.js");
 const { calendar, episodeRows, planWrongLanguage, seriesHeader, wrongLanguageEpisodes } = await import("../server/episodes.js");
 const { markBurnedIn } = await import("../server/fileMarks.js");
 const { attentionSummary, queueSummary } = await import("../server/system/summary.js");
-const { setLock } = await import("../server/qualityLocks.js");
+const { setLock } = await import("../server/search/qualityLocks.js");
 
 const TVDB = 610001;
 const H = 3_600_000;

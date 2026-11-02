@@ -12,10 +12,10 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { duplicateListings, overlapsFor, ownedElsewhere, resetDuplicateCache } = await import("../server/duplicates.js");
 const { missingScoped, scopedEpisodeIds } = await import("../server/scope.js");
-const { autoSearchEpisodes } = await import("../server/autosearch.js");
+const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
 const { planSchedule } = await import("../server/managed.js");
 const { missingInScope } = await import("../server/fillin.js");
-const { upgradeUnits } = await import("../server/qualityUpgrade.js");
+const { upgradeUnits } = await import("../server/search/qualityUpgrade.js");
 const { startGrab } = await import("../server/pipeline.js");
 
 const DAY = 86_400_000;

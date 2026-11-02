@@ -12,20 +12,20 @@
  *   release fails before it replaces anything (blocklist + next candidate, as usual).
  * - Honours dry-run (show + global). "log" mode only reports what it would grab.
  */
-import { isWanted } from "./movies.js";
-import { logDecision } from "./system/activity.js";
+import { isWanted } from "../movies.js";
+import { logDecision } from "../system/activity.js";
 import { searchConfigured } from "./indexers.js";
-import { langList } from "./core/langs.js";
-import { parseRelease } from "./core/parser.js";
-import { cache, db, dbState, setJob } from "./system/db.js";
-import { listManaged } from "./managedList.js";
-import { toCandidate } from "./pipelineState.js";
-import { startGrab } from "./pipeline.js";
-import { profileFor } from "./profiles.js";
+import { langList } from "../core/langs.js";
+import { parseRelease } from "../core/parser.js";
+import { cache, db, dbState, setJob } from "../system/db.js";
+import { listManaged } from "../managedList.js";
+import { toCandidate } from "../pipelineState.js";
+import { startGrab } from "../pipeline.js";
+import { profileFor } from "../profiles.js";
 import { deepSearch, type SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./system/settings.js";
-import { searchMovie, startMovieGrab, type MovieFile } from "./movies.js";
-import { moviePrefs, profileForMovie } from "./profiles.js";
+import { getSettings, underAllowedRoot } from "../system/settings.js";
+import { searchMovie, startMovieGrab, type MovieFile } from "../movies.js";
+import { moviePrefs, profileForMovie } from "../profiles.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;

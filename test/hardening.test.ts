@@ -286,6 +286,6 @@ test("regexes meant as \b word boundaries are real boundaries (they were literal
   assert.deepEqual(qualityResource("Show.S01E05.v2.REPACK.1080p.WEB-DL-Grp").revision, { version: 2, real: 0, isRepack: true });
   assert.equal(qualityResource("Show.S01E05.1080p.WEB-DL-Grp").revision.isRepack, false);
   // No source file carries a control character any more.
-  for (const f of ["sonarrApi.ts", "episodes.ts", "search.ts", "importer.ts"])
+  for (const f of ["sonarrApi.ts", "episodes.ts", "search/search.ts", "importer.ts"])
     assert.ok(!/[\x00-\x08]/.test(fs.readFileSync(new URL(`../server/${f}`, import.meta.url), "utf8")), f);
 });

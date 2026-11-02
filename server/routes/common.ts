@@ -3,8 +3,8 @@
  * secrets), the session cookie, the test-app switch, the port and start time, the web build id, the breaker's probes.
  */
 import { blockedOutboundHost } from "../system/outbound.js";
-import { type Fetcher } from "../health.js";
-import { indexerNumId, searchIndexer } from "../indexers.js";
+import { type Fetcher } from "../search/health.js";
+import { indexerNumId, searchIndexer } from "../search/indexers.js";
 import fs from "node:fs";
 import path from "node:path";
 import { type FastifyReply, type FastifyRequest } from "fastify";

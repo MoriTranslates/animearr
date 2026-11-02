@@ -13,8 +13,8 @@ import {
   ladderRank,
   type Category,
 } from "./core/quality.js";
-import { autoSearchEpisodes, searchMissingNow } from "./autosearch.js";
-import { deepSearch } from "./search.js";
+import { autoSearchEpisodes, searchMissingNow } from "./search/autosearch.js";
+import { deepSearch } from "./search/search.js";
 import { removeGrab, startGrab } from "./pipeline.js";
 import { backupNow } from "./system/db.js";
 import { rssTick } from "./managed.js";

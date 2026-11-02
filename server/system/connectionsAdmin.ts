@@ -7,7 +7,7 @@ import { getSettings, isMasked, MASK, patchSettings, type ClientCfg, type Indexe
 import { clientList, testClient } from "../arr/clients.js";
 import { checkFolders, isBlackhole } from "../arr/blackhole.js";
 import { mappedPath } from "./paths.js";
-import { hostOf, indexerNumId, lastErrors, searchIndexer } from "../indexers.js";
+import { hostOf, indexerNumId, lastErrors, searchIndexer } from "../search/indexers.js";
 import { db } from "./db.js";
 import { blockedOutboundHost } from "./outbound.js";
 import { redactUrl } from "../arr/http.js";

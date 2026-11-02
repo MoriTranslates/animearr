@@ -11,11 +11,11 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { getSettings, patchSettings } = await import("../server/system/settings.js");
 const { profileFor, saveProfile, defaultProfile } = await import("../server/profiles.js");
-const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/qualityUpgrade.js");
-const { keepTagFor, locksFor, setLock } = await import("../server/qualityLocks.js");
+const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { keepTagFor, locksFor, setLock } = await import("../server/search/qualityLocks.js");
 const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");
-type Deps = import("../server/qualityUpgrade.js").QualityDeps;
-type SR = import("../server/search.js").SearchResult;
+type Deps = import("../server/search/qualityUpgrade.js").QualityDeps;
+type SR = import("../server/search/search.js").SearchResult;
 
 const DAY = 86_400_000;
 const now = Date.now();
