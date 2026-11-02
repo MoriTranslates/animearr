@@ -192,12 +192,22 @@ export function resolveRelease(
     (opts.rules ?? []).find((r) => !r.group);
   if (rule && rule.mode !== "auto") {
     let eps: LibEpisode[] | null = null;
-    if (rule.mode === "absolute")
-      eps = numbers.map((n) => episodes.find((e) => e.absolute === n) ?? null).every(Boolean)
-        ? numbers.map((n) => episodes.find((e) => e.absolute === n)!)
-        : null;
-    else if (rule.season !== null) eps = mapAll(rule.season, rule.mode === "offset" ? rule.offset : 0);
     const ruleWhy = `your numbering rule${rule.group ? ` for ${rule.group}` : ""}: ${rule.mode}${rule.season !== null ? ` season ${rule.season}` : ""}${rule.offset ? ` offset ${rule.offset}` : ""}`;
+    if (rule.mode === "absolute") {
+      // The name's absolute number ("- 013"); with none, its episode numbers are read as absolute, as before.
+      const byAbs = (p.absolute.length ? p.absolute : numbers).map((n) => episodes.find((e) => e.absolute === n) ?? null);
+      eps = byAbs.every(Boolean) ? (byAbs as LibEpisode[]) : null;
+      // The name's own SxxEyy, when the show has it, is explicit. It wins when the name has no absolute number to
+      // read; when the name's absolute number points elsewhere the two readings conflict and need a human (≤ 70%).
+      const own = p.season !== null && p.episodes.length ? p.episodes.map((n) => find(p.season!, n)) : [];
+      const explicit = own.length && own.every(Boolean) ? (own as LibEpisode[]) : null;
+      const same = !!eps && !!explicit && eps.length === explicit.length && eps.every((e, i) => e.id === explicit[i].id);
+      if (explicit && !same) {
+        const ownReading = { eps: explicit, method: "season-episode", certainty: 1, why: `the name's own ${labelOf(explicit)}` };
+        if (!eps || !p.absolute.length) return finish([{ ...ownReading, why: `${ownReading.why} (over ${ruleWhy})` }]);
+        return finish([ownReading, { eps, method: "rule-absolute", certainty: 0.97, why: ruleWhy }]);
+      }
+    } else if (rule.season !== null) eps = mapAll(rule.season, rule.mode === "offset" ? rule.offset : 0);
     if (eps) return finish([{ eps, method: `rule-${rule.mode}`, certainty: 1, why: ruleWhy }]);
     return fail([...why, `${ruleWhy} → no matching episode in Sonarr`], "rule");
   }

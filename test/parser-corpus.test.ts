@@ -312,6 +312,47 @@ test("SxxEyy next to resolution, codec, year and hash: rows that must not change
   ]);
 });
 
+test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  // Two seasons of 12: absolute 13 is S02E01.
+  const eps = (t: number) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: i < 12 ? 1 : 2,
+      episode: (i % 12) + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const ctx = {
+    index: new AliasIndex({ library: [lib(1, "Some Show"), lib(2, "Some Show Two")] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+    rulesFor: () => [{ group: null, mode: "absolute" as const, season: null, offset: 0 }],
+  };
+  const at = (name: string) => {
+    const r = identify(name, ctx);
+    assert.equal(r.candidate?.tvdbId, 1, `${name}: ${r.summary}`);
+    return { label: r.resolution?.episodes.map((e) => `S${e.season}E${e.episode}`).join(","), conf: r.resolution?.confidence ?? 0 };
+  };
+  // SxxEyy and the absolute number agree: that episode, fully certain (was S1E1: the rule read the "01" as absolute).
+  assert.deepEqual(at("[Group] Some Show - S02E01 - 013 [1080p]"), { label: "S2E1", conf: 96 });
+  // They disagree: never auto-certain (below the 80% threshold); the explicit SxxEyy is shown first.
+  const clash = at("[Group] Some Show - S02E03 - 013 [1080p]");
+  assert.equal(clash.label, "S2E3");
+  assert.ok(clash.conf < 80, String(clash.conf));
+  // Only SxxEyy, and it exists: the explicit season and episode (was S1E1).
+  assert.deepEqual(at("Some.Show.S02E01.1080p.WEB.x264-GRP"), { label: "S2E1", conf: 96 });
+  // Unchanged: only an absolute number → the rule maps it.
+  assert.deepEqual(at("[Group] Some Show - 13 [1080p]"), { label: "S2E1", conf: 96 });
+  // Unchanged: an SxxEyy the show doesn't have is read as absolute by the rule (S01E13 → absolute 13).
+  assert.deepEqual(at("[Group] Some Show S01E13 [1080p]"), { label: "S2E1", conf: 96 });
+  // Unchanged: season 1, both readings agree.
+  assert.deepEqual(at("[Group] Some Show - S01E05 - 005 [1080p]"), { label: "S1E5", conf: 96 });
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },
