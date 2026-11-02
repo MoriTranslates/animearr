@@ -138,18 +138,20 @@ export async function selectAfterAdd(
   magnet: boolean,
   opts?: FileMapOpts,
 ) {
-  if (!job.select) {
+  if (!job.select && !job.paused) {
     // The client can't skip files (or already had this torrent): the whole batch; the import takes what it needs.
-    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files" });
+    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files", paused: false });
     return;
   }
+  // (Added stopped but no file choice: applySelection downloads it whole and starts it, reporting a failed start.)
   writeBatch(grabId, { ...batch, paused: !!job.paused });
   const ctx = { grabId, job, clients: deps.clients, opts: opts ?? episodeFileOpts(log.tvdbId!, log.episodeIds), log };
   for (let i = 0; i < (magnet ? 5 : 3); i++) {
     try {
       if ((await applySelection(ctx)) !== "pending") return;
     } catch {
-      /* the tick tries again */
+      // Harmless to lose here: the batch stays "pending", so the pipeline tick runs the selection again and reports
+      // an error that lasts (pipeline.ts reportBatchStep); a client's own answers are handled inside applySelection.
     }
     await deps.sleep(2000);
   }

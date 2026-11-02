@@ -21,7 +21,7 @@ import { isNativeSeriesId } from "../library/nativeIds.js";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "../arr/clients.js";
-import { applySelection, batchLine, existingFiles, planBatch, readBatch, type BatchInfo, type ExistingFile } from "./batch.js";
+import { applySelection, batchLine, existingFiles, planBatch, readBatch, retryStart, type BatchInfo, type ExistingFile } from "./batch.js";
 import { identify } from "../core/identify.js";
 import { inExtrasFolder } from "../core/resolver.js";
 import { langList } from "../core/langs.js";
@@ -205,6 +205,8 @@ export async function startGrab(
           note: null,
           autoReplace: purpose === "replace" && !req.purpose,
           since: now,
+          // Sent stopped for the file choice: recorded before it's sent, so a restart still starts it (M6).
+          ...(select ? { paused: true } : {}),
         }
       : null;
   const why = seasonWhy ? `${c.why}. ${seasonWhy}` : c.why;
@@ -512,7 +514,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
     const ready: { row: GrabRow; path: string }[] = [];
     for (const row of rows) {
       try {
-        if (row.batch) await pendingSelection(row, deps).catch(() => undefined);
+        if (row.batch && (await pendingSelection(row, deps).catch((e) => reportBatchStep(row, e))) === "attention") continue;
         const job = { client: row.client as ClientJob["client"], ref: row.client_ref! };
         const st = await deps.clients.status(job);
         const qh = getSettings().queueHealth;
@@ -754,28 +756,52 @@ function rowRequest(row: GrabRow): GrabRequest {
   };
 }
 
-/** Pipeline tick: batch torrents still waiting for their file list (magnets fetching metadata). */
-export async function pendingSelection(row: GrabRow, deps: PipelineDeps) {
+/**
+ * Pipeline tick, batch torrents: one still waiting for its file list (a magnet fetching metadata) gets its selection;
+ * one added stopped whose start failed is started again (review 2026-11-02, M6). "attention" = it kept failing to
+ * start and now needs a look.
+ */
+export async function pendingSelection(row: GrabRow, deps: PipelineDeps): Promise<"attention" | undefined> {
   const b = readBatch(row.batch);
-  if (b?.mode !== "pending" || !row.client || !row.client_ref) return;
-  const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
-  if (row.movie_id) {
-    await applySelection({
-      grabId: row.id,
-      job,
-      clients: deps.clients,
-      opts: movieFileOpts(row.movie_id),
-      log: { tvdbId: null, release: row.release, episodeIds: [], movieId: row.movie_id },
-    });
-    return;
-  }
+  if (!b || !row.client || !row.client_ref) return;
   const ids = JSON.parse(row.episode_ids) as number[];
+  const log = row.movie_id
+    ? { tvdbId: null, release: row.release, episodeIds: [], movieId: row.movie_id }
+    : { tvdbId: row.tvdb_id, title: rowTitle(row), release: row.release, episodeIds: ids };
+  if (b.startFailed) {
+    const r = await retryStart({ grabId: row.id, job: { client: row.client, ref: row.client_ref }, clients: deps.clients, log });
+    if (r !== "attention") return;
+    const why = readBatch((db.prepare("SELECT batch FROM grabs WHERE id = ?").get(row.id) as { batch: string | null }).batch)?.startFailed
+      ?.why;
+    setState(
+      row.id,
+      "needs-attention",
+      `it was added stopped to choose its files, and the download client couldn't be told to start it for an hour (${why ?? b.startFailed.why}); start it in the client, or remove it here`,
+    );
+    return "attention";
+  }
+  if (b.mode !== "pending") return;
+  const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
   await applySelection({
     grabId: row.id,
     job,
     clients: deps.clients,
-    opts: episodeFileOpts(row.tvdb_id, ids),
-    log: { tvdbId: row.tvdb_id, title: rowTitle(row), release: row.release, episodeIds: ids },
+    opts: row.movie_id ? movieFileOpts(row.movie_id) : episodeFileOpts(row.tvdb_id, ids),
+    log,
+  });
+}
+
+/** A batch step that threw (not a client answer, which applySelection handles): reported once per grab and error. */
+const batchStepErrors = new Map<number, string>();
+function reportBatchStep(row: GrabRow, e: unknown) {
+  const msg = (e as Error).message;
+  if (batchStepErrors.get(row.id) === msg) return; // the same error as last tick: already in the activity log
+  batchStepErrors.set(row.id, msg);
+  logDecision("fail", {
+    tvdbId: row.tvdb_id,
+    release: row.release,
+    why: `Couldn't handle the file choice of ${row.release}: ${msg}; trying again every round`,
+    detail: { grabId: row.id },
   });
 }
 

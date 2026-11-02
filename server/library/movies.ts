@@ -604,6 +604,8 @@ export async function startMovieGrab(
         note: null,
         movie: true,
         since: now,
+        // Sent stopped for the file choice: recorded before it's sent, so a restart still starts it (M6).
+        ...(select ? { paused: true } : {}),
       }
     : null;
   const id = Number(
