@@ -25,7 +25,9 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   IPv6 private (ULA, `fc00::/7`, which is also what Docker's IPv6 networks use) and loopback don't count unless you list
   them (a reverse proxy, tunnel or Docker gateway would make everyone look local), requests that came through any proxy
   (one listed in `TRUST_PROXY`, or any request carrying `X-Forwarded-For` or similar headers) never count, a hop-count
-  `TRUST_PROXY` turns the check off, and the browser must address AnimeArr by IP or a LAN name. Tailscale addresses
+  `TRUST_PROXY` turns the no-password check off, and the browser must address AnimeArr by IP or a LAN name (or a name
+  in `ANIMEARR_ALLOWED_HOSTS`). With a hop count the default login judges the client your proxy reports in
+  `X-Forwarded-For`, and only when the proxy itself has a private or loopback address. Tailscale addresses
   (`fd7a:115c:a1e0::/48`) are ULA, so they only count if you list them, e.g.
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`; then devices on your tailnet, **including
   nodes shared with you or by you**, count as home network.
