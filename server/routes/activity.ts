@@ -120,7 +120,7 @@ export function registerActivityRoutes(app: FastifyInstance) {
         deleteOverrides(String(a.ids).split(",").map(Number).filter(Boolean));
         break;
       case "rename-sidecar-back":
-        renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });
+        await renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });
         break;
     }
     markUndone(d.id);

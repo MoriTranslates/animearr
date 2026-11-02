@@ -92,6 +92,9 @@ export function registerFilesRoutes(app: FastifyInstance) {
       grabId?: number | null;
     };
   }>("/api/import/run", async (req) => {
+    // Not confined to the importer's download folders, on purpose (decided 2026-11-02, blind review H3): the Show page's
+    // manual import takes a typed path, e.g. Sonarr's own download folder. planImport refuses any source that is, is
+    // inside, or holds the library, the bin or AnimeArr's own folder (by real path, so ".." and links can't escape).
     writable();
     const b = req.body ?? ({} as never);
     if (!b.tvdbId || !b.path) throw fail("tvdbId and path are required", 400);

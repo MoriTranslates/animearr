@@ -12,6 +12,7 @@ import { underAllowedRoot } from "../system/settings.js";
 import { keyOf, localPath } from "../system/paths.js";
 import { probeFile, recordFor } from "./mediafiles.js";
 import { invalidateOverrides, overridesFor } from "./trackOverrides.js";
+import { moveNoClobber } from "./fileMoves.js";
 import { logDecision } from "../system/activity.js";
 import { learnFromVerify } from "../library/library.js";
 
@@ -169,7 +170,7 @@ function writeTag(p: string, trackIndex: number, lang: string, forced: boolean):
 }
 
 /** "Use this as English": renames a sidecar to "<video>.<lang>.<ext>" next to the video (undoable). */
-export function useSidecar(input: { video: string; file: string; lang: string; tvdbId?: number | null; title?: string }) {
+export async function useSidecar(input: { video: string; file: string; lang: string; tvdbId?: number | null; title?: string }) {
   const local = localPath(input.video);
   if (!local || !underAllowedRoot(input.video)) throw bad("That file isn't in an allowed root folder");
   const dir = path.dirname(local);
@@ -179,7 +180,7 @@ export function useSidecar(input: { video: string; file: string; lang: string; t
   if (!/^[a-z]{2,3}$/.test(lang)) throw bad("Pick a language code like en");
   const to = `${path.basename(local).replace(/\.[^.]+$/, "")}.${lang}${path.extname(name).toLowerCase()}`;
   if (fs.existsSync(path.join(dir, to))) throw bad(`${to} already exists`, 409);
-  fs.renameSync(path.join(dir, name), path.join(dir, to));
+  await renameNoClobber(path.join(dir, name), path.join(dir, to), `${to} already exists`);
   logDecision("fact", {
     tvdbId: input.tvdbId ?? null,
     title: input.title,
@@ -189,12 +190,22 @@ export function useSidecar(input: { video: string; file: string; lang: string; t
   return { renamed: to };
 }
 
-export function renameSidecarBack(a: { dir: string; from: string; to: string }) {
+export async function renameSidecarBack(a: { dir: string; from: string; to: string }) {
   const local = localPath(`${a.dir}/${a.from}`);
   if (!local) throw bad("Can't reach that folder");
   const target = path.join(path.dirname(local), path.basename(a.to));
   if (fs.existsSync(target)) throw bad(`${a.to} exists again; leaving both`, 409);
-  fs.renameSync(local, target);
+  await renameNoClobber(local, target, `${a.to} exists again; leaving both`);
+}
+
+/** A rename that never overwrites: a file that appeared at the target after the check above is left alone (409). */
+async function renameNoClobber(from: string, to: string, exists: string) {
+  try {
+    await moveNoClobber(from, to);
+  } catch (e) {
+    if (/already exists/.test((e as Error).message)) throw bad(exists, 409);
+    throw e;
+  }
 }
 
 /** Probes one file again now (stale scan). */
