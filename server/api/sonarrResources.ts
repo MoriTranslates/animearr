@@ -164,7 +164,7 @@ export const profileByApiId = (id: unknown) => {
 
 // ---------------------------------------------------------------- tags
 
-// The real tags (server/tags.ts): the ones set in Settings → Tags are what request apps see.
+// The real tags (server/library/tags.ts): the ones set in Settings → Tags are what request apps see.
 const seriesTags = (tvdbId: number) => tagsOf("series", tvdbId);
 export const setSeriesTags = (tvdbId: number, tags: unknown) => void setTags("series", tvdbId, tags);
 

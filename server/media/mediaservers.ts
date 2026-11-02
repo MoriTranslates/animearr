@@ -1,5 +1,5 @@
 /**
- * Jellyfin, Emby and Kodi notify, the same job as server/plex.ts: after AnimeArr's own importer or renamer changed a
+ * Jellyfin, Emby and Kodi notify, the same job as server/media/plex.ts: after AnimeArr's own importer or renamer changed a
  * folder, the server is told to look at just that folder. Read-only otherwise: AnimeArr never changes a server's
  * library settings, metadata or watch state.
  *

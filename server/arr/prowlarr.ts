@@ -76,7 +76,7 @@ export async function prowlarrIndexers() {
 
 /**
  * Free-text search across the configured indexers and categories (`indexerIds` narrows it to those). An empty query returns each indexer's recent feed.
- * Identical queries within 10 minutes (and ones in flight) share one answer (server/searchQueue.ts); `fresh` asks again.
+ * Identical queries within 10 minutes (and ones in flight) share one answer (server/search/searchQueue.ts); `fresh` asks again.
  * `timeoutMs` limits the wait (Prowlarr's API has no time limit of its own; its combined search waits for every indexer).
  */
 export async function prowlarrSearch(

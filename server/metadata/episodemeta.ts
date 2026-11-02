@@ -1,10 +1,10 @@
 /**
- * Episode descriptions and thumbnails for the media-server files (server/mediaout.ts writes them).
+ * Episode descriptions and thumbnails for the media-server files (server/media/mediaout.ts writes them).
  *
  * Where they come from, in order:
  *   1. TMDB: the season response of the entry's TMDB mapping (Anime-Lists' tmdb_tv / tmdb_season / tmdb_offset, the same
  *      mapping the catalog uses for episode titles), or the user's own "episode info source" for that season
- *      (server/metaoverride.ts) when the mapping is wrong for metadata. Needs the TMDB key from Settings → Metadata. A season is fetched
+ *      (server/metadata/metaoverride.ts) when the mapping is wrong for metadata. Needs the TMDB key from Settings → Metadata. A season is fetched
  *      once and kept a week in cache.db, so a library-wide run asks TMDB once per season, gently.
  *   2. Sonarr: the episode's overview and screenshot (only when Sonarr is connected and TMDB had nothing).
  *   3. A frame from the video itself (mediaout asks for it, and only when the user switched it on).

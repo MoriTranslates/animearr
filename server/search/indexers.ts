@@ -273,7 +273,7 @@ async function prowlarrPerIndexer(query: string, opts: { limit?: number; categor
  * indexer on its own (one request each), so a busy indexer can't push the others' newest releases out of the list.
  * Searches with words are also asked per Prowlarr indexer while there is a time limit (search.indexerTimeoutSec).
  *
- * Every call takes one slot of the app-wide query scheduler (server/searchQueue.ts), and identical searches within
+ * Every call takes one slot of the app-wide query scheduler (server/search/searchQueue.ts), and identical searches within
  * 10 minutes reuse the answers per indexer (`fresh` asks again); the empty recent-releases poll is never cached.
  */
 export async function searchAll(

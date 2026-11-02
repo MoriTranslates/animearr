@@ -8,7 +8,7 @@
  *   Multi-episode files get one <episodedetails> block per episode (Kodi's convention; Jellyfin's parser reads it).
  * - .plexmatch for Plex (title, year, tvdbid/tmdbid hints).
  * - poster/banner artwork from AniList, only when the folder has none.
- * - episode thumbnails (<video>-thumb.jpg, read by Jellyfin/Emby/Kodi) and the episode <plot>, from server/episodemeta.ts.
+ * - episode thumbnails (<video>-thumb.jpg, read by Jellyfin/Emby/Kodi) and the episode <plot>, from server/metadata/episodemeta.ts.
  *
  * Every text file AnimeArr writes carries MARKER. A file without it is the user's own and is never overwritten or
  * removed. Files are only rewritten when their content changes, so servers don't rescan for nothing.

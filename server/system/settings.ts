@@ -214,7 +214,7 @@ export interface Settings {
    */
   dualUpgrade: { mode: "off" | "log" | "auto"; perHour: number; recheckDays: number; maxAgeDays: number };
   /**
-   * Quality upgrades towards each profile's goal (server/qualityUpgrade.ts). Automatic from day one (the owner's call)
+   * Quality upgrades towards each profile's goal (server/search/qualityUpgrade.ts). Automatic from day one (the owner's call)
    * with guard rails: seasonsPerDay grabs at most, searches within perHour, recheckDays between looks (weekly in the
    * Blu-ray window 3–6 months after airing), a pause switch, and a first run that only lists its plan.
    */
@@ -320,7 +320,7 @@ export interface Settings {
   /** Kodi: JSON-RPC VideoLibrary.Scan of the changed folder. The password is stored encrypted. */
   kodi: { url: string; username: string; password: string; enabled: boolean; pathMappings: PathMapping[] };
   /**
-   * What AnimeArr writes beside the videos for the media servers (server/mediaout.ts): NFO files + artwork
+   * What AnimeArr writes beside the videos for the media servers (server/media/mediaout.ts): NFO files + artwork
    * (Jellyfin/Emby/Kodi) and .plexmatch (Plex). `main` picks the folder ID hint style of {Server Id Hint}.
    */
   mediaOutput: {
@@ -373,7 +373,7 @@ export interface Settings {
   /** Staged fill-in queue (see fillin.ts). */
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
   sync: { intervalHours: number };
-  /** Import lists (server/importLists.ts): how often they sync, and the MyAnimeList API client ID (stored encrypted). */
+  /** Import lists (server/library/importLists.ts): how often they sync, and the MyAnimeList API client ID (stored encrypted). */
   lists: { intervalHours: number; malClientId: string };
   /** Address phones reach AnimeArr at (reverse proxy URL). */
   externalUrl: string;

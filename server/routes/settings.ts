@@ -63,7 +63,7 @@ export function registerSettingsRoutes(app: FastifyInstance) {
     if (!key) throw fail("Enter a TMDB API key or Read Access Token", 400);
     return testTmdb(key);
   });
-  /** Poster thumbnails (see server/img.ts): the provider's smaller rendition, cached on disk, cached by browsers for a year. */
+  /** Poster thumbnails (see server/metadata/img.ts): the provider's smaller rendition, cached on disk, cached by browsers for a year. */
   app.get<{ Querystring: { u?: string; s?: string } }>("/api/img", async (req, reply) => {
     const size = (["sm", "md", "lg", "xl"].includes(req.query.s ?? "") ? req.query.s : "md") as ThumbSize;
     const r = await thumb(String(req.query.u ?? ""), size);

@@ -8,7 +8,27 @@ npm install
 npm run dev        # web build + server with live reload on http://localhost:8484 (config in ./.devconfig)
 npm test           # node:test suites in test/
 npm run typecheck
+npm run lint           # oxlint (correctness rules)
+npm run format         # Prettier (printWidth 140); CI runs format:check
+npm run check:cycles   # no import cycles in server/ or web/src (scripts/cycles-allow.json stays empty)
 ```
+
+Where the server code lives (`server/index.ts` builds the app and registers everything):
+
+| Folder | What's in it |
+|---|---|
+| `routes/` | The web UI's `/api` routes, one module per area (`register<Area>Routes`) |
+| `api/` | APIs other apps call: the Sonarr v3-compatible API, the iCal feed |
+| `library/` | Shows and movies: library sync, native shows, managed shows, episodes, movies, scope, profiles, tags, cutover |
+| `search/` | Searching and deciding: Deep Search, indexers, health, release rules, automatic search, propers, upgrades |
+| `grabs/` | The grab pipeline: grab → download → verify → import, batches, download folders, malware checks, blocklist, queue |
+| `import/` | Files on disk: the importer and renamer, naming, file records, track overrides, recycling bin, repair |
+| `metadata/` | AniList, AniDB, the catalog, covers, SeaDex, episode descriptions and thumbnails |
+| `media/` | Media servers: NFO/artwork output, Plex, Jellyfin/Emby/Kodi, "Watch in" |
+| `notify/` | Notifications and their channels |
+| `system/` | Database, settings, auth, logs, backups, activity log, fixes, setup wizard, connections |
+| `arr/` | Clients for Sonarr, Radarr, Prowlarr and the download clients |
+| `core/` | Pure logic with no I/O: the release parser, identification, ranking, quality rules |
 
 - **Branches:** `main` holds released versions only; new work goes to `nightly`. Open pull requests against
   `nightly` (fixes for a released version can target `main`). Both branches are protected: changes arrive through pull

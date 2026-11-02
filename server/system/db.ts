@@ -437,7 +437,7 @@ const USER_MIGRATIONS: string[] = [
   `CREATE TABLE media_thumbs (path TEXT PRIMARY KEY, source TEXT NOT NULL, ep_key TEXT NOT NULL, written_at INTEGER NOT NULL);`,
   // ---- episode info source (metadata only) ----
   // 39: where one season's episode plots and thumbnails come from when the catalog mapping is wrong for them. Read only by
-  // server/episodemeta.ts and its routes, never by matching, numbering, search, import or the catalog. It survives library
+  // server/metadata/episodemeta.ts and its routes, never by matching, numbering, search, import or the catalog. It survives library
   // syncs; a removed show's rows stay (tiny, harmless), so adding the show back keeps the choice.
   `CREATE TABLE meta_overrides (tvdb_id INTEGER NOT NULL, season INTEGER NOT NULL, tmdb_tv INTEGER NOT NULL, tmdb_season INTEGER NOT NULL, tmdb_offset INTEGER NOT NULL DEFAULT 0,
      set_at INTEGER NOT NULL, PRIMARY KEY (tvdb_id, season));`,

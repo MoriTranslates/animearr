@@ -1,5 +1,5 @@
 /**
- * Fix buttons: every problem message maps to its fixes (server/fixes.ts), and the two new grab actions
+ * Fix buttons: every problem message maps to its fixes (server/system/fixes.ts), and the two new grab actions
  * ("Keep anyway", "Try next release") behave safely. All with mocks.
  */
 import { test, before } from "node:test";

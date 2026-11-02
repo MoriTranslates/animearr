@@ -1,6 +1,6 @@
 /**
  * "Episode info source": the user's per-season choice of which TMDB show/season/offset the episode plots and thumbnails
- * come from, for when the catalog mapping (Anime-Lists) is wrong for them. Metadata only: server/episodemeta.ts and the
+ * come from, for when the catalog mapping (Anime-Lists) is wrong for them. Metadata only: server/metadata/episodemeta.ts and the
  * routes are the only readers. Matching, numbering, search, import, the catalog and the Sonarr API never see it.
  */
 import { tmdbFetch } from "./catalog.js";
