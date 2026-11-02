@@ -25,8 +25,42 @@ const KIND_TONE: Record<string, Tone> = {
   skip: "warn",
   search: "info",
 };
-const KIND_ICON: Record<string, string> = { grab: "↓", "would-grab": "◌", import: "✓", "verify-ok": "✓", "verify-fail": "✕", fail: "✕", skip: "↷", search: "⌕", info: "•", managed: "★", alias: "✎", rule: "✎", fact: "✎", sonarr: "⇄", sync: "↻", plex: "▶" };
-const KNOWN = ["grab", "would-grab", "import", "verify-ok", "verify-fail", "fail", "skip", "search", "info", "managed", "alias", "rule", "fact", "sonarr", "sync", "plex"];
+const KIND_ICON: Record<string, string> = {
+  grab: "↓",
+  "would-grab": "◌",
+  import: "✓",
+  "verify-ok": "✓",
+  "verify-fail": "✕",
+  fail: "✕",
+  skip: "↷",
+  search: "⌕",
+  info: "•",
+  managed: "★",
+  alias: "✎",
+  rule: "✎",
+  fact: "✎",
+  sonarr: "⇄",
+  sync: "↻",
+  plex: "▶",
+};
+const KNOWN = [
+  "grab",
+  "would-grab",
+  "import",
+  "verify-ok",
+  "verify-fail",
+  "fail",
+  "skip",
+  "search",
+  "info",
+  "managed",
+  "alias",
+  "rule",
+  "fact",
+  "sonarr",
+  "sync",
+  "plex",
+];
 /** Human words for the decision kinds (never the raw enum). */
 export const kindLabel = (kind: string) => (KNOWN.includes(kind) ? t(`activity.kind.${kind}` as I18nKey) : kind);
 const isPlex = (d: Decision) => (d.kind === "info" || d.kind === "fail") && /^Plex: asked/.test(d.why);
@@ -55,11 +89,18 @@ export function DecisionCard({ d, onUndone }: { d: Decision; onUndone?: () => vo
   return <EventCard ev={{ key: `d${d.id}`, at: d.at, items: [d] }} onUndone={onUndone} showDate />;
 }
 
-interface Ev { key: string; at: number; items: Decision[] }
+interface Ev {
+  key: string;
+  at: number;
+  items: Decision[];
+}
 
 /** The first sentence of a long "why" (the card's one muted line; the rest is under Details). */
 function short(why: string, max = 120) {
-  const cut = why.replace(/\s+/g, " ").split(/(?<=[.;])\s|: (?=[A-Z])/)[0].replace(/[.;]$/, "");
+  const cut = why
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.;])\s|: (?=[A-Z])/)[0]
+    .replace(/[.;]$/, "");
   return cut.length > max ? `${cut.slice(0, max - 1)}…` : cut;
 }
 /** "SubsPlease · 1080p" from a release name. */
@@ -73,7 +114,16 @@ function releaseLine(release: string | null) {
 /** The card's headline, in plain words: "Imported Trinity Seven S01E03", "Couldn't import Quintuplets∽". */
 function headline(lead: Decision, k: string) {
   const what = [lead.title || (lead.tvdbId ? t("activity.show") : ""), lead.label].filter(Boolean).join(" ");
-  const verb: Record<string, I18nKey> = { import: "activity.h.import", grab: "activity.h.grab", "would-grab": "activity.h.wouldGrab", "verify-ok": "activity.h.checked", "verify-fail": "activity.h.rejected", skip: "activity.h.skip", search: "activity.h.search", plex: "activity.h.plex" };
+  const verb: Record<string, I18nKey> = {
+    import: "activity.h.import",
+    grab: "activity.h.grab",
+    "would-grab": "activity.h.wouldGrab",
+    "verify-ok": "activity.h.checked",
+    "verify-fail": "activity.h.rejected",
+    skip: "activity.h.skip",
+    search: "activity.h.search",
+    plex: "activity.h.plex",
+  };
   // A problem's plain summary says what happened and why in one line: it is the headline.
   if (PROBLEM.has(lead.kind) && lead.summary && !lead.resolved) return lead.summary;
   if (k === "fail") return /couldn't import/i.test(lead.why) ? t("activity.h.failImport", { what }) : t("activity.h.fail", { what });
@@ -90,20 +140,35 @@ function subline(lead: Decision, release: string | null) {
   return releaseLine(release) || (lead.title ? (lead.summary ?? short(lead.why)) : "");
 }
 /** Routine background entries (searches that found nothing): hidden from "All" unless asked for. */
-export const isBackground = (d: Decision) => d.kind === "search" || (d.kind === "skip" && /nothing (acceptable|found)|0 acceptable|no results?/i.test(d.why));
+export const isBackground = (d: Decision) =>
+  d.kind === "search" || (d.kind === "skip" && /nothing (acceptable|found)|0 acceptable|no results?/i.test(d.why));
 
 /**
  * One event as a compact card (the Home "Just arrived" style): poster | plain headline | status | time, one muted line,
  * fix buttons for problems; the full release, the long reasons and the steps are under "Details".
  */
-function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; onUndone?: () => void; showDate?: boolean; clock?: boolean }) {
+function EventCard({
+  ev,
+  onUndone,
+  showDate = false,
+  clock = false,
+}: {
+  ev: Ev;
+  onUndone?: () => void;
+  showDate?: boolean;
+  clock?: boolean;
+}) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [undoing, setUndoing] = useState<Decision | null>(null);
   const steps = [...ev.items].sort((a, b) => a.at - b.at || a.id - b.id);
   // The headline is the newest meaningful step: a problem, the final import, or the grab (not a clean-up note).
   const newest = [...ev.items].sort((a, b) => b.at - a.at || b.id - a.id);
-  const meaningful = (x: Decision) => (PROBLEM.has(x.kind) && !x.undoneAt) || (x.kind === "import" && !!(x.detail as { final?: boolean } | null)?.final) || x.kind === "grab" || x.kind === "would-grab";
+  const meaningful = (x: Decision) =>
+    (PROBLEM.has(x.kind) && !x.undoneAt) ||
+    (x.kind === "import" && !!(x.detail as { final?: boolean } | null)?.final) ||
+    x.kind === "grab" ||
+    x.kind === "would-grab";
   const lead = newest.find(meaningful) ?? newest.find((x) => kindOf(x) !== "plex" && x.kind !== "info") ?? newest[0];
   const k = kindOf(lead);
   const release = ev.items.find((x) => x.release)?.release ?? null;
@@ -121,12 +186,20 @@ function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; 
     <article
       className={`card event2 tone-${tone}${PROBLEM.has(lead.kind) && !resolved ? " problem" : ""}${resolved ? " resolved" : ""}${link ? "" : " no-thumb"}${open ? " open" : ""}`}
       // The whole card opens its details (links and buttons inside keep doing their own thing).
-      onClick={(e) => !(e.target as HTMLElement).closest("a, button, input, select, summary, .event-details") && !window.getSelection()?.toString() && setOpen(!open)}
+      onClick={(e) =>
+        !(e.target as HTMLElement).closest("a, button, input, select, summary, .event-details") &&
+        !window.getSelection()?.toString() &&
+        setOpen(!open)
+      }
     >
       {link ? (
         <Link to={link} className="event-thumb">
           <span className="sr-only">{lead.title || t("activity.show")}</span>
-          {cover ? <img src={thumbUrl(cover, "sm")} alt="" loading="lazy" /> : <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>}
+          {cover ? (
+            <img src={thumbUrl(cover, "sm")} alt="" loading="lazy" />
+          ) : (
+            <span className={`event-icon ${tone}`}>{KIND_ICON[k] ?? "•"}</span>
+          )}
         </Link>
       ) : (
         <span className="event-thumb" aria-hidden="true">
@@ -140,7 +213,11 @@ function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; 
           </span>
           <h3 className="event-title">{link ? <Link to={link}>{headline(lead, k)}</Link> : headline(lead, k)}</h3>
           <time className="muted small event-time" dateTime={new Date(ev.at).toISOString()} title={new Date(ev.at).toLocaleString()}>
-            {showDate ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : clock ? time(ev.at) : relTime(ev.at)}
+            {showDate
+              ? new Date(ev.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+              : clock
+                ? time(ev.at)
+                : relTime(ev.at)}
           </time>
         </div>
         {sub && <p className="event-sub">{sub}</p>}
@@ -152,7 +229,10 @@ function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; 
         {!!track.length && (
           <ol className="stage-track" aria-label={t("activity.steps")}>
             {track.map((x) => (
-              <li key={x.id} className={PROBLEM.has(x.kind) ? "bad" : KIND_TONE[kindOf(x)] === "good" || kindOf(x) === "plex" ? "good" : ""}>
+              <li
+                key={x.id}
+                className={PROBLEM.has(x.kind) ? "bad" : KIND_TONE[kindOf(x)] === "good" || kindOf(x) === "plex" ? "good" : ""}
+              >
                 {kindLabel(kindOf(x))}
               </li>
             ))}
@@ -160,11 +240,21 @@ function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; 
         )}
         <FixButtons fixes={fixes} />
         <div className="row event-actions">
-          <button className="event-chev small" aria-expanded={open} aria-label={open ? t("activity.hideDetails") : t("activity.details")} onClick={() => setOpen(!open)}>
+          <button
+            className="event-chev small"
+            aria-expanded={open}
+            aria-label={open ? t("activity.hideDetails") : t("activity.details")}
+            onClick={() => setOpen(!open)}
+          >
             {open ? "▾" : "▸"} {t("activity.detailsShort")}
           </button>
           {undoable.map((x) => (
-            <button key={x.id} className="small" title={x.undo?.action === "unblock" ? t("activity.undo.unblockHelp") : undefined} onClick={() => setUndoing(x)}>
+            <button
+              key={x.id}
+              className="small"
+              title={x.undo?.action === "unblock" ? t("activity.undo.unblockHelp") : undefined}
+              onClick={() => setUndoing(x)}
+            >
               {x.undo?.action === "unblock" ? t("activity.undo.unblock") : t("common.undo")}
               {undoable.length > 1 && x.undo?.action !== "unblock" ? `: ${kindLabel(kindOf(x))}` : ""}
             </button>
@@ -194,11 +284,16 @@ function EventCard({ ev, onUndone, showDate = false, clock = false }: { ev: Ev; 
         </div>
         {open && (
           <div className="event-details">
-            {release && <p className="small event-release"><ReleaseName name={release} /></p>}
+            {release && (
+              <p className="small event-release">
+                <ReleaseName name={release} />
+              </p>
+            )}
             <ol className="event-steps small">
               {steps.map((x) => (
                 <li key={x.id}>
-                  <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong> {x.summary && <span className="why-text">{x.summary} </span>}
+                  <span className="muted">{time(x.at)}</span> <strong>{kindLabel(kindOf(x))}</strong>{" "}
+                  {x.summary && <span className="why-text">{x.summary} </span>}
                   <span className={`why-text${x.summary ? " muted" : ""}`}>{x.why}</span>
                 </li>
               ))}
@@ -237,7 +332,15 @@ export function groupEvents(list: Decision[]): Ev[] {
       continue;
     }
     if (d.kind === "import" || (d.kind === "info" && /^Imported/.test(d.why))) {
-      const same = out.find((e) => e.items.some((x) => (x.kind === "import" || /^Imported/.test(x.why)) && x.tvdbId === d.tvdbId && JSON.stringify(x.episodeIds) === JSON.stringify(d.episodeIds) && Math.abs(x.at - d.at) < 300_000));
+      const same = out.find((e) =>
+        e.items.some(
+          (x) =>
+            (x.kind === "import" || /^Imported/.test(x.why)) &&
+            x.tvdbId === d.tvdbId &&
+            JSON.stringify(x.episodeIds) === JSON.stringify(d.episodeIds) &&
+            Math.abs(x.at - d.at) < 300_000,
+        ),
+      );
       if (same) {
         same.items.push(d);
         continue;
@@ -257,7 +360,10 @@ export function groupEvents(list: Decision[]): Ev[] {
 /** Activity and Blocklist share a page: the log, and the releases AnimeArr won't pick again. */
 export function Activity() {
   const [view, setView] = useState<"log" | "blocklist">(query().get("tab") === "blocklist" ? "blocklist" : "log");
-  const pick = (v: "log" | "blocklist") => (setView(v), history.replaceState(null, "", v === "log" ? "/activity" : "/activity?tab=blocklist"));
+  const pick = (v: "log" | "blocklist") => (
+    setView(v),
+    history.replaceState(null, "", v === "log" ? "/activity" : "/activity?tab=blocklist")
+  );
   const tabs = (
     <div className="seg seg-accent" role="tablist">
       {(["log", "blocklist"] as const).map((v) => (
@@ -334,7 +440,12 @@ function ActivityLog({ tabs }: { tabs: React.ReactNode }) {
       <p className="muted small">{t("activity.intro")}</p>
       <div className="chips pickable" role="group" aria-label={t("common.filter")}>
         {FILTERS.map((f) => (
-          <button key={f.key} className={`chip${filter === f.key ? " on" : ""}`} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
+          <button
+            key={f.key}
+            className={`chip${filter === f.key ? " on" : ""}`}
+            aria-pressed={filter === f.key}
+            onClick={() => setFilter(f.key)}
+          >
             {t(f.label)}
           </button>
         ))}

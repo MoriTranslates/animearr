@@ -11,7 +11,11 @@ import { CONFIG_DIR } from "./db.js";
 import { redactText } from "./redact.js";
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
-export interface LogEntry { at: number; level: LogLevel; msg: string }
+export interface LogEntry {
+  at: number;
+  level: LogLevel;
+  msg: string;
+}
 export const LOG_LEVELS: LogLevel[] = ["error", "warn", "info", "debug"];
 
 const RING_SIZE = 2000;
@@ -68,7 +72,8 @@ export function getLogs(opts: { level?: string; q?: string; limit?: number } = {
   return { entries: hits.slice(-limit), total: ring.length, matched: hits.length };
 }
 
-export const formatLine = (e: LogEntry) => `${new Date(e.at).toISOString()} ${e.level.toUpperCase().padEnd(5)} ${e.msg.replace(/\r?\n/g, "\n    ")}`;
+export const formatLine = (e: LogEntry) =>
+  `${new Date(e.at).toISOString()} ${e.level.toUpperCase().padEnd(5)} ${e.msg.replace(/\r?\n/g, "\n    ")}`;
 
 function readFileEntries(file: string): LogEntry[] {
   try {
@@ -78,7 +83,8 @@ function readFileEntries(file: string): LogEntry[] {
       if (!line) continue;
       try {
         const o = JSON.parse(line) as LogEntry;
-        if (typeof o.at === "number" && typeof o.msg === "string" && LOG_LEVELS.includes(o.level)) out.push({ at: o.at, level: o.level, msg: redactText(o.msg) });
+        if (typeof o.at === "number" && typeof o.msg === "string" && LOG_LEVELS.includes(o.level))
+          out.push({ at: o.at, level: o.level, msg: redactText(o.msg) });
       } catch {
         /* a half-written last line */
       }
@@ -141,7 +147,13 @@ export function installLogCapture() {
   if (installed) return;
   installed = true;
   ring = [...readFileEntries(`${LOG_FILE}.1`), ...readFileEntries(LOG_FILE)].slice(-RING_SIZE);
-  for (const [name, level] of [["log", "info"], ["info", "info"], ["warn", "warn"], ["error", "error"], ["debug", "debug"]] as const) {
+  for (const [name, level] of [
+    ["log", "info"],
+    ["info", "info"],
+    ["warn", "warn"],
+    ["error", "error"],
+    ["debug", "debug"],
+  ] as const) {
     const orig = console[name].bind(console);
     console[name] = (...args: unknown[]) => {
       orig(...args);

@@ -19,10 +19,33 @@
 import { parseRelease, type ParsedRelease, type Source } from "./parser.js";
 import { isNewerRevision, type HaveRevision, type ProperMode, type Revision } from "./propers.js";
 
-export type Category = "unknown" | "sdtv" | "dvd" | "web-480" | "bluray-480" | "web-720" | "bluray-720" | "web-1080" | "bluray-1080" | "web-2160" | "bluray-2160";
+export type Category =
+  | "unknown"
+  | "sdtv"
+  | "dvd"
+  | "web-480"
+  | "bluray-480"
+  | "web-720"
+  | "bluray-720"
+  | "web-1080"
+  | "bluray-1080"
+  | "web-2160"
+  | "bluray-2160";
 
 /** Worst → best. */
-export const LADDER: Category[] = ["unknown", "sdtv", "dvd", "web-480", "bluray-480", "web-720", "bluray-720", "web-1080", "bluray-1080", "web-2160", "bluray-2160"];
+export const LADDER: Category[] = [
+  "unknown",
+  "sdtv",
+  "dvd",
+  "web-480",
+  "bluray-480",
+  "web-720",
+  "bluray-720",
+  "web-1080",
+  "bluray-1080",
+  "web-2160",
+  "bluray-2160",
+];
 export const ladderRank = (c: Category) => LADDER.indexOf(c);
 
 export const CATEGORY_NAME: Record<Category, string> = {
@@ -53,7 +76,8 @@ export const CATEGORY_QUALITIES: Record<Category, string[]> = {
   "bluray-2160": ["Bluray-2160p Remux", "Bluray-2160p"],
 };
 
-const resOf = (p: ParsedRelease, height: number | null) => p.resolution ?? (height ? (height >= 2000 ? 2160 : height >= 1000 ? 1080 : height >= 700 ? 720 : 480) : null);
+const resOf = (p: ParsedRelease, height: number | null) =>
+  p.resolution ?? (height ? (height >= 2000 ? 2160 : height >= 1000 ? 1080 : height >= 700 ? 720 : 480) : null);
 
 /** Sonarr-style quality name from a release name / probe ("WEBDL-1080p", "Bluray-1080p Remux"). */
 export function sonarrQualityName(release: string, height: number | null) {
@@ -79,7 +103,8 @@ export interface QualityInfo {
   upscale: boolean;
 }
 
-const bucket = (res: number | null, top: 1080 | 2160 = 1080) => (res === null ? null : res >= 2000 && top === 2160 ? 2160 : res >= 1000 ? 1080 : res >= 700 ? 720 : 480);
+const bucket = (res: number | null, top: 1080 | 2160 = 1080) =>
+  res === null ? null : res >= 2000 && top === 2160 ? 2160 : res >= 1000 ? 1080 : res >= 700 ? 720 : 480;
 
 /** The category of a release name (or a file's original release name), with the anime rebase applied. */
 export function qualityOf(release: string | ParsedRelease, height: number | null = null): QualityInfo {
@@ -88,7 +113,14 @@ export function qualityOf(release: string | ParsedRelease, height: number | null
   const res = resOf(p, height);
   const remux = /\bremux\b/i.test(raw);
   const name = sonarrQualityName(raw, height);
-  const out = (category: Category, extra: Partial<QualityInfo> = {}): QualityInfo => ({ category, name, remux, hdtv: false, upscale: false, ...extra });
+  const out = (category: Category, extra: Partial<QualityInfo> = {}): QualityInfo => ({
+    category,
+    name,
+    remux,
+    hdtv: false,
+    upscale: false,
+    ...extra,
+  });
   const upscale = res !== null && res >= 2000;
   if (p.source === "bluray") {
     if (upscale && (remux || /\bUHD\b/i.test(raw))) return out("bluray-2160");
@@ -112,8 +144,18 @@ export type GoalId = "good" | "high" | "collector";
 export const GOAL_IDS: GoalId[] = ["good", "high", "collector"];
 export const GOALS: Record<GoalId, { name: string; category: Category; seadex: boolean; help: string }> = {
   good: { name: "Good enough", category: "web-1080", seadex: false, help: "WEB 1080p: smaller files, what streaming services give you" },
-  high: { name: "Aim high", category: "bluray-1080", seadex: false, help: "Blu-ray 1080p when it comes out (usually 3–6 months after airing)" },
-  collector: { name: "Collector", category: "bluray-1080", seadex: true, help: "Whatever SeaDex rates best for the show: the largest files" },
+  high: {
+    name: "Aim high",
+    category: "bluray-1080",
+    seadex: false,
+    help: "Blu-ray 1080p when it comes out (usually 3–6 months after airing)",
+  },
+  collector: {
+    name: "Collector",
+    category: "bluray-1080",
+    seadex: true,
+    help: "Whatever SeaDex rates best for the show: the largest files",
+  },
 };
 export const goalLabel = (g: GoalId) => `${GOALS[g].name} (${g === "collector" ? "SeaDex best" : CATEGORY_NAME[GOALS[g].category]})`;
 export const isGoal = (x: unknown): x is GoalId => GOAL_IDS.includes(x as GoalId);
@@ -121,8 +163,10 @@ export const isGoal = (x: unknown): x is GoalId => GOAL_IDS.includes(x as GoalId
 /** A profile's preferred resolution caps the goal (a 720p profile doesn't chase 1080p Blu-rays). */
 export function goalCategory(goal: GoalId, profileResolution = 1080, cap: Category | null = null): Category {
   let c = GOALS[goal].category;
-  if (profileResolution <= 720 && ladderRank(c) > ladderRank(c.startsWith("bluray") ? "bluray-720" : "web-720")) c = c.startsWith("bluray") ? "bluray-720" : "web-720";
-  if (profileResolution <= 480 && ladderRank(c) > ladderRank(c.startsWith("bluray") ? "bluray-480" : "web-480")) c = c.startsWith("bluray") ? "bluray-480" : "web-480";
+  if (profileResolution <= 720 && ladderRank(c) > ladderRank(c.startsWith("bluray") ? "bluray-720" : "web-720"))
+    c = c.startsWith("bluray") ? "bluray-720" : "web-720";
+  if (profileResolution <= 480 && ladderRank(c) > ladderRank(c.startsWith("bluray") ? "bluray-480" : "web-480"))
+    c = c.startsWith("bluray") ? "bluray-480" : "web-480";
   // No Blu-ray exists for the show (a DVD-era show, or nothing BD ever seen): aim for the best that exists.
   if (cap && ladderRank(cap) < ladderRank(c)) c = cap;
   return c;
@@ -130,8 +174,18 @@ export function goalCategory(goal: GoalId, profileResolution = 1080, cap: Catego
 
 // ---------------------------------------------------------------- group tiers (TRaSH Guides anime CFs)
 
-export interface TierTable { version?: string; bd: Record<string, string[]>; web: Record<string, string[]>; lq: string[] }
-export interface CompiledTiers { version: string; bd: { tier: number; re: RegExp[] }[]; web: { tier: number; re: RegExp[] }[]; lq: RegExp[] }
+export interface TierTable {
+  version?: string;
+  bd: Record<string, string[]>;
+  web: Record<string, string[]>;
+  lq: string[];
+}
+export interface CompiledTiers {
+  version: string;
+  bd: { tier: number; re: RegExp[] }[];
+  web: { tier: number; re: RegExp[] }[];
+  lq: RegExp[];
+}
 
 const compile = (pats: string[]) =>
   pats.flatMap((x) => {
@@ -162,8 +216,17 @@ export function tierOf(release: string, category: Category, tiers: CompiledTiers
 
 // ---------------------------------------------------------------- SeaDex
 
-export interface SeadexTorrent { group: string; tracker: string; best: boolean; dualAudio: boolean; tags: string[] }
-export interface SeadexEntry { incomplete: boolean; torrents: SeadexTorrent[] }
+export interface SeadexTorrent {
+  group: string;
+  tracker: string;
+  best: boolean;
+  dualAudio: boolean;
+  tags: string[];
+}
+export interface SeadexEntry {
+  incomplete: boolean;
+  torrents: SeadexTorrent[];
+}
 
 const groupKey = (g: string | null | undefined) => (g ?? "").toLowerCase().replace(/[^a-z0-9&]+/g, "");
 
@@ -184,22 +247,31 @@ export function seadexSource(t: Pick<SeadexTorrent, "tags" | "tracker">): NonNul
 export const sourceMatches = (pick: NonNullable<Source>, release: Source) => release === null || release === pick;
 
 /** Sort key of a SeaDex torrent for a watch mode (lower is better): dual audio first in Dual/Either, then "best". */
-const seadexKey = (mode: "sub" | "dub" | "dual" | "either") => (t: SeadexTorrent) => ((mode === "dual" || mode === "either") && !t.dualAudio ? 2 : 0) + (t.best ? 0 : 1);
+const seadexKey = (mode: "sub" | "dub" | "dual" | "either") => (t: SeadexTorrent) =>
+  ((mode === "dual" || mode === "either") && !t.dualAudio ? 2 : 0) + (t.best ? 0 : 1);
 
 /** SeaDex's top pick for a watch mode. */
-export const seadexTop = (entry: SeadexEntry, mode: "sub" | "dub" | "dual" | "either" = "sub"): SeadexTorrent | null => [...entry.torrents].sort((a, b) => seadexKey(mode)(a) - seadexKey(mode)(b))[0] ?? null;
+export const seadexTop = (entry: SeadexEntry, mode: "sub" | "dub" | "dual" | "either" = "sub"): SeadexTorrent | null =>
+  [...entry.torrents].sort((a, b) => seadexKey(mode)(a) - seadexKey(mode)(b))[0] ?? null;
 
 /**
  * Whether a release is SeaDex's pick for the show: "best" (the top pick for this watch mode) or "alt". The group has
  * to match AND the release's source be compatible with the pick's: a SeaDex Blu-ray pick doesn't bless that group's
  * HDTV, TV raw or WEB release. Dual and Either watch modes rank dual-audio picks above the rest; Sub mode ignores the flag.
  */
-export function seadexPick(group: string | null, entry: SeadexEntry | null | undefined, mode: "sub" | "dub" | "dual" | "either" = "sub", source: Source = null): { level: "best" | "alt"; torrent: SeadexTorrent } | null {
+export function seadexPick(
+  group: string | null,
+  entry: SeadexEntry | null | undefined,
+  mode: "sub" | "dub" | "dual" | "either" = "sub",
+  source: Source = null,
+): { level: "best" | "alt"; torrent: SeadexTorrent } | null {
   if (!entry || !group || !entry.torrents.length) return null;
   const key = seadexKey(mode);
   const top = Math.min(...entry.torrents.map(key));
   const g = groupKey(group);
-  const mine = entry.torrents.filter((t) => groupKey(t.group) === g && sourceMatches(seadexSource(t), source)).sort((a, b) => key(a) - key(b))[0];
+  const mine = entry.torrents
+    .filter((t) => groupKey(t.group) === g && sourceMatches(seadexSource(t), source))
+    .sort((a, b) => key(a) - key(b))[0];
   if (!mine) return null;
   return { level: key(mine) === top ? "best" : "alt", torrent: mine };
 }
@@ -265,7 +337,8 @@ export function qualityScore(release: string | ParsedRelease, ctx: QualityContex
 }
 
 /** The current file is already its category's best: a SeaDex pick, or a tier-1 group of its kind. */
-export const isCategoryBest = (s: Pick<QualityScore, "seadex" | "tier">) => !!s.seadex || (!!s.tier && s.tier.kind !== "lq" && s.tier.tier === 1);
+export const isCategoryBest = (s: Pick<QualityScore, "seadex" | "tier">) =>
+  !!s.seadex || (!!s.tier && s.tier.kind !== "lq" && s.tier.tier === 1);
 
 /**
  * Does a candidate qualify as an upgrade of the current file? Judged by quality category ("best in its quality
@@ -275,7 +348,11 @@ export const isCategoryBest = (s: Pick<QualityScore, "seadex" | "tier">) => !!s.
  *   higher on SeaDex/tiers (a SeaDex pick moving between two equally good releases never re-downloads);
  * - exception: a newer version (v2, REPACK) of the same group's release, when `rev` is given and the setting allows it.
  */
-export function beatsCurrent(cand: QualityScore, cur: QualityScore, rev?: { have: HaveRevision; cand: Revision; mode: ProperMode }): { ok: boolean; why: string } {
+export function beatsCurrent(
+  cand: QualityScore,
+  cur: QualityScore,
+  rev?: { have: HaveRevision; cand: Revision; mode: ProperMode },
+): { ok: boolean; why: string } {
   const a = ladderRank(cand.info.category);
   const b = ladderRank(cur.info.category);
   const cn = CATEGORY_NAME[cand.info.category];
@@ -292,7 +369,11 @@ export function beatsCurrent(cand: QualityScore, cur: QualityScore, rev?: { have
 }
 
 /** Is the current file at the goal? Collector also needs the SeaDex pick (when SeaDex knows the show). */
-export function meetsGoal(cur: QualityScore, goal: GoalId, opts: { profileResolution?: number; cap?: Category | null; seadexKnown?: boolean } = {}): boolean {
+export function meetsGoal(
+  cur: QualityScore,
+  goal: GoalId,
+  opts: { profileResolution?: number; cap?: Category | null; seadexKnown?: boolean } = {},
+): boolean {
   const target = goalCategory(goal, opts.profileResolution ?? 1080, opts.cap ?? null);
   if (ladderRank(cur.info.category) < ladderRank(target)) return false;
   if (goal !== "collector") return true;

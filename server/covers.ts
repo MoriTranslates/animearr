@@ -29,13 +29,23 @@ export async function anilistByAnidb(): Promise<Map<number, number>> {
   return (await fribb()).anidbToAnilist;
 }
 
-let fribbMemo: { mtime: number; anidbToAnilist: Map<number, number>; anilistToAnidb: Map<number, number>; anilistToAnidbAll: Map<number, number[]>; anilistToTmdb: Map<number, number> } | null = null;
+let fribbMemo: {
+  mtime: number;
+  anidbToAnilist: Map<number, number>;
+  anilistToAnidb: Map<number, number>;
+  anilistToAnidbAll: Map<number, number[]>;
+  anilistToTmdb: Map<number, number>;
+} | null = null;
 /** The Fribb mapping (AniDB ↔ AniList ↔ TMDB movie): downloaded weekly, parsed once per file version. */
 export async function fribb() {
   await anilistByAnidbDownload();
   const mtime = fs.statSync(FRIBB_FILE).mtimeMs;
   if (fribbMemo && fribbMemo.mtime === mtime) return fribbMemo;
-  const rows = JSON.parse(await fs.promises.readFile(FRIBB_FILE, "utf8")) as { anidb_id?: number; anilist_id?: number; themoviedb_id?: number | string }[];
+  const rows = JSON.parse(await fs.promises.readFile(FRIBB_FILE, "utf8")) as {
+    anidb_id?: number;
+    anilist_id?: number;
+    themoviedb_id?: number | string;
+  }[];
   const anidbToAnilist = new Map<number, number>();
   const anilistToAnidb = new Map<number, number>();
   const anilistToAnidbAll = new Map<number, number[]>();
@@ -58,7 +68,11 @@ export async function refreshCovers(limit = 600) {
   try {
     const map = await anilistByAnidb();
     const tvdbs = new Set((cache.prepare("SELECT tvdb_id FROM series").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id));
-    const have = new Set((cache.prepare("SELECT anidb_id FROM covers WHERE fetched_at > ?").all(Date.now() - 30 * 86_400_000) as { anidb_id: number }[]).map((r) => r.anidb_id));
+    const have = new Set(
+      (cache.prepare("SELECT anidb_id FROM covers WHERE fetched_at > ?").all(Date.now() - 30 * 86_400_000) as { anidb_id: number }[]).map(
+        (r) => r.anidb_id,
+      ),
+    );
     // Newest mapped entry per series (highest TVDB season) is the one shown.
     const best = new Map<number, { aid: number; season: number }>();
     for (const e of animeListEntries().values()) {
@@ -67,14 +81,20 @@ export async function refreshCovers(limit = 600) {
       const cur = best.get(e.tvdbId);
       if (!cur || season > cur.season) best.set(e.tvdbId, { aid: e.aid, season });
     }
-    const todo = [...best.values()].map((b) => b.aid).filter((aid) => !have.has(aid)).slice(0, limit);
+    const todo = [...best.values()]
+      .map((b) => b.aid)
+      .filter((aid) => !have.has(aid))
+      .slice(0, limit);
     let n = 0;
     for (let i = 0; i < todo.length; i += 50) {
       const batch = todo.slice(i, i + 50);
       const ids = batch.map((a) => map.get(a)!);
       let j: { Page: { media: { id: number; coverImage: { large: string | null; color: string | null }; bannerImage: string | null }[] } };
       try {
-        j = await anilistQuery("query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids) { id coverImage { large color } bannerImage } } }", { ids });
+        j = await anilistQuery(
+          "query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids) { id coverImage { large color } bannerImage } } }",
+          { ids },
+        );
       } catch {
         break; // rate-limited or down: try again next time
       }
@@ -82,7 +102,11 @@ export async function refreshCovers(limit = 600) {
       const byId = new Map((data.data?.Page.media ?? []).map((m) => [m.id, m]));
       for (const aid of batch) {
         const m = byId.get(map.get(aid)!);
-        cache.prepare("INSERT INTO covers (anidb_id, anilist_id, cover, banner, color, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(anidb_id) DO UPDATE SET anilist_id = excluded.anilist_id, cover = excluded.cover, banner = excluded.banner, color = excluded.color, fetched_at = excluded.fetched_at").run(aid, map.get(aid)!, m?.coverImage.large ?? null, m?.bannerImage ?? null, m?.coverImage.color ?? null, Date.now());
+        cache
+          .prepare(
+            "INSERT INTO covers (anidb_id, anilist_id, cover, banner, color, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(anidb_id) DO UPDATE SET anilist_id = excluded.anilist_id, cover = excluded.cover, banner = excluded.banner, color = excluded.color, fetched_at = excluded.fetched_at",
+          )
+          .run(aid, map.get(aid)!, m?.coverImage.large ?? null, m?.bannerImage ?? null, m?.coverImage.color ?? null, Date.now());
         if (m) n++;
       }
       await new Promise((r) => setTimeout(r, 3000)); // well under AniList's 30 req/min

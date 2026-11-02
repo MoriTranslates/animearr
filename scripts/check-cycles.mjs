@@ -40,20 +40,23 @@ function importsOf(src) {
   const text = stripComments(src);
   // import ... from "x" / export ... from "x" (statement starts a line; the clause can span lines but not a `;`).
   const re = /^[ \t]*(import|export)\s+([^;]*?)\s*from\s*["']([^"']+)["']/gm;
-  for (let m; (m = re.exec(text)); ) {
+  for (let m; (m = re.exec(text));) {
     const [, kw, clause, spec] = m;
     if (/^type\b/.test(clause)) continue; // import type / export type
     const braces = clause.match(/\{([\s\S]*)\}/);
     const outside = clause.replace(/\{[\s\S]*\}/, "").replace(/[\s,]/g, "");
     if (braces && !outside) {
-      const names = braces[1].split(",").map((s) => s.trim()).filter(Boolean);
+      const names = braces[1]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (names.length && names.every((n) => /^type\s/.test(n))) continue; // { type A, type B }
     }
     if (kw === "export" && !braces && !/^\*/.test(clause.trim())) continue;
     out.push(spec);
   }
   const side = /^[ \t]*import\s*["']([^"']+)["']/gm; // import "./x.js" (side effects)
-  for (let m; (m = side.exec(text)); ) out.push(m[1]);
+  for (let m; (m = side.exec(text));) out.push(m[1]);
   return out.filter((s) => s.startsWith("."));
 }
 
@@ -79,18 +82,31 @@ for (const f of files) {
 
 // Tarjan SCC (iterative enough for our module counts; recursion depth = longest import chain).
 let index = 0;
-const idx = new Map(), low = new Map(), onStack = new Set(), stack = [], sccs = [];
+const idx = new Map(),
+  low = new Map(),
+  onStack = new Set(),
+  stack = [],
+  sccs = [];
 function strong(v) {
-  idx.set(v, index); low.set(v, index); index++;
-  stack.push(v); onStack.add(v);
+  idx.set(v, index);
+  low.set(v, index);
+  index++;
+  stack.push(v);
+  onStack.add(v);
   for (const w of graph.get(v) ?? []) {
-    if (!idx.has(w)) { strong(w); low.set(v, Math.min(low.get(v), low.get(w))); }
-    else if (onStack.has(w)) low.set(v, Math.min(low.get(v), idx.get(w)));
+    if (!idx.has(w)) {
+      strong(w);
+      low.set(v, Math.min(low.get(v), low.get(w)));
+    } else if (onStack.has(w)) low.set(v, Math.min(low.get(v), idx.get(w)));
   }
   if (low.get(v) === idx.get(v)) {
     const comp = [];
     let w;
-    do { w = stack.pop(); onStack.delete(w); comp.push(w); } while (w !== v);
+    do {
+      w = stack.pop();
+      onStack.delete(w);
+      comp.push(w);
+    } while (w !== v);
     if (comp.length > 1 || (graph.get(v) ?? []).includes(v)) sccs.push(comp.sort());
   }
 }
@@ -115,7 +131,10 @@ function sampleLoop(scc) {
         for (let x = v; x !== start; x = prev.get(x)) loop.splice(1, 0, x);
         return [...loop, start].join(" -> ");
       }
-      if (!prev.has(w)) { prev.set(w, v); queue.push(w); }
+      if (!prev.has(w)) {
+        prev.set(w, v);
+        queue.push(w);
+      }
     }
   }
   return scc.join(", ");

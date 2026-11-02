@@ -25,7 +25,8 @@ export function animeFit(name: string, definition = ""): AnimeFit | null {
 }
 
 /** The default for an indexer AnimeArr hasn't seen: ticked when it carries anime and isn't a known poor fit. */
-export const defaultTick = (ix: Pick<ProwlarrIndexerDetail, "name" | "definitionName" | "animeCategories">) => ix.animeCategories && animeFit(ix.name, ix.definitionName ?? "") !== "not";
+export const defaultTick = (ix: Pick<ProwlarrIndexerDetail, "name" | "definitionName" | "animeCategories">) =>
+  ix.animeCategories && animeFit(ix.name, ix.definitionName ?? "") !== "not";
 
 /** Applies the defaults to new Prowlarr indexers; returns the indexers with their selection state. */
 export async function syncProwlarrSelection(list?: ProwlarrIndexerDetail[]) {
@@ -53,7 +54,10 @@ export async function syncProwlarrSelection(list?: ProwlarrIndexerDetail[]) {
         else if (off.length) ids = all.filter((y) => !off.includes(y)).map((y) => y.id);
       }
       review = [...new Set(review)].filter((id) => all.some((x) => x.id === id));
-      return { ...s, prowlarr: { ...cur, indexerIds: [...new Set(ids)], knownIds: [...new Set([...known, ...fresh.map((x) => x.id)])], newIds: review } };
+      return {
+        ...s,
+        prowlarr: { ...cur, indexerIds: [...new Set(ids)], knownIds: [...new Set([...known, ...fresh.map((x) => x.id)])], newIds: review },
+      };
     });
   }
   const now = getSettings().prowlarr;
@@ -83,10 +87,18 @@ export async function setIndexerUse(indexerId: number, use: boolean) {
     let ids = cur.indexerIds.length ? [...cur.indexerIds] : all.map((x) => x.id);
     ids = use ? [...new Set([...ids, indexerId])] : ids.filter((x) => x !== indexerId);
     // An empty list means "all": unticking the last one can't be expressed (and would search nothing).
-    if (!ids.filter((id) => all.some((x) => x.id === id)).length) throw Object.assign(new Error("Keep at least one indexer ticked"), { statusCode: 400 });
+    if (!ids.filter((id) => all.some((x) => x.id === id)).length)
+      throw Object.assign(new Error("Keep at least one indexer ticked"), { statusCode: 400 });
     // Every indexer ticked again = back to "all" (new ones then join automatically by default).
     const everything = all.every((x) => ids.includes(x.id));
-    return { ...s, prowlarr: { ...cur, indexerIds: everything ? [] : ids.filter((id) => all.some((x) => x.id === id)), newIds: (cur.newIds ?? []).filter((x) => x !== indexerId) } };
+    return {
+      ...s,
+      prowlarr: {
+        ...cur,
+        indexerIds: everything ? [] : ids.filter((id) => all.some((x) => x.id === id)),
+        newIds: (cur.newIds ?? []).filter((x) => x !== indexerId),
+      },
+    };
   });
   return { ok: true };
 }

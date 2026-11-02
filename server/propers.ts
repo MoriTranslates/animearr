@@ -24,7 +24,10 @@ function doneReleaseOf(episodeId: number): string | undefined {
   const key = (db.prepare("SELECT total_changes() AS c").get() as { c: number }).c;
   if (doneReleases?.key !== key) {
     const map = new Map<number, string>();
-    for (const g of db.prepare("SELECT episode_ids, release FROM grabs WHERE state = 'done' AND dry_run = 0 ORDER BY id").all() as { episode_ids: string; release: string }[]) {
+    for (const g of db.prepare("SELECT episode_ids, release FROM grabs WHERE state = 'done' AND dry_run = 0 ORDER BY id").all() as {
+      episode_ids: string;
+      release: string;
+    }[]) {
       try {
         for (const e of JSON.parse(g.episode_ids) as number[]) map.set(e, g.release); // ascending ids: the newest grab wins
       } catch {
@@ -40,16 +43,29 @@ let metaOf: ReturnType<typeof db.prepare> | null = null;
 /** The release name a file came from: its scene name, else the newest finished grab of the episode, else its file name. */
 function releaseOfFile(episodeId: number, f: { path: string; scene_name: string | null }): string {
   if (f.scene_name?.trim()) return f.scene_name.trim();
-  const meta = (metaOf ??= db.prepare("SELECT scene_name FROM file_meta WHERE path = ?")).get(f.path) as { scene_name: string | null } | undefined;
+  const meta = (metaOf ??= db.prepare("SELECT scene_name FROM file_meta WHERE path = ?")).get(f.path) as
+    { scene_name: string | null } | undefined;
   if (meta?.scene_name?.trim()) return meta.scene_name.trim();
-  return doneReleaseOf(episodeId) ?? f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
+  return (
+    doneReleaseOf(episodeId) ??
+    f.path
+      .split("/")
+      .pop()!
+      .replace(/\.[a-z0-9]{2,4}$/i, "")
+  );
 }
 
 /** Group and version of one library file (pure given its row; the episode id finds the grab history). */
-export function fileRevision(episodeId: number, f: { path: string; scene_name: string | null; release_group: string | null; revision: string | null }): Revision & { release: string } {
+export function fileRevision(
+  episodeId: number,
+  f: { path: string; scene_name: string | null; release_group: string | null; revision: string | null },
+): Revision & { release: string } {
   const release = releaseOfFile(episodeId, f);
   const p = parseRelease(release);
-  const base = f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
+  const base = f.path
+    .split("/")
+    .pop()!
+    .replace(/\.[a-z0-9]{2,4}$/i, "");
   const named = base === release ? p : parseRelease(base);
   let version = Math.max(p.version, named.version);
   try {
@@ -67,11 +83,24 @@ export function haveRevisions(tvdbId: number, episodeIds: number[]): Map<number,
   if (!episodeIds.length) return out;
   const keepAll = profileFor(tvdbId).reencode === "keep"; // keep-original profiles are locked by definition
   const rows = cache
-    .prepare(`SELECT e.id, e.season, f.path, f.scene_name, f.release_group, f.revision FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.has_file = 1 AND e.id IN (${episodeIds.map(() => "?").join(",")})`)
-    .all(...episodeIds) as { id: number; season: number; path: string; scene_name: string | null; release_group: string | null; revision: string | null }[];
+    .prepare(
+      `SELECT e.id, e.season, f.path, f.scene_name, f.release_group, f.revision FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.has_file = 1 AND e.id IN (${episodeIds.map(() => "?").join(",")})`,
+    )
+    .all(...episodeIds) as {
+    id: number;
+    season: number;
+    path: string;
+    scene_name: string | null;
+    release_group: string | null;
+    revision: string | null;
+  }[];
   for (const r of rows) {
     const rev = fileRevision(r.id, r);
-    out.set(r.id, { group: rev.group, version: rev.version, locked: keepAll || isLocked(tvdbId, r.season) || LOCK_TAG.test(r.path) || LOCK_TAG.test(rev.release) });
+    out.set(r.id, {
+      group: rev.group,
+      version: rev.version,
+      locked: keepAll || isLocked(tvdbId, r.season) || LOCK_TAG.test(r.path) || LOCK_TAG.test(rev.release),
+    });
   }
   return out;
 }
@@ -84,7 +113,11 @@ export function combineHave(have: Map<number, HaveRevision>, episodeIds: number[
   const list = episodeIds.map((id) => have.get(id)).filter((h): h is HaveRevision => !!h);
   if (!list.length) return null;
   const groups = new Set(list.map((h) => (h.group ?? "").toLowerCase()));
-  return { group: groups.size === 1 ? list[0].group : null, version: Math.max(...list.map((h) => h.version)), locked: list.some((h) => h.locked) };
+  return {
+    group: groups.size === 1 ? list[0].group : null,
+    version: Math.max(...list.map((h) => h.version)),
+    locked: list.some((h) => h.locked),
+  };
 }
 
 /** Is `release` a newer version of what the library holds for these episodes, under the current setting? */

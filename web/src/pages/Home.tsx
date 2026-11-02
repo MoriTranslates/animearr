@@ -12,15 +12,54 @@ import { Pill, SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
 import { Cover, Empty, ErrorBox, Skeleton, thumbUrl, useLoad, usePageTitle, usePoll } from "../ui";
 
-interface CalEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; color?: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; managed: boolean }
+interface CalEntry {
+  episodeId: number;
+  tvdbId: number;
+  series: string;
+  cover: string | null;
+  color?: string | null;
+  season: number;
+  episode: number;
+  title: string | null;
+  airUtc: number;
+  status: EpisodeStatus;
+  progress: number | null;
+  managed: boolean;
+}
 interface HomeData {
   airingShows: number;
   airingToday: CalEntry[];
-  needs: { missing: { n: number; sample: string | null }; failed: { n: number; sample: string | null }; noLang: { n: number; series: number; lang: string } };
-  downloading: { id: number; tvdbId: number; movieId: number | null; title: string; cover: string | null; color: string | null; label: string; release: string; protocol: string; client: string | null; clientName?: string; state: string; progress: number }[];
+  needs: {
+    missing: { n: number; sample: string | null };
+    failed: { n: number; sample: string | null };
+    noLang: { n: number; series: number; lang: string };
+  };
+  downloading: {
+    id: number;
+    tvdbId: number;
+    movieId: number | null;
+    title: string;
+    cover: string | null;
+    color: string | null;
+    label: string;
+    release: string;
+    protocol: string;
+    client: string | null;
+    clientName?: string;
+    state: string;
+    progress: number;
+  }[];
   justArrived: { tvdbId: number; title: string; cover: string | null; color: string | null; label: string; at: number }[];
   importsThisWeek: number;
-  readyToBinge: { tvdbId: number; title: string; season: number; episodes: number; cover: string | null; color: string | null; finishedAt: number }[];
+  readyToBinge: {
+    tvdbId: number;
+    title: string;
+    season: number;
+    episodes: number;
+    cover: string | null;
+    color: string | null;
+    finishedAt: number;
+  }[];
   thisWeek: CalEntry[];
 }
 
@@ -67,7 +106,12 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
         </div>
       )}
       <SeasonHeader
-        sub={t("home.seasonSub", { week: s.week, weeks: s.weeks, shows: h?.airingShows ?? status.airingShows ?? 0, today: h?.airingToday.length ?? 0 })}
+        sub={t("home.seasonSub", {
+          week: s.week,
+          weeks: s.weeks,
+          shows: h?.airingShows ?? status.airingShows ?? 0,
+          today: h?.airingToday.length ?? 0,
+        })}
         right={
           h && (
             <>
@@ -105,21 +149,46 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 <p className="muted small">{t("home.allGood")}</p>
               ) : (
                 <div className="needs">
-                  <NeedRow icon={<CircleAlert className="lucide" />} tone="bad" n={h.needs.missing.n} label={t("home.need.missing")} sample={h.needs.missing.sample} to="/audit?tab=gaps" />
-                  <NeedRow icon={<FileX className="lucide" />} tone="warn" n={h.needs.failed.n} label={t("home.need.failed")} sample={h.needs.failed.sample} to="/queue" />
-                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })} sample={t("home.need.noLangSee")} to="/audit?tab=language" />
+                  <NeedRow
+                    icon={<CircleAlert className="lucide" />}
+                    tone="bad"
+                    n={h.needs.missing.n}
+                    label={t("home.need.missing")}
+                    sample={h.needs.missing.sample}
+                    to="/audit?tab=gaps"
+                  />
+                  <NeedRow
+                    icon={<FileX className="lucide" />}
+                    tone="warn"
+                    n={h.needs.failed.n}
+                    label={t("home.need.failed")}
+                    sample={h.needs.failed.sample}
+                    to="/queue"
+                  />
+                  <NeedRow
+                    icon={<CaptionsOff className="lucide" />}
+                    tone="info"
+                    n={h.needs.noLang.n}
+                    label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })}
+                    sample={t("home.need.noLangSee")}
+                    to="/audit?tab=language"
+                  />
                 </div>
               )}
             </section>
 
             {/* ---------- airing today: a poster shelf over the first show's blurred art */}
             <section className="shelf" style={showVars(first?.color)} aria-labelledby="airing-today">
-              {first?.cover && <span className="shelf-art" style={{ backgroundImage: `url(${thumbUrl(first.cover, "sm")})` }} aria-hidden="true" />}
+              {first?.cover && (
+                <span className="shelf-art" style={{ backgroundImage: `url(${thumbUrl(first.cover, "sm")})` }} aria-hidden="true" />
+              )}
               <div className="sec-hd">
                 <h2 className="eyebrow strong-eyebrow" id="airing-today">
                   {t("home.airingToday")}
                 </h2>
-                <span className="muted small">{new Date().toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</span>
+                <span className="muted small">
+                  {new Date().toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
+                </span>
                 <Link to="/calendar" className="sec-link">
                   {t("home.fullCalendar")} <ArrowRight className="lucide" aria-hidden="true" />
                 </Link>
@@ -192,7 +261,11 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 <div className="binge-grid">
                   {h.readyToBinge.map((b) => (
                     <Link key={`${b.tvdbId}-${b.season}`} to={`/show/${b.tvdbId}`} className="binge" style={showVars(b.color)}>
-                      <span className="binge-art" style={b.cover ? { backgroundImage: `url(${thumbUrl(b.cover, "md")})` } : undefined} aria-hidden="true" />
+                      <span
+                        className="binge-art"
+                        style={b.cover ? { backgroundImage: `url(${thumbUrl(b.cover, "md")})` } : undefined}
+                        aria-hidden="true"
+                      />
                       <span className="binge-text" style={showVars(b.color)}>
                         <b className="clamp2">{b.title}</b>
                         <span className="muted small">{t("home.bingeSeason", { season: b.season, n: b.episodes })}</span>
@@ -218,9 +291,30 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 <p className="muted small">{t("home.allGood")}</p>
               ) : (
                 <div className="needs">
-                  <NeedRow icon={<CircleAlert className="lucide" />} tone="bad" n={h.needs.missing.n} label={t("home.need.missing")} sample={h.needs.missing.sample} to="/audit?tab=gaps" />
-                  <NeedRow icon={<FileX className="lucide" />} tone="warn" n={h.needs.failed.n} label={t("home.need.failed")} sample={h.needs.failed.sample} to="/queue" />
-                  <NeedRow icon={<CaptionsOff className="lucide" />} tone="info" n={h.needs.noLang.n} label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })} sample={t("home.need.noLangSee")} to="/audit?tab=language" />
+                  <NeedRow
+                    icon={<CircleAlert className="lucide" />}
+                    tone="bad"
+                    n={h.needs.missing.n}
+                    label={t("home.need.missing")}
+                    sample={h.needs.missing.sample}
+                    to="/audit?tab=gaps"
+                  />
+                  <NeedRow
+                    icon={<FileX className="lucide" />}
+                    tone="warn"
+                    n={h.needs.failed.n}
+                    label={t("home.need.failed")}
+                    sample={h.needs.failed.sample}
+                    to="/queue"
+                  />
+                  <NeedRow
+                    icon={<CaptionsOff className="lucide" />}
+                    tone="info"
+                    n={h.needs.noLang.n}
+                    label={t("home.need.noLangEps", { lang: languageName(h.needs.noLang.lang) })}
+                    sample={t("home.need.noLangSee")}
+                    to="/audit?tab=language"
+                  />
                 </div>
               )}
             </section>
@@ -236,7 +330,11 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                 </div>
                 {h.downloading.map((g) => (
                   <Link key={g.id} to={g.movieId ? `/movie/${g.movieId}` : `/show/${g.tvdbId}`} className="dlrow">
-                    <span className="pring" style={{ ...showVars(g.color), "--p": Math.round(g.progress * 100) } as React.CSSProperties} aria-hidden="true">
+                    <span
+                      className="pring"
+                      style={{ ...showVars(g.color), "--p": Math.round(g.progress * 100) } as React.CSSProperties}
+                      aria-hidden="true"
+                    >
                       {g.cover ? <img src={thumbUrl(g.cover, "sm")} alt="" /> : <span />}
                     </span>
                     <span className="grow dl-text">
@@ -245,7 +343,9 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
                         {g.label ? ` · ${g.label}` : ""}
                       </b>
                       <span className="muted small clamp1">
-                        {g.state === "importing" ? t("ep.importing") : `${g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}${g.clientName ? ` · ${g.clientName}` : ""}`}
+                        {g.state === "importing"
+                          ? t("ep.importing")
+                          : `${g.protocol === "usenet" ? t("chip.usenet") : t("chip.torrent")}${g.clientName ? ` · ${g.clientName}` : ""}`}
                       </span>
                     </span>
                     <span className="pc tnum">{Math.round(g.progress * 100)}%</span>
@@ -270,7 +370,9 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
           </aside>
         </div>
       )}
-      {open !== null && <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.dryRun ?? true} />}
+      {open !== null && (
+        <EpisodeSheet episodeId={open} onClose={() => setOpen(null)} onChanged={() => void d.reload()} dryRun={status.dryRun ?? true} />
+      )}
     </section>
   );
 }
@@ -295,7 +397,10 @@ function ScrollHint({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       {more && (
-        <button className="small scroll-more" onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.8, behavior: "smooth" })}>
+        <button
+          className="small scroll-more"
+          onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.8, behavior: "smooth" })}
+        >
           {t("home.moreBelow")}
         </button>
       )}
@@ -303,7 +408,21 @@ function ScrollHint({ children }: { children: React.ReactNode }) {
   );
 }
 
-function NeedRow({ icon, tone, n, label, sample, to }: { icon: React.ReactNode; tone: "bad" | "warn" | "info"; n: number; label: string; sample: string | null; to: string }) {
+function NeedRow({
+  icon,
+  tone,
+  n,
+  label,
+  sample,
+  to,
+}: {
+  icon: React.ReactNode;
+  tone: "bad" | "warn" | "info";
+  n: number;
+  label: string;
+  sample: string | null;
+  to: string;
+}) {
   if (!n) return null;
   return (
     <Link to={to} className={`need ${tone}`}>

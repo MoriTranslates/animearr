@@ -32,11 +32,21 @@ export function icalOptions(q: Record<string, unknown>): IcalOptions {
     .split(",")
     .map((x) => Number(x.trim()))
     .filter((x) => Number.isInteger(x) && x > 0 && known.has(x));
-  return { pastDays: days(q.pastDays, 7), futureDays: days(q.futureDays, 28), unmonitored: /^(true|1)$/i.test(String(q.unmonitored ?? "")), tags: [...new Set(tags)] };
+  return {
+    pastDays: days(q.pastDays, 7),
+    futureDays: days(q.futureDays, 28),
+    unmonitored: /^(true|1)$/i.test(String(q.unmonitored ?? "")),
+    tags: [...new Set(tags)],
+  };
 }
 
 /** Text values: backslash, semicolon, comma and newlines are escaped (RFC 5545 §3.3.11). */
-export const icalEscape = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r\n|\r|\n/g, "\\n");
+export const icalEscape = (s: string) =>
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r\n|\r|\n/g, "\\n");
 
 /** Folds a content line at 75 octets with CRLF + space, never inside a multi-byte character. */
 export function icalFold(line: string): string {
@@ -69,7 +79,10 @@ const dateOnly = (ms: number) => {
 };
 
 const hasTag = (kind: "series" | "movie", ref: number, tags: number[]) =>
-  !tags.length || !!db.prepare(`SELECT 1 FROM tag_links WHERE kind = ? AND ref = ? AND tag_id IN (${tags.map(() => "?").join(",")})`).get(kind, ref, ...tags);
+  !tags.length ||
+  !!db
+    .prepare(`SELECT 1 FROM tag_links WHERE kind = ? AND ref = ? AND tag_id IN (${tags.map(() => "?").join(",")})`)
+    .get(kind, ref, ...tags);
 
 const KIND_LABEL = { cinema: "In cinemas", digital: "Digital release", physical: "Physical release" } as const;
 
@@ -77,14 +90,26 @@ const KIND_LABEL = { cinema: "In cinemas", digital: "Digital release", physical:
 export function buildIcal(opts: IcalOptions, now = Date.now()): string {
   const from = now - opts.pastDays * DAY;
   const to = now + opts.futureDays * DAY;
-  const lines: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AnimeArr//Calendar//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:AnimeArr", "X-WR-CALDESC:Anime episodes and movie releases from AnimeArr", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"];
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//AnimeArr//Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:AnimeArr",
+    "X-WR-CALDESC:Anime episodes and movie releases from AnimeArr",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    "X-PUBLISHED-TTL:PT1H",
+  ];
   const stamp = utc(now);
 
   const eps = calendar(from, to, !opts.unmonitored).filter((e) => hasTag("series", e.tvdbId, opts.tags));
   const extra = new Map<number, { absolute: number | null; runtime: number | null }>();
   if (eps.length) {
     const rows = cache
-      .prepare(`SELECT e.id, e.absolute, COALESCE(e.runtime, s.runtime) AS runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id IN (${eps.map(() => "?").join(",")})`)
+      .prepare(
+        `SELECT e.id, e.absolute, COALESCE(e.runtime, s.runtime) AS runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id IN (${eps.map(() => "?").join(",")})`,
+      )
       .all(...eps.map((e) => e.episodeId)) as { id: number; absolute: number | null; runtime: number | null }[];
     for (const r of rows) extra.set(r.id, r);
   }
@@ -106,7 +131,9 @@ export function buildIcal(opts: IcalOptions, now = Date.now()): string {
     );
   }
 
-  const movies = movieCalendar(from, to, !opts.unmonitored).filter((m) => hasTag("movie", m.movieId, opts.tags) && m.at >= from - (from % DAY) && m.at <= to); // (a date-only event counts from the start of its UTC day)
+  const movies = movieCalendar(from, to, !opts.unmonitored).filter(
+    (m) => hasTag("movie", m.movieId, opts.tags) && m.at >= from - (from % DAY) && m.at <= to,
+  ); // (a date-only event counts from the start of its UTC day)
   for (const m of movies) {
     lines.push(
       "BEGIN:VEVENT",
@@ -127,7 +154,12 @@ export function buildIcal(opts: IcalOptions, now = Date.now()): string {
 /** The feed route. It sits outside /api (so the login guard doesn't see it) and checks the API key itself: ?apikey= or X-Api-Key. */
 export function registerIcal(app: FastifyInstance) {
   app.get<{ Querystring: Record<string, string> }>("/feed/calendar/animearr.ics", async (req, reply) => {
-    if (authState(req).via !== "apikey") return reply.code(401).type("text/plain; charset=utf-8").send("API key required: add ?apikey=… (Settings → Security)");
-    return reply.header("Cache-Control", "no-store").header("Content-Disposition", 'inline; filename="animearr.ics"').type("text/calendar; charset=utf-8").send(buildIcal(icalOptions(req.query)));
+    if (authState(req).via !== "apikey")
+      return reply.code(401).type("text/plain; charset=utf-8").send("API key required: add ?apikey=… (Settings → Security)");
+    return reply
+      .header("Cache-Control", "no-store")
+      .header("Content-Disposition", 'inline; filename="animearr.ics"')
+      .type("text/calendar; charset=utf-8")
+      .send(buildIcal(icalOptions(req.query)));
   });
 }

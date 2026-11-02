@@ -4,7 +4,15 @@
  */
 export type SeasonKey = "winter" | "spring" | "summer" | "fall";
 
-export interface Season { key: SeasonKey; kanji: string; name: string; year: number; week: number; weeks: number; start: number }
+export interface Season {
+  key: SeasonKey;
+  kanji: string;
+  name: string;
+  year: number;
+  week: number;
+  weeks: number;
+  start: number;
+}
 
 const KANJI: Record<SeasonKey, string> = { winter: "冬", spring: "春", summer: "夏", fall: "秋" };
 const NAME: Record<SeasonKey, string> = { winter: "Winter", spring: "Spring", summer: "Summer", fall: "Fall" };
@@ -27,7 +35,10 @@ const PALETTE: Record<SeasonKey, { dark: [string, string, string, string]; light
 };
 
 /** Sets the season accent on the page (the light theme gets darker variants for contrast). */
-const MERRY: { dark: [string, string, string, string]; light: [string, string, string, string] } = { dark: ["#e0a15a", "#f0c48c", "#2a1605", "#4aa3d8"], light: ["#9a5b1e", "#7d4813", "#ffffff", "#1f6fa3"] };
+const MERRY: { dark: [string, string, string, string]; light: [string, string, string, string] } = {
+  dark: ["#e0a15a", "#f0c48c", "#2a1605", "#4aa3d8"],
+  light: ["#9a5b1e", "#7d4813", "#ffffff", "#1f6fa3"],
+};
 
 export function applySeason(theme: "dark" | "light", ms = Date.now()) {
   const s = seasonOf(ms);

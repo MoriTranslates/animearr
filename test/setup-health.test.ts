@@ -15,7 +15,14 @@ test("a failing download client and a failed metadata download need action; fine
   const overview = async () =>
     ({
       clients: [
-        { key: "qbittorrent", name: "qBittorrent", configured: true, ok: false, error: "AnimeArr couldn't reach qBittorrent at example.invalid:8080.", enabled: true },
+        {
+          key: "qbittorrent",
+          name: "qBittorrent",
+          configured: true,
+          ok: false,
+          error: "AnimeArr couldn't reach qBittorrent at example.invalid:8080.",
+          enabled: true,
+        },
         { key: "sabnzbd", name: "SABnzbd", configured: false, ok: null, error: null },
         { key: "c1", name: "NZBGet", configured: true, ok: true, error: null },
       ],
@@ -27,7 +34,10 @@ test("a failing download client and a failed metadata download need action; fine
     { name: "catalog", state: "done", detail: "ok", finishedAt: 1 },
   ];
   const p = await setupProblems(1_000_000, { overview, jobs });
-  assert.deepEqual(p.map((x) => x.title), ["qBittorrent isn't working", "AniDB titles download failed"]);
+  assert.deepEqual(
+    p.map((x) => x.title),
+    ["qBittorrent isn't working", "AniDB titles download failed"],
+  );
   assert.ok(p.every((x) => x.id < 0 && x.action));
   assert.equal(p[0].fixes[0].action, "testConnection");
   assert.match(p[1].body, /AniDB refused/);

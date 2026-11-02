@@ -9,8 +9,16 @@
 import { logDecision } from "./activity.js";
 import { getSettings, type PathMapping } from "./settings.js";
 
-interface Conn { url: string; token: string }
-export interface PlexSection { key: string; title: string; type: string; locations: string[] }
+interface Conn {
+  url: string;
+  token: string;
+}
+export interface PlexSection {
+  key: string;
+  title: string;
+  type: string;
+  locations: string[];
+}
 
 async function plexCall<T>(p: string, conn: Conn = getSettings().plex, method = "GET"): Promise<T | null> {
   if (!conn.url || !conn.token) throw new Error("Plex is not configured");
@@ -20,11 +28,21 @@ async function plexCall<T>(p: string, conn: Conn = getSettings().plex, method = 
   } catch {
     throw new Error("The Plex address isn't a valid URL");
   }
-  if (!/^https?:$/.test(u.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw new Error("That Plex address isn't allowed");
+  if (!/^https?:$/.test(u.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal")
+    throw new Error("That Plex address isn't allowed");
   const url = `${conn.url.replace(/\/+$/, "")}${p}`;
   let res: Response;
   try {
-    res = await fetch(url, { method, headers: { Accept: "application/json", "X-Plex-Token": conn.token, "X-Plex-Product": "AnimeArr", "X-Plex-Client-Identifier": "animearr" }, signal: AbortSignal.timeout(20_000) });
+    res = await fetch(url, {
+      method,
+      headers: {
+        Accept: "application/json",
+        "X-Plex-Token": conn.token,
+        "X-Plex-Product": "AnimeArr",
+        "X-Plex-Client-Identifier": "animearr",
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
   } catch (e) {
     throw new Error(`Plex unreachable (${(e as Error).message})`);
   }
@@ -42,14 +60,25 @@ async function plexCall<T>(p: string, conn: Conn = getSettings().plex, method = 
 export const plexApi = <T>(p: string) => plexCall<T>(p);
 
 export async function plexSections(conn?: Conn): Promise<PlexSection[]> {
-  const d = await plexCall<{ MediaContainer: { Directory?: { key: string; title: string; type: string; Location?: { path: string }[] }[] } }>("/library/sections", conn);
-  return (d?.MediaContainer.Directory ?? []).map((x) => ({ key: x.key, title: x.title, type: x.type, locations: (x.Location ?? []).map((l) => l.path.replace(/\\/g, "/").replace(/\/+$/, "")) }));
+  const d = await plexCall<{
+    MediaContainer: { Directory?: { key: string; title: string; type: string; Location?: { path: string }[] }[] };
+  }>("/library/sections", conn);
+  return (d?.MediaContainer.Directory ?? []).map((x) => ({
+    key: x.key,
+    title: x.title,
+    type: x.type,
+    locations: (x.Location ?? []).map((l) => l.path.replace(/\\/g, "/").replace(/\/+$/, "")),
+  }));
 }
 
 /** Connection test: server name/version and its libraries (read-only). */
 export async function testPlex(conn: Conn) {
   const id = await plexCall<{ MediaContainer: { friendlyName?: string; version?: string } }>("/", conn);
-  return { version: id?.MediaContainer.version ?? "?", name: id?.MediaContainer.friendlyName ?? "Plex", sections: await plexSections(conn) };
+  return {
+    version: id?.MediaContainer.version ?? "?",
+    name: id?.MediaContainer.friendlyName ?? "Plex",
+    sections: await plexSections(conn),
+  };
 }
 
 /** Sonarr/Radarr path (as the library rows have it) → Plex path (longest mapping prefix wins). */
@@ -62,7 +91,11 @@ export function toPlexPath(p: string, maps: PathMapping[] = getSettings().plex.p
 
 /** The library section whose folder holds this Plex path. */
 export function sectionFor(plexPath: string, sections: PlexSection[]) {
-  return sections.filter((s) => s.locations.some((l) => plexPath === l || plexPath.startsWith(`${l}/`))).sort((a, b) => Math.max(...b.locations.map((l) => l.length)) - Math.max(...a.locations.map((l) => l.length)))[0] ?? null;
+  return (
+    sections
+      .filter((s) => s.locations.some((l) => plexPath === l || plexPath.startsWith(`${l}/`)))
+      .sort((a, b) => Math.max(...b.locations.map((l) => l.length)) - Math.max(...a.locations.map((l) => l.length)))[0] ?? null
+  );
 }
 
 /** More changed folders than this and a server gets one scan of its whole library instead of one per folder. */
@@ -74,7 +107,15 @@ let sectionsCache: { at: number; url: string; v: PlexSection[] } | null = null;
 let retries = 0;
 
 /** Queues partial scans of these folders (AnimeArr paths); they go out together a few seconds later. */
-export function notifyPlex(folders: string[], deps = { sections: plexSections, refresh: (key: string, p?: string) => plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`) }, delayMs = 15_000) {
+export function notifyPlex(
+  folders: string[],
+  deps = {
+    sections: plexSections,
+    refresh: (key: string, p?: string) =>
+      plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`),
+  },
+  delayMs = 15_000,
+) {
   const s = getSettings().plex;
   if (!s.enabled || !s.url || !s.token) return;
   for (const f of folders) if (f) pending.add(f.replace(/\/+$/, ""));
@@ -83,7 +124,13 @@ export function notifyPlex(folders: string[], deps = { sections: plexSections, r
   timer.unref?.();
 }
 
-export async function flush(deps = { sections: plexSections, refresh: (key: string, p?: string) => plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`) }) {
+export async function flush(
+  deps = {
+    sections: plexSections,
+    refresh: (key: string, p?: string) =>
+      plexCall(`/library/sections/${key}/refresh${p === undefined ? "" : `?path=${encodeURIComponent(p)}`}`),
+  },
+) {
   if (timer) clearTimeout(timer);
   timer = null;
   const s = getSettings().plex;
@@ -105,7 +152,9 @@ export async function flush(deps = { sections: plexSections, refresh: (key: stri
       pending.clear();
       retries = 0;
     }
-    logDecision("fail", { why: `Plex: couldn't list the libraries (${(e as Error).message})${retries ? "; trying again in 5 minutes" : "; gave up on these scans"}` });
+    logDecision("fail", {
+      why: `Plex: couldn't list the libraries (${(e as Error).message})${retries ? "; trying again in 5 minutes" : "; gave up on these scans"}`,
+    });
     return [];
   }
   retries = 0;
@@ -125,18 +174,41 @@ export async function flush(deps = { sections: plexSections, refresh: (key: stri
       }
     }
     if (!sec) {
-      out.push({ folder: f, plexPath: pp, section: null, ok: false, why: "no Plex library has this folder (check the Plex path mappings)" });
+      out.push({
+        folder: f,
+        plexPath: pp,
+        section: null,
+        ok: false,
+        why: "no Plex library has this folder (check the Plex path mappings)",
+      });
       continue;
     }
     try {
       if (!bulk) await deps.refresh(sec.key, pp);
-      else if (!scanned.has(sec.key)) await deps.refresh(sec.key), scanned.add(sec.key);
+      else if (!scanned.has(sec.key)) (await deps.refresh(sec.key), scanned.add(sec.key));
       out.push({ folder: f, plexPath: pp, section: sec.title, ok: true, why: "scan asked" });
     } catch (e) {
       out.push({ folder: f, plexPath: pp, section: sec.title, ok: false, why: (e as Error).message });
     }
   }
   const ok = out.filter((x) => x.ok);
-  logDecision(ok.length === out.length ? "info" : "fail", { why: `Plex: ${ok.length ? `asked to scan ${ok.map((x) => `${x.plexPath} (${x.section})`).slice(0, 3).join(", ")}${ok.length > 3 ? "…" : ""}` : ""}${ok.length < out.length ? `${ok.length ? "; " : ""}couldn't scan ${out.filter((x) => !x.ok).map((x) => `${x.plexPath}: ${x.why}`).slice(0, 2).join("; ")}` : ""}` });
+  logDecision(ok.length === out.length ? "info" : "fail", {
+    why: `Plex: ${
+      ok.length
+        ? `asked to scan ${ok
+            .map((x) => `${x.plexPath} (${x.section})`)
+            .slice(0, 3)
+            .join(", ")}${ok.length > 3 ? "…" : ""}`
+        : ""
+    }${
+      ok.length < out.length
+        ? `${ok.length ? "; " : ""}couldn't scan ${out
+            .filter((x) => !x.ok)
+            .map((x) => `${x.plexPath}: ${x.why}`)
+            .slice(0, 2)
+            .join("; ")}`
+        : ""
+    }`,
+  });
   return out;
 }

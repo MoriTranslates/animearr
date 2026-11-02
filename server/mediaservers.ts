@@ -20,7 +20,11 @@ import { VERSION as appVersion } from "./version.js";
 
 export type NotifyKind = "jellyfin" | "emby" | "kodi";
 export const SERVER_NAMES: Record<NotifyKind, string> = { jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };
-export interface KodiConn { url: string; username: string; password: string }
+export interface KodiConn {
+  url: string;
+  username: string;
+  password: string;
+}
 type Fetch = typeof fetch;
 
 /** Same address rules as Plex: http(s) only, no link-local or cloud-metadata hosts. */
@@ -31,7 +35,8 @@ function checkUrl(url: string, name: string) {
   } catch {
     throw new Error(`The ${name} address isn't a valid URL`);
   }
-  if (!/^https?:$/.test(u.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal") throw new Error(`That ${name} address isn't allowed`);
+  if (!/^https?:$/.test(u.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(u.hostname) || u.hostname === "metadata.google.internal")
+    throw new Error(`That ${name} address isn't allowed`);
   return url.replace(/\/+$/, "");
 }
 
@@ -42,7 +47,8 @@ async function call<T>(name: string, url: string, init: RequestInit, f: Fetch): 
   } catch (e) {
     throw new Error(`${name} unreachable (${(e as Error).message})`);
   }
-  if (res.status === 401 || res.status === 403) throw new Error(`${name} refused the ${name === "Kodi" ? "login" : "API key"} (${res.status})`);
+  if (res.status === 401 || res.status === 403)
+    throw new Error(`${name} refused the ${name === "Kodi" ? "login" : "API key"} (${res.status})`);
   if (!res.ok) throw new Error(`${name} HTTP ${res.status}`);
   const text = await res.text();
   try {
@@ -59,10 +65,16 @@ export function embyRequest(kind: "jellyfin" | "emby", conn: { url: string; apiK
   const base = checkUrl(conn.url, name);
   const auth: Record<string, string> =
     kind === "jellyfin"
-      ? { Authorization: `MediaBrowser Client="AnimeArr", Device="AnimeArr", DeviceId="animearr", Version="${appVersion}", Token="${conn.apiKey}"` }
+      ? {
+          Authorization: `MediaBrowser Client="AnimeArr", Device="AnimeArr", DeviceId="animearr", Version="${appVersion}", Token="${conn.apiKey}"`,
+        }
       : { "X-Emby-Token": conn.apiKey };
   const url = `${base}${kind === "emby" && !/\/emby$/i.test(base) ? "/emby" : ""}${p}`;
-  const init: RequestInit = { method: body === undefined ? "GET" : "POST", headers: { Accept: "application/json", ...auth, ...(body === undefined ? {} : { "Content-Type": "application/json" }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
+  const init: RequestInit = {
+    method: body === undefined ? "GET" : "POST",
+    headers: { Accept: "application/json", ...auth, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  };
   return { name, url, init };
 }
 
@@ -79,7 +91,10 @@ export function kodiRequest(conn: KodiConn, method: string, params: Record<strin
   const base = checkUrl(conn.url, "Kodi");
   const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
   if (conn.username) headers.Authorization = `Basic ${Buffer.from(`${conn.username}:${conn.password}`).toString("base64")}`;
-  return { url: `${base.replace(/\/jsonrpc$/i, "")}/jsonrpc`, init: { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) } as RequestInit };
+  return {
+    url: `${base.replace(/\/jsonrpc$/i, "")}/jsonrpc`,
+    init: { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) } as RequestInit,
+  };
 }
 
 async function kodiCall<T>(conn: KodiConn, method: string, params: Record<string, unknown>, f: Fetch) {
@@ -90,7 +105,12 @@ async function kodiCall<T>(conn: KodiConn, method: string, params: Record<string
 }
 
 export async function testKodi(conn: KodiConn, f: Fetch = fetch) {
-  const app = await kodiCall<{ name?: string; version?: { major: number; minor: number } }>(conn, "Application.GetProperties", { properties: ["name", "version"] }, f);
+  const app = await kodiCall<{ name?: string; version?: { major: number; minor: number } }>(
+    conn,
+    "Application.GetProperties",
+    { properties: ["name", "version"] },
+    f,
+  );
   return { version: app?.version ? `${app.version.major}.${app.version.minor}` : "?", name: app?.name ?? "Kodi" };
 }
 
@@ -107,7 +127,8 @@ export async function scanFolders(kind: NotifyKind, folders: string[], f: Fetch 
   }
   if (kind === "kodi") {
     // One scan per folder; Kodi wants a trailing slash on a directory.
-    for (const p of folders) await kodiCall(s.kodi, "VideoLibrary.Scan", { directory: p.endsWith("/") ? p : `${p}/`, showdialogs: false }, f);
+    for (const p of folders)
+      await kodiCall(s.kodi, "VideoLibrary.Scan", { directory: p.endsWith("/") ? p : `${p}/`, showdialogs: false }, f);
     return;
   }
   const r = embyRequest(kind, s[kind], "/Library/Media/Updated", { Updates: folders.map((p) => ({ Path: p, UpdateType: "Modified" })) });
@@ -149,6 +170,8 @@ export async function flushMediaServers(deps: { scan: typeof scanFolders } = { s
     }
   }
   for (const r of out)
-    logDecision(r.ok ? "info" : "fail", { why: `${SERVER_NAMES[r.server]}: ${r.ok ? `${r.folders.length > BULK_SCAN_FOLDERS ? `asked to scan the whole library (${r.folders.length} folders changed)` : `asked to scan ${r.folders.slice(0, 3).join(", ")}${r.folders.length > 3 ? "…" : ""}`}` : `couldn't scan ${r.folders.slice(0, 2).join(", ")}: ${r.why}`}` });
+    logDecision(r.ok ? "info" : "fail", {
+      why: `${SERVER_NAMES[r.server]}: ${r.ok ? `${r.folders.length > BULK_SCAN_FOLDERS ? `asked to scan the whole library (${r.folders.length} folders changed)` : `asked to scan ${r.folders.slice(0, 3).join(", ")}${r.folders.length > 3 ? "…" : ""}`}` : `couldn't scan ${r.folders.slice(0, 2).join(", ")}: ${r.why}`}`,
+    });
   return out;
 }

@@ -6,8 +6,23 @@ import { api, type Settings as S } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { relTime, SecretInput, Toggle, usePoll, useToast } from "./ui";
 
-interface BellItem { id: number; at: number; event: "grabbed" | "imported" | "failed" | "paused" | "indexer" | "setup"; title: string; body: string; summary?: string | null; read: boolean; resolved?: boolean; action?: boolean; fixes?: import("./api").Fix[] }
-interface Bell { unread: number; needs?: number; items: BellItem[] }
+interface BellItem {
+  id: number;
+  at: number;
+  event: "grabbed" | "imported" | "failed" | "paused" | "indexer" | "setup";
+  title: string;
+  body: string;
+  summary?: string | null;
+  read: boolean;
+  resolved?: boolean;
+  action?: boolean;
+  fixes?: import("./api").Fix[];
+}
+interface Bell {
+  unread: number;
+  needs?: number;
+  items: BellItem[];
+}
 const ICON = { grabbed: "⬇️", imported: "✅", failed: "⚠️", paused: "⏸️", indexer: "🔌", setup: "🛠️" } as const;
 
 /** One notification: the plain summary first; the raw message (release names, hosts, paths) under Details. */
@@ -19,7 +34,8 @@ function BellRow({ n, onRead }: { n: BellItem; onRead: (id: number) => void }) {
       <span className="row bell-item-head">
         {!n.read && <span className="bell-dot" aria-label={t("bell.unread")} />}
         <span className="grow">
-          <span aria-hidden="true">{ICON[n.event]}</span> <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong> <span className="muted">· {relTime(n.at)}</span>
+          <span aria-hidden="true">{ICON[n.event]}</span> <strong>{n.title || t(`bell.${n.event}` as I18nKey)}</strong>{" "}
+          <span className="muted">· {relTime(n.at)}</span>
         </span>
         {!n.read && n.id > 0 && (
           <button className="icon bell-dismiss" aria-label={t("bell.markRead")} title={t("bell.markRead")} onClick={() => onRead(n.id)}>
@@ -54,7 +70,11 @@ export function BellButton() {
   const btn = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<{ top: number; right: number }>({ top: 64, right: 16 });
   const alive = useRef(true);
-  const loadBell = () => api<Bell>("/notifications").then((x) => alive.current && setB(x), () => undefined);
+  const loadBell = () =>
+    api<Bell>("/notifications").then(
+      (x) => alive.current && setB(x),
+      () => undefined,
+    );
   useEffect(() => {
     alive.current = true;
     void loadBell();
@@ -107,41 +127,58 @@ export function BellButton() {
       </button>
       {open &&
         createPortal(
-        <>
-          <div className="bell-back" aria-hidden="true" onClick={() => setOpen(false)} />
-          <div className="bell-pop card pad stack" role="dialog" aria-modal="true" aria-label={t("bell.title")} style={{ top: at.top, right: at.right }}>
-            <div className="row bell-head">
-              <h2 className="grow">{t("bell.title")}</h2>
-              {unreadShown && (
-                // Setup problems (negative ids) aren't stored notifications: the newest stored one is the read point.
-                <button className="small" onClick={() => { const newest = b?.items.find((i) => i.id > 0); if (newest) void read({ upToId: newest.id }); }}>
-                  {t("bell.markAll")}
+          <>
+            <div className="bell-back" aria-hidden="true" onClick={() => setOpen(false)} />
+            <div
+              className="bell-pop card pad stack"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("bell.title")}
+              style={{ top: at.top, right: at.right }}
+            >
+              <div className="row bell-head">
+                <h2 className="grow">{t("bell.title")}</h2>
+                {unreadShown && (
+                  // Setup problems (negative ids) aren't stored notifications: the newest stored one is the read point.
+                  <button
+                    className="small"
+                    onClick={() => {
+                      const newest = b?.items.find((i) => i.id > 0);
+                      if (newest) void read({ upToId: newest.id });
+                    }}
+                  >
+                    {t("bell.markAll")}
+                  </button>
+                )}
+                <button className="icon" aria-label={t("common.close")} onClick={() => (setOpen(false), btn.current?.focus())}>
+                  ✕
                 </button>
-              )}
-              <button className="icon" aria-label={t("common.close")} onClick={() => (setOpen(false), btn.current?.focus())}>
-                ✕
-              </button>
+              </div>
+              <div className="tabs bell-tabs" role="tablist">
+                <button role="tab" aria-selected={tab === "needs"} className={tab === "needs" ? "on" : ""} onClick={() => setTab("needs")}>
+                  {t("bell.needs", { n: b?.needs ?? 0 })}
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={tab === "recent"}
+                  className={tab === "recent" ? "on" : ""}
+                  onClick={() => setTab("recent")}
+                >
+                  {t("bell.recent")}
+                </button>
+              </div>
+              {tab === "needs" && !b?.needs && <p className="muted small">{t("bell.allClear")}</p>}
+              {tab === "recent" && !b?.items.length && <p className="muted small">{t("bell.none")}</p>}
+              <ul className="rename-list small bell-list">
+                {shown.map((n) => (
+                  <BellRow key={n.id} n={n} onRead={(id) => void read({ ids: [id] })} />
+                ))}
+              </ul>
+              {shown.length > 3 && <p className="muted small bell-more">{t("bell.count", { n: shown.length })}</p>}
             </div>
-            <div className="tabs bell-tabs" role="tablist">
-              <button role="tab" aria-selected={tab === "needs"} className={tab === "needs" ? "on" : ""} onClick={() => setTab("needs")}>
-                {t("bell.needs", { n: b?.needs ?? 0 })}
-              </button>
-              <button role="tab" aria-selected={tab === "recent"} className={tab === "recent" ? "on" : ""} onClick={() => setTab("recent")}>
-                {t("bell.recent")}
-              </button>
-            </div>
-            {tab === "needs" && !b?.needs && <p className="muted small">{t("bell.allClear")}</p>}
-            {tab === "recent" && !b?.items.length && <p className="muted small">{t("bell.none")}</p>}
-            <ul className="rename-list small bell-list">
-              {shown.map((n) => (
-                <BellRow key={n.id} n={n} onRead={(id) => void read({ ids: [id] })} />
-              ))}
-            </ul>
-            {shown.length > 3 && <p className="muted small bell-more">{t("bell.count", { n: shown.length })}</p>}
-          </div>
-        </>,
-        document.body,
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -160,7 +197,10 @@ export function NotifyCard({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void })
           onClick={async () => {
             try {
               const r = await api<{ results: { channel: string; ok: boolean; why: string }[] }>("/notifications/test", { body: {} });
-              toast(r.results.map((x) => `${x.channel}: ${x.why}`).join(" · "), r.results.some((x) => !x.ok));
+              toast(
+                r.results.map((x) => `${x.channel}: ${x.why}`).join(" · "),
+                r.results.some((x) => !x.ok),
+              );
             } catch (e) {
               toast((e as Error).message, true);
             }
@@ -184,7 +224,12 @@ export function NotifyCard({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void })
           <SecretInput value={n.ntfyToken} onChange={(v) => set({ ntfyToken: v })} label={t("notify.ntfyToken")} />
         </label>
         {(["grabbed", "imported", "failed", "paused", "indexer"] as const).map((ev) => (
-          <Toggle key={ev} checked={n.events[ev]} onChange={(v) => set({ events: { ...n.events, [ev]: v } })} label={t(`notify.ev.${ev}` as I18nKey)} />
+          <Toggle
+            key={ev}
+            checked={n.events[ev]}
+            onChange={(v) => set({ events: { ...n.events, [ev]: v } })}
+            label={t(`notify.ev.${ev}` as I18nKey)}
+          />
         ))}
       </div>
       <p className="muted small">{t("notify.saveFirst")}</p>

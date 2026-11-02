@@ -5,13 +5,25 @@
 import { getSettings } from "./settings.js";
 import { plexApi, plexSections, sectionFor, toPlexPath } from "./plex.js";
 
-export interface WatchLink { server: string; web: string; app: string | null }
-interface Provider { name: string; configured: () => boolean; link: (arrPath: string, title: string, kind: "episode" | "movie") => Promise<WatchLink | null> }
+export interface WatchLink {
+  server: string;
+  web: string;
+  app: string | null;
+}
+interface Provider {
+  name: string;
+  configured: () => boolean;
+  link: (arrPath: string, title: string, kind: "episode" | "movie") => Promise<WatchLink | null>;
+}
 
 const cache = new Map<string, { at: number; key: string | null }>();
 let machine: { at: number; id: string } | null = null;
 
-interface PlexItem { ratingKey: string; title: string; Media?: { Part?: { file?: string }[] }[] }
+interface PlexItem {
+  ratingKey: string;
+  title: string;
+  Media?: { Part?: { file?: string }[] }[];
+}
 const files = (x: PlexItem) => (x.Media ?? []).flatMap((m) => (m.Part ?? []).map((p) => (p.file ?? "").replace(/\\/g, "/")));
 
 const plex: Provider = {
@@ -28,7 +40,9 @@ const plex: Provider = {
       const section = sectionFor(pp, await plexSections());
       if (section) {
         // Find the show/movie by title, then the item whose file is this one.
-        const list = await plexApi<{ MediaContainer: { Metadata?: PlexItem[] } }>(`/library/sections/${section.key}/all?type=${kind === "movie" ? 1 : 2}&title=${encodeURIComponent(title)}`);
+        const list = await plexApi<{ MediaContainer: { Metadata?: PlexItem[] } }>(
+          `/library/sections/${section.key}/all?type=${kind === "movie" ? 1 : 2}&title=${encodeURIComponent(title)}`,
+        );
         for (const m of list?.MediaContainer.Metadata ?? []) {
           if (kind === "movie") {
             if (files(m).includes(pp)) key = m.ratingKey;

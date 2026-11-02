@@ -8,23 +8,42 @@ import type { FastifyInstance } from "fastify";
 import { db } from "./db.js";
 import { tmdbTarget } from "./episodemeta.js";
 
-export interface MetaOverride { tmdbTv: number; tmdbSeason: number; tmdbOffset: number; setAt: number }
+export interface MetaOverride {
+  tmdbTv: number;
+  tmdbSeason: number;
+  tmdbOffset: number;
+  setAt: number;
+}
 
-interface Row { tmdb_tv: number; tmdb_season: number; tmdb_offset: number; set_at: number }
+interface Row {
+  tmdb_tv: number;
+  tmdb_season: number;
+  tmdb_offset: number;
+  set_at: number;
+}
 const fromRow = (r: Row): MetaOverride => ({ tmdbTv: r.tmdb_tv, tmdbSeason: r.tmdb_season, tmdbOffset: r.tmdb_offset, setAt: r.set_at });
 
 /** season → override, for one show. */
 export function metaOverrides(tvdbId: number): Map<number, MetaOverride> {
-  const rows = db.prepare("SELECT season, tmdb_tv, tmdb_season, tmdb_offset, set_at FROM meta_overrides WHERE tvdb_id = ?").all(tvdbId) as unknown as (Row & { season: number })[];
+  const rows = db
+    .prepare("SELECT season, tmdb_tv, tmdb_season, tmdb_offset, set_at FROM meta_overrides WHERE tvdb_id = ?")
+    .all(tvdbId) as unknown as (Row & { season: number })[];
   return new Map(rows.map((r) => [r.season, fromRow(r)]));
 }
 
 export function getMetaOverride(tvdbId: number, season: number): MetaOverride | null {
-  const r = db.prepare("SELECT tmdb_tv, tmdb_season, tmdb_offset, set_at FROM meta_overrides WHERE tvdb_id = ? AND season = ?").get(tvdbId, season) as Row | undefined;
+  const r = db
+    .prepare("SELECT tmdb_tv, tmdb_season, tmdb_offset, set_at FROM meta_overrides WHERE tvdb_id = ? AND season = ?")
+    .get(tvdbId, season) as Row | undefined;
   return r ? fromRow(r) : null;
 }
 
-export function setMetaOverride(tvdbId: number, season: number, o: { tmdbTv: number; tmdbSeason: number; tmdbOffset: number }, now = Date.now()) {
+export function setMetaOverride(
+  tvdbId: number,
+  season: number,
+  o: { tmdbTv: number; tmdbSeason: number; tmdbOffset: number },
+  now = Date.now(),
+) {
   db.prepare(
     `INSERT INTO meta_overrides (tvdb_id, season, tmdb_tv, tmdb_season, tmdb_offset, set_at) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(tvdb_id, season) DO UPDATE SET tmdb_tv = excluded.tmdb_tv, tmdb_season = excluded.tmdb_season, tmdb_offset = excluded.tmdb_offset, set_at = excluded.set_at`,
@@ -43,15 +62,26 @@ export function parseOverride(body: unknown): { tmdbTv: number; tmdbSeason: numb
   const tmdbSeason = int(b.tmdbSeason);
   const tmdbOffset = b.tmdbOffset === undefined || b.tmdbOffset === null || b.tmdbOffset === "" ? 0 : int(b.tmdbOffset);
   if (!Number.isInteger(tmdbTv) || tmdbTv <= 0) throw new Error("tmdbTv must be a TMDB show id (a positive whole number)");
-  if (!Number.isInteger(tmdbSeason) || tmdbSeason < 0 || tmdbSeason > 1000) throw new Error("tmdbSeason must be a season number (0 or more)");
-  if (!Number.isInteger(tmdbOffset) || Math.abs(tmdbOffset) > 10_000) throw new Error("tmdbOffset must be a whole number (TMDB episode = our episode + offset)");
+  if (!Number.isInteger(tmdbSeason) || tmdbSeason < 0 || tmdbSeason > 1000)
+    throw new Error("tmdbSeason must be a season number (0 or more)");
+  if (!Number.isInteger(tmdbOffset) || Math.abs(tmdbOffset) > 10_000)
+    throw new Error("tmdbOffset must be a whole number (TMDB episode = our episode + offset)");
   return { tmdbTv, tmdbSeason, tmdbOffset };
 }
 
-export interface TmdbShowHit { id: number; name: string; year: number | null; seasons: { season: number; episodes: number }[] | null }
+export interface TmdbShowHit {
+  id: number;
+  name: string;
+  year: number | null;
+  seasons: { season: number; episodes: number }[] | null;
+}
 
 /** A TMDB show's seasons with episode counts (null when TMDB can't say right now). */
-export async function tmdbSeasons(tv: number, key: string, fetcher: typeof fetch = fetch): Promise<{ season: number; episodes: number }[] | null> {
+export async function tmdbSeasons(
+  tv: number,
+  key: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ season: number; episodes: number }[] | null> {
   try {
     const res = await tmdbFetch(`/tv/${tv}?language=en-US`, key, fetcher);
     if (!res.ok) return null;
@@ -68,13 +98,23 @@ export async function searchTmdbShows(q: string, key: string, fetcher: typeof fe
   if (res.status === 401) throw new Error("TMDB refused the key: check it in Settings → Metadata");
   if (!res.ok) throw new Error(`TMDB answered ${res.status}`);
   const j = (await res.json()) as { results?: { id: number; name?: string; original_name?: string; first_air_date?: string }[] };
-  const hits: TmdbShowHit[] = (j.results ?? []).slice(0, 8).map((r) => ({ id: r.id, name: r.name || r.original_name || String(r.id), year: Number(r.first_air_date?.slice(0, 4)) || null, seasons: null }));
+  const hits: TmdbShowHit[] = (j.results ?? []).slice(0, 8).map((r) => ({
+    id: r.id,
+    name: r.name || r.original_name || String(r.id),
+    year: Number(r.first_air_date?.slice(0, 4)) || null,
+    seasons: null,
+  }));
   for (const h of hits.slice(0, 3)) h.seasons = await tmdbSeasons(h.id, key, fetcher);
   return hits;
 }
 
 /** The episodes' titles of one TMDB season, for the "does this look right?" preview. */
-export async function tmdbSeasonTitles(tv: number, season: number, key: string, fetcher: typeof fetch = fetch): Promise<{ episode: number; name: string }[]> {
+export async function tmdbSeasonTitles(
+  tv: number,
+  season: number,
+  key: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ episode: number; name: string }[]> {
   const res = await tmdbFetch(`/tv/${tv}/season/${season}?language=en-US`, key, fetcher);
   if (res.status === 404) return [];
   if (res.status === 401) throw new Error("TMDB refused the key: check it in Settings → Metadata");
@@ -83,11 +123,19 @@ export async function tmdbSeasonTitles(tv: number, season: number, key: string, 
   return (j.episodes ?? []).map((e) => ({ episode: e.episode_number, name: e.name ?? "" }));
 }
 
-export interface MetaRouteDeps { fetch: typeof fetch; key: () => string; writable: () => void }
+export interface MetaRouteDeps {
+  fetch: typeof fetch;
+  key: () => string;
+  writable: () => void;
+}
 
 /** The catalog mapping for one season as the metadata sees it (first of its first episodes the catalog covers). */
 function catalogSource(tvdbId: number, season: number) {
-  const rows = db.prepare("SELECT tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC").all(tvdbId) as unknown as Parameters<typeof tmdbTarget>[0];
+  const rows = db
+    .prepare(
+      "SELECT tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC",
+    )
+    .all(tvdbId) as unknown as Parameters<typeof tmdbTarget>[0];
   for (let ep = 1; ep <= 3; ep++) {
     const t = tmdbTarget(rows, season, ep, null);
     if (t) return { tmdbTv: t.tv, tmdbSeason: t.season, tmdbOffset: t.episode - ep };

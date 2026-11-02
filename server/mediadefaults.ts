@@ -24,7 +24,12 @@ const bool = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fa
 const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : fallback);
 
 /** Maps Sonarr's /config/naming + /config/mediamanagement and Radarr's /config/naming onto settings.media. */
-export function mapArrMedia(cur: Settings["media"], naming: Record<string, unknown> | null, mm: Record<string, unknown> | null, radarrNaming: Record<string, unknown> | null): Settings["media"] {
+export function mapArrMedia(
+  cur: Settings["media"],
+  naming: Record<string, unknown> | null,
+  mm: Record<string, unknown> | null,
+  radarrNaming: Record<string, unknown> | null,
+): Settings["media"] {
   const m = { ...cur };
   if (naming) {
     m.renameEpisodes = bool(naming.renameEpisodes, m.renameEpisodes);
@@ -75,7 +80,9 @@ export async function importMediaDefaults() {
   if (!naming && !mm && !rn) throw Object.assign(new Error("Couldn't read Sonarr's or Radarr's settings"), { statusCode: 502 });
   const next = mapArrMedia(getSettings().media, naming, mm, rn);
   patchSettings((s) => ({ ...s, media: { ...next, importedFromArr: true } }));
-  logDecision("info", { why: `Media management settings copied from ${[naming || mm ? "Sonarr" : null, rn ? "Radarr" : null].filter(Boolean).join(" and ")}` });
+  logDecision("info", {
+    why: `Media management settings copied from ${[naming || mm ? "Sonarr" : null, rn ? "Radarr" : null].filter(Boolean).join(" and ")}`,
+  });
   return { sonarr: !!(naming || mm), radarr: !!rn, media: getSettings().media };
 }
 
@@ -88,9 +95,29 @@ export async function importMediaDefaultsOnce() {
 /** Live examples for the Media management page (from the unsaved values on screen). */
 export function previewNaming(media: Partial<Settings["media"]>) {
   const m = { ...getSettings().media, ...media };
-  const opts = { replaceIllegalCharacters: !!m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle };
-  const mi = { videoCodec: "h264", videoBitDepth: 8, audioCodec: "aac", audioChannels: 2, audioLanguages: ["ja"], subtitleLanguages: ["en"] };
-  const ep = { seriesTitle: "Frieren: Beyond Journey's End", seriesYear: 2023, season: 1, episodes: [{ episode: 5, absolute: 5, title: "Phantoms of the Dead", airDate: "2023-10-06" }], quality: "WEBDL-1080p", mediaInfo: mi, releaseGroup: "SubsPlease", anidbTitle: "Sousou no Frieren" };
+  const opts = {
+    replaceIllegalCharacters: !!m.replaceIllegalCharacters,
+    colonReplacement: m.colonReplacement,
+    multiEpisodeStyle: m.multiEpisodeStyle,
+  };
+  const mi = {
+    videoCodec: "h264",
+    videoBitDepth: 8,
+    audioCodec: "aac",
+    audioChannels: 2,
+    audioLanguages: ["ja"],
+    subtitleLanguages: ["en"],
+  };
+  const ep = {
+    seriesTitle: "Frieren: Beyond Journey's End",
+    seriesYear: 2023,
+    season: 1,
+    episodes: [{ episode: 5, absolute: 5, title: "Phantoms of the Dead", airDate: "2023-10-06" }],
+    quality: "WEBDL-1080p",
+    mediaInfo: mi,
+    releaseGroup: "SubsPlease",
+    anidbTitle: "Sousou no Frieren",
+  };
   const multi = { ...ep, episodes: [ep.episodes[0], { episode: 6, absolute: 6, title: "A Hero of the Village", airDate: "2023-10-13" }] };
   const safe = (f: () => string) => {
     try {
@@ -104,10 +131,43 @@ export function previewNaming(media: Partial<Settings["media"]>) {
     daily: safe(() => renderEpisode(m.dailyEpisodeFormat, { ...ep, seriesTitle: "Anime Daily News" }, opts) + ".mkv"),
     anime: safe(() => renderEpisode(m.animeEpisodeFormat, ep, opts) + ".mkv"),
     multi: safe(() => renderEpisode(m.animeEpisodeFormat, multi, opts) + ".mkv"),
-    seriesFolder: safe(() => renderSeriesFolder(m.seriesFolderFormat, { seriesTitle: ep.seriesTitle, seriesYear: 2023, tvdbId: 424536, anidbTitle: ep.anidbTitle, server: getSettings().mediaOutput?.main }, opts)),
+    seriesFolder: safe(() =>
+      renderSeriesFolder(
+        m.seriesFolderFormat,
+        {
+          seriesTitle: ep.seriesTitle,
+          seriesYear: 2023,
+          tvdbId: 424536,
+          anidbTitle: ep.anidbTitle,
+          server: getSettings().mediaOutput?.main,
+        },
+        opts,
+      ),
+    ),
     seasonFolder: safe(() => renderSeasonFolder(m.seasonFolderFormat, 1, opts)),
     specialsFolder: safe(() => renderSeasonFolder(m.specialsFolderFormat, 0, opts)),
-    movie: safe(() => renderMovie(m.movieFormat, { movieTitle: "Suzume: The Door", year: 2022, quality: "Bluray-1080p", mediaInfo: mi, releaseGroup: "GRP", imdbId: "tt16428256", tmdbId: 916224 }, { ...opts, colonReplacement: m.movieColonReplacement }) + ".mkv"),
-    movieFolder: safe(() => renderMovie(m.movieFolderFormat, { movieTitle: "Suzume: The Door", year: 2022, imdbId: "tt16428256", tmdbId: 916224 }, { ...opts, colonReplacement: m.movieColonReplacement })),
+    movie: safe(
+      () =>
+        renderMovie(
+          m.movieFormat,
+          {
+            movieTitle: "Suzume: The Door",
+            year: 2022,
+            quality: "Bluray-1080p",
+            mediaInfo: mi,
+            releaseGroup: "GRP",
+            imdbId: "tt16428256",
+            tmdbId: 916224,
+          },
+          { ...opts, colonReplacement: m.movieColonReplacement },
+        ) + ".mkv",
+    ),
+    movieFolder: safe(() =>
+      renderMovie(
+        m.movieFolderFormat,
+        { movieTitle: "Suzume: The Door", year: 2022, imdbId: "tt16428256", tmdbId: 916224 },
+        { ...opts, colonReplacement: m.movieColonReplacement },
+      ),
+    ),
   };
 }

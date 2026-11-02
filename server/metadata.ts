@@ -41,10 +41,20 @@ async function refreshAnidb(force = false) {
   if (have && Date.now() - last < DAY && !force) return false;
   if (Date.now() - (meta?.fetchedAt ?? 0) < DAY) return false;
   // Not while AniDB has us paused or banned (same IP as the HTTP API).
-  const blocked = Number((db.prepare("SELECT value FROM anidb_state WHERE key = 'blockedUntil'").get() as { value: string } | undefined)?.value ?? 0);
+  const blocked = Number(
+    (db.prepare("SELECT value FROM anidb_state WHERE key = 'blockedUntil'").get() as { value: string } | undefined)?.value ?? 0,
+  );
   if (blocked > Date.now()) return false;
-  setMeta("anidb-titles", { fetchedAt: Date.now(), etag: meta?.etag, lastModified: meta?.lastModified, info: JSON.parse(meta?.info ?? "{}") });
-  const res = await fetch(ANIDB_URL, { headers: { "User-Agent": USER_AGENT, ...(have && meta?.lastModified ? { "If-Modified-Since": meta.lastModified } : {}) }, signal: AbortSignal.timeout(120_000) });
+  setMeta("anidb-titles", {
+    fetchedAt: Date.now(),
+    etag: meta?.etag,
+    lastModified: meta?.lastModified,
+    info: JSON.parse(meta?.info ?? "{}"),
+  });
+  const res = await fetch(ANIDB_URL, {
+    headers: { "User-Agent": USER_AGENT, ...(have && meta?.lastModified ? { "If-Modified-Since": meta.lastModified } : {}) },
+    signal: AbortSignal.timeout(120_000),
+  });
   if (res.status === 304) return false;
   if (!res.ok) throw new Error(`AniDB titles download failed (HTTP ${res.status})`);
   const buf = Buffer.from(await res.arrayBuffer());
@@ -62,7 +72,10 @@ async function refreshAnimeList(force = false) {
   const meta = getMeta("anime-lists");
   const have = fs.existsSync(ANIMELIST_FILE);
   if (have && !force && Date.now() - (meta?.fetchedAt ?? Date.now() - fileAge(ANIMELIST_FILE)) < DAY) return false;
-  const res = await fetch(ANIMELIST_URL, { headers: { "User-Agent": USER_AGENT, ...(have && meta?.etag ? { "If-None-Match": meta.etag } : {}) }, signal: AbortSignal.timeout(120_000) });
+  const res = await fetch(ANIMELIST_URL, {
+    headers: { "User-Agent": USER_AGENT, ...(have && meta?.etag ? { "If-None-Match": meta.etag } : {}) },
+    signal: AbortSignal.timeout(120_000),
+  });
   if (res.status === 304) {
     setMeta("anime-lists", { fetchedAt: Date.now(), etag: meta?.etag });
     return false;
@@ -98,7 +111,11 @@ export async function refreshMetadata(force = false) {
     loadFiles();
     invalidateIndex();
   }
-  setJob("metadata", errors.length ? "error" : "done", errors.length ? errors.join("; ") : `${anidb.size} AniDB anime, ${animeList.size} Anime-Lists entries`);
+  setJob(
+    "metadata",
+    errors.length ? "error" : "done",
+    errors.length ? errors.join("; ") : `${anidb.size} AniDB anime, ${animeList.size} Anime-Lists entries`,
+  );
   return { anidb: anidb.size, animeList: animeList.size, errors };
 }
 
@@ -123,16 +140,43 @@ export const animeListEntries = () => {
 // ---------------------------------------------------------------- alias index over the synced library
 
 export function librarySeries(): LibSeries[] {
-  const rows = cache.prepare("SELECT id, tvdb_id, title, path, series_type, original_language FROM series").all() as { id: number; tvdb_id: number; title: string; path: string; series_type: string; original_language: string | null }[];
-  const alts = cache.prepare("SELECT series_id, title, scene_season FROM alt_titles").all() as { series_id: number; title: string; scene_season: number | null }[];
+  const rows = cache.prepare("SELECT id, tvdb_id, title, path, series_type, original_language FROM series").all() as {
+    id: number;
+    tvdb_id: number;
+    title: string;
+    path: string;
+    series_type: string;
+    original_language: string | null;
+  }[];
+  const alts = cache.prepare("SELECT series_id, title, scene_season FROM alt_titles").all() as {
+    series_id: number;
+    title: string;
+    scene_season: number | null;
+  }[];
   const byId = new Map<number, LibSeries>();
-  for (const r of rows) byId.set(r.id, { seriesId: r.id, tvdbId: r.tvdb_id, title: r.title, path: r.path, seriesType: r.series_type, originalLanguage: r.original_language, altTitles: [] });
+  for (const r of rows)
+    byId.set(r.id, {
+      seriesId: r.id,
+      tvdbId: r.tvdb_id,
+      title: r.title,
+      path: r.path,
+      seriesType: r.series_type,
+      originalLanguage: r.original_language,
+      altTitles: [],
+    });
   for (const a of alts) byId.get(a.series_id)?.altTitles.push({ title: a.title, sceneSeason: a.scene_season });
   return [...byId.values()];
 }
 
 export function userAliases(): UserAlias[] {
-  return (db.prepare("SELECT title, tvdb_id, season, source FROM aliases").all() as { title: string; tvdb_id: number; season: number | null; source: "user" | "learned" }[]).map((r) => ({ title: r.title, tvdbId: r.tvdb_id, season: r.season, source: r.source }));
+  return (
+    db.prepare("SELECT title, tvdb_id, season, source FROM aliases").all() as {
+      title: string;
+      tvdb_id: number;
+      season: number | null;
+      source: "user" | "learned";
+    }[]
+  ).map((r) => ({ title: r.title, tvdbId: r.tvdb_id, season: r.season, source: r.source }));
 }
 
 export function invalidateIndex() {

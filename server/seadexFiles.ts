@@ -11,7 +11,13 @@ import { seadexForSeason } from "./seadex.js";
 export const releaseOf = (f: { path: string; scene_name: string | null }) => {
   if (f.scene_name?.trim()) return f.scene_name.trim();
   const meta = db.prepare("SELECT scene_name FROM file_meta WHERE path = ?").get(f.path) as { scene_name: string | null } | undefined;
-  return meta?.scene_name?.trim() || f.path.split("/").pop()!.replace(/\.[a-z0-9]{2,4}$/i, "");
+  return (
+    meta?.scene_name?.trim() ||
+    f.path
+      .split("/")
+      .pop()!
+      .replace(/\.[a-z0-9]{2,4}$/i, "")
+  );
 };
 
 /** How a season's files compare to SeaDex's picks (null: SeaDex has no picks for it, or the season has no files). */
@@ -20,7 +26,11 @@ export function seasonComparison(tvdbId: number, season: number): SeadexComparis
   if (!series) return null;
   const entry = seadexForSeason(tvdbId, season);
   if (!entry) return null;
-  const rows = cache.prepare("SELECT f.path, f.scene_name FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? AND e.has_file = 1").all(series.id, season) as { path: string; scene_name: string | null }[];
+  const rows = cache
+    .prepare(
+      "SELECT f.path, f.scene_name FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? AND e.has_file = 1",
+    )
+    .all(series.id, season) as { path: string; scene_name: string | null }[];
   return compareToSeadex(rows.map(releaseOf), entry, profileFor(tvdbId).watchMode);
 }
 

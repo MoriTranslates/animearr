@@ -32,7 +32,11 @@ function hextets(ip: string): number[] | null {
 }
 
 export function blockedOutboundHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "").replace(/\.$/, "");
+  const h = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/%.*$/, "")
+    .replace(/\.$/, "");
   if (METADATA_NAMES.has(h)) return true;
   if (net.isIPv4(h)) return v4Blocked(h);
   if (!net.isIPv6(h)) return false;

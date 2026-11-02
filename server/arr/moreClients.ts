@@ -9,7 +9,9 @@ import type { ClientFile, ClientStatus, OwnTorrent } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
 const mapPath = (p: string, c: ClientCfg) => {
-  for (const m of c.pathMappings ?? []) if (m.from && (p === m.from || p.startsWith(`${m.from.replace(/\/+$/, "")}/`))) return m.to.replace(/\/+$/, "") + p.slice(m.from.replace(/\/+$/, "").length);
+  for (const m of c.pathMappings ?? [])
+    if (m.from && (p === m.from || p.startsWith(`${m.from.replace(/\/+$/, "")}/`)))
+      return m.to.replace(/\/+$/, "") + p.slice(m.from.replace(/\/+$/, "").length);
   return p;
 };
 
@@ -21,7 +23,10 @@ async function nzbget<T>(c: ClientCfg, method: string, params: unknown[] = []): 
   try {
     res = await fetch(`${trim(c.url)}/jsonrpc`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}),
+      },
       body: JSON.stringify({ method, params, id: 1 }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -43,18 +48,38 @@ export const nzbgetDriver = {
     return { version, categoryExists: cats.includes(c.category), categories: cats };
   },
   async add(c: ClientCfg, data: Buffer, name: string) {
-    const id = await nzbget<number>(c, "append", [`${name.replace(/[\\/:*?"<>|]/g, "_")}.nzb`, data.toString("base64"), c.category, 0, false, false, "", 0, "SCORE", []]);
+    const id = await nzbget<number>(c, "append", [
+      `${name.replace(/[\\/:*?"<>|]/g, "_")}.nzb`,
+      data.toString("base64"),
+      c.category,
+      0,
+      false,
+      false,
+      "",
+      0,
+      "SCORE",
+      [],
+    ]);
     if (!id || id <= 0) throw new Error(`${c.name} did not accept the NZB`);
     return String(id);
   },
   async status(c: ClientCfg, ref: string): Promise<ClientStatus> {
     const id = Number(ref);
-    const groups = await nzbget<{ NZBID: number; Status: string; FileSizeMB: number; RemainingSizeMB: number; DownloadRate?: number }[]>(c, "listgroups", [0]);
+    const groups = await nzbget<{ NZBID: number; Status: string; FileSizeMB: number; RemainingSizeMB: number; DownloadRate?: number }[]>(
+      c,
+      "listgroups",
+      [0],
+    );
     const g = groups.find((x) => x.NZBID === id);
     if (g) {
       const progress = g.FileSizeMB ? Math.max(0, Math.min(1, 1 - g.RemainingSizeMB / g.FileSizeMB)) : 0;
       const busy = /^(PP_|LOADING_PARS|VERIFYING|REPAIRING|UNPACKING|MOVING|EXECUTING|RENAMING)/.test(g.Status);
-      return { state: /QUEUED|PAUSED/.test(g.Status) ? "queued" : busy ? "queued" : "downloading", progress: busy ? 0.99 : progress, sizeBytes: g.FileSizeMB * 1024 * 1024, clientStatus: g.Status };
+      return {
+        state: /QUEUED|PAUSED/.test(g.Status) ? "queued" : busy ? "queued" : "downloading",
+        progress: busy ? 0.99 : progress,
+        sizeBytes: g.FileSizeMB * 1024 * 1024,
+        clientStatus: g.Status,
+      };
     }
     const hist = await nzbget<{ NZBID: number; Status: string; DestDir: string; FinalDir?: string }[]>(c, "history", [false]);
     const h = hist.find((x) => x.NZBID === id);
@@ -66,7 +91,9 @@ export const nzbgetDriver = {
   },
   /** A finished job in NZBGet's history: its category (ownership), outcome and where its files are (AnimeArr's path view). Read-only. */
   async job(c: ClientCfg, ref: string): Promise<{ category: string; status: string; dir: string } | null> {
-    const hist = await nzbget<{ NZBID: number; Status: string; Category: string; DestDir: string; FinalDir?: string }[]>(c, "history", [false]);
+    const hist = await nzbget<{ NZBID: number; Status: string; Category: string; DestDir: string; FinalDir?: string }[]>(c, "history", [
+      false,
+    ]);
     const h = hist.find((x) => x.NZBID === Number(ref));
     return h ? { category: h.Category, status: h.Status, dir: mapPath(h.FinalDir || h.DestDir, c) } : null;
   },
@@ -75,14 +102,16 @@ export const nzbgetDriver = {
     const groups = await nzbget<{ NZBID: number; Category: string }[]>(c, "listgroups", [0]);
     const g = groups.find((x) => x.NZBID === id);
     if (g) {
-      if (g.Category !== c.category) throw new Error(`that ${c.name} job is in category "${g.Category}", not "${c.category}"; leaving it alone`);
+      if (g.Category !== c.category)
+        throw new Error(`that ${c.name} job is in category "${g.Category}", not "${c.category}"; leaving it alone`);
       await nzbget(c, "editqueue", ["GroupFinalDelete", "", [id]]);
       return;
     }
     const hist = await nzbget<{ NZBID: number; Category: string }[]>(c, "history", [false]);
     const h = hist.find((x) => x.NZBID === id);
     if (!h) return;
-    if (h.Category !== c.category) throw new Error(`that ${c.name} job is in category "${h.Category}", not "${c.category}"; leaving it alone`);
+    if (h.Category !== c.category)
+      throw new Error(`that ${c.name} job is in category "${h.Category}", not "${c.category}"; leaving it alone`);
     await nzbget(c, "editqueue", ["HistoryFinalDelete", "", [id]]);
   },
 };
@@ -98,7 +127,11 @@ async function transmission<T>(c: ClientCfg, method: string, args: Record<string
   const call = () =>
     fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(sessions.get(url) ? { "X-Transmission-Session-Id": sessions.get(url)! } : {}), ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessions.get(url) ? { "X-Transmission-Session-Id": sessions.get(url)! } : {}),
+        ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}),
+      },
       body: JSON.stringify({ method, arguments: args }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -119,18 +152,58 @@ async function transmission<T>(c: ClientCfg, method: string, args: Record<string
   return j.arguments;
 }
 
-interface TrTorrent { hashString: string; name: string; percentDone: number; status: number; downloadDir: string; eta: number; rateDownload: number; totalSize: number; peersSendingToUs: number; error: number; errorString: string; labels?: string[]; uploadRatio?: number; secondsSeeding?: number; doneDate?: number }
-const TR_FIELDS = ["hashString", "name", "percentDone", "status", "downloadDir", "eta", "rateDownload", "totalSize", "peersSendingToUs", "error", "errorString", "labels", "uploadRatio", "secondsSeeding", "doneDate"];
-const ours = (t: TrTorrent, c: ClientCfg) => (t.labels ?? []).includes(c.category) || t.downloadDir.replace(/\/+$/, "").endsWith(`/${c.category}`);
+interface TrTorrent {
+  hashString: string;
+  name: string;
+  percentDone: number;
+  status: number;
+  downloadDir: string;
+  eta: number;
+  rateDownload: number;
+  totalSize: number;
+  peersSendingToUs: number;
+  error: number;
+  errorString: string;
+  labels?: string[];
+  uploadRatio?: number;
+  secondsSeeding?: number;
+  doneDate?: number;
+}
+const TR_FIELDS = [
+  "hashString",
+  "name",
+  "percentDone",
+  "status",
+  "downloadDir",
+  "eta",
+  "rateDownload",
+  "totalSize",
+  "peersSendingToUs",
+  "error",
+  "errorString",
+  "labels",
+  "uploadRatio",
+  "secondsSeeding",
+  "doneDate",
+];
+const ours = (t: TrTorrent, c: ClientCfg) =>
+  (t.labels ?? []).includes(c.category) || t.downloadDir.replace(/\/+$/, "").endsWith(`/${c.category}`);
 
 export const transmissionDriver = {
   async test(c: ClientCfg) {
     const s = await transmission<{ version: string; "download-dir": string }>(c, "session-get", { fields: ["version", "download-dir"] });
     return { version: s.version, categoryExists: true, categories: [] as string[], downloadDir: s["download-dir"] };
   },
-  async add(c: ClientCfg, src: { data?: Buffer; magnet?: string }, opts: { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean } = {}): Promise<{ ref: string; paused?: boolean; select?: boolean }> {
+  async add(
+    c: ClientCfg,
+    src: { data?: Buffer; magnet?: string },
+    opts: { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean } = {},
+  ): Promise<{ ref: string; paused?: boolean; select?: boolean }> {
     const s = await transmission<{ "download-dir": string }>(c, "session-get", { fields: ["download-dir"] });
-    const args: Record<string, unknown> = { "download-dir": `${s["download-dir"].replace(/\/+$/, "")}/${c.category}`, labels: [c.category] };
+    const args: Record<string, unknown> = {
+      "download-dir": `${s["download-dir"].replace(/\/+$/, "")}/${c.category}`,
+      labels: [c.category],
+    };
     if (src.magnet) args.filename = src.magnet;
     else if (src.data) args.metainfo = src.data.toString("base64");
     else throw new Error(`Nothing to send to ${c.name}`);
@@ -138,25 +211,38 @@ export const transmissionDriver = {
     // its metadata, so a magnet runs and its unwanted files are skipped as soon as they are listed.
     const paused = !!opts.paused && !src.magnet;
     if (paused) args.paused = true;
-    const r = await transmission<{ "torrent-added"?: { hashString: string }; "torrent-duplicate"?: { hashString: string } }>(c, "torrent-add", args);
+    const r = await transmission<{ "torrent-added"?: { hashString: string }; "torrent-duplicate"?: { hashString: string } }>(
+      c,
+      "torrent-add",
+      args,
+    );
     const hash = r["torrent-added"]?.hashString ?? r["torrent-duplicate"]?.hashString;
     if (!hash) throw new Error(`${c.name} accepted the torrent but returned no hash`);
     // Transmission has a ratio limit but no "seed for N minutes" (only an idle limit): the ratio applies here.
-    if (opts.seedRatio != null) await transmission(c, "torrent-set", { ids: [hash], seedRatioLimit: opts.seedRatio, seedRatioMode: 1 }).catch(() => undefined);
+    if (opts.seedRatio != null)
+      await transmission(c, "torrent-set", { ids: [hash], seedRatioLimit: opts.seedRatio, seedRatioMode: 1 }).catch(() => undefined);
     // A duplicate was already in Transmission: its files are left as they are.
     const fresh = !!r["torrent-added"];
     return { ref: hash.toLowerCase(), ...(opts.paused && fresh ? { select: true, paused } : {}) };
   },
   /** The torrent's files (index = position); null until a magnet has its metadata. */
   async listFiles(c: ClientCfg, ref: string): Promise<ClientFile[] | null> {
-    const r = await transmission<{ torrents: { files?: { name: string; length: number }[]; metadataPercentComplete?: number }[] }>(c, "torrent-get", { ids: [ref], fields: ["files", "metadataPercentComplete"] });
+    const r = await transmission<{ torrents: { files?: { name: string; length: number }[]; metadataPercentComplete?: number }[] }>(
+      c,
+      "torrent-get",
+      { ids: [ref], fields: ["files", "metadataPercentComplete"] },
+    );
     const t = r.torrents[0];
     if (!t) throw new Error(`the torrent is no longer in ${c.name}`);
     if ((t.metadataPercentComplete ?? 1) < 1 || !t.files?.length) return null;
     return t.files.map((f, i) => ({ index: i, name: f.name, size: f.length }));
   },
   async selectFiles(c: ClientCfg, ref: string, wanted: number[], skipped: number[]) {
-    await transmission(c, "torrent-set", { ids: [ref], ...(skipped.length ? { "files-unwanted": skipped } : {}), ...(wanted.length ? { "files-wanted": wanted } : {}) });
+    await transmission(c, "torrent-set", {
+      ids: [ref],
+      ...(skipped.length ? { "files-unwanted": skipped } : {}),
+      ...(wanted.length ? { "files-wanted": wanted } : {}),
+    });
   },
   async start(c: ClientCfg, ref: string) {
     await transmission(c, "torrent-start", { ids: [ref] });
@@ -165,10 +251,17 @@ export const transmissionDriver = {
     const r = await transmission<{ torrents: TrTorrent[] }>(c, "torrent-get", { ids: [ref], fields: TR_FIELDS });
     const t = r.torrents[0];
     if (!t) return { state: "missing", progress: 0 };
-    const live = { etaSec: t.eta >= 0 ? t.eta : null, speed: t.rateDownload, sizeBytes: t.totalSize, clientStatus: String(t.status), seeders: t.peersSendingToUs };
+    const live = {
+      etaSec: t.eta >= 0 ? t.eta : null,
+      speed: t.rateDownload,
+      sizeBytes: t.totalSize,
+      clientStatus: String(t.status),
+      seeders: t.peersSendingToUs,
+    };
     // 1/2 are tracker warnings/errors (routine); 3 is a local error (disk, permissions) that needs a look.
     if (t.error === 3) return { state: "error", progress: t.percentDone, message: `${c.name}: ${t.errorString}`, ...live };
-    if (t.percentDone >= 1) return { state: "completed", progress: 1, path: mapPath(`${t.downloadDir.replace(/\/+$/, "")}/${t.name}`, c), ...live };
+    if (t.percentDone >= 1)
+      return { state: "completed", progress: 1, path: mapPath(`${t.downloadDir.replace(/\/+$/, "")}/${t.name}`, c), ...live };
     return { state: t.status === 4 ? "downloading" : "queued", progress: t.percentDone, ...live };
   },
   /** One torrent as the clean-up needs it (same shape as qBittorrent's), and whether it is AnimeArr's own (label/folder). Read-only. */

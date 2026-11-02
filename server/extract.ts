@@ -71,7 +71,12 @@ const sizeOf = (f: string) => {
   }
 };
 
-interface RunError extends Error { code?: string | number; killed?: boolean; stderr?: string; stdout?: string }
+interface RunError extends Error {
+  code?: string | number;
+  killed?: boolean;
+  stderr?: string;
+  stdout?: string;
+}
 function run(tool: string, args: string[], timeoutMs: number) {
   return new Promise<string>((resolve, reject) => {
     execFile(tool, args, { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
@@ -82,7 +87,8 @@ function run(tool: string, args: string[], timeoutMs: number) {
 }
 
 const PW = "-pANIMEARR-NO-PASSWORD"; // an encrypted archive fails at once instead of waiting for input
-const ourSide = (msg: string) => /space|ENOSPC|memory|Unsupported|Can ?not open the file as archive|Permission denied|EACCES|EROFS/i.test(msg);
+const ourSide = (msg: string) =>
+  /space|ENOSPC|memory|Unsupported|Can ?not open the file as archive|Permission denied|EACCES|EROFS/i.test(msg);
 
 async function unpackAll(localDir: string, archives: string[], tmp: string, tool: string, timeoutMs: number): Promise<ExtractOutcome> {
   // List first: total size must fit (and not look like an archive bomb).
@@ -96,16 +102,32 @@ async function unpackAll(localDir: string, archives: string[], tmp: string, tool
       if (err.code === "ENOENT") return { kind: "unavailable", why: `the 7-Zip program (${tool}) isn't installed` };
       const msg = `${err.stderr ?? ""}\n${err.stdout ?? ""}\n${err.message}`;
       if (/wrong password|encrypted/i.test(msg)) return { kind: "broken", why: `${path.basename(a)} is password-protected` };
-      if (/\.rar$/i.test(a) && /Unsupported|Can ?not open/i.test(msg)) return { kind: "unavailable", why: "this 7-Zip can't read RAR archives (Alpine's 7-Zip has no RAR codec); unpack it by hand, or see the extraction note in Settings" };
-      if (ourSide(msg)) return { kind: "unavailable", why: `couldn't read ${path.basename(a)} (${msg.trim().split("\n").find((l) => l.trim())})` };
+      if (/\.rar$/i.test(a) && /Unsupported|Can ?not open/i.test(msg))
+        return {
+          kind: "unavailable",
+          why: "this 7-Zip can't read RAR archives (Alpine's 7-Zip has no RAR codec); unpack it by hand, or see the extraction note in Settings",
+        };
+      if (ourSide(msg))
+        return {
+          kind: "unavailable",
+          why: `couldn't read ${path.basename(a)} (${msg
+            .trim()
+            .split("\n")
+            .find((l) => l.trim())})`,
+        };
       return { kind: "broken", why: `${path.basename(a)} is damaged or not an archive` };
     }
   }
   const packed = archives.reduce((n, a) => n + sizeOf(path.resolve(localDir, a)), 0);
-  if (packed && total > Math.max(packed * 20, 2e9)) return { kind: "broken", why: `the archives would unpack to ${(total / 1e9).toFixed(1)} GB from ${(packed / 1e9).toFixed(1)} GB (looks like an archive bomb)` };
+  if (packed && total > Math.max(packed * 20, 2e9))
+    return {
+      kind: "broken",
+      why: `the archives would unpack to ${(total / 1e9).toFixed(1)} GB from ${(packed / 1e9).toFixed(1)} GB (looks like an archive bomb)`,
+    };
   try {
     const st = fs.statfsSync(localDir);
-    if (total > st.bavail * st.bsize) return { kind: "unavailable", why: `not enough free space to unpack (${(total / 1e9).toFixed(1)} GB needed)` };
+    if (total > st.bavail * st.bsize)
+      return { kind: "unavailable", why: `not enough free space to unpack (${(total / 1e9).toFixed(1)} GB needed)` };
   } catch {
     /* statfs unsupported: carry on */
   }
@@ -125,10 +147,27 @@ async function unpackAll(localDir: string, archives: string[], tmp: string, tool
       const produced = walk(out).files.some((f) => VIDEO.test(f));
       if (err.code === 1 && produced) continue; // exit 1 = warnings only (e.g. data after the end of the archive)
       if (err.code === "ENOENT") return { kind: "unavailable", why: `the 7-Zip program (${tool}) isn't installed` };
-      if (err.killed) return { kind: "unavailable", why: `unpacking ${path.basename(a)} took longer than ${Math.round(timeoutMs / 60_000)} min` };
+      if (err.killed)
+        return { kind: "unavailable", why: `unpacking ${path.basename(a)} took longer than ${Math.round(timeoutMs / 60_000)} min` };
       if (/wrong password|encrypted/i.test(msg)) return { kind: "broken", why: `${path.basename(a)} is password-protected` };
-      if (ourSide(msg)) return { kind: "unavailable", why: `couldn't unpack ${path.basename(a)} (${msg.trim().split("\n").find((l) => l.trim())})` };
-      return { kind: "broken", why: `couldn't unpack ${path.basename(a)}: ${msg.trim().split("\n").find((l) => /error/i.test(l))?.trim() ?? "damaged archive"}` };
+      if (ourSide(msg))
+        return {
+          kind: "unavailable",
+          why: `couldn't unpack ${path.basename(a)} (${msg
+            .trim()
+            .split("\n")
+            .find((l) => l.trim())})`,
+        };
+      return {
+        kind: "broken",
+        why: `couldn't unpack ${path.basename(a)}: ${
+          msg
+            .trim()
+            .split("\n")
+            .find((l) => /error/i.test(l))
+            ?.trim() ?? "damaged archive"
+        }`,
+      };
     }
   }
   const res = walk(tmp, 6);
@@ -145,10 +184,17 @@ const results = new Map<string, ExtractOutcome>();
  * unpacking in the background, then the outcome (once). A finished unpack (renamed into place) is reused, so "Retry
  * import" doesn't unpack twice; a leftover `.tmp` (restart mid-unpack) is discarded and redone.
  */
-export function extractIfNeeded(localDir: string, key: string, opts: { tool?: string; timeoutMs?: number; only?: string[] } = {}): Promise<ExtractOutcome> | ExtractOutcome {
+export function extractIfNeeded(
+  localDir: string,
+  key: string,
+  opts: { tool?: string; timeoutMs?: number; only?: string[] } = {},
+): Promise<ExtractOutcome> | ExtractOutcome {
   const dest = path.join(localDir, UNPACK_DIR, key);
   const tmp = `${dest}.tmp`;
-  const relFiles = (dir: string) => walk(dir, 6).files.filter((f) => VIDEO.test(f)).map((f) => path.posix.join(UNPACK_DIR, key, f));
+  const relFiles = (dir: string) =>
+    walk(dir, 6)
+      .files.filter((f) => VIDEO.test(f))
+      .map((f) => path.posix.join(UNPACK_DIR, key, f));
   const done = results.get(dest);
   if (done) {
     results.delete(dest);
@@ -161,7 +207,8 @@ export function extractIfNeeded(localDir: string, key: string, opts: { tool?: st
   }
   // `only`: a single-file torrent that is itself an archive (its folder is the shared category folder).
   const all = opts.only ?? walk(localDir).files.filter((f) => !f.startsWith(`${UNPACK_DIR}/`));
-  if (!opts.only && all.some((f) => VIDEO.test(f) && !/\bsample\b/i.test(f) && sizeOf(path.join(localDir, f)) > MIN_VIDEO)) return { kind: "none" };
+  if (!opts.only && all.some((f) => VIDEO.test(f) && !/\bsample\b/i.test(f) && sizeOf(path.join(localDir, f)) > MIN_VIDEO))
+    return { kind: "none" };
   const archives = firstVolumes(all);
   if (!archives.length) return { kind: "none" };
   fs.rmSync(tmp, { recursive: true, force: true });

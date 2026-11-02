@@ -88,11 +88,25 @@ export function ChangeDefaultLogin({ onDone, onLater }: { onDone: () => void; on
         </label>
         <label>
           {t("security.new")}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
         </label>
         <label>
           {t("security.confirm")}
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" minLength={8} required />
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
         </label>
       </div>
       {error && (

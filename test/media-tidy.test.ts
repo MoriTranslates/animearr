@@ -20,8 +20,14 @@ const aired = Date.UTC(2025, 2, 14, 15, 30);
 
 before(() => {
   patchSettings((s) => ({ ...s, allowedRoots: [posix(lib)] }));
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (70, 900001, 'Tidy Show', ?, 0, 0)").run(`${posix(lib)}/Tidy Show`);
-  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, air_utc) VALUES (7001, 70, 1, 1, 1, 0, ?), (7002, 70, 1, 2, 1, 0, ?), (7003, 70, 1, 3, 1, 0, NULL), (7004, 70, 1, 4, 1, 0, ?)").run(aired, aired + 7 * DAY, Date.now() + 30 * DAY);
+  cache
+    .prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (70, 900001, 'Tidy Show', ?, 0, 0)")
+    .run(`${posix(lib)}/Tidy Show`);
+  cache
+    .prepare(
+      "INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, air_utc) VALUES (7001, 70, 1, 1, 1, 0, ?), (7002, 70, 1, 2, 1, 0, ?), (7003, 70, 1, 3, 1, 0, NULL), (7004, 70, 1, 4, 1, 0, ?)",
+    )
+    .run(aired, aired + 7 * DAY, Date.now() + 30 * DAY);
 });
 
 test("file date: none leaves the file alone; UTC uses the air time; local uses the day; no date or a future date does nothing", () => {

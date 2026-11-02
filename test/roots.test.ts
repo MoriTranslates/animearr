@@ -12,11 +12,26 @@ const { rootRefusal, hiddenInBrowser } = await import("../server/roots.js");
 const { getSettings, patchSettings, updateSettings } = await import("../server/settings.js");
 
 test("refuses /config, the app data folder, system folders and CD/USB placeholders", () => {
-  for (const bad of ["/config", "/config/", "/config/Anime", "/", "/proc", "/etc/x", "/usr/share", "/tmp/anime", "/home", "/media/cdrom", "/mnt/usb0", "relative/path"]) assert.ok(rootRefusal(bad, "/config"), bad);
+  for (const bad of [
+    "/config",
+    "/config/",
+    "/config/Anime",
+    "/",
+    "/proc",
+    "/etc/x",
+    "/usr/share",
+    "/tmp/anime",
+    "/home",
+    "/media/cdrom",
+    "/mnt/usb0",
+    "relative/path",
+  ])
+    assert.ok(rootRefusal(bad, "/config"), bad);
   assert.match(rootRefusal("/config", "/config")!, /AnimeArr's own data folder/);
   assert.match(rootRefusal("/appdata/animearr/x", "/appdata/animearr")!, /own data folder/);
   assert.match(rootRefusal("/appdata", "/appdata/animearr")!, /own data folder/, "a folder that contains the app data");
-  for (const ok of ["/media/Anime", "/data/media/anime", "/mnt/disk1/Anime", "/home/me/Anime", "/srv/media/anime"]) assert.equal(rootRefusal(ok, "/config"), null, ok);
+  for (const ok of ["/media/Anime", "/data/media/anime", "/mnt/disk1/Anime", "/home/me/Anime", "/srv/media/anime"])
+    assert.equal(rootRefusal(ok, "/config"), null, ok);
 });
 
 test("the folder browser hides system folders at / and CD/floppy/USB placeholders", () => {

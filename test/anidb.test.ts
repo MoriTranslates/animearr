@@ -23,7 +23,10 @@ const XML = `<?xml version="1.0"?><anime id="1" restricted="false"><type>TV Seri
 test("parses episodes: types, numbers, titles in three languages, lengths, air dates", () => {
   const a = parseAnime(XML, 1);
   assert.equal(a.episodes.length, 4);
-  assert.deepEqual(a.episodes.map((e) => `${e.type}:${e.number}`), ["regular:1", "special:1", "credit:1", "trailer:1"]);
+  assert.deepEqual(
+    a.episodes.map((e) => `${e.type}:${e.number}`),
+    ["regular:1", "special:1", "credit:1", "trailer:1"],
+  );
   assert.equal(a.episodes[0].titleEn, "Arrival & Departure");
   assert.equal(a.episodes[0].titleJa, "登場");
   assert.equal(a.episodes[0].length, 25);
@@ -62,7 +65,7 @@ test("rolling budgets from the persisted log: 30 an hour, 200 a day; probation a
   let st = anidbStatus(now);
   assert.deepEqual([st.lastHour, st.capped], [30, true]);
   let calls = 0;
-  const f = (async () => (calls++, new Response("<anime id=\"5\"></anime>"))) as unknown as typeof fetch;
+  const f = (async () => (calls++, new Response('<anime id="5"></anime>'))) as unknown as typeof fetch;
   await assert.rejects(fetchAnime(5, { fetch: f }), /budget/);
   assert.equal(calls, 0, "no request over the hourly budget");
   // An hour later the hourly budget is back, the day still counts.

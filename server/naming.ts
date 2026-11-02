@@ -17,7 +17,11 @@
 export type ColonMode = "delete" | "dash" | "spaceDash" | "spaceDashSpace" | "smart";
 export type MultiStyle = "extend" | "duplicate" | "repeat" | "scene" | "range" | "prefixedRange";
 
-export interface NamingOptions { replaceIllegalCharacters: boolean; colonReplacement: ColonMode; multiEpisodeStyle: MultiStyle }
+export interface NamingOptions {
+  replaceIllegalCharacters: boolean;
+  colonReplacement: ColonMode;
+  multiEpisodeStyle: MultiStyle;
+}
 
 export interface MediaInfoCtx {
   videoCodec?: string | null;
@@ -58,16 +62,42 @@ export interface MovieCtx {
   originalFilename?: string | null;
 }
 
-const pad = (n: number | null | undefined, fmt: string | undefined) => (n === null || n === undefined ? "" : fmt ? String(n).padStart(fmt.length, "0") : String(n));
-const cleanTitle = (t: string) => t.replace(/[^\p{L}\p{N}\s.-]+/gu, "").replace(/\s+/g, " ").trim();
+const pad = (n: number | null | undefined, fmt: string | undefined) =>
+  n === null || n === undefined ? "" : fmt ? String(n).padStart(fmt.length, "0") : String(n);
+const cleanTitle = (t: string) =>
+  t
+    .replace(/[^\p{L}\p{N}\s.-]+/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
 const titleThe = (t: string) => {
   const m = /^(The|A|An)\s+(.+)$/i.exec(t);
   return m ? `${m[2]}, ${m[1]}` : t;
 };
 const withYear = (t: string, y?: number | null) => (y && !/\(\d{4}\)$/.test(t) ? `${t} (${y})` : t);
 
-const VIDEO: Record<string, string> = { h264: "x264", avc: "x264", hevc: "x265", h265: "x265", av1: "AV1", mpeg2video: "MPEG2", vc1: "VC1", vp9: "VP9" };
-const AUDIO: Record<string, string> = { aac: "AAC", flac: "FLAC", dts: "DTS", truehd: "TrueHD", eac3: "EAC3", ac3: "AC3", opus: "Opus", mp3: "MP3", vorbis: "Vorbis", pcm_s16le: "PCM", pcm_s24le: "PCM" };
+const VIDEO: Record<string, string> = {
+  h264: "x264",
+  avc: "x264",
+  hevc: "x265",
+  h265: "x265",
+  av1: "AV1",
+  mpeg2video: "MPEG2",
+  vc1: "VC1",
+  vp9: "VP9",
+};
+const AUDIO: Record<string, string> = {
+  aac: "AAC",
+  flac: "FLAC",
+  dts: "DTS",
+  truehd: "TrueHD",
+  eac3: "EAC3",
+  ac3: "AC3",
+  opus: "Opus",
+  mp3: "MP3",
+  vorbis: "Vorbis",
+  pcm_s16le: "PCM",
+  pcm_s24le: "PCM",
+};
 const langs = (l?: string[]) => {
   const u = [...new Set((l ?? []).map((x) => x.split("-")[0].toUpperCase()))].filter(Boolean);
   return u.length ? `[${u.join("+")}]` : "";
@@ -76,9 +106,22 @@ const langs = (l?: string[]) => {
 function mediaTokens(m: MediaInfoCtx = {}) {
   const v = m.videoCodec ? (VIDEO[m.videoCodec.toLowerCase()] ?? m.videoCodec.toUpperCase()) : "";
   const a = m.audioCodec ? (AUDIO[m.audioCodec.toLowerCase()] ?? m.audioCodec.toUpperCase()) : "";
-  const ch = m.audioChannels ? (m.audioChannels === 6 ? "5.1" : m.audioChannels === 8 ? "7.1" : m.audioChannels === 2 ? "2.0" : m.audioChannels === 1 ? "1.0" : String(m.audioChannels)) : "";
+  const ch = m.audioChannels
+    ? m.audioChannels === 6
+      ? "5.1"
+      : m.audioChannels === 8
+        ? "7.1"
+        : m.audioChannels === 2
+          ? "2.0"
+          : m.audioChannels === 1
+            ? "1.0"
+            : String(m.audioChannels)
+    : "";
   // Like Sonarr: audio languages only when there's more than English.
-  const audioL = (m.audioLanguages ?? []).length && !(m.audioLanguages!.length === 1 && m.audioLanguages![0].startsWith("en")) ? langs(m.audioLanguages) : "";
+  const audioL =
+    (m.audioLanguages ?? []).length && !(m.audioLanguages!.length === 1 && m.audioLanguages![0].startsWith("en"))
+      ? langs(m.audioLanguages)
+      : "";
   return {
     "mediainfo videocodec": v,
     "mediainfo videobitdepth": m.videoBitDepth ? String(m.videoBitDepth) : "",
@@ -117,7 +160,9 @@ export function render(format: string, values: Record<string, string>, opts: Nam
     return v ? `\u0002${pre}${v}${post}\u0003` : "";
   });
   const out = nested.replace(/\{([^{}]*?)\}/g, (_whole, inner: string) => token(inner));
-  return cleanName(out, opts).replace(/\u0002/g, "{").replace(/\u0003/g, "}");
+  return cleanName(out, opts)
+    .replace(/\u0002/g, "{")
+    .replace(/\u0003/g, "}");
 }
 
 /** Colons and illegal characters like Sonarr's settings. */
@@ -128,7 +173,12 @@ function fixChars(s: string, opts: NamingOptions) {
   if (opts.colonReplacement === "smart") x = x.replace(/\s*:\s+/g, " - ").replace(/:/g, "-");
   else x = x.replace(/:/g, colon);
   // Sonarr's replacements: \ / → +, ? → !, * → -, < > | " removed.
-  if (opts.replaceIllegalCharacters) x = x.replace(/[\\/]/g, "+").replace(/\?/g, "!").replace(/\*/g, "-").replace(/["<>|]/g, "");
+  if (opts.replaceIllegalCharacters)
+    x = x
+      .replace(/[\\/]/g, "+")
+      .replace(/\?/g, "!")
+      .replace(/\*/g, "-")
+      .replace(/["<>|]/g, "");
   else x = x.replace(/[\\/:*?"<>|]/g, "");
   return x;
 }
@@ -139,7 +189,8 @@ export function cleanName(s: string, opts: NamingOptions) {
   x = x
     .replace(/\[\s*\]|\(\s*\)|\{\s*\}/g, "")
     .replace(/\.{2,}/g, ".") // Sonarr: "Mask... Again" → "Mask. Again"
-    .replace(/-{2,}/g, "-").replace(/_{2,}/g, "_") // Sonarr collapses runs of - and _
+    .replace(/-{2,}/g, "-")
+    .replace(/_{2,}/g, "_") // Sonarr collapses runs of - and _
     .replace(/\s+-\s+(-\s+)+/g, " - ")
     .replace(/[ ]{2,}/g, " ")
     .replace(/\s+([\])])/g, "$1")
@@ -188,7 +239,8 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
   const epText = episodeNumbers(format, eps, opts.multiEpisodeStyle, epFmt);
   const absText = abs.length ? (abs.length === 1 ? pad(abs[0], absFmt) : `${pad(abs[0], absFmt)}-${pad(abs[abs.length - 1], absFmt)}`) : "";
   // Duplicate (Sonarr): "S01E01 - S01E02", the season+episode pattern repeated per episode.
-  const dupe = opts.multiEpisodeStyle === "duplicate" && eps.length > 1 ? /S\{season(?::(0+))?\}E\{episode(?::(0+))?\}/i.exec(format) : null;
+  const dupe =
+    opts.multiEpisodeStyle === "duplicate" && eps.length > 1 ? /S\{season(?::(0+))?\}E\{episode(?::(0+))?\}/i.exec(format) : null;
   const f0 = dupe ? format.replace(dupe[0], "\u0001DU\u0001") : format;
   const duText = dupe ? eps.map((n) => `S${pad(c.season, dupe[1])}E${pad(n, dupe[2])}`).join(" - ") : "";
   const f = f0.replace(/\{episode(?::0+)?\}/gi, "\u0001EP\u0001").replace(/\{absolute(?::0+)?\}/gi, absText ? "\u0001AB\u0001" : "");
@@ -215,7 +267,10 @@ export function renderEpisode(format: string, c: EpisodeCtx, opts: NamingOptions
     "keep tag": c.keepTag ? "[Keep]" : "",
     ...mediaTokens(c.mediaInfo),
   };
-  return render(f, values, opts).replace(/\u0001EP\u0001/g, epText).replace(/\u0001AB\u0001/g, absText).replace(/\u0001DU\u0001/g, duText);
+  return render(f, values, opts)
+    .replace(/\u0001EP\u0001/g, epText)
+    .replace(/\u0001AB\u0001/g, absText)
+    .replace(/\u0001DU\u0001/g, duText);
 }
 
 /** The folder ID hint each media server reads to match a show (so its own title search can't pick the wrong one). */
@@ -226,8 +281,25 @@ export function serverIdHint(server: string | null | undefined, tvdbId: number |
   return "";
 }
 
-export function renderSeriesFolder(format: string, c: { seriesTitle: string; seriesYear?: number | null; tvdbId?: number | null; anidbTitle?: string | null; server?: string | null }, opts: NamingOptions) {
-  return render(format, { "server id hint": serverIdHint(c.server, c.tvdbId), "series title": c.seriesTitle, "series titleyear": withYear(c.seriesTitle, c.seriesYear), "series cleantitle": cleanTitle(c.seriesTitle), "series cleantitleyear": withYear(cleanTitle(c.seriesTitle), c.seriesYear), "series titlethe": titleThe(c.seriesTitle), "tvdbid": c.tvdbId ? String(c.tvdbId) : "", "anidb title": c.anidbTitle ?? "" }, opts);
+export function renderSeriesFolder(
+  format: string,
+  c: { seriesTitle: string; seriesYear?: number | null; tvdbId?: number | null; anidbTitle?: string | null; server?: string | null },
+  opts: NamingOptions,
+) {
+  return render(
+    format,
+    {
+      "server id hint": serverIdHint(c.server, c.tvdbId),
+      "series title": c.seriesTitle,
+      "series titleyear": withYear(c.seriesTitle, c.seriesYear),
+      "series cleantitle": cleanTitle(c.seriesTitle),
+      "series cleantitleyear": withYear(cleanTitle(c.seriesTitle), c.seriesYear),
+      "series titlethe": titleThe(c.seriesTitle),
+      tvdbid: c.tvdbId ? String(c.tvdbId) : "",
+      "anidb title": c.anidbTitle ?? "",
+    },
+    opts,
+  );
 }
 export function renderSeasonFolder(format: string, season: number, opts: NamingOptions) {
   return render(format, { "season#num": String(season) }, opts);

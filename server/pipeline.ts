@@ -22,7 +22,17 @@ import path from "node:path";
 import { logDecision } from "./activity.js";
 import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
-import { applySelection, batchLine, existingFiles, planBatch, readBatch, writeBatch, type BatchInfo, type ExistingFile, type FileMapOpts } from "./batch.js";
+import {
+  applySelection,
+  batchLine,
+  existingFiles,
+  planBatch,
+  readBatch,
+  writeBatch,
+  type BatchInfo,
+  type ExistingFile,
+  type FileMapOpts,
+} from "./batch.js";
 import { scopeFor } from "./scope.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
@@ -78,8 +88,19 @@ export const realDeps: PipelineDeps = {
   clients: realClients,
   fetchRelease: realFetchRelease,
   cleanup: (id, outcome) => import("./downloads.js").then((m) => m.cleanupGrab(id, outcome)),
-  sonarr: { preview: sonarr.manualImportPreview, importFiles: sonarr.manualImport, command: sonarr.getCommand, episode: sonarr.getEpisode, episodeFile: sonarr.getEpisodeFile },
-  radarr: { preview: radarr.radarrImportPreview, importFiles: radarr.radarrManualImport, command: radarr.getRadarrCommand, movie: radarr.getMovie },
+  sonarr: {
+    preview: sonarr.manualImportPreview,
+    importFiles: sonarr.manualImport,
+    command: sonarr.getCommand,
+    episode: sonarr.getEpisode,
+    episodeFile: sonarr.getEpisodeFile,
+  },
+  radarr: {
+    preview: radarr.radarrImportPreview,
+    importFiles: radarr.radarrManualImport,
+    command: radarr.getRadarrCommand,
+    movie: radarr.getMovie,
+  },
   probe: (f) => ffprobe(f),
   localPath: realLocalPath,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -87,7 +108,10 @@ export const realDeps: PipelineDeps = {
   extract: (dir, key, only) => extractIfNeeded(dir, key, { only }),
 };
 
-export type Candidate = Pick<SearchResult, "guid" | "title" | "indexerId" | "indexer" | "protocol" | "size" | "downloadUrl" | "magnetUrl" | "label" | "group"> & { why: string; episodeIds: number[] };
+export type Candidate = Pick<
+  SearchResult,
+  "guid" | "title" | "indexerId" | "indexer" | "protocol" | "size" | "downloadUrl" | "magnetUrl" | "label" | "group"
+> & { why: string; episodeIds: number[] };
 
 export interface GrabRequest {
   tvdbId: number;
@@ -155,7 +179,11 @@ export const STALL_MS = 6 * 3_600_000;
 export const MAX_ATTEMPTS = 3;
 
 export const setState = (id: number, state: string, error: string | null = null, extra: { client?: string; ref?: string } = {}) =>
-  db.prepare("UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?").run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id);
+  db
+    .prepare(
+      "UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?",
+    )
+    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id);
 
 function managedDryRun(tvdbId: number): boolean | null {
   const r = db.prepare("SELECT dry_run FROM managed WHERE tvdb_id = ?").get(tvdbId) as { dry_run: number } | undefined;
@@ -170,7 +198,9 @@ export function isBlocked(c: { guid: string; title: string }) {
 function scheduleAfter(episodeIds: number[], outcome: "done" | "retry", why: string) {
   const now = Date.now();
   for (const e of episodeIds)
-    db.prepare("UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'").run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
+    db.prepare(
+      "UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'",
+    ).run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
 }
 
 /** The .nzb/.torrent couldn't be fetched: the indexer's problem (health), not the release's or the episode's. */
@@ -194,14 +224,30 @@ export const FETCH_PREFIX = "Couldn't download the";
  */
 export async function fetchOrNote(deps: PipelineDeps, c: Candidate) {
   try {
-    const out = await deps.fetchRelease({ guid: c.guid, title: c.title, size: c.size, indexerId: c.indexerId, indexer: c.indexer, protocol: c.protocol, downloadUrl: c.downloadUrl, magnetUrl: c.magnetUrl });
+    const out = await deps.fetchRelease({
+      guid: c.guid,
+      title: c.title,
+      size: c.size,
+      indexerId: c.indexerId,
+      indexer: c.indexer,
+      protocol: c.protocol,
+      downloadUrl: c.downloadUrl,
+      magnetUrl: c.magnetUrl,
+    });
     recordIndexerSuccess(c.indexerId);
     return out;
   } catch (e) {
     const msg = describeFetchError(e, c.downloadUrl);
-    if (isTitleEncodingError(msg, c.title)) throw new FetchFailedError(`${FETCH_PREFIX} release: Prowlarr couldn't serve it (HTTP 500 on its non-ASCII name); trying the next one`, null);
+    if (isTitleEncodingError(msg, c.title))
+      throw new FetchFailedError(
+        `${FETCH_PREFIX} release: Prowlarr couldn't serve it (HTTP 500 on its non-ASCII name); trying the next one`,
+        null,
+      );
     recordIndexerFailure(c.indexerId, msg, Date.now(), { name: c.indexer });
-    throw new FetchFailedError(`${FETCH_PREFIX} ${c.protocol === "usenet" ? ".nzb" : ".torrent"} from ${c.indexer ?? "the indexer"}: ${msg}`, c.indexerId ?? null);
+    throw new FetchFailedError(
+      `${FETCH_PREFIX} ${c.protocol === "usenet" ? ".nzb" : ".torrent"} from ${c.indexer ?? "the indexer"}: ${msg}`,
+      c.indexerId ?? null,
+    );
   }
 }
 
@@ -225,21 +271,35 @@ export function isSeasonPack(c: Pick<Candidate, "title" | "episodeIds">) {
 }
 
 /** A grab that replaces a whole season (the user's Replace season, or the season decision's): packs only. */
-const replacesSeason = (req: Pick<GrabRequest, "purpose" | "packsOnly" | "episodeIds">) => (req.purpose === "replace" || !!req.packsOnly) && req.episodeIds.length > 1;
+const replacesSeason = (req: Pick<GrabRequest, "purpose" | "packsOnly" | "episodeIds">) =>
+  (req.purpose === "replace" || !!req.packsOnly) && req.episodeIds.length > 1;
 
 /** Starts a grab (or records what it would do in dry-run). */
-export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps): Promise<{ id: number; dryRun: boolean; message: string; failed?: boolean }> {
-  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
+export async function startGrab(
+  req: GrabRequest,
+  deps: PipelineDeps = realDeps,
+): Promise<{ id: number; dryRun: boolean; message: string; failed?: boolean }> {
+  if (dbState.corrupt)
+    throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const series = seriesByTvdb(req.tvdbId);
   if (!series) throw Object.assign(new Error("Unknown series; sync the library first"), { statusCode: 404 });
   refuseDropped(req.tvdbId); // a show the user dropped is never grabbed, whoever asks
   if (!underAllowedRoot(series.path)) {
     const roots = getSettings().allowedRoots;
-    throw Object.assign(new Error(`${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you chose in Settings → Automation & safety → Library folders.`), { statusCode: 403 });
+    throw Object.assign(
+      new Error(
+        `${series.title} is in ${path.posix.dirname(series.path)}, which is not an allowed root folder${roots.length ? ` (${roots.join(", ")})` : ""}. AnimeArr only grabs and imports for shows inside the root folders you chose in Settings → Automation & safety → Library folders.`,
+      ),
+      { statusCode: 403 },
+    );
   }
   const c = req.candidate;
-  if (replacesSeason(req) && !isSeasonPack(c)) throw Object.assign(new Error(`Replace season needs a season pack; ${c.title} is a single episode`), { statusCode: 400 });
-  const dryRun = req.origin === "manual" ? getSettings().managed.dryRun || (!!req.automatic && managedDryRun(req.tvdbId) === true) : isDryRun(managedDryRun(req.tvdbId));
+  if (replacesSeason(req) && !isSeasonPack(c))
+    throw Object.assign(new Error(`Replace season needs a season pack; ${c.title} is a single episode`), { statusCode: 400 });
+  const dryRun =
+    req.origin === "manual"
+      ? getSettings().managed.dryRun || (!!req.automatic && managedDryRun(req.tvdbId) === true)
+      : isDryRun(managedDryRun(req.tvdbId));
   // Import only what was asked for, plus episodes of the release that have no file yet: a pack must never replace
   // files the library already has (the user's rule: never delete library files).
   // S0 "episodes" that are really movies belong to Radarr: never grab them as episodes (double download).
@@ -250,13 +310,21 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   const owned = req.origin === "managed" || req.automatic ? ownedElsewhere(req.tvdbId) : new Map<number, Overlap>();
   const hit = req.episodeIds.every((id) => owned.has(id)) ? owned.get(req.episodeIds[0]) : undefined;
   if (hit) {
-    logDecision("info", { tvdbId: req.tvdbId, title: series.title, episodeIds: req.episodeIds, release: req.candidate.title, why: `Not grabbed: ${ownedWhy(hit)}` });
+    logDecision("info", {
+      tvdbId: req.tvdbId,
+      title: series.title,
+      episodeIds: req.episodeIds,
+      release: req.candidate.title,
+      why: `Not grabbed: ${ownedWhy(hit)}`,
+    });
     throw Object.assign(new Error(`${series.title}: ${ownedWhy(hit)}`), { statusCode: 409 });
   }
   const asMovie = radarrMovieSpecials(series.id);
   const all = episodesFor(req.tvdbId);
   // A pack that also contains a movie special: the special is left to Radarr (not imported as an episode).
-  let importIds = c.episodeIds.filter((id) => !asMovie.has(id) && !owned.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)));
+  let importIds = c.episodeIds.filter(
+    (id) => !asMovie.has(id) && !owned.has(id) && (req.episodeIds.includes(id) || all.some((e) => e.id === id && !e.hasFile)),
+  );
   // Smart batch: per season, only the missing episodes, or the whole season as a Replace season (batch.ts).
   let purpose = req.purpose ?? null;
   let seasonWhy: string | null = null;
@@ -266,7 +334,19 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
     const seasons = [...new Set(all.filter((e) => inBatch.includes(e.id)).map((e) => e.season))];
     const existing = new Map<number, ExistingFile[]>();
     for (const s of seasons) existing.set(s, await existingFiles(series.id, s));
-    const plan = planBatch({ seriesId: series.id, candidateEpisodeIds: c.episodeIds, baseIds: importIds, release: c.title, group: c.group ?? null, consistency: prof.groupConsistency ?? "prefer", profileResolution: prof.resolution, recycleBin: !!getSettings().media.recycleBin.trim(), propers: properMode(), exclude: new Set(asMovie.keys()), existingOf: (_sid, s) => existing.get(s) ?? [] });
+    const plan = planBatch({
+      seriesId: series.id,
+      candidateEpisodeIds: c.episodeIds,
+      baseIds: importIds,
+      release: c.title,
+      group: c.group ?? null,
+      consistency: prof.groupConsistency ?? "prefer",
+      profileResolution: prof.resolution,
+      recycleBin: !!getSettings().media.recycleBin.trim(),
+      propers: properMode(),
+      exclude: new Set(asMovie.keys()),
+      existingOf: (_sid, s) => existing.get(s) ?? [],
+    });
     importIds = plan.importIds;
     purpose = plan.purpose;
     seasonWhy = plan.why;
@@ -280,32 +360,84 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
   }
   // Never two downloads for the same episode at once (manual + scheduled, or a double click).
   if (!dryRun) {
-    const active = db.prepare(`SELECT id, episode_ids, release FROM grabs WHERE state IN (${ACTIVE.map(() => "?").join(",")})`).all(...ACTIVE) as { id: number; episode_ids: string; release: string }[];
+    const active = db
+      .prepare(`SELECT id, episode_ids, release FROM grabs WHERE state IN (${ACTIVE.map(() => "?").join(",")})`)
+      .all(...ACTIVE) as { id: number; episode_ids: string; release: string }[];
     const clash = active.find((g) => (JSON.parse(g.episode_ids) as number[]).some((x) => importIds.includes(x)));
-    if (clash) throw Object.assign(new Error(`Already downloading ${clash.release} for this episode (grab ${clash.id})`), { statusCode: 409 });
+    if (clash)
+      throw Object.assign(new Error(`Already downloading ${clash.release} for this episode (grab ${clash.id})`), { statusCode: 409 });
   }
   const eps = all.filter((e) => importIds.includes(e.id));
-  const target = eps.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")} (episode id ${e.id})`).join(", ");
+  const target = eps
+    .map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")} (episode id ${e.id})`)
+    .join(", ");
   const now = Date.now();
   // A batch that holds more than this grab wants: torrents whose client can skip files download only the wanted ones;
   // everything else downloads the whole batch, imports only the wanted files and cleans the rest after the import.
   const skippedEps = inBatch.filter((e) => !importIds.includes(e));
   const select = c.protocol === "torrent" && skippedEps.length > 0 && !!deps.clients.selectFiles;
   const batch: BatchInfo | null =
-    inBatch.length > 1 ? { mode: select ? "pending" : "whole", total: inBatch.length, wanted: importIds.length, skippedEpisodes: skippedEps, skippedFiles: 0, leftovers: skippedEps.length > 0, note: null, autoReplace: purpose === "replace" && !req.purpose, since: now } : null;
+    inBatch.length > 1
+      ? {
+          mode: select ? "pending" : "whole",
+          total: inBatch.length,
+          wanted: importIds.length,
+          skippedEpisodes: skippedEps,
+          skippedFiles: 0,
+          leftovers: skippedEps.length > 0,
+          note: null,
+          autoReplace: purpose === "replace" && !req.purpose,
+          since: now,
+        }
+      : null;
   const why = seasonWhy ? `${c.why}. ${seasonWhy}` : c.why;
   // A whole-season replace only ever falls back to another season pack (a single episode can't replace a season).
-  const fallbacks = replacesSeason({ purpose, packsOnly: req.packsOnly, episodeIds: importIds.length > 1 ? importIds : req.episodeIds }) ? req.fallbacks.filter(isSeasonPack) : req.fallbacks;
+  const fallbacks = replacesSeason({ purpose, packsOnly: req.packsOnly, episodeIds: importIds.length > 1 ? importIds : req.episodeIds })
+    ? req.fallbacks.filter(isSeasonPack)
+    : req.fallbacks;
   const ins = db
-    .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(now, now, req.tvdbId, series.id, JSON.stringify(importIds), c.title, c.guid, c.indexerId, c.protocol, dryRun ? "dry-run" : "sending", dryRun ? 1 : 0, req.origin, why, JSON.stringify(fallbacks.slice(0, 5)), req.attempt ?? 1, now, purpose, batch ? JSON.stringify(batch) : null, c.indexer ?? null);
+    .prepare(
+      "INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, indexer_id, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, purpose, batch, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      now,
+      now,
+      req.tvdbId,
+      series.id,
+      JSON.stringify(importIds),
+      c.title,
+      c.guid,
+      c.indexerId,
+      c.protocol,
+      dryRun ? "dry-run" : "sending",
+      dryRun ? 1 : 0,
+      req.origin,
+      why,
+      JSON.stringify(fallbacks.slice(0, 5)),
+      req.attempt ?? 1,
+      now,
+      purpose,
+      batch ? JSON.stringify(batch) : null,
+      c.indexer ?? null,
+    );
   const id = Number(ins.lastInsertRowid);
   const line = batchLine(batch);
   if (dryRun) {
     const msg = `would grab ${c.title} (${c.protocol}, ${c.indexer}) for ${series.title} ${c.label}: ${why}.${line ? ` ${line}.` : ""} Would import it as ${target}.`;
-    logDecision("would-grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, fallbacks: fallbacks.length } });
+    logDecision("would-grab", {
+      tvdbId: req.tvdbId,
+      title: series.title,
+      episodeIds: importIds,
+      release: c.title,
+      why: `Dry-run: ${msg}`,
+      detail: { grabId: id, fallbacks: fallbacks.length },
+    });
     // The toast says it plainly; the release, indexer and episode ids stay in the activity log.
-    return { id, dryRun: true, message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).` };
+    return {
+      id,
+      dryRun: true,
+      message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).`,
+    };
   }
   try {
     const file = await fetchOrNote(deps, c);
@@ -314,24 +446,64 @@ export async function startGrab(req: GrabRequest, deps: PipelineDeps = realDeps)
       if (!file.data) throw new Error("No NZB data");
       job = await deps.clients.addNzb(file.data, c.title);
     } else job = await deps.clients.addTorrent(file, c.title, { ...seedLimitsFor(c.indexerId), ...(select ? { paused: true } : {}) });
-    if (!db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'").run(Date.now(), job.client, job.ref, id).changes) {
+    if (
+      !db
+        .prepare(
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+        )
+        .run(Date.now(), job.client, job.ref, id).changes
+    ) {
       // Closed while it was being sent: take it back out of the client.
       await deps.clients.remove(job).catch(() => undefined);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
-    logDecision("grab", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Sent ${c.title} to ${clientName(job.client)} for ${series.title} ${c.label}: ${why}${line ? `. ${line}` : ""}`, detail: { grabId: id } });
-    if (batch && select) await selectAfterAdd(id, job, batch, deps, { tvdbId: req.tvdbId, title: series.title, release: c.title, episodeIds: importIds }, !!file.magnet);
+    logDecision("grab", {
+      tvdbId: req.tvdbId,
+      title: series.title,
+      episodeIds: importIds,
+      release: c.title,
+      why: `Sent ${c.title} to ${clientName(job.client)} for ${series.title} ${c.label}: ${why}${line ? `. ${line}` : ""}`,
+      detail: { grabId: id },
+    });
+    if (batch && select)
+      await selectAfterAdd(
+        id,
+        job,
+        batch,
+        deps,
+        { tvdbId: req.tvdbId, title: series.title, release: c.title, episodeIds: importIds },
+        !!file.magnet,
+      );
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
     setState(id, "failed", (e as Error).message);
-    logDecision("fail", { tvdbId: req.tvdbId, title: series.title, episodeIds: importIds, release: c.title, why: `Couldn't send ${c.title}: ${(e as Error).message}`, detail: { grabId: id } });
+    logDecision("fail", {
+      tvdbId: req.tvdbId,
+      title: series.title,
+      episodeIds: importIds,
+      release: c.title,
+      why: `Couldn't send ${c.title}: ${(e as Error).message}`,
+      detail: { grabId: id },
+    });
     // A fetch failure doesn't use up an attempt: the next candidate (from another indexer) gets a full try.
-    const next = await tryNext(id, { ...req, fallbacks, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
+    const next = await tryNext(
+      id,
+      { ...req, fallbacks, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) },
+      deps,
+      (e as Error).message,
+      e,
+    );
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
   }
 }
 
-async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, reason: string, cause?: unknown): Promise<Awaited<ReturnType<typeof startGrab>> | null> {
+async function tryNext(
+  grabId: number,
+  req: GrabRequest,
+  deps: PipelineDeps,
+  reason: string,
+  cause?: unknown,
+): Promise<Awaited<ReturnType<typeof startGrab>> | null> {
   const attempt = (req.attempt ?? 1) + 1;
   // Skip fallbacks that got blocklisted meanwhile (e.g. the same release cross-posted on another indexer), and those
   // from an indexer that is off or whose download link just failed.
@@ -340,22 +512,43 @@ async function tryNext(grabId: number, req: GrabRequest, deps: PipelineDeps, rea
   const [next, ...rest] = remainingFallbacks(packs ? req.fallbacks.filter(isSeasonPack) : req.fallbacks, cause);
   if (!next || attempt > MAX_ATTEMPTS) {
     const none = packs && !next ? "; no other season pack to try, so the season is left as it is" : "";
-    logDecision("skip", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : none}`, detail: { grabId } });
+    logDecision("skip", {
+      tvdbId: req.tvdbId,
+      episodeIds: req.episodeIds,
+      why: `No more candidates to try after: ${reason}${attempt > MAX_ATTEMPTS ? ` (${MAX_ATTEMPTS} attempts used)` : none}`,
+      detail: { grabId },
+    });
     scheduleAfter(req.episodeIds, "retry", `last grab failed: ${reason}`);
     return null;
   }
-  logDecision("info", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, release: next.title, why: `Trying the next candidate ${next.title} (${next.why})`, detail: { grabId } });
+  logDecision("info", {
+    tvdbId: req.tvdbId,
+    episodeIds: req.episodeIds,
+    release: next.title,
+    why: `Trying the next candidate ${next.title} (${next.why})`,
+    detail: { grabId },
+  });
   try {
     return await startGrab({ ...req, candidate: next, fallbacks: rest, attempt }, deps);
   } catch (e) {
-    logDecision("skip", { tvdbId: req.tvdbId, episodeIds: req.episodeIds, why: `Couldn't try the next candidate: ${(e as Error).message}`, detail: { grabId } });
+    logDecision("skip", {
+      tvdbId: req.tvdbId,
+      episodeIds: req.episodeIds,
+      why: `Couldn't try the next candidate: ${(e as Error).message}`,
+      detail: { grabId },
+    });
     scheduleAfter(req.episodeIds, "retry", (e as Error).message);
     return null;
   }
 }
 
 export function blocklist(row: GrabRow, reason: string) {
-  return Number(db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id, protocol, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(row.guid, row.release, row.tvdb_id, reason, Date.now(), row.movie_id ?? null, row.protocol ?? null, row.indexer ?? null).lastInsertRowid);
+  return Number(
+    db
+      .prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id, protocol, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(row.guid, row.release, row.tvdb_id, reason, Date.now(), row.movie_id ?? null, row.protocol ?? null, row.indexer ?? null)
+      .lastInsertRowid,
+  );
 }
 
 export const VIDEO = /\.(mkv|mp4|avi|m4v|ts|webm)$/i;
@@ -376,8 +569,12 @@ export const importModeFor = (client: string | null): "copy" | "move" => (isTorr
 /** After a restart: grabs caught mid-import need a look; grabs caught mid-send never reached a client. */
 export function recoverGrabs() {
   if (dbState.corrupt) return;
-  db.prepare("UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check the show folder, then retry the import' WHERE state = 'importing'").run();
-  db.prepare("UPDATE grabs SET state = 'failed', error = 'AnimeArr restarted while sending to the download client' WHERE state = 'sending' AND updated_at < ?").run(Date.now() - 10 * 60_000);
+  db.prepare(
+    "UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check the show folder, then retry the import' WHERE state = 'importing'",
+  ).run();
+  db.prepare(
+    "UPDATE grabs SET state = 'failed', error = 'AnimeArr restarted while sending to the download client' WHERE state = 'sending' AND updated_at < ?",
+  ).run(Date.now() - 10 * 60_000);
 }
 
 /** Health checks that count as separate strikes are at least this far apart (the tick itself runs every 30 s). */
@@ -385,24 +582,39 @@ export const STRIKE_GAP_MS = 10 * 60_000;
 
 /** Adds a strike (at most one per STRIKE_GAP_MS) and returns the strikes so far. */
 export function addStrike(row: GrabRow, why: string, now: number, limit: number): number {
-  const cur = (db.prepare("SELECT strikes, strike_at FROM grabs WHERE id = ?").get(row.id) as { strikes: number; strike_at: number | null } | undefined) ?? { strikes: 0, strike_at: null };
+  const cur = (db.prepare("SELECT strikes, strike_at FROM grabs WHERE id = ?").get(row.id) as
+    { strikes: number; strike_at: number | null } | undefined) ?? { strikes: 0, strike_at: null };
   if (cur.strike_at && now - cur.strike_at < STRIKE_GAP_MS) return cur.strikes;
   const n = cur.strikes + 1;
   db.prepare("UPDATE grabs SET strikes = ?, strike_at = ?, strike_why = ? WHERE id = ?").run(n, now, why, row.id);
-  if (n < limit) logDecision("info", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Strike ${n} of ${limit} for ${row.release}: ${why}. It is removed if it doesn't recover.`, detail: { grabId: row.id, strikes: n } });
+  if (n < limit)
+    logDecision("info", {
+      tvdbId: row.tvdb_id,
+      title: rowTitle(row),
+      episodeIds: JSON.parse(row.episode_ids),
+      release: row.release,
+      why: `Strike ${n} of ${limit} for ${row.release}: ${why}. It is removed if it doesn't recover.`,
+      detail: { grabId: row.id, strikes: n },
+    });
   return n;
 }
 const resetStrikes = (id: number) => db.prepare("UPDATE grabs SET strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?").run(id);
 
 /** Episodes a grab's earlier import passes already placed in the library (from its "import" activity entries). */
 function placedByGrab(grabId: number): Set<number> {
-  const rows = db.prepare("SELECT episode_ids FROM decisions WHERE kind = 'import' AND undone_at IS NULL AND json_extract(detail, '$.grabId') = ?").all(grabId) as { episode_ids: string }[];
+  const rows = db
+    .prepare("SELECT episode_ids FROM decisions WHERE kind = 'import' AND undone_at IS NULL AND json_extract(detail, '$.grabId') = ?")
+    .all(grabId) as { episode_ids: string }[];
   return new Set(rows.flatMap((r) => JSON.parse(r.episode_ids) as number[]));
 }
 
 /** The runtime (minutes) of the episode, or movie, a grab is for; null when unknown. */
 function runtimeOf(row: GrabRow): number | null {
-  if (row.movie_id) return (cache.prepare("SELECT runtime FROM movies WHERE id = ?").get(row.movie_id) as { runtime: number | null } | undefined)?.runtime ?? null;
+  if (row.movie_id)
+    return (
+      (cache.prepare("SELECT runtime FROM movies WHERE id = ?").get(row.movie_id) as { runtime: number | null } | undefined)?.runtime ??
+      null
+    );
   const wanted = JSON.parse(row.episode_ids) as number[];
   return episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.runtime ?? null;
 }
@@ -413,7 +625,10 @@ export function unsafeDownload(deps: Pick<PipelineDeps, "localPath">, row: GrabR
   if (!s.enabled) return null;
   const local = deps.localPath(arrPath);
   if (!local) return null;
-  return inspectFiles(walkFiles(local, isFolder ? (rel) => rel === UNPACK_DIR || rel.startsWith(`${UNPACK_DIR}/`) : undefined), { extensions: s.extensions, runtimeMin: runtimeOf(row) });
+  return inspectFiles(walkFiles(local, isFolder ? (rel) => rel === UNPACK_DIR || rel.startsWith(`${UNPACK_DIR}/`) : undefined), {
+    extensions: s.extensions,
+    runtimeMin: runtimeOf(row),
+  });
 }
 
 /** Grabs whose torrent file list was already checked and found fine. */
@@ -445,7 +660,15 @@ export async function rejectUnsafe(row: GrabRow, reason: string, deps: PipelineD
       removed = `; couldn't remove it from the download client (${(e as Error).message}), so delete it there by hand`;
     }
   }
-  logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `${row.release} ${reason} (found ${when}). Blocklisted it${removed}; nothing from it was imported. Looking for the next release.`, detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) }, undo: { action: "unblock", args: { id: bid, release: row.release } } });
+  logDecision("fail", {
+    tvdbId: row.tvdb_id,
+    title: rowTitle(row),
+    episodeIds: JSON.parse(row.episode_ids),
+    release: row.release,
+    why: `${row.release} ${reason} (found ${when}). Blocklisted it${removed}; nothing from it was imported. Looking for the next release.`,
+    detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) },
+    undo: { action: "unblock", args: { id: bid, release: row.release } },
+  });
   if (row.movie_id) await movieNextForRow(row, deps, reason);
   else await tryNext(row.id, rowRequest(row), deps, reason);
 }
@@ -477,18 +700,31 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
         // Waiting in the client's queue behind other downloads, paused, or post-processing isn't stalling: restart the
         // clock. After 3 days of that the Queue page says so (nothing is removed).
         if (st.state === "queued" && !noMetadata) {
-          const long = now - row.at > 3 * 86_400_000 ? `still waiting in the download client after ${Math.floor((now - row.at) / 86_400_000)} days (${st.clientStatus ?? "queued"})` : null;
-          db.prepare("UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ?, strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?").run(now, st.progress, long, row.id);
+          const long =
+            now - row.at > 3 * 86_400_000
+              ? `still waiting in the download client after ${Math.floor((now - row.at) / 86_400_000)} days (${st.clientStatus ?? "queued"})`
+              : null;
+          db.prepare(
+            "UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ?, strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?",
+          ).run(now, st.progress, long, row.id);
           continue;
         }
         if (st.state === "error") {
           // Often transient (disk full, permissions): don't blocklist or delete; the user decides on the Queue page.
-          setState(row.id, "needs-attention", `${st.message ?? "the download client reports an error"}; check the client, then retry or remove it`);
+          setState(
+            row.id,
+            "needs-attention",
+            `${st.message ?? "the download client reports an error"}; check the client, then retry or remove it`,
+          );
           continue;
         }
         // Time spent in metaDL (the queued branch keeps progress_at fresh until the torrent starts fetching metadata).
         const metadataStuck = noMetadata && now - (row.progress_at ?? row.at) > qh.metadataMin * 60_000;
-        const stalled = st.state === "downloading" && !noMetadata && now - (row.progress_at ?? row.updated_at) > stallMs && (row.progress ?? -1) >= st.progress;
+        const stalled =
+          st.state === "downloading" &&
+          !noMetadata &&
+          now - (row.progress_at ?? row.updated_at) > stallMs &&
+          (row.progress ?? -1) >= st.progress;
         const unhealthy = stalled || metadataStuck;
         // A download that recovered loses its strikes.
         if (!unhealthy && st.state !== "failed" && row.strikes) resetStrikes(row.id);
@@ -515,7 +751,15 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
               removed = `; couldn't remove it from the download client (${(e as Error).message})`;
             }
           }
-          logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `${why}; blocklisted ${row.release}${removed}`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
+          logDecision("fail", {
+            tvdbId: row.tvdb_id,
+            title: rowTitle(row),
+            episodeIds: JSON.parse(row.episode_ids),
+            release: row.release,
+            why: `${why}; blocklisted ${row.release}${removed}`,
+            detail: { grabId: row.id },
+            undo: { action: "unblock", args: { release: row.release } },
+          });
           if (row.movie_id) await movieNextForRow(row, deps, why);
           else await tryNext(row.id, rowRequest(row), deps, why);
         } else if (st.state === "missing") {
@@ -545,14 +789,26 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
         while (next < lines.length) {
           for (const { row, path: p } of lines[next++]) {
             // Claim the row so an overlapping tick can't import it twice.
-            if (!db.prepare("UPDATE grabs SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'").run(Date.now(), row.id).changes) continue;
+            if (
+              !db
+                .prepare("UPDATE grabs SET state = 'importing', updated_at = ? WHERE id = ? AND state = 'downloading'")
+                .run(Date.now(), row.id).changes
+            )
+              continue;
             try {
               if (row.movie_id) await importMovie(row, p, deps);
               else await importAndVerify(row, p, deps);
               rescanAfterImport(row);
             } catch (e) {
               setState(row.id, "needs-attention", `import error: ${(e as Error).message}`);
-              logDecision("fail", { tvdbId: row.tvdb_id, title: rowTitle(row), episodeIds: JSON.parse(row.episode_ids), release: row.release, why: `Import of ${row.release} hit an error: ${(e as Error).message}. The download is kept; press "Retry import" when the cause is fixed.`, detail: { grabId: row.id } });
+              logDecision("fail", {
+                tvdbId: row.tvdb_id,
+                title: rowTitle(row),
+                episodeIds: JSON.parse(row.episode_ids),
+                release: row.release,
+                why: `Import of ${row.release} hit an error: ${(e as Error).message}. The download is kept; press "Retry import" when the cause is fixed.`,
+                detail: { grabId: row.id },
+              });
             }
           }
         }
@@ -578,7 +834,9 @@ function rescanAfterImport(row: GrabRow) {
  * Waiting = the client finished (progress 1) and the import line hasn't reached it yet.
  */
 export function grabStages(): Map<number, { stage: "downloading" | "waiting" | "importing" | "attention"; ahead: number }> {
-  const rows = db.prepare("SELECT id, state, progress FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; state: string; progress: number | null }[];
+  const rows = db
+    .prepare("SELECT id, state, progress FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id")
+    .all() as { id: number; state: string; progress: number | null }[];
   const out = new Map<number, { stage: "downloading" | "waiting" | "importing" | "attention"; ahead: number }>();
   let waiting = 0;
   for (const r of rows) {
@@ -592,7 +850,8 @@ export function grabStages(): Map<number, { stage: "downloading" | "waiting" | "
 
 /** Title for activity entries: the show's, or the movie's for movie grabs. */
 function rowTitle(row: GrabRow): string | undefined {
-  if (row.movie_id) return (cache.prepare("SELECT title FROM movies WHERE id = ?").get(row.movie_id) as { title: string } | undefined)?.title;
+  if (row.movie_id)
+    return (cache.prepare("SELECT title FROM movies WHERE id = ?").get(row.movie_id) as { title: string } | undefined)?.title;
   return row.tvdb_id ? (seriesByTvdb(row.tvdb_id)?.title ?? undefined) : undefined;
 }
 
@@ -602,23 +861,50 @@ function rowTitle(row: GrabRow): string | undefined {
  */
 export function keepGrab(id: number) {
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
-  if (!row || !["failed", "needs-attention"].includes(row.state) || !row.client_ref) throw Object.assign(new Error("Only a finished download that failed its check can be kept"), { statusCode: 409 });
+  if (!row || !["failed", "needs-attention"].includes(row.state) || !row.client_ref)
+    throw Object.assign(new Error("Only a finished download that failed its check can be kept"), { statusCode: 409 });
   const eps = JSON.parse(row.episode_ids) as number[];
-  const others = db.prepare(`SELECT id, episode_ids, movie_id FROM grabs WHERE id != ? AND dry_run = 0 AND state IN (${ACTIVE.map(() => "?").join(",")})`).all(id, ...ACTIVE) as { id: number; episode_ids: string; movie_id: number | null }[];
-  const clash = others.find((o) => (row.movie_id ? o.movie_id === row.movie_id : (JSON.parse(o.episode_ids) as number[]).some((e) => eps.includes(e))));
-  if (clash) throw Object.assign(new Error(`Another download for it is already running (grab ${clash.id}); remove that one first`), { statusCode: 409 });
+  const others = db
+    .prepare(`SELECT id, episode_ids, movie_id FROM grabs WHERE id != ? AND dry_run = 0 AND state IN (${ACTIVE.map(() => "?").join(",")})`)
+    .all(id, ...ACTIVE) as { id: number; episode_ids: string; movie_id: number | null }[];
+  const clash = others.find((o) =>
+    row.movie_id ? o.movie_id === row.movie_id : (JSON.parse(o.episode_ids) as number[]).some((e) => eps.includes(e)),
+  );
+  if (clash)
+    throw Object.assign(new Error(`Another download for it is already running (grab ${clash.id}); remove that one first`), {
+      statusCode: 409,
+    });
   const newer = supersededBy(id);
-  if (newer) throw Object.assign(new Error(`A newer download (grab ${newer}) already replaced this one; keeping the old one would overwrite it`), { statusCode: 409 });
-  if (/already imported/i.test(row.error ?? "")) throw Object.assign(new Error("This one is already imported; it stays until a better release is found"), { statusCode: 409 });
-  if (!db.prepare("UPDATE grabs SET keep = 1, state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state IN ('failed', 'needs-attention')").run(Date.now(), Date.now(), id).changes)
+  if (newer)
+    throw Object.assign(new Error(`A newer download (grab ${newer}) already replaced this one; keeping the old one would overwrite it`), {
+      statusCode: 409,
+    });
+  if (/already imported/i.test(row.error ?? ""))
+    throw Object.assign(new Error("This one is already imported; it stays until a better release is found"), { statusCode: 409 });
+  if (
+    !db
+      .prepare(
+        "UPDATE grabs SET keep = 1, state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state IN ('failed', 'needs-attention')",
+      )
+      .run(Date.now(), Date.now(), id).changes
+  )
     throw Object.assign(new Error("This download changed meanwhile; refresh and try again"), { statusCode: 409 });
   db.prepare("DELETE FROM blocklist WHERE release = ?").run(row.release);
-  logDecision("info", { tvdbId: row.tvdb_id, episodeIds: eps, release: row.release, why: `You kept ${row.release}: it will be imported despite the language check`, detail: { grabId: id, movieId: row.movie_id } });
+  logDecision("info", {
+    tvdbId: row.tvdb_id,
+    episodeIds: eps,
+    release: row.release,
+    why: `You kept ${row.release}: it will be imported despite the language check`,
+    detail: { grabId: id, movieId: row.movie_id },
+  });
 }
 
 export async function nextForGrab(id: number, deps: PipelineDeps = realDeps) {
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
-  if (!row || !["failed", "needs-attention"].includes(row.state)) throw Object.assign(new Error("Only a failed download or one that needs attention can move on to the next release"), { statusCode: 409 });
+  if (!row || !["failed", "needs-attention"].includes(row.state))
+    throw Object.assign(new Error("Only a failed download or one that needs attention can move on to the next release"), {
+      statusCode: 409,
+    });
   const newer = supersededBy(id);
   if (newer) throw Object.assign(new Error(`A newer download (grab ${newer}) is already handling it`), { statusCode: 409 });
   if (row.state === "needs-attention") setState(id, "failed", "you moved on to the next release");
@@ -637,14 +923,27 @@ function rowRequest(row: GrabRow): GrabRequest {
   const episodeIds = JSON.parse(row.episode_ids) as number[];
   // ...but a whole-season replace still only moves on to another season pack.
   const packsOnly = row.purpose === "replace" && episodeIds.length > 1;
-  return { tvdbId: row.tvdb_id, episodeIds, candidate: fallbacks[0], fallbacks, origin: row.origin, attempt: row.attempt ?? 1, purpose: auto ? null : (row.purpose ?? null), ...(packsOnly ? { packsOnly } : {}) };
+  return {
+    tvdbId: row.tvdb_id,
+    episodeIds,
+    candidate: fallbacks[0],
+    fallbacks,
+    origin: row.origin,
+    attempt: row.attempt ?? 1,
+    purpose: auto ? null : (row.purpose ?? null),
+    ...(packsOnly ? { packsOnly } : {}),
+  };
 }
 
 /** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */
 export function episodeFileOpts(tvdbId: number, wantedIds: number[]): FileMapOpts {
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
-  const has = new Set(episodesFor(tvdbId).filter((e) => e.hasFile).map((e) => e.id));
+  const has = new Set(
+    episodesFor(tvdbId)
+      .filter((e) => e.hasFile)
+      .map((e) => e.id),
+  );
   return {
     wantedIds,
     resolve: (name) => {
@@ -660,7 +959,15 @@ export function episodeFileOpts(tvdbId: number, wantedIds: number[]): FileMapOpt
  * Right after a batch torrent was added stopped: read its files and skip the unwanted ones (a .torrent lists them at
  * once; a magnet needs its metadata first, so it is polled briefly here and then by the pipeline tick).
  */
-export async function selectAfterAdd(grabId: number, job: ClientJob, batch: BatchInfo, deps: Pick<PipelineDeps, "clients" | "sleep">, log: { tvdbId: number | null; title?: string; release: string; episodeIds: number[]; movieId?: number | null }, magnet: boolean, opts?: FileMapOpts) {
+export async function selectAfterAdd(
+  grabId: number,
+  job: ClientJob,
+  batch: BatchInfo,
+  deps: Pick<PipelineDeps, "clients" | "sleep">,
+  log: { tvdbId: number | null; title?: string; release: string; episodeIds: number[]; movieId?: number | null },
+  magnet: boolean,
+  opts?: FileMapOpts,
+) {
   if (!job.select) {
     // The client can't skip files (or already had this torrent): the whole batch; the import takes what it needs.
     writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files" });
@@ -685,11 +992,23 @@ export async function pendingSelection(row: GrabRow, deps: PipelineDeps) {
   const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
   if (row.movie_id) {
     const { movieFileOpts } = await import("./movies.js");
-    await applySelection({ grabId: row.id, job, clients: deps.clients, opts: movieFileOpts(row.movie_id), log: { tvdbId: null, release: row.release, episodeIds: [], movieId: row.movie_id } });
+    await applySelection({
+      grabId: row.id,
+      job,
+      clients: deps.clients,
+      opts: movieFileOpts(row.movie_id),
+      log: { tvdbId: null, release: row.release, episodeIds: [], movieId: row.movie_id },
+    });
     return;
   }
   const ids = JSON.parse(row.episode_ids) as number[];
-  await applySelection({ grabId: row.id, job, clients: deps.clients, opts: episodeFileOpts(row.tvdb_id, ids), log: { tvdbId: row.tvdb_id, title: rowTitle(row), release: row.release, episodeIds: ids } });
+  await applySelection({
+    grabId: row.id,
+    job,
+    clients: deps.clients,
+    opts: episodeFileOpts(row.tvdb_id, ids),
+    log: { tvdbId: row.tvdb_id, title: rowTitle(row), release: row.release, episodeIds: ids },
+  });
 }
 
 /** Imports a finished download through Sonarr's ManualImport with explicit episode IDs, verifying before and after. */
@@ -709,13 +1028,28 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     blocklist(row, why);
     // Rejected: its download goes with the next clean-up sweep, an hour from now, so "Keep anyway" still has its files.
     const cleans = getSettings().downloads.cleanup === "auto" && getSettings().downloads.allowDelete;
-    logDecision("verify-fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `${row.release} failed verification: ${why}${imported ? " (already imported; it will be replaced if a better release is found)" : ""}. Blocklisted it${cleans ? "; its download is cleaned up in about an hour unless you choose Keep anyway" : ""}; looking for the next release.`, detail: { grabId: row.id }, undo: { action: "unblock", args: { release: row.release } } });
+    logDecision("verify-fail", {
+      tvdbId: row.tvdb_id,
+      title: series?.title,
+      episodeIds: wanted,
+      release: row.release,
+      why: `${row.release} failed verification: ${why}${imported ? " (already imported; it will be replaced if a better release is found)" : ""}. Blocklisted it${cleans ? "; its download is cleaned up in about an hour unless you choose Keep anyway" : ""}; looking for the next release.`,
+      detail: { grabId: row.id },
+      undo: { action: "unblock", args: { release: row.release } },
+    });
     await tryNext(row.id, rowRequest(row), deps, why);
   };
   /** Problems that aren't the release's fault: no blocklist, no next candidate; the user can retry the import. */
   const attention = (why: string) => {
     setState(row.id, "needs-attention", why);
-    logDecision("fail", { tvdbId: row.tvdb_id, title: series?.title, episodeIds: wanted, release: row.release, why: `Downloaded ${row.release} but couldn't import it: ${why}. The download is kept; fix the cause and press "Retry import".`, detail: { grabId: row.id } });
+    logDecision("fail", {
+      tvdbId: row.tvdb_id,
+      title: series?.title,
+      episodeIds: wanted,
+      release: row.release,
+      why: `Downloaded ${row.release} but couldn't import it: ${why}. The download is kept; fix the cause and press "Retry import".`,
+      detail: { grabId: row.id },
+    });
   };
   if (!series || !underAllowedRoot(series.path)) return attention("the series is outside the allowed root folders");
   const sonarrPath0 = clientToSonarr(clientPath);
@@ -736,17 +1070,32 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const x = await deps.extract(local, String(row.id), singleArchive ? [path.posix.basename(sonarrPath0)] : undefined);
     if (x.kind === "pending") {
       // Hand the row back to the tick; it polls again next round.
-      db.prepare("UPDATE grabs SET state = 'downloading', error = 'unpacking…', updated_at = ?, progress_at = ? WHERE id = ? AND state = 'importing'").run(Date.now(), Date.now(), row.id);
+      db.prepare(
+        "UPDATE grabs SET state = 'downloading', error = 'unpacking…', updated_at = ?, progress_at = ? WHERE id = ? AND state = 'importing'",
+      ).run(Date.now(), Date.now(), row.id);
       return;
     }
     if (x.kind === "unavailable") return attention(x.why);
-    if (x.kind === "broken") return getSettings().malware.enabled && /password-protected/.test(x.why) ? rejectUnsafe(row, `contained a password-protected archive instead of a video (${x.why})`, deps, "before import") : fail(x.why, false);
+    if (x.kind === "broken")
+      return getSettings().malware.enabled && /password-protected/.test(x.why)
+        ? rejectUnsafe(row, `contained a password-protected archive instead of a video (${x.why})`, deps, "before import")
+        : fail(x.why, false);
     if (x.kind === "extracted") {
       unpacked = x.dest;
       unpackRel = `${folder}/${UNPACK_DIR}/${row.id}/`;
-      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: wanted, release: row.release, why: `Unpacked ${row.release}: ${x.files.length} video file${x.files.length === 1 ? "" : "s"}`, detail: { grabId: row.id } });
+      logDecision("info", {
+        tvdbId: row.tvdb_id,
+        title: series.title,
+        episodeIds: wanted,
+        release: row.release,
+        why: `Unpacked ${row.release}: ${x.files.length} video file${x.files.length === 1 ? "" : "s"}`,
+        detail: { grabId: row.id },
+      });
     }
-  } else if (singleArchive) return attention(`${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Automation & safety, or unpack it by hand`);
+  } else if (singleArchive)
+    return attention(
+      `${path.posix.basename(sonarrPath0)} is an archive; turn on unpacking in Settings → Automation & safety, or unpack it by hand`,
+    );
   // Folder only: given a seriesId, Sonarr's preview ignores the folder and lists the series' library files instead.
   // A native show (added in AnimeArr) has no Sonarr: the folder is listed here.
   const native = isNativeSeriesId(series.id);
@@ -754,12 +1103,23 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (native) {
     const localFolder = deps.localPath(folder);
     if (!localFolder) return attention(`can't reach ${folder} from AnimeArr (check Settings → Paths)`);
-    listed = listVideos(localFolder).map((f) => ({ path: `${folder}/${path.relative(localFolder, f.path).split(path.sep).join("/")}`, size: f.size }));
+    listed = listVideos(localFolder).map((f) => ({
+      path: `${folder}/${path.relative(localFolder, f.path).split(path.sep).join("/")}`,
+      size: f.size,
+    }));
   } else listed = await deps.sonarr.preview(folder);
-  const items = listed.filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 30e6) as Awaited<ReturnType<PipelineDeps["sonarr"]["preview"]>>;
+  const items = listed.filter((x) => VIDEO.test(x.path) && !/\bsample\b/i.test(x.path) && (x.size ?? 1e9) > 30e6) as Awaited<
+    ReturnType<PipelineDeps["sonarr"]["preview"]>
+  >;
   // A single-file torrent's folder is the shared category folder: only that one file belongs to this grab.
   // Unpacked: only the unpacked files (they are moved; the torrent's own files must keep seeding).
-  const inThis = items.filter((x) => (unpackRel ? x.path.startsWith(unpackRel) : single ? x.path === sonarrPath : x.path.startsWith(`${folder}/`) && !x.path.startsWith(`${folder}/${UNPACK_DIR}/`)));
+  const inThis = items.filter((x) =>
+    unpackRel
+      ? x.path.startsWith(unpackRel)
+      : single
+        ? x.path === sonarrPath
+        : x.path.startsWith(`${folder}/`) && !x.path.startsWith(`${folder}/${UNPACK_DIR}/`),
+  );
   if (!inThis.length) return attention(`no video files found in ${single ? sonarrPath : folder}`);
 
   // Map each file to episodes: single file + single episode is direct; otherwise identify each file name confidently.
@@ -782,20 +1142,33 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
   if (dup !== undefined) {
     // Say which episode, and whether a creditless opening/ending is one of them; the fix opens the whole download.
     const n = episodesFor(row.tvdb_id).find((e) => e.id === dup)?.episode;
-    const cl = plan.filter((p) => p.episodeIds.includes(dup)).map((p) => parseRelease(path.posix.basename(p.item.path)).creditless).find(Boolean);
-    return attention(`two files in this download look like ${n !== undefined ? `episode ${n}` : "the same episode"}${cl ? ` (one is a creditless ${cl.kind === "op" ? "opening" : "ending"})` : ""}; review the files to import`);
+    const cl = plan
+      .filter((p) => p.episodeIds.includes(dup))
+      .map((p) => parseRelease(path.posix.basename(p.item.path)).creditless)
+      .find(Boolean);
+    return attention(
+      `two files in this download look like ${n !== undefined ? `episode ${n}` : "the same episode"}${cl ? ` (one is a creditless ${cl.kind === "op" ? "opening" : "ending"})` : ""}; review the files to import`,
+    );
   }
   const replacing = row.purpose === "replace";
   const seasonNo = episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.season ?? null;
   const replaceLabel = seasonNo === null ? "Replace season" : seasonNo === 0 ? "Specials replace" : `Season ${seasonNo} replace`;
   // A whole-season replace whose download turned out to be one episode: stop before anything is touched.
-  if (replacing && wanted.length > 1 && ((inThis.length === 1 && new Set(mapped).size === 1) || !isSeasonPack({ title: row.release, episodeIds: wanted }))) {
+  if (
+    replacing &&
+    wanted.length > 1 &&
+    ((inThis.length === 1 && new Set(mapped).size === 1) || !isSeasonPack({ title: row.release, episodeIds: wanted }))
+  ) {
     const one = episodesFor(row.tvdb_id).find((e) => e.id === mapped[0]);
     const n = one?.episode ?? parseRelease(row.release).absolute[0] ?? parseRelease(row.release).episodes[0];
-    return attention(`${replaceLabel} stopped: the download was only ${n ? `episode ${n}` : "one episode"}, not the whole season. Nothing in your library changed.`);
+    return attention(
+      `${replaceLabel} stopped: the download was only ${n ? `episode ${n}` : "one episode"}, not the whole season. Nothing in your library changed.`,
+    );
   }
   /** Replace season: episodes that keep their old file (new one failed its check, or isn't in the pack). */
-  const kept: { id: number; why: string }[] = replacing ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" })) : [];
+  const kept: { id: number; why: string }[] = replacing
+    ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" }))
+    : [];
 
   const prof = profileFor(row.tvdb_id);
   // A dual-audio upgrade replaces a placeholder: only a file with the original audio AND the dub counts.
@@ -806,7 +1179,13 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const base = v.audio.map((a) => a.split("-")[0]);
     const hasDub = dub.find((l) => base.includes(l));
     const hasOriginal = !original.length || base.some((a) => original.includes(a));
-    return hasDub && hasOriginal ? v : { ...v, ok: false, why: `no ${hasDub ? "original" : dub.join("/")} audio (audio: ${v.audio.join("/") || "unknown"}): not the dual-audio release it claimed to be` };
+    return hasDub && hasOriginal
+      ? v
+      : {
+          ...v,
+          ok: false,
+          why: `no ${hasDub ? "original" : dub.join("/")} audio (audio: ${v.audio.join("/") || "unknown"}): not the dual-audio release it claimed to be`,
+        };
   };
   const parsed = parseRelease(row.release);
   const eps = episodesFor(row.tvdb_id);
@@ -827,14 +1206,37 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     // Replace season: a new file that fails keeps that episode's old file; the rest of the pack goes ahead.
     if (!v.ok && !row.keep && replacing) {
       for (const id of p.episodeIds) kept.push({ id, why: v.why });
-      logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Replace season: ${path.posix.basename(p.item.path)} failed its check (${v.why}); the old file stays for ${p.episodeIds.length > 1 ? "these episodes" : "this episode"}`, detail: { grabId: row.id } });
+      logDecision("info", {
+        tvdbId: row.tvdb_id,
+        title: series.title,
+        episodeIds: p.episodeIds,
+        release: row.release,
+        why: `Replace season: ${path.posix.basename(p.item.path)} failed its check (${v.why}); the old file stays for ${p.episodeIds.length > 1 ? "these episodes" : "this episode"}`,
+        detail: { grabId: row.id },
+      });
       continue;
     }
     if (!v.ok && !row.keep) return fail(`${path.posix.basename(p.item.path)}: ${v.why}`, false);
-    if (!v.ok) logDecision("info", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Kept ${path.posix.basename(p.item.path)} as you asked, although: ${v.why}`, detail: { grabId: row.id } });
+    if (!v.ok)
+      logDecision("info", {
+        tvdbId: row.tvdb_id,
+        title: series.title,
+        episodeIds: p.episodeIds,
+        release: row.release,
+        why: `Kept ${path.posix.basename(p.item.path)} as you asked, although: ${v.why}`,
+        detail: { grabId: row.id },
+      });
     preVerified.add(p.item.path);
     verdicts.push(v.why);
-    if (v.ok) logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Checked ${path.posix.basename(p.item.path)} before import: ${v.why}`, detail: { grabId: row.id, probe } });
+    if (v.ok)
+      logDecision("verify-ok", {
+        tvdbId: row.tvdb_id,
+        title: series.title,
+        episodeIds: p.episodeIds,
+        release: row.release,
+        why: `Checked ${path.posix.basename(p.item.path)} before import: ${v.why}`,
+        detail: { grabId: row.id, probe },
+      });
   }
 
   const files = plan.map((p) => ({
@@ -862,13 +1264,24 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     const placed = replacing ? placedByGrab(row.id) : new Set<number>();
     const done = plan.filter((p) => p.episodeIds.every((e) => placed.has(e)));
     const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)) && !done.includes(p));
-    if (!toPlace.every((p) => preVerified.has(p.item.path))) return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
-    if (replacing && !toPlace.length && !done.length) return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
-    if (replacing && !getSettings().media.recycleBin.trim()) return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
+    if (!toPlace.every((p) => preVerified.has(p.item.path)))
+      return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
+    if (replacing && !toPlace.length && !done.length)
+      return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
+    if (replacing && !getSettings().media.recycleBin.trim())
+      return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
     let swapped = 0;
     for (const p of toPlace) {
       try {
-        const ip = await planImport({ tvdbId: row.tvdb_id, path: p.item.path, episodeIds: p.episodeIds, release: row.release, client: unpacked ? null : row.client, automatic: true, trusted: clientToSonarr(clientPath) });
+        const ip = await planImport({
+          tvdbId: row.tvdb_id,
+          path: p.item.path,
+          episodeIds: p.episodeIds,
+          release: row.release,
+          client: unpacked ? null : row.client,
+          automatic: true,
+          trusted: clientToSonarr(clientPath),
+        });
         const res = await executeImport(ip, { grabId: row.id });
         const bad = res.find((r) => !r.done);
         if (bad || !res.length) {
@@ -880,7 +1293,12 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
           return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
         }
         swapped++;
-        if (replacing) db.prepare("UPDATE grabs SET progress_at = ?, error = ? WHERE id = ?").run(Date.now(), `swapped ${swapped}/${toPlace.length}`, row.id);
+        if (replacing)
+          db.prepare("UPDATE grabs SET progress_at = ?, error = ? WHERE id = ?").run(
+            Date.now(),
+            `swapped ${swapped}/${toPlace.length}`,
+            row.id,
+          );
       } catch (e) {
         if (replacing) {
           for (const id of p.episodeIds) kept.push({ id, why: (e as Error).message });
@@ -889,7 +1307,10 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
     }
-    if (replacing && !swapped && !done.length) return attention(`${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`);
+    if (replacing && !swapped && !done.length)
+      return attention(
+        `${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`,
+      );
     if (replacing) {
       db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
       if (kept.length) {
@@ -897,20 +1318,48 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
           const e = eps.find((x) => x.id === id);
           return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
         };
-        logDecision("fail", { tvdbId: row.tvdb_id, title: series.title, episodeIds: kept.map((k) => k.id), release: row.release, why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`, detail: { grabId: row.id } });
+        logDecision("fail", {
+          tvdbId: row.tvdb_id,
+          title: series.title,
+          episodeIds: kept.map((k) => k.id),
+          release: row.release,
+          why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`,
+          detail: { grabId: row.id },
+        });
       }
       const keptNow = new Set(kept.map((k) => k.id));
       // Episodes that kept their old file may still need this download: it stays, and the grab waits in "needs
       // attention" so Retry import can finish them once the cause is fixed.
-      await finishImport(row, series, mapped.filter((e) => !keptNow.has(e)), eps, verdicts, unpacked, deps, kept.length === 0);
-      if (kept.length) setState(row.id, "needs-attention", `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`);
+      await finishImport(
+        row,
+        series,
+        mapped.filter((e) => !keptNow.has(e)),
+        eps,
+        verdicts,
+        unpacked,
+        deps,
+        kept.length === 0,
+      );
+      if (kept.length)
+        setState(
+          row.id,
+          "needs-attention",
+          `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`,
+        );
       return;
     }
     return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
   }
   if (replacing) return attention("Replace season needs AnimeArr's own importer (Settings → Media management → Importer)");
   const cmd = await deps.sonarr.importFiles(files, unpacked ? "move" : importModeFor(row.client));
-  logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Asked Sonarr to import ${files.length} file${files.length === 1 ? "" : "s"} as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`, detail: { grabId: row.id, commandId: cmd.id } });
+  logDecision("import", {
+    tvdbId: row.tvdb_id,
+    title: series.title,
+    episodeIds: mapped,
+    release: row.release,
+    why: `Asked Sonarr to import ${files.length} file${files.length === 1 ? "" : "s"} as ${files.map((f) => f.episodeIds.join("+")).join(", ")} (explicit episode IDs, command ${cmd.id})`,
+    detail: { grabId: row.id, commandId: cmd.id },
+  });
   let status = "queued";
   for (let i = 0; i < 120 && !["completed", "failed", "aborted"].includes(status); i++) {
     await deps.sleep(5000);
@@ -925,23 +1374,47 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       const ep = await deps.sonarr.episode(eid);
       const ef = ep.episodeFileId ? await deps.sonarr.episodeFile(ep.episodeFileId) : null;
       const fresh = !!ef && (!ef.dateAdded || Date.parse(ef.dateAdded) >= startedImport - 60_000);
-      if (!ef || !fresh) return attention(`Sonarr finished the import but S${ep.seasonNumber}E${ep.episodeNumber} doesn't have the new file (it may have rejected it; check Sonarr's activity)`);
+      if (!ef || !fresh)
+        return attention(
+          `Sonarr finished the import but S${ep.seasonNumber}E${ep.episodeNumber} doesn't have the new file (it may have rejected it; check Sonarr's activity)`,
+        );
       if (preVerified.has(p.item.path) || eid !== p.episodeIds[0]) continue;
       const subs = langList(ef.mediaInfo?.subtitles);
       const audio = langList(ef.mediaInfo?.audioLanguages);
       // No track info yet (media analysis off or not finished): can't judge, so don't blame the release.
-      if (!subs.length && !audio.length) return attention(`Sonarr has no track information for ${path.posix.basename(ef.path)} yet, so the language couldn't be checked; check the file, then retry`);
-      const v = strictUpgrade(judge({ subs, audio, durationSec: runTimeSec(ef.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, expectedMin, burned));
+      if (!subs.length && !audio.length)
+        return attention(
+          `Sonarr has no track information for ${path.posix.basename(ef.path)} yet, so the language couldn't be checked; check the file, then retry`,
+        );
+      const v = strictUpgrade(
+        judge({ subs, audio, durationSec: runTimeSec(ef.mediaInfo?.runTime), sidecars: [], untagged: 0 }, prof, expectedMin, burned),
+      );
       learnFromVerify(parsed.group, learnKey, v.subs, v.audio);
       if (!v.ok && !row.keep) return fail(`${path.posix.basename(ef.path)}: ${v.why}`, true);
       verdicts.push(v.why);
-      logDecision("verify-ok", { tvdbId: row.tvdb_id, title: series.title, episodeIds: p.episodeIds, release: row.release, why: `Imported and checked ${path.posix.basename(ef.path)}: ${v.why}`, detail: { grabId: row.id } });
+      logDecision("verify-ok", {
+        tvdbId: row.tvdb_id,
+        title: series.title,
+        episodeIds: p.episodeIds,
+        release: row.release,
+        why: `Imported and checked ${path.posix.basename(ef.path)}: ${v.why}`,
+        detail: { grabId: row.id },
+      });
     }
   }
   return finishImport(row, series, mapped, eps, verdicts, unpacked, deps);
 }
 
-async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof seriesByTvdb>>, mapped: number[], eps: ReturnType<typeof episodesFor>, verdicts: string[], unpacked: string | null, deps: PipelineDeps, cleanup = true) {
+async function finishImport(
+  row: GrabRow,
+  series: NonNullable<ReturnType<typeof seriesByTvdb>>,
+  mapped: number[],
+  eps: ReturnType<typeof episodesFor>,
+  verdicts: string[],
+  unpacked: string | null,
+  deps: PipelineDeps,
+  cleanup = true,
+) {
   setState(row.id, "done");
   if (unpacked) {
     try {
@@ -952,8 +1425,17 @@ async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof 
   }
   for (const e of mapped) cache.prepare("UPDATE episodes SET has_file = 1 WHERE id = ?").run(e);
   scheduleAfter(mapped, "done", `imported ${row.release}`);
-  const labels = eps.filter((e) => mapped.includes(e.id)).map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`);
-  logDecision("import", { tvdbId: row.tvdb_id, title: series.title, episodeIds: mapped, release: row.release, why: `Imported ✓ as ${labels.join(", ")}: ${[...new Set(verdicts)].join("; ") || "checked"}`, detail: { grabId: row.id, final: true } });
+  const labels = eps
+    .filter((e) => mapped.includes(e.id))
+    .map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`);
+  logDecision("import", {
+    tvdbId: row.tvdb_id,
+    title: series.title,
+    episodeIds: mapped,
+    release: row.release,
+    why: `Imported ✓ as ${labels.join(", ")}: ${[...new Set(verdicts)].join("; ") || "checked"}`,
+    detail: { grabId: row.id, final: true },
+  });
   try {
     await deps.refreshSeries?.(series.id);
   } catch {
@@ -965,12 +1447,25 @@ async function finishImport(row: GrabRow, series: NonNullable<ReturnType<typeof 
 
 /** "Retry import" for a grab that downloaded fine but couldn't be imported. */
 export function retryImport(id: number) {
-  const r = db.prepare("UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention'").run(Date.now(), Date.now(), id);
+  const r = db
+    .prepare(
+      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention'",
+    )
+    .run(Date.now(), Date.now(), id);
   if (!r.changes) throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
 }
 
 export function listGrabs(limit = 50, opts: { episodesOnly?: boolean } = {}) {
-  return (db.prepare(`SELECT * FROM grabs${opts.episodesOnly ? " WHERE movie_id IS NULL" : ""} ORDER BY id DESC LIMIT ?`).all(limit) as unknown as GrabRow[]).map((g) => ({ ...g, episode_ids: JSON.parse(g.episode_ids) as number[], candidates: undefined, fallbacks: (JSON.parse(g.candidates) as unknown[]).length }));
+  return (
+    db
+      .prepare(`SELECT * FROM grabs${opts.episodesOnly ? " WHERE movie_id IS NULL" : ""} ORDER BY id DESC LIMIT ?`)
+      .all(limit) as unknown as GrabRow[]
+  ).map((g) => ({
+    ...g,
+    episode_ids: JSON.parse(g.episode_ids) as number[],
+    candidates: undefined,
+    fallbacks: (JSON.parse(g.candidates) as unknown[]).length,
+  }));
 }
 
 /**
@@ -978,14 +1473,25 @@ export function listGrabs(limit = 50, opts: { episodesOnly?: boolean } = {}) {
  * files). Optionally blocklists the release and tries the next candidate. User-confirmed in the UI.
  */
 export async function removeGrab(id: number, opts: { blocklist: boolean; searchNext: boolean }, deps: PipelineDeps = realDeps) {
-  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
+  if (dbState.corrupt)
+    throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
   if (!row) throw Object.assign(new Error("Unknown download"), { statusCode: 404 });
   // Claim it atomically, so the pipeline can't start importing it meanwhile ("sending" rows are not removable yet).
-  if (!db.prepare("UPDATE grabs SET state = 'removing', updated_at = ? WHERE id = ? AND state IN ('downloading', 'needs-attention')").run(Date.now(), id).changes)
-    throw Object.assign(new Error(`This download is ${row.state === "sending" ? "still being sent to the client; try again in a moment" : row.state}; only downloading or needs-attention ones can be removed`), { statusCode: 409 });
+  if (
+    !db
+      .prepare("UPDATE grabs SET state = 'removing', updated_at = ? WHERE id = ? AND state IN ('downloading', 'needs-attention')")
+      .run(Date.now(), id).changes
+  )
+    throw Object.assign(
+      new Error(
+        `This download is ${row.state === "sending" ? "still being sent to the client; try again in a moment" : row.state}; only downloading or needs-attention ones can be removed`,
+      ),
+      { statusCode: 409 },
+    );
   // A row that may have been mid-import keeps its files (Sonarr could be moving them right now).
-  const mayBeImporting = row.state === "needs-attention" && /^((Sonarr|Radarr) import|AnimeArr restarted during the import|import error)/.test(row.error ?? "");
+  const mayBeImporting =
+    row.state === "needs-attention" && /^((Sonarr|Radarr) import|AnimeArr restarted during the import|import error)/.test(row.error ?? "");
   if (row.client && row.client_ref && !mayBeImporting) {
     try {
       await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
@@ -995,21 +1501,34 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
       throw Object.assign(new Error(`Couldn't remove it from the download client: ${(e as Error).message}`), { statusCode: 502 });
     }
   }
-  setState(row.id, "failed", mayBeImporting ? "closed by you (downloaded files kept: an import may have been in progress)" : "removed by you");
+  setState(
+    row.id,
+    "failed",
+    mayBeImporting ? "closed by you (downloaded files kept: an import may have been in progress)" : "removed by you",
+  );
   const eps = JSON.parse(row.episode_ids) as number[];
   let undo = null;
   if (opts.blocklist) {
     undo = { action: "unblock" as const, args: { id: blocklist(row, "removed from the queue by you"), release: row.release } };
   }
-  logDecision("info", { tvdbId: row.tvdb_id, episodeIds: eps, release: row.release, why: `${mayBeImporting ? "Closed" : "Removed"} ${row.release}${mayBeImporting ? " without deleting its files (an import may have been in progress)" : " from the queue"}${opts.blocklist ? " and blocklisted it" : ""}${opts.searchNext ? "; trying the next candidate" : ""} (you confirmed)`, detail: { grabId: row.id }, undo });
-  if (opts.searchNext) return row.movie_id ? movieNextForRow(row, deps, "removed by you") : tryNext(row.id, rowRequest(row), deps, "removed by you");
+  logDecision("info", {
+    tvdbId: row.tvdb_id,
+    episodeIds: eps,
+    release: row.release,
+    why: `${mayBeImporting ? "Closed" : "Removed"} ${row.release}${mayBeImporting ? " without deleting its files (an import may have been in progress)" : " from the queue"}${opts.blocklist ? " and blocklisted it" : ""}${opts.searchNext ? "; trying the next candidate" : ""} (you confirmed)`,
+    detail: { grabId: row.id },
+    undo,
+  });
+  if (opts.searchNext)
+    return row.movie_id ? movieNextForRow(row, deps, "removed by you") : tryNext(row.id, rowRequest(row), deps, "removed by you");
   scheduleAfter(eps, "retry", "download removed by you");
   return null;
 }
 
 /** Where a grab's download is (the client's storage path, mapped to the path AnimeArr/Sonarr use); null when unknown. */
 export async function grabDownloadPath(grabId: number, clients: DownloadClients = realClients): Promise<string | null> {
-  const row = db.prepare("SELECT client, client_ref FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as { client: string | null; client_ref: string | null } | undefined;
+  const row = db.prepare("SELECT client, client_ref FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as
+    { client: string | null; client_ref: string | null } | undefined;
   if (!row?.client || !row.client_ref) return null;
   try {
     const st = await clients.status({ client: row.client as ClientJob["client"], ref: row.client_ref });
@@ -1024,10 +1543,16 @@ export async function grabDownloadPath(grabId: number, clients: DownloadClients 
  * download is cleaned up by the usual rule). Only a grab that is still waiting for this (needs attention / failed).
  */
 export async function finishGrabByHand(grabId: number, what: string, deps: Pick<PipelineDeps, "cleanup"> = realDeps) {
-  const row = db.prepare("SELECT id, state, release, tvdb_id, movie_id FROM grabs WHERE id = ?").get(grabId) as { id: number; state: string; release: string; tvdb_id: number | null; movie_id: number | null } | undefined;
+  const row = db.prepare("SELECT id, state, release, tvdb_id, movie_id FROM grabs WHERE id = ?").get(grabId) as
+    { id: number; state: string; release: string; tvdb_id: number | null; movie_id: number | null } | undefined;
   if (!row || !["needs-attention", "failed"].includes(row.state)) return false;
   setState(row.id, "done");
-  logDecision("import", { tvdbId: row.tvdb_id, release: row.release, why: `Imported ✓ ${what} by hand from ${row.release}`, detail: { grabId: row.id, ...(row.movie_id ? { movieId: row.movie_id } : {}), final: true } });
+  logDecision("import", {
+    tvdbId: row.tvdb_id,
+    release: row.release,
+    why: `Imported ✓ ${what} by hand from ${row.release}`,
+    detail: { grabId: row.id, ...(row.movie_id ? { movieId: row.movie_id } : {}), final: true },
+  });
   await deps.cleanup?.(row.id, "imported");
   return true;
 }

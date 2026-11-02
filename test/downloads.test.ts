@@ -18,7 +18,20 @@ const SAB = path.join(tmp, "completed", "animearr");
 const QB = path.join(tmp, "qbittorrent", "completed", "animearr");
 const write = (p: string, bytes: number) => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, Buffer.alloc(bytes)));
 const old = (p: string) => fs.utimesSync(p, new Date(Date.now() - 3 * 86_400_000), new Date(Date.now() - 3 * 86_400_000));
-const torrent = (over: Partial<OwnTorrent> = {}): OwnTorrent => ({ hash: "abc", name: "Show.S01E01", contentPath: "/data/qbittorrent/completed/animearr/Show.S01E01.mkv", savePath: "/data/qbittorrent/completed/animearr", size: 3000, state: "uploading", ratio: 0.2, seedingTimeSec: 3600, completedOn: Date.now() - 3600_000, ratioLimit: -2, seedingTimeLimitMin: -2, ...over });
+const torrent = (over: Partial<OwnTorrent> = {}): OwnTorrent => ({
+  hash: "abc",
+  name: "Show.S01E01",
+  contentPath: "/data/qbittorrent/completed/animearr/Show.S01E01.mkv",
+  savePath: "/data/qbittorrent/completed/animearr",
+  size: 3000,
+  state: "uploading",
+  ratio: 0.2,
+  seedingTimeSec: 3600,
+  completedOn: Date.now() - 3600_000,
+  ratioLimit: -2,
+  seedingTimeLimitMin: -2,
+  ...over,
+});
 const sabHist = async () => [
   { nzoId: "SAB_1", storage: "/data/completed/animearr/Usenet.Show.S01E02-xpost", status: "Completed" },
   { nzoId: "SAB_3", storage: "/data/completed/animearr/Pack.S01", status: "Completed" },
@@ -26,8 +39,16 @@ const sabHist = async () => [
 const deps = (t: OwnTorrent[] = [torrent()]) => ({ torrents: async () => t, sab: sabHist });
 
 before(() => {
-  patchSettings((s) => ({ ...s, localPathMappings: [{ from: "/data", to: tmp }], importer: { ...s.importer, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] }, sabnzbd: { ...s.sabnzbd, category: "animearr" }, qbittorrent: { ...s.qbittorrent, category: "animearr" } }));
-  const ins = db.prepare("INSERT INTO grabs (at, updated_at, tvdb_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, movie_id) VALUES (1, 1, 1, '[]', ?, 'g', ?, ?, ?, ?, 0, ?)");
+  patchSettings((s) => ({
+    ...s,
+    localPathMappings: [{ from: "/data", to: tmp }],
+    importer: { ...s.importer, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
+    sabnzbd: { ...s.sabnzbd, category: "animearr" },
+    qbittorrent: { ...s.qbittorrent, category: "animearr" },
+  }));
+  const ins = db.prepare(
+    "INSERT INTO grabs (at, updated_at, tvdb_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, movie_id) VALUES (1, 1, 1, '[]', ?, 'g', ?, ?, ?, ?, 0, ?)",
+  );
   ins.run("Usenet.Show.S01E02", "usenet", "sabnzbd", "SAB_1", "done", null);
   ins.run("Show.S01E01", "torrent", "qbittorrent", "abc", "done", null);
   ins.run("Pack.S01", "usenet", "sabnzbd", "SAB_3", "done", null);
@@ -50,13 +71,50 @@ test("measure: AnimeArr's folders only, ownership from the clients; imported-and
 });
 
 test("rules: strictest wins, backlog-only lets new episodes through, pause-until-cleared waits for resume-at, manual grabs pass", async () => {
-  patchSettings((s) => ({ ...s, downloads: { ...s.downloads, freeSpaceGb: 1, rules: [{ id: "a", name: "Items", metric: "items", threshold: 2, action: "pauseUntilUnder", resumeAt: null, scope: "both", applies: "backlog", enabled: true }] } }));
+  patchSettings((s) => ({
+    ...s,
+    downloads: {
+      ...s.downloads,
+      freeSpaceGb: 1,
+      rules: [
+        {
+          id: "a",
+          name: "Items",
+          metric: "items",
+          threshold: 2,
+          action: "pauseUntilUnder",
+          resumeAt: null,
+          scope: "both",
+          applies: "backlog",
+          enabled: true,
+        },
+      ],
+    },
+  }));
   const m = await measure({ fresh: true }, deps());
   evaluate(m);
   assert.equal(grabGate("show", false).paused, true);
   assert.equal(grabGate("show", true).paused, false, "new episodes still come");
   assert.equal(grabGate("show", false, { manual: true }).paused, false, "a grab started by hand passes the folder rules");
-  patchSettings((s) => ({ ...s, downloads: { ...s.downloads, rules: [{ id: "b", name: "Hard", metric: "items", threshold: 2, action: "pauseUntilCleared", resumeAt: 1, scope: "both", applies: "all", enabled: true }] } }));
+  patchSettings((s) => ({
+    ...s,
+    downloads: {
+      ...s.downloads,
+      rules: [
+        {
+          id: "b",
+          name: "Hard",
+          metric: "items",
+          threshold: 2,
+          action: "pauseUntilCleared",
+          resumeAt: 1,
+          scope: "both",
+          applies: "all",
+          enabled: true,
+        },
+      ],
+    },
+  }));
   evaluate(m);
   assert.equal(grabGate("movie", true).paused, true);
   evaluate({ ...m, byScope: { ...m.byScope, both: { sizeGb: 0, items: 2 } } });
@@ -90,7 +148,10 @@ test("running the clean-up: deletions gated; torrents only through the client; m
   const removed: string[] = [];
   const d = { ...deps([torrent({ state: "pausedUP", ratio: 2 })]), remove: async (j: { ref: string }) => void removed.push(j.ref) };
   const res = await runCleanup({}, d as never);
-  assert.ok(res.filter((r) => r.action.destructive).every((r) => !r.ok), "no deletions while not allowed");
+  assert.ok(
+    res.filter((r) => r.action.destructive).every((r) => !r.ok),
+    "no deletions while not allowed",
+  );
   assert.ok(fs.existsSync(path.join(SAB, "Usenet.Show.S01E02-xpost", "readme.txt")));
   assert.ok(fs.existsSync(path.join(SAB, ".animearr-quarantine", "Mystery.Folder")));
   patchSettings((s) => ({ ...s, downloads: { ...s.downloads, allowDelete: true } }));

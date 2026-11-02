@@ -26,7 +26,10 @@ test("folder browser lists directories only, with a writable flag", () => {
   fs.mkdirSync(path.join(root, "Anime"));
   fs.writeFileSync(path.join(root, "secret.txt"), "x");
   const r = listFolders(root);
-  assert.deepEqual(r.dirs.map((d) => d.name), ["Anime"]);
+  assert.deepEqual(
+    r.dirs.map((d) => d.name),
+    ["Anime"],
+  );
   assert.equal(r.dirs[0].writable, true);
   assert.throws(() => listFolders(path.join(root, "nope")), /Can't open/);
 });

@@ -1,7 +1,8 @@
 /** Strings for quality goals, SeaDex, the upgrade watcher and keep-as-is locks. Spread into `en` in i18n.ts. */
 export const qualityStrings = {
   "goal.title": "Your quality goal",
-  "goal.intro": "How far AnimeArr aims for each show. It ranks every release with SeaDex's picks first, then well-known release groups, then your size preset, and keeps upgrading files that are below the goal.",
+  "goal.intro":
+    "How far AnimeArr aims for each show. It ranks every release with SeaDex's picks first, then well-known release groups, then your size preset, and keeps upgrading files that are below the goal.",
   "goal.good": "Good enough · WEB 1080p",
   "goal.good.help": "What streaming services give you. Smallest files.",
   "goal.high": "Aim high · Blu-ray 1080p",
@@ -13,17 +14,20 @@ export const qualityStrings = {
   "goal.saved": "Quality goal saved: {label}",
   "goal.askCard": "New: pick a quality goal. AnimeArr can now keep upgrading your shows (WEB → Blu-ray → SeaDex's best).",
   "goal.tdarr": "I use Tdarr",
-  "goal.tdarrTip": "Run Tdarr? Pick Aim high or Collector and let Tdarr re-encode to AV1/HEVC: the best source at a fraction of the size. Files you lock \"keep as is\" get [Keep] in their names; add this step right after \"Input File\" in your Tdarr flow (Custom JS Function) and wire output 2 to the end, so Tdarr leaves them alone:",
+  "goal.tdarrTip":
+    'Run Tdarr? Pick Aim high or Collector and let Tdarr re-encode to AV1/HEVC: the best source at a fraction of the size. Files you lock "keep as is" get [Keep] in their names; add this step right after "Input File" in your Tdarr flow (Custom JS Function) and wire output 2 to the end, so Tdarr leaves them alone:',
   "goal.copy": "Copy the Tdarr step",
   "goal.copied": "Copied",
   "profile.goal": "Quality goal",
   "profile.reencode": "Tdarr",
   "profile.reencode.tdarr": "Let Tdarr re-encode",
   "profile.reencode.keep": "Keep original files",
-  "profile.reencode.help": "Keep original: file names get [Keep] ({Keep Tag} in your naming format), Tdarr's guard skips them, and quality upgrades never replace them.",
+  "profile.reencode.help":
+    "Keep original: file names get [Keep] ({Keep Tag} in your naming format), Tdarr's guard skips them, and quality upgrades never replace them.",
   "upq.title": "Quality upgrades",
   "audit.tab.quality": "Quality upgrades",
-  "upq.intro": "Seasons below their profile's quality goal. AnimeArr searches them now and then and swaps in a better release one verified episode at a time; old files go to the recycling bin.",
+  "upq.intro":
+    "Seasons below their profile's quality goal. AnimeArr searches them now and then and swaps in a better release one verified episode at a time; old files go to the recycling bin.",
   "upq.plan": "The plan: {n} {n|season|seasons} below their goal. Grabs start {when} (up to {perDay} seasons a day).",
   "upq.planLater": "in a day",
   "upq.startNow": "Start now",
@@ -38,7 +42,8 @@ export const qualityStrings = {
   "keep.title": "Keep as is",
   "keep.show": "Lock the whole show",
   "keep.season": "Season {n}",
-  "keep.help": "Locked files are never upgraded, and their names get [Keep] so Tdarr skips them. Files named [Remaster] are always treated the same.",
+  "keep.help":
+    "Locked files are never upgraded, and their names get [Keep] so Tdarr skips them. Files named [Remaster] are always treated the same.",
   "keep.rename": "{n} {n|file needs|files need} renaming to match: open Rename files.",
   "seadex.title": "SeaDex picks",
   "seadex.none": "SeaDex has no picks for this show yet.",
@@ -69,7 +74,8 @@ export const qualityStrings = {
   "upnow.title": "Upgrade season {n} now",
   "upnow.looking": "Searching for the watcher's pick…",
   "upnow.confirm": "Grab it",
-  "upnow.plan": "{release} ({size}), {to}, for {episodes} {episodes|episode|episodes} now at {from}. Each new file replaces your file only after it passes the checks; the old file goes to the recycling bin.",
+  "upnow.plan":
+    "{release} ({size}), {to}, for {episodes} {episodes|episode|episodes} now at {from}. Each new file replaces your file only after it passes the checks; the old file goes to the recycling bin.",
   "upnow.why": "Why: {why}",
   "upnow.budget": "This ignores today's season and size budgets, but counts towards them.",
   "upnow.dry": "Practice mode is on: nothing will actually be downloaded.",

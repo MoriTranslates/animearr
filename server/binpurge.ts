@@ -26,9 +26,11 @@ export function binFolder(): { local: string } | { error: string } {
   const depth = local.split(/[\\/]+/).filter(Boolean).length;
   if (bin === "" || bin === "/" || depth < 2) return { error: `the recycling bin "${bin}" is too close to the root of the disk` };
   const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
-  if (roots.some((r) => r === local || r.startsWith(local + path.sep))) return { error: `the recycling bin "${bin}" is (or contains) a library folder` };
+  if (roots.some((r) => r === local || r.startsWith(local + path.sep)))
+    return { error: `the recycling bin "${bin}" is (or contains) a library folder` };
   const conf = path.resolve(CONFIG_DIR);
-  if (local === conf || conf.startsWith(local + path.sep) || local.startsWith(conf + path.sep)) return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
+  if (local === conf || conf.startsWith(local + path.sep) || local.startsWith(conf + path.sep))
+    return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
   return { local };
 }
 
@@ -43,16 +45,27 @@ export function noteBinned(localTarget: string, size: number, now = Date.now()) 
  */
 export function pinBinned(localTarget: string, why: string, now = Date.now()) {
   const p = path.resolve(localTarget);
-  db.prepare("INSERT INTO recycle_log (path, at, size, pinned) VALUES (?, ?, 0, ?) ON CONFLICT (path) DO UPDATE SET pinned = excluded.pinned").run(p, now, why);
+  db.prepare(
+    "INSERT INTO recycle_log (path, at, size, pinned) VALUES (?, ?, 0, ?) ON CONFLICT (path) DO UPDATE SET pinned = excluded.pinned",
+  ).run(p, now, why);
 }
 
 /** The user dealt with it (moved it back or doesn't want it): the normal retention applies again, counted from now. */
 export function unpinBinned(localTarget: string, now = Date.now()) {
-  return db.prepare("UPDATE recycle_log SET pinned = NULL, at = ? WHERE path = ? AND pinned IS NOT NULL").run(now, path.resolve(localTarget)).changes > 0;
+  return (
+    db.prepare("UPDATE recycle_log SET pinned = NULL, at = ? WHERE path = ? AND pinned IS NOT NULL").run(now, path.resolve(localTarget))
+      .changes > 0
+  );
 }
 
 export function pinnedInBin(): { path: string; why: string; at: number; exists: boolean }[] {
-  return (db.prepare("SELECT path, pinned AS why, at FROM recycle_log WHERE pinned IS NOT NULL ORDER BY at").all() as { path: string; why: string; at: number }[]).map((r) => ({ ...r, exists: fs.existsSync(r.path) }));
+  return (
+    db.prepare("SELECT path, pinned AS why, at FROM recycle_log WHERE pinned IS NOT NULL ORDER BY at").all() as {
+      path: string;
+      why: string;
+      at: number;
+    }[]
+  ).map((r) => ({ ...r, exists: fs.existsSync(r.path) }));
 }
 
 function filesIn(dir: string, out: string[] = [], depth = 0): string[] {
@@ -73,7 +86,8 @@ function filesIn(dir: string, out: string[] = [], depth = 0): string[] {
 }
 
 function removeEmptyDirs(dir: string, root: string) {
-  for (const d of fs.readdirSync(dir, { withFileTypes: true })) if (d.isDirectory() && !d.isSymbolicLink()) removeEmptyDirs(path.join(dir, d.name), root);
+  for (const d of fs.readdirSync(dir, { withFileTypes: true }))
+    if (d.isDirectory() && !d.isSymbolicLink()) removeEmptyDirs(path.join(dir, d.name), root);
   if (dir !== root && !fs.readdirSync(dir).length) fs.rmdirSync(dir);
 }
 
@@ -123,7 +137,10 @@ export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
     /* harmless */
   }
   db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('binPurgedAt', ?)").run(String(now));
-  if (deleted) logDecision("info", { why: `${opts.all ? "Emptied" : "Cleaned"} AnimeArr's recycling bin: deleted ${deleted} file${deleted === 1 ? "" : "s"} (${(bytes / 1e9).toFixed(1)} GB)${opts.all ? " (you asked)" : `, older than ${days} days`}` });
+  if (deleted)
+    logDecision("info", {
+      why: `${opts.all ? "Emptied" : "Cleaned"} AnimeArr's recycling bin: deleted ${deleted} file${deleted === 1 ? "" : "s"} (${(bytes / 1e9).toFixed(1)} GB)${opts.all ? " (you asked)" : `, older than ${days} days`}`,
+    });
   return { deleted, bytes, skipped: null, pinned: kept };
 }
 
@@ -133,7 +150,8 @@ export function binStatus(now = Date.now()) {
   const bin = binFolder();
   const days = m.recycleBinCleanupDays ?? 0;
   const last = Number((db.prepare("SELECT value FROM kv WHERE key = 'binPurgedAt'").get() as { value: string } | undefined)?.value ?? 0);
-  if ("error" in bin) return { path: m.recycleBin, days, error: bin.error, files: 0, bytes: 0, nextPurge: null, oldest: null, pinned: pinnedInBin() };
+  if ("error" in bin)
+    return { path: m.recycleBin, days, error: bin.error, files: 0, bytes: 0, nextPurge: null, oldest: null, pinned: pinnedInBin() };
   const files = filesIn(bin.local);
   let bytes = 0;
   for (const f of files)
@@ -143,7 +161,16 @@ export function binStatus(now = Date.now()) {
       /* gone */
     }
   const oldest = (db.prepare("SELECT MIN(at) AS at FROM recycle_log").get() as { at: number | null }).at;
-  return { path: m.recycleBin, days, error: null, files: files.length, bytes, nextPurge: days > 0 ? Math.max(now, (last || now) + DAY) : null, oldest, pinned: pinnedInBin() };
+  return {
+    path: m.recycleBin,
+    days,
+    error: null,
+    files: files.length,
+    bytes,
+    nextPurge: days > 0 ? Math.max(now, (last || now) + DAY) : null,
+    oldest,
+    pinned: pinnedInBin(),
+  };
 }
 
 let lastRun = 0;

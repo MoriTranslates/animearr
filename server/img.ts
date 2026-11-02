@@ -19,7 +19,32 @@ export function ffmpegResize(buf: Buffer, width: number): Promise<Buffer | null>
   return new Promise((resolve) => {
     let p;
     try {
-      p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-protocol_whitelist", "pipe", "-f", "image2pipe", "-i", "pipe:0", "-vf", `scale='min(${width},iw)':-2`, "-frames:v", "1", "-c:v", "libwebp", "-quality", "78", "-f", "webp", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
+      p = spawn(
+        "ffmpeg",
+        [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-protocol_whitelist",
+          "pipe",
+          "-f",
+          "image2pipe",
+          "-i",
+          "pipe:0",
+          "-vf",
+          `scale='min(${width},iw)':-2`,
+          "-frames:v",
+          "1",
+          "-c:v",
+          "libwebp",
+          "-quality",
+          "78",
+          "-f",
+          "webp",
+          "pipe:1",
+        ],
+        { stdio: ["pipe", "pipe", "ignore"] },
+      );
     } catch {
       return resolve(null);
     }
@@ -43,10 +68,19 @@ const MAX_CACHE = 600 * 1024 * 1024; // pruned (oldest first) above this
 
 /** The provider's rendition for a size: AniList medium/large/extraLarge, TMDB w154/w342/w500/w780. */
 export function sizedUrl(u: string, size: ThumbSize): string {
-  if (/s4\.anilist\.co\/.*\/cover\/(?:small|medium|large|extraLarge)\//i.test(u)) return u.replace(/\/cover\/(?:small|medium|large|extraLarge)\//i, `/cover/${size === "sm" || size === "md" ? "medium" : size === "lg" ? "large" : "extraLarge"}/`);
-  if (/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\//.test(u)) return u.replace(/\/t\/p\/(?:original|w\d+)\//, `/t/p/${size === "sm" ? "w154" : size === "md" ? "w185" : size === "lg" ? "w342" : "w500"}/`);
+  if (/s4\.anilist\.co\/.*\/cover\/(?:small|medium|large|extraLarge)\//i.test(u))
+    return u.replace(
+      /\/cover\/(?:small|medium|large|extraLarge)\//i,
+      `/cover/${size === "sm" || size === "md" ? "medium" : size === "lg" ? "large" : "extraLarge"}/`,
+    );
+  if (/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\//.test(u))
+    return u.replace(
+      /\/t\/p\/(?:original|w\d+)\//,
+      `/t/p/${size === "sm" ? "w154" : size === "md" ? "w185" : size === "lg" ? "w342" : "w500"}/`,
+    );
   // TVDB keeps a ~340 px "_t" thumbnail next to each artwork.
-  if ((size === "sm" || size === "md") && /artworks\.thetvdb\.com\/banners\/.+(?<!_t)\.(?:jpg|png)$/i.test(u)) return u.replace(/\.(jpg|png)$/i, "_t.$1");
+  if ((size === "sm" || size === "md") && /artworks\.thetvdb\.com\/banners\/.+(?<!_t)\.(?:jpg|png)$/i.test(u))
+    return u.replace(/\.(jpg|png)$/i, "_t.$1");
   return u;
 }
 
@@ -108,7 +142,11 @@ async function fetchImage(url: string, f: typeof fetch): Promise<{ type: string;
 }
 
 /** The cached file for a cover at a size (fetched once; concurrent requests share the fetch). */
-export async function thumb(u: string, size: ThumbSize, deps: { fetch: typeof fetch; resize?: (b: Buffer, w: number) => Promise<Buffer | null> } = { fetch, resize: ffmpegResize }): Promise<{ file: string; type: string; etag: string } | null> {
+export async function thumb(
+  u: string,
+  size: ThumbSize,
+  deps: { fetch: typeof fetch; resize?: (b: Buffer, w: number) => Promise<Buffer | null> } = { fetch, resize: ffmpegResize },
+): Promise<{ file: string; type: string; etag: string } | null> {
   if (!allowedImage(u)) return null;
   const src = sizedUrl(u, size);
   const key = crypto.createHash("sha1").update(`${src}|${WIDTH[size]}`).digest("hex");
@@ -125,7 +163,7 @@ export async function thumb(u: string, size: ThumbSize, deps: { fetch: typeof fe
       let { type, buf } = got;
       // Shrunk to the slot's width as WebP (AniList's covers are PNG/JPG of 100–260 KB even at "medium").
       const small = deps.resize ? await deps.resize(buf, WIDTH[size]) : null;
-      if (small && small.length < buf.length) (buf = small), (type = "image/webp");
+      if (small && small.length < buf.length) ((buf = small), (type = "image/webp"));
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(`${file}.tmp`, buf);
       fs.renameSync(`${file}.tmp`, file);
@@ -155,11 +193,12 @@ function pruneSoon() {
     pruneTimer = null;
     try {
       const files: { f: string; size: number; at: number }[] = [];
-      for (const d of fs.readdirSync(DIR)) for (const f of fs.readdirSync(path.join(DIR, d))) {
-        if (f.endsWith(".type") || f.endsWith(".tmp")) continue;
-        const st = fs.statSync(path.join(DIR, d, f));
-        files.push({ f: path.join(DIR, d, f), size: st.size, at: st.atimeMs });
-      }
+      for (const d of fs.readdirSync(DIR))
+        for (const f of fs.readdirSync(path.join(DIR, d))) {
+          if (f.endsWith(".type") || f.endsWith(".tmp")) continue;
+          const st = fs.statSync(path.join(DIR, d, f));
+          files.push({ f: path.join(DIR, d, f), size: st.size, at: st.atimeMs });
+        }
       let total = files.reduce((n, x) => n + x.size, 0);
       for (const x of files.sort((a, b) => a.at - b.at)) {
         if (total <= MAX_CACHE) break;

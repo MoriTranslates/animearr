@@ -3,19 +3,80 @@ import { api } from "./api";
 import { t } from "./i18n";
 import { Chip, Cover, Spinner, useLoad, useToast } from "./ui";
 
-interface Candidate { anilistId: number; title: string; romaji: string | null; year: number | null; kind: string | null; episodes: number | null; cover: string | null; tvdbId: number | null; score: number; reason: string; owned: boolean }
-interface Match { folder: { title: string; year: number | null }; candidates: Candidate[]; best: Candidate | null; confidence: "confident" | "likely" | "unsure" | "none"; reason: string; anilist: string }
-interface Folder { name: string; path: string; videos: number }
-interface Scan { root: string; folders: Folder[]; skipped: { owned: number; hidden: number } }
-interface Adopted { title: string; episodes: number; mapped: number; unmapped: { path: string; why: string }[] }
-interface SearchHit { anilistId: number; title: string; romaji: string | null; year: number | null; kind: string | null; episodes: number | null; cover: string | null; tvdbId: number | null; inLibrary: unknown }
+interface Candidate {
+  anilistId: number;
+  title: string;
+  romaji: string | null;
+  year: number | null;
+  kind: string | null;
+  episodes: number | null;
+  cover: string | null;
+  tvdbId: number | null;
+  score: number;
+  reason: string;
+  owned: boolean;
+}
+interface Match {
+  folder: { title: string; year: number | null };
+  candidates: Candidate[];
+  best: Candidate | null;
+  confidence: "confident" | "likely" | "unsure" | "none";
+  reason: string;
+  anilist: string;
+}
+interface Folder {
+  name: string;
+  path: string;
+  videos: number;
+}
+interface Scan {
+  root: string;
+  folders: Folder[];
+  skipped: { owned: number; hidden: number };
+}
+interface Adopted {
+  title: string;
+  episodes: number;
+  mapped: number;
+  unmapped: { path: string; why: string }[];
+}
+interface SearchHit {
+  anilistId: number;
+  title: string;
+  romaji: string | null;
+  year: number | null;
+  kind: string | null;
+  episodes: number | null;
+  cover: string | null;
+  tvdbId: number | null;
+  inLibrary: unknown;
+}
 
 /** Row state: matching → review → added / skipped. */
-interface Row { folder: Folder; state: "waiting" | "matching" | "review" | "adding" | "added" | "skipped" | "error"; match?: Match; pick?: Candidate; done?: Adopted; error?: string }
+interface Row {
+  folder: Folder;
+  state: "waiting" | "matching" | "review" | "adding" | "added" | "skipped" | "error";
+  match?: Match;
+  pick?: Candidate;
+  done?: Adopted;
+  error?: string;
+}
 
 const KIND: Record<string, string> = { TV: "TV", TV_SHORT: "TV", ONA: "ONA", OVA: "OVA", SPECIAL: "Special" };
 const tone = { confident: "good", likely: "info", unsure: "warn", none: "bad" } as const;
-const fromHit = (h: SearchHit): Candidate => ({ anilistId: h.anilistId, title: h.title, romaji: h.romaji, year: h.year, kind: h.kind, episodes: h.episodes, cover: h.cover, tvdbId: h.tvdbId, score: 0, reason: "", owned: !!h.inLibrary });
+const fromHit = (h: SearchHit): Candidate => ({
+  anilistId: h.anilistId,
+  title: h.title,
+  romaji: h.romaji,
+  year: h.year,
+  kind: h.kind,
+  episodes: h.episodes,
+  cover: h.cover,
+  tvdbId: h.tvdbId,
+  score: 0,
+  reason: "",
+  owned: !!h.inLibrary,
+});
 
 /**
  * Import existing folders: pick a root, review each top-level folder's best match, add them as they are. Matching goes
@@ -76,7 +137,9 @@ export function ImportFolders({ onClose }: { onClose?: () => void }) {
       return false;
     }
   };
-  const confident = (rows ?? []).filter((r) => r.state === "review" && r.match?.confidence === "confident" && r.pick && r.pick === r.match.best && !r.pick.owned);
+  const confident = (rows ?? []).filter(
+    (r) => r.state === "review" && r.match?.confidence === "confident" && r.pick && r.pick === r.match.best && !r.pick.owned,
+  );
   const addAll = async () => {
     setBulk(true);
     let n = 0;
@@ -127,7 +190,13 @@ export function ImportFolders({ onClose }: { onClose?: () => void }) {
       )}
       <ul className="plain stack">
         {(rows ?? []).map((r) => (
-          <FolderRow key={r.folder.name} r={r} onPick={(pick) => patch(r.folder.name, { pick })} onAdd={() => void add(r)} onSkip={() => patch(r.folder.name, { state: r.state === "skipped" ? "review" : "skipped" })} />
+          <FolderRow
+            key={r.folder.name}
+            r={r}
+            onPick={(pick) => patch(r.folder.name, { pick })}
+            onAdd={() => void add(r)}
+            onSkip={() => patch(r.folder.name, { state: r.state === "skipped" ? "review" : "skipped" })}
+          />
         ))}
       </ul>
     </div>
@@ -140,18 +209,23 @@ function FolderRow({ r, onPick, onAdd, onSkip }: { r: Row; onPick: (c: Candidate
   const pick = r.pick;
   const options = [...(m?.candidates ?? [])];
   if (pick && !options.some((c) => c.anilistId === pick.anilistId)) options.unshift(pick);
-  const line = (c: Candidate) => [c.kind ? (KIND[c.kind] ?? c.kind) : null, c.year, c.episodes ? t("import.eps", { n: c.episodes }) : null].filter(Boolean).join(" · ");
+  const line = (c: Candidate) =>
+    [c.kind ? (KIND[c.kind] ?? c.kind) : null, c.year, c.episodes ? t("import.eps", { n: c.episodes }) : null].filter(Boolean).join(" · ");
   return (
     <li className={`card pad stack${r.state === "skipped" ? " dim" : ""}`}>
       <div className="row between">
         <strong className="mono">{r.folder.name}</strong>
         <span className="muted small">{r.folder.videos ? t("import.files", { n: r.folder.videos }) : t("import.noFiles")}</span>
       </div>
-      {(r.state === "waiting" || r.state === "matching") && <span className="muted small">{r.state === "waiting" ? t("import.waiting") : t("import.matching")}</span>}
+      {(r.state === "waiting" || r.state === "matching") && (
+        <span className="muted small">{r.state === "waiting" ? t("import.waiting") : t("import.matching")}</span>
+      )}
       {r.state === "error" && <p className="warn-text small">{r.error}</p>}
       {r.state === "added" && r.done && (
         <div className="stack">
-          <span className="small">{t("import.added", { title: r.done.title, mapped: r.done.mapped, total: r.done.mapped + r.done.unmapped.length })}</span>
+          <span className="small">
+            {t("import.added", { title: r.done.title, mapped: r.done.mapped, total: r.done.mapped + r.done.unmapped.length })}
+          </span>
           {r.done.unmapped.length > 0 && (
             <details>
               <summary className="small warn-text">{t("import.unmapped", { n: r.done.unmapped.length })}</summary>
@@ -190,7 +264,11 @@ function FolderRow({ r, onPick, onAdd, onSkip }: { r: Row; onPick: (c: Candidate
           {r.state !== "adding" && (
             <div className="row">
               {options.length > 1 && (
-                <select value={pick?.anilistId ?? ""} onChange={(e) => onPick(options.find((c) => c.anilistId === Number(e.target.value))!)} aria-label={t("import.other")}>
+                <select
+                  value={pick?.anilistId ?? ""}
+                  onChange={(e) => onPick(options.find((c) => c.anilistId === Number(e.target.value))!)}
+                  aria-label={t("import.other")}
+                >
                   {options.map((c) => (
                     <option key={c.anilistId} value={c.anilistId}>
                       {c.title} ({[c.kind, c.year].filter(Boolean).join(", ")})
@@ -227,7 +305,11 @@ function ManualSearch({ initial, onPick }: { initial: string; onPick: (c: Candid
   const go = async () => {
     setBusy(true);
     try {
-      setHits((await api<{ results: SearchHit[] }>(`/add/search?q=${encodeURIComponent(q)}`)).results.filter((h) => h.kind !== "MOVIE" && h.kind !== "MUSIC"));
+      setHits(
+        (await api<{ results: SearchHit[] }>(`/add/search?q=${encodeURIComponent(q)}`)).results.filter(
+          (h) => h.kind !== "MOVIE" && h.kind !== "MUSIC",
+        ),
+      );
     } catch {
       setHits([]);
     }
@@ -254,7 +336,12 @@ function ManualSearch({ initial, onPick }: { initial: string; onPick: (c: Candid
           <li key={h.anilistId} className="row">
             <Cover src={h.cover} alt={h.title} size="sm" />
             <span className="grow">
-              {h.title} <span className="muted small">{[h.kind ? (KIND[h.kind] ?? h.kind) : null, h.year, h.episodes ? t("import.eps", { n: h.episodes }) : null].filter(Boolean).join(" · ")}</span>
+              {h.title}{" "}
+              <span className="muted small">
+                {[h.kind ? (KIND[h.kind] ?? h.kind) : null, h.year, h.episodes ? t("import.eps", { n: h.episodes }) : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
             </span>
             <button className="small" disabled={!!h.inLibrary} onClick={() => onPick(fromHit(h))}>
               {h.inLibrary ? t("import.inLibrary") : t("import.use")}

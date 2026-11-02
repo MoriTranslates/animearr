@@ -8,7 +8,14 @@ import { t } from "./i18n";
 
 export function SheepShip({ size = 120, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg className={`sheep-ship ${className}`} width={size} height={size * 0.8} viewBox="0 0 150 120" role="img" aria-label={t("merry.ship")}>
+    <svg
+      className={`sheep-ship ${className}`}
+      width={size}
+      height={size * 0.8}
+      viewBox="0 0 150 120"
+      role="img"
+      aria-label={t("merry.ship")}
+    >
       {/* sea */}
       <path className="ss-sea" d="M0 100 Q 12 94 25 100 T 50 100 T 75 100 T 100 100 T 125 100 T 150 100 V120 H0 Z" />
       {/* hull */}

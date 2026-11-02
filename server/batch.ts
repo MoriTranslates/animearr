@@ -60,12 +60,18 @@ export function readBatch(raw: string | null | undefined): BatchInfo | null {
     return null;
   }
 }
-export const writeBatch = (grabId: number, b: BatchInfo | null) => db.prepare("UPDATE grabs SET batch = ? WHERE id = ?").run(b ? JSON.stringify(b) : null, grabId);
+export const writeBatch = (grabId: number, b: BatchInfo | null) =>
+  db.prepare("UPDATE grabs SET batch = ? WHERE id = ?").run(b ? JSON.stringify(b) : null, grabId);
 
 /** One plain line for the Queue and Activity ("Downloading 4 of 26 episodes (you have the rest)"). */
 export function batchLine(b: BatchInfo | null): string | null {
   if (!b) return null;
-  if (b.movie) return b.mode === "partial" ? "Downloading only the movie/special from this season batch" : b.mode === "pending" ? "Waiting for the torrent's file list to download only the movie/special" : "Downloading the whole season batch; only the movie/special is imported, the rest is cleaned up after the import";
+  if (b.movie)
+    return b.mode === "partial"
+      ? "Downloading only the movie/special from this season batch"
+      : b.mode === "pending"
+        ? "Waiting for the torrent's file list to download only the movie/special"
+        : "Downloading the whole season batch; only the movie/special is imported, the rest is cleaned up after the import";
   if (b.total <= 1) return null;
   if (b.wanted >= b.total) return b.autoReplace ? `Downloading all ${b.total} episodes (replacing the season)` : null;
   const rest = b.skippedEpisodes.length ? " (you have the rest)" : "";
@@ -122,7 +128,11 @@ const SOURCE_RANK: Record<string, number> = { bluray: 3, web: 2, hdtv: 1, dvd: 0
 const resScore = (r: number | null, want: number) => (r === null ? null : r === want ? 3 : r > want ? 2 : r >= 720 ? 1 : 0);
 
 /** -1 worse, 0 same, 1 better; unknown on either side counts as the same (null when nothing is known at all). */
-export function compareQuality(a: { resolution: number | null; source: Source }, b: { resolution: number | null; source: Source }, profileRes: number): number | null {
+export function compareQuality(
+  a: { resolution: number | null; source: Source },
+  b: { resolution: number | null; source: Source },
+  profileRes: number,
+): number | null {
   const ra = resScore(a.resolution, profileRes);
   const rb = resScore(b.resolution, profileRes);
   if (ra !== null && rb !== null && ra !== rb) return ra > rb ? 1 : -1;
@@ -155,7 +165,10 @@ function typicalQuality(files: ExistingFile[], group: string | null) {
     for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
-  return { resolution: top(pool.map((f) => f.resolution).filter((r): r is number => r !== null)), source: top(pool.map((f) => f.source).filter((s): s is NonNullable<Source> => !!s)) as Source };
+  return {
+    resolution: top(pool.map((f) => f.resolution).filter((r): r is number => r !== null)),
+    source: top(pool.map((f) => f.source).filter((s): s is NonNullable<Source> => !!s)) as Source,
+  };
 }
 
 /** Per season: only the missing episodes, or the whole season as a Replace season. Pure. */
@@ -167,38 +180,90 @@ export function decideSeason(x: SeasonInput): SeasonDecision {
   const good = x.existing.filter((f) => !f.failed && inBatch.includes(f.episodeId));
   const seasonGroup = majorityGroup(x.existing.filter((f) => !f.failed));
   const s = `season ${x.season}`;
-  const failedNote = failed.length ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} whose file failed its check count as missing` : "";
+  const failedNote = failed.length
+    ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} whose file failed its check count as missing`
+    : "";
   const missingOnly = (why: string, preferSingles = false, newer: number[] = []): SeasonDecision => {
     // Failed files (and files the batch has a newer version of) are replaced through the Replace-season path (old file to the bin only after the new one passed); without a bin they stay.
     const repl = x.recycleBin ? [...failed, ...newer] : [];
-    const binNote = failed.length && !x.recycleBin ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} with a failed file stay as they are (Replace season needs the recycling bin)` : "";
-    return { mode: "missing", want: [...missing, ...repl], replaces: repl, preferSingles, seasonGroup, why: `${why}${repl.length ? failedNote : ""}${binNote}` };
+    const binNote =
+      failed.length && !x.recycleBin
+        ? `; ${failed.length} episode${failed.length === 1 ? "" : "s"} with a failed file stay as they are (Replace season needs the recycling bin)`
+        : "";
+    return {
+      mode: "missing",
+      want: [...missing, ...repl],
+      replaces: repl,
+      preferSingles,
+      seasonGroup,
+      why: `${why}${repl.length ? failedNote : ""}${binNote}`,
+    };
   };
-  if (!good.length) return { mode: "missing", want: [...missing, ...(x.recycleBin ? failed : [])], replaces: x.recycleBin ? failed : [], preferSingles: false, seasonGroup, why: `Taking ${s}: you have none of its episodes${failed.length ? ` with a good file${x.recycleBin ? failedNote : ""}` : ""}` };
-  if (x.consistency === "off") return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: keeping one group per season is off`);
+  if (!good.length)
+    return {
+      mode: "missing",
+      want: [...missing, ...(x.recycleBin ? failed : [])],
+      replaces: x.recycleBin ? failed : [],
+      preferSingles: false,
+      seasonGroup,
+      why: `Taking ${s}: you have none of its episodes${failed.length ? ` with a good file${x.recycleBin ? failedNote : ""}` : ""}`,
+    };
+  if (x.consistency === "off")
+    return missingOnly(
+      `Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: keeping one group per season is off`,
+    );
   const batchGroup = x.batch.group;
   if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) {
     // The one exception to "same group → keep what you have": a higher version of the same release (never a different quality, never a locked file).
     const newer = x.propers
-      ? good.filter((f) => f.version !== undefined && isNewerRevision({ group: f.group, version: f.version, locked: f.locked }, { group: batchGroup, version: x.batch.version ?? 1 }, x.propers!).ok && compareQuality(x.batch, f, x.profileResolution) !== -1).map((f) => f.episodeId)
+      ? good
+          .filter(
+            (f) =>
+              f.version !== undefined &&
+              isNewerRevision(
+                { group: f.group, version: f.version, locked: f.locked },
+                { group: batchGroup, version: x.batch.version ?? 1 },
+                x.propers!,
+              ).ok &&
+              compareQuality(x.batch, f, x.profileResolution) !== -1,
+          )
+          .map((f) => f.episodeId)
       : [];
-    if (newer.length && x.recycleBin) return missingOnly(`${newer.length} episode${newer.length === 1 ? "" : "s"} of ${s} get${newer.length === 1 ? "s" : ""} a newer version (v${x.batch.version}) from ${seasonGroup}, plus the ${missing.length} missing; the old files go to the recycling bin only after the new ones pass their check`, false, newer);
+    if (newer.length && x.recycleBin)
+      return missingOnly(
+        `${newer.length} episode${newer.length === 1 ? "" : "s"} of ${s} get${newer.length === 1 ? "s" : ""} a newer version (v${x.batch.version}) from ${seasonGroup}, plus the ${missing.length} missing; the old files go to the recycling bin only after the new ones pass their check`,
+        false,
+        newer,
+      );
   }
-  if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase()) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: same group as your files (${seasonGroup})`);
+  if (seasonGroup && batchGroup && seasonGroup.toLowerCase() === batchGroup.toLowerCase())
+    return missingOnly(
+      `Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: same group as your files (${seasonGroup})`,
+    );
   const existingQ = typicalQuality(good, seasonGroup);
   const cmp = compareQuality(x.batch, existingQ, x.profileResolution);
   const groupWords = seasonGroup ? `${seasonGroup} → ${batchGroup ?? "no group"}` : `your files are a mix of groups`;
   if (cmp === null || cmp < 0) {
     const worse = cmp === null ? "can't tell its quality" : "lower quality than your files";
-    return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: the batch is another group (${groupWords}) and ${worse}; the season stays mixed`, cmp !== null && !!seasonGroup);
+    return missingOnly(
+      `Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: the batch is another group (${groupWords}) and ${worse}; the season stays mixed`,
+      cmp !== null && !!seasonGroup,
+    );
   }
   // The typical file can hide better ones (a mixed season of WEB and Blu-ray): never swap any file for a worse one.
   const better = good.filter((f) => compareQuality(x.batch, f, x.profileResolution) === -1);
   if (better.length) {
-    const kinds = [...new Set(better.map((f) => (f.source === "bluray" ? "Blu-ray" : f.source === "web" ? "WEB" : (f.source ?? "other"))))].join("/");
-    return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the whole season would swap ${better.length} better file${better.length === 1 ? "" : "s"} (${kinds}) for this batch`);
+    const kinds = [
+      ...new Set(better.map((f) => (f.source === "bluray" ? "Blu-ray" : f.source === "web" ? "WEB" : (f.source ?? "other")))),
+    ].join("/");
+    return missingOnly(
+      `Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the whole season would swap ${better.length} better file${better.length === 1 ? "" : "s"} (${kinds}) for this batch`,
+    );
   }
-  if (!x.recycleBin) return missingOnly(`Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the season would keep one group (${batchGroup ?? "?"}) but needs the recycling bin (Settings → Media management)`);
+  if (!x.recycleBin)
+    return missingOnly(
+      `Only the ${missing.length} missing episode${missing.length === 1 ? "" : "s"} of ${s}: replacing the season would keep one group (${batchGroup ?? "?"}) but needs the recycling bin (Settings → Media management)`,
+    );
   return {
     mode: "replace",
     want: [...inBatch],
@@ -258,7 +323,9 @@ export function planBatch(input: {
   exclude: Set<number>;
   existingOf: (seriesId: number, season: number) => ExistingFile[];
 }): BatchPlan {
-  const eps = cache.prepare(`SELECT id, season FROM episodes WHERE id IN (${input.candidateEpisodeIds.map(() => "?").join(",") || "NULL"})`).all(...input.candidateEpisodeIds) as { id: number; season: number }[];
+  const eps = cache
+    .prepare(`SELECT id, season FROM episodes WHERE id IN (${input.candidateEpisodeIds.map(() => "?").join(",") || "NULL"})`)
+    .all(...input.candidateEpisodeIds) as { id: number; season: number }[];
   const seasons = [...new Set(eps.map((e) => e.season))].sort((a, b) => a - b);
   const parsed = parseRelease(input.release);
   const want = new Set(input.baseIds);
@@ -266,7 +333,16 @@ export function planBatch(input: {
   for (const season of seasons) {
     const batchEpisodes = eps.filter((e) => e.season === season && !input.exclude.has(e.id)).map((e) => e.id);
     if (batchEpisodes.length < 2) continue;
-    const d = decideSeason({ season, consistency: input.consistency, batchEpisodes, existing: input.existingOf(input.seriesId, season), batch: { group: input.group ?? parsed.group, resolution: parsed.resolution, source: parsed.source, version: parsed.version }, propers: input.propers, profileResolution: input.profileResolution, recycleBin: input.recycleBin });
+    const d = decideSeason({
+      season,
+      consistency: input.consistency,
+      batchEpisodes,
+      existing: input.existingOf(input.seriesId, season),
+      batch: { group: input.group ?? parsed.group, resolution: parsed.resolution, source: parsed.source, version: parsed.version },
+      propers: input.propers,
+      profileResolution: input.profileResolution,
+      recycleBin: input.recycleBin,
+    });
     decisions.push(d);
     for (const e of d.want) want.add(e);
   }
@@ -284,25 +360,43 @@ export function planBatch(input: {
 export async function existingFiles(seriesId: number, season: number): Promise<ExistingFile[]> {
   const { episodeRows } = await import("./episodes.js");
   const tvdbId = (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id;
-  const hasFile = (id: number) => !!(cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
-  const files = new Map((cache.prepare("SELECT id, source, scene_name, quality, resolution FROM files WHERE series_id = ?").all(seriesId) as { id: number; source: string | null; scene_name: string | null; quality: string | null; resolution: string | null }[]).map((f) => [f.id, f]));
+  const hasFile = (id: number) =>
+    !!(cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
+  const files = new Map(
+    (
+      cache.prepare("SELECT id, source, scene_name, quality, resolution FROM files WHERE series_id = ?").all(seriesId) as {
+        id: number;
+        source: string | null;
+        scene_name: string | null;
+        quality: string | null;
+        resolution: string | null;
+      }[]
+    ).map((f) => [f.id, f]),
+  );
   const rows = episodeRows(seriesId);
-  const revs = tvdbId ? haveRevisions(tvdbId, rows.filter((e) => e.season === season).map((e) => e.id)) : new Map();
-  return rows
-    // An episode with a file but no file details yet (not synced) still has its file: never "missing".
-    .filter((e) => e.season === season && (e.file || e.status === "have" || hasFile(e.id)))
-    .map((e) => {
-      const f = e.file ? files.get(e.file.id) : undefined;
-      return {
-        episodeId: e.id,
-        group: e.file?.group ?? (f?.scene_name ? parseRelease(f.scene_name).group : null),
-        resolution: heightOf(f?.resolution) ?? heightOf(f?.quality),
-        source: sourceOf(f?.source ?? null, f?.scene_name ?? null, f?.quality ?? null),
-        failed: e.file?.lang?.state === "no",
-        version: revs.get(e.id)?.version,
-        locked: revs.get(e.id)?.locked,
-      };
-    });
+  const revs = tvdbId
+    ? haveRevisions(
+        tvdbId,
+        rows.filter((e) => e.season === season).map((e) => e.id),
+      )
+    : new Map();
+  return (
+    rows
+      // An episode with a file but no file details yet (not synced) still has its file: never "missing".
+      .filter((e) => e.season === season && (e.file || e.status === "have" || hasFile(e.id)))
+      .map((e) => {
+        const f = e.file ? files.get(e.file.id) : undefined;
+        return {
+          episodeId: e.id,
+          group: e.file?.group ?? (f?.scene_name ? parseRelease(f.scene_name).group : null),
+          resolution: heightOf(f?.resolution) ?? heightOf(f?.quality),
+          source: sourceOf(f?.source ?? null, f?.scene_name ?? null, f?.quality ?? null),
+          failed: e.file?.lang?.state === "no",
+          version: revs.get(e.id)?.version,
+          locked: revs.get(e.id)?.locked,
+        };
+      })
+  );
 }
 
 // ---------------------------------------------------------------- 2. which files are wanted
@@ -352,7 +446,14 @@ const stem = (n: string) => base(n).replace(/\.[^.]+$/, "");
  * (otherwise everything is downloaded, so the import sees what it would have seen); archives are never split.
  */
 export function planFiles(files: BatchFile[], o: FileMapOpts): FilePlan {
-  const whole = (reason: string): FilePlan => ({ whole: true, wanted: files.map((f) => f.index), skipped: [], skippedEpisodes: [], extraEpisodes: [], reason });
+  const whole = (reason: string): FilePlan => ({
+    whole: true,
+    wanted: files.map((f) => f.index),
+    skipped: [],
+    skippedEpisodes: [],
+    extraEpisodes: [],
+    reason,
+  });
   if (!files.length) return whole("the torrent lists no files");
   if (files.some((f) => ARCHIVE.test(f.name))) return whole("the batch is packed in archives");
   const videos = files.filter((f) => VIDEO.test(f.name));
@@ -364,7 +465,10 @@ export function planFiles(files: BatchFile[], o: FileMapOpts): FilePlan {
   const keptStems: string[] = [];
   const skippedStems: string[] = [];
   if (o.movie) {
-    const hit = fileForMovie(videos.map((v) => ({ path: v.name, v })), o.movie.subtitles);
+    const hit = fileForMovie(
+      videos.map((v) => ({ path: v.name, v })),
+      o.movie.subtitles,
+    );
     if (!hit) return whole("no single file names the movie");
     for (const v of videos) (v === hit.v ? keep : skip).add(v.index);
     keptStems.push(stem(hit.v.name));
@@ -409,7 +513,14 @@ export function planFiles(files: BatchFile[], o: FileMapOpts): FilePlan {
   }
   if (!skip.size) return whole("every file is wanted");
   if (!keep.size) return whole("no file is wanted");
-  return { whole: false, wanted: files.filter((f) => keep.has(f.index)).map((f) => f.index), skipped: [...skip], skippedEpisodes: [...skippedEps], extraEpisodes: [...extraEps], reason: `${skip.size} file${skip.size === 1 ? "" : "s"} skipped` };
+  return {
+    whole: false,
+    wanted: files.filter((f) => keep.has(f.index)).map((f) => f.index),
+    skipped: [...skip],
+    skippedEpisodes: [...skippedEps],
+    extraEpisodes: [...extraEps],
+    reason: `${skip.size} file${skip.size === 1 ? "" : "s"} skipped`,
+  };
 }
 
 // ---------------------------------------------------------------- applying it through the client capability
@@ -433,10 +544,18 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   const finishWhole = async (why: string) => {
     if (c.job.paused && c.clients.start) await c.clients.start(c.job).catch(() => undefined);
     writeBatch(c.grabId, { ...b, mode: "whole", note: why, leftovers: b.wanted < b.total || !!b.movie });
-    logDecision("info", { tvdbId: c.log.tvdbId, title: c.log.title, episodeIds: c.log.episodeIds, release: c.log.release, why: `Downloading all of ${c.log.release}: ${why}`, detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) } });
+    logDecision("info", {
+      tvdbId: c.log.tvdbId,
+      title: c.log.title,
+      episodeIds: c.log.episodeIds,
+      release: c.log.release,
+      why: `Downloading all of ${c.log.release}: ${why}`,
+      detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) },
+    });
     return "whole" as const;
   };
-  if (!c.clients.listFiles || !c.clients.selectFiles || (c.clients.canSelectFiles && !c.clients.canSelectFiles(c.job)) || !c.job.select) return finishWhole("the download client can't skip files");
+  if (!c.clients.listFiles || !c.clients.selectFiles || (c.clients.canSelectFiles && !c.clients.canSelectFiles(c.job)) || !c.job.select)
+    return finishWhole("the download client can't skip files");
   let files: BatchFile[] | null;
   try {
     files = await c.clients.listFiles(c.job);
@@ -456,8 +575,13 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   if (plan.whole) return finishWhole(plan.reason);
   if (plan.extraEpisodes.length && !c.log.movieId) {
     // Creditless extras kept: the import takes them as well.
-    const ids = JSON.parse((db.prepare("SELECT episode_ids FROM grabs WHERE id = ?").get(c.grabId) as { episode_ids: string }).episode_ids) as number[];
-    db.prepare("UPDATE grabs SET episode_ids = ? WHERE id = ?").run(JSON.stringify([...new Set([...ids, ...plan.extraEpisodes])]), c.grabId);
+    const ids = JSON.parse(
+      (db.prepare("SELECT episode_ids FROM grabs WHERE id = ?").get(c.grabId) as { episode_ids: string }).episode_ids,
+    ) as number[];
+    db.prepare("UPDATE grabs SET episode_ids = ? WHERE id = ?").run(
+      JSON.stringify([...new Set([...ids, ...plan.extraEpisodes])]),
+      c.grabId,
+    );
   }
   try {
     await c.clients.selectFiles(c.job, plan.wanted, plan.skipped);
@@ -468,7 +592,14 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   const skippedEpisodes = [...new Set([...b.skippedEpisodes, ...plan.skippedEpisodes])];
   const next: BatchInfo = { ...b, mode: "partial", skippedFiles: plan.skipped.length, skippedEpisodes, leftovers: false, note: null };
   writeBatch(c.grabId, next);
-  logDecision("info", { tvdbId: c.log.tvdbId, title: c.log.title, episodeIds: c.log.episodeIds, release: c.log.release, why: `${batchLine(next) ?? "Downloading only the wanted files"}: skipped ${plan.skipped.length} file${plan.skipped.length === 1 ? "" : "s"} of ${c.log.release} in the download client`, detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) } });
+  logDecision("info", {
+    tvdbId: c.log.tvdbId,
+    title: c.log.title,
+    episodeIds: c.log.episodeIds,
+    release: c.log.release,
+    why: `${batchLine(next) ?? "Downloading only the wanted files"}: skipped ${plan.skipped.length} file${plan.skipped.length === 1 ? "" : "s"} of ${c.log.release} in the download client`,
+    detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) },
+  });
   return "partial";
 }
 
@@ -479,15 +610,33 @@ export const isVideoName = (n: string) => VIDEO.test(path.posix.basename(n));
  * The automatic search's question about a batch: is it a worse release from another group (so the season's group's
  * single releases should fill the gaps first)? The season's group when so, else null.
  */
-export async function batchPrefersSingles(tvdbId: number, r: { episodeIds: number[]; title: string; group: string | null }): Promise<string | null> {
+export async function batchPrefersSingles(
+  tvdbId: number,
+  r: { episodeIds: number[]; title: string; group: string | null },
+): Promise<string | null> {
   const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
   if (!s || r.episodeIds.length < 2) return null;
   const { profileFor } = await import("./profiles.js");
   const { getSettings } = await import("./settings.js");
   const prof = profileFor(tvdbId);
-  const seasons = (cache.prepare(`SELECT DISTINCT season FROM episodes WHERE id IN (${r.episodeIds.map(() => "?").join(",")})`).all(...r.episodeIds) as { season: number }[]).map((x) => x.season);
+  const seasons = (
+    cache.prepare(`SELECT DISTINCT season FROM episodes WHERE id IN (${r.episodeIds.map(() => "?").join(",")})`).all(...r.episodeIds) as {
+      season: number;
+    }[]
+  ).map((x) => x.season);
   const existing = new Map<number, ExistingFile[]>();
   for (const season of seasons) existing.set(season, await existingFiles(s.id, season));
-  const plan = planBatch({ seriesId: s.id, candidateEpisodeIds: r.episodeIds, baseIds: [], release: r.title, group: r.group, consistency: prof.groupConsistency ?? "prefer", profileResolution: prof.resolution, recycleBin: !!getSettings().media.recycleBin.trim(), exclude: new Set(), existingOf: (_id, season) => existing.get(season) ?? [] });
+  const plan = planBatch({
+    seriesId: s.id,
+    candidateEpisodeIds: r.episodeIds,
+    baseIds: [],
+    release: r.title,
+    group: r.group,
+    consistency: prof.groupConsistency ?? "prefer",
+    profileResolution: prof.resolution,
+    recycleBin: !!getSettings().media.recycleBin.trim(),
+    exclude: new Set(),
+    existingOf: (_id, season) => existing.get(season) ?? [],
+  });
   return plan.decisions.find((d) => d.preferSingles)?.seasonGroup ?? null;
 }

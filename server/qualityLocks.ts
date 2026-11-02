@@ -13,19 +13,30 @@ const WHOLE_SHOW = -1;
 /** Locks of a show: the whole show and/or single seasons. */
 export function locksFor(tvdbId: number) {
   const rows = db.prepare("SELECT season FROM quality_locks WHERE tvdb_id = ?").all(tvdbId) as { season: number }[];
-  return { show: rows.some((r) => r.season === WHOLE_SHOW), seasons: rows.map((r) => r.season).filter((s) => s !== WHOLE_SHOW).sort((a, b) => a - b) };
+  return {
+    show: rows.some((r) => r.season === WHOLE_SHOW),
+    seasons: rows
+      .map((r) => r.season)
+      .filter((s) => s !== WHOLE_SHOW)
+      .sort((a, b) => a - b),
+  };
 }
 
 export function isLocked(tvdbId: number, season: number | null) {
-  return !!db.prepare("SELECT 1 FROM quality_locks WHERE tvdb_id = ? AND (season = ? OR season = ?)").get(tvdbId, WHOLE_SHOW, season ?? WHOLE_SHOW);
+  return !!db
+    .prepare("SELECT 1 FROM quality_locks WHERE tvdb_id = ? AND (season = ? OR season = ?)")
+    .get(tvdbId, WHOLE_SHOW, season ?? WHOLE_SHOW);
 }
 
 /** Locks or unlocks a show (season null) or one season. Returns whether anything changed. */
 export function setLock(tvdbId: number, season: number | null, keep: boolean, now = Date.now()) {
   const s = season ?? WHOLE_SHOW;
   if (!Number.isInteger(s) || s < WHOLE_SHOW) throw Object.assign(new Error("Pick a season"), { statusCode: 400 });
-  if (!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ?").get(tvdbId)) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
-  const r = keep ? db.prepare("INSERT OR IGNORE INTO quality_locks (tvdb_id, season, at) VALUES (?, ?, ?)").run(tvdbId, s, now) : db.prepare("DELETE FROM quality_locks WHERE tvdb_id = ? AND season = ?").run(tvdbId, s);
+  if (!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ?").get(tvdbId))
+    throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
+  const r = keep
+    ? db.prepare("INSERT OR IGNORE INTO quality_locks (tvdb_id, season, at) VALUES (?, ?, ?)").run(tvdbId, s, now)
+    : db.prepare("DELETE FROM quality_locks WHERE tvdb_id = ? AND season = ?").run(tvdbId, s);
   return r.changes > 0;
 }
 

@@ -20,28 +20,80 @@ type SR = import("../server/search.js").SearchResult;
 
 const realFetch = globalThis.fetch;
 after(() => void (globalThis.fetch = realFetch));
-const IX = { id: "q1", kind: "newznab", protocol: "usenet", name: "Q", url: "https://q.example", apiPath: "/api", apiKey: "", categories: [5070], priority: 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [] } as never;
-const item = (title: string, size = 1.4e9) => `<item><title>${title}</title><guid>${title}</guid><link>https://q.example/get/${encodeURIComponent(title)}</link><pubDate>${new Date(Date.now() - 86_400_000).toUTCString()}</pubDate><newznab:attr name="size" value="${size}"/></item>`;
-const rss = (...items: string[]) => new Response(`<rss><channel>${items.join("")}</channel></rss>`, { headers: { "content-type": "application/xml" } });
+const IX = {
+  id: "q1",
+  kind: "newznab",
+  protocol: "usenet",
+  name: "Q",
+  url: "https://q.example",
+  apiPath: "/api",
+  apiKey: "",
+  categories: [5070],
+  priority: 25,
+  enabled: true,
+  seedRatio: null,
+  seedTimeMin: null,
+  tags: [],
+} as never;
+const item = (title: string, size = 1.4e9) =>
+  `<item><title>${title}</title><guid>${title}</guid><link>https://q.example/get/${encodeURIComponent(title)}</link><pubDate>${new Date(Date.now() - 86_400_000).toUTCString()}</pubDate><newznab:attr name="size" value="${size}"/></item>`;
+const rss = (...items: string[]) =>
+  new Response(`<rss><channel>${items.join("")}</channel></rss>`, { headers: { "content-type": "application/xml" } });
 const qOf = (u: string | URL) => new URL(String(u)).searchParams.get("q") ?? "";
 /** Waits for the request's abort (a hanging indexer), like a real fetch does. */
-const hang = (init?: RequestInit) => new Promise<Response>((_, rej) => init?.signal?.addEventListener("abort", () => rej(init.signal!.reason)));
+const hang = (init?: RequestInit) =>
+  new Promise<Response>((_, rej) => init?.signal?.addEventListener("abort", () => rej(init.signal!.reason)));
 
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (60, 700600, 'Queue Show', '/media/AnimeArr/Queue Show', 1, 0)").run();
-  for (const ep of [1, 2, 3, 4, 5, 6, 7, 8]) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, title, monitored, has_file, air_utc, runtime) VALUES (?, 60, 1, ?, ?, 1, 0, 0, 24)").run(6000 + ep, ep, `Title ${ep}`);
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], managed: { ...s.managed, dryRun: false, minConfidence: 80 }, prowlarr: { ...s.prowlarr, url: "", apiKey: "" }, indexers: [IX], search: { maxQueries: 6, indexerTimeoutSec: 20 } }));
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (60, 700600, 'Queue Show', '/media/AnimeArr/Queue Show', 1, 0)",
+    )
+    .run();
+  for (const ep of [1, 2, 3, 4, 5, 6, 7, 8])
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, title, monitored, has_file, air_utc, runtime) VALUES (?, 60, 1, ?, ?, 1, 0, 0, 24)",
+      )
+      .run(6000 + ep, ep, `Title ${ep}`);
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/AnimeArr"],
+    managed: { ...s.managed, dryRun: false, minConfidence: 80 },
+    prowlarr: { ...s.prowlarr, url: "", apiKey: "" },
+    indexers: [IX],
+    search: { maxQueries: 6, indexerTimeoutSec: 20 },
+  }));
 });
 
 const res = (title: string, episodeIds: number[], over: Partial<SR> = {}): SR =>
   ({
-    guid: `g-${title}`, title, indexer: "Q", indexerId: 1, protocol: "usenet", size: 1.4e9, seeders: null, publishDate: null, ageHours: 30, episodeIds, label: "", confidence: 95, coversTarget: true, extra: 0,
+    guid: `g-${title}`,
+    title,
+    indexer: "Q",
+    indexerId: 1,
+    protocol: "usenet",
+    size: 1.4e9,
+    seeders: null,
+    publishDate: null,
+    ageHours: 30,
+    episodeIds,
+    label: "",
+    confidence: 95,
+    coversTarget: true,
+    extra: 0,
     quality: { source: "bluray", resolution: 1080, remux: false },
     rank: { accept: true, score: 100, langProb: 0.97, lang: "en", langSource: "", flags: [], why: "97% English, Usenet", reject: null },
-    mappingWhy: [], group: "Grp", downloadUrl: "http://x", ...over,
+    mappingWhy: [],
+    group: "Grp",
+    downloadUrl: "http://x",
+    ...over,
   }) as SR;
 const flags = (...f: [string, string, "good" | "warn" | "bad" | "info"][]) => f.map(([key, label, tone]) => ({ key, label, tone }));
-const withFlags = (r: SR, ...f: [string, string, "good" | "warn" | "bad" | "info"][]) => ({ ...r, rank: { ...r.rank, flags: flags(...f) } });
+const withFlags = (r: SR, ...f: [string, string, "good" | "warn" | "bad" | "info"][]) => ({
+  ...r,
+  rank: { ...r.rank, flags: flags(...f) },
+});
 
 /** A search that waits until `open()`; counts calls per episode. */
 function gated(results: (ids: number[]) => SR[] = (ids) => [res(`[Good] Queue Show - ${ids[0]}`, ids)]) {
@@ -55,7 +107,10 @@ function gated(results: (ids: number[]) => SR[] = (ids) => [res(`[Good] Queue Sh
     grabbed,
     d: {
       search: (async (_t: number, ids: number[]) => (calls.push(ids), await gate, { results: results(ids) })) as never,
-      grab: (async (req: { candidate: { title: string } }) => (grabbed.push(req.candidate.title), { id: 1, dryRun: false, message: "Sent" })) as never,
+      grab: (async (req: { candidate: { title: string } }) => (
+        grabbed.push(req.candidate.title),
+        { id: 1, dryRun: false, message: "Sent" }
+      )) as never,
     },
   };
 }
@@ -75,7 +130,10 @@ test("⚡ answers at once with the job; the search runs after, and its outcome l
   await autoJobsIdle();
   const job = autoJobs().jobs.find((j) => j.id === r.jobId)!;
   assert.equal(job.state, "done");
-  assert.deepEqual(job.results.map((x) => [x.label, x.outcome]), [["S01E01 · Title 1", "grabbed"]]);
+  assert.deepEqual(
+    job.results.map((x) => [x.label, x.outcome]),
+    [["S01E01 · Title 1", "grabbed"]],
+  );
   assert.deepEqual(g.grabbed, ["[Good] Queue Show - 6001"]);
   assert.ok(!autoJobs().searching.includes(6001), "released when done");
   const log = db.prepare("SELECT why FROM decisions WHERE kind = 'search' ORDER BY id DESC LIMIT 1").get() as { why: string };
@@ -95,7 +153,10 @@ test("a second ⚡ on an episode still queued is skipped as already being search
   assert.equal(again.episodes, 0);
   const dup = autoJobs().jobs.find((j) => j.id === again.jobId)!;
   assert.equal(dup.state, "done");
-  assert.deepEqual(dup.results.map((x) => [x.outcome, x.why]), [["skipped", "already being searched"]]);
+  assert.deepEqual(
+    dup.results.map((x) => [x.outcome, x.why]),
+    [["skipped", "already being searched"]],
+  );
   a.open();
   b.open();
   c.open();
@@ -150,7 +211,11 @@ test("one cap for every indexer query in the app, shared in turn between two ⚡
   const firstB = started.findIndex((q) => q.startsWith("b"));
   const lastA = started.findLastIndex((q) => q.startsWith("a"));
   assert.ok(firstB < lastA, `the second job's first query ran before the first job's last one (${started.join(" ")})`);
-  assert.deepEqual(started.filter((q) => q.startsWith("a")), ["a0", "a1", "a2", "a3", "a4", "a5"], "first come, first served within a job");
+  assert.deepEqual(
+    started.filter((q) => q.startsWith("a")),
+    ["a0", "a1", "a2", "a3", "a4", "a5"],
+    "first come, first served within a job",
+  );
   assert.deepEqual(schedulerStats().running, 0);
 });
 
@@ -163,7 +228,10 @@ test("an indexer that doesn't answer in time is left out of the query and its se
     const t0 = Date.now();
     await assert.rejects(searchAll("slow direct"), /Q: timed out after 1 s/);
     assert.ok(Date.now() - t0 < 5000);
-    const row = db.prepare("SELECT search_streak, last_error FROM indexer_breaker WHERE indexer_id = ?").get(indexerNumId("q1")) as { search_streak: number; last_error: string };
+    const row = db.prepare("SELECT search_streak, last_error FROM indexer_breaker WHERE indexer_id = ?").get(indexerNumId("q1")) as {
+      search_streak: number;
+      last_error: string;
+    };
     assert.equal(row.search_streak, 1);
     assert.match(row.last_error, /timed out/);
 
@@ -171,28 +239,57 @@ test("an indexer that doesn't answer in time is left out of the query and its se
     patchSettings((s) => ({ ...s, indexers: [], prowlarr: { ...s.prowlarr, url: "http://prowlarr.test", apiKey: "k", indexerIds: [] } }));
     globalThis.fetch = (async (u: string | URL, init?: RequestInit) => {
       const url = new URL(String(u));
-      if (url.pathname.endsWith("/indexer")) return Response.json([1, 2].map((id) => ({ id, name: id === 1 ? "Fast" : "Slow", protocol: "torrent", enable: true, capabilities: { categories: [{ id: 5070 }] } })));
+      if (url.pathname.endsWith("/indexer"))
+        return Response.json(
+          [1, 2].map((id) => ({
+            id,
+            name: id === 1 ? "Fast" : "Slow",
+            protocol: "torrent",
+            enable: true,
+            capabilities: { categories: [{ id: 5070 }] },
+          })),
+        );
       if (url.searchParams.get("indexerIds") === "2") return hang(init);
       return Response.json([{ guid: "f1", title: "[Grp] Queue Show - 01", indexerId: 1, indexer: "Fast", protocol: "torrent", size: 1e9 }]);
     }) as typeof fetch;
     const t1 = Date.now();
     const rows = await searchAll("slow prowlarr");
-    assert.deepEqual(rows.map((x) => x.guid), ["f1"]);
+    assert.deepEqual(
+      rows.map((x) => x.guid),
+      ["f1"],
+    );
     assert.ok(Date.now() - t1 < 5000, "didn't wait for the slow indexer");
-    const slow = db.prepare("SELECT search_streak, last_error FROM indexer_breaker WHERE indexer_id = 2").get() as { search_streak: number; last_error: string };
+    const slow = db.prepare("SELECT search_streak, last_error FROM indexer_breaker WHERE indexer_id = 2").get() as {
+      search_streak: number;
+      last_error: string;
+    };
     assert.equal(slow.search_streak, 1);
     assert.match(slow.last_error, /timed out after 1 s/);
-    const fast = db.prepare("SELECT search_streak FROM indexer_breaker WHERE indexer_id = 1").get() as { search_streak: number } | undefined;
+    const fast = db.prepare("SELECT search_streak FROM indexer_breaker WHERE indexer_id = 1").get() as
+      { search_streak: number } | undefined;
     assert.ok(!fast || fast.search_streak === 0);
   } finally {
     globalThis.fetch = realFetch;
-    patchSettings((s) => ({ ...s, indexers: [IX], prowlarr: { ...s.prowlarr, url: "", apiKey: "" }, search: { ...s.search, indexerTimeoutSec: 20 } }));
+    patchSettings((s) => ({
+      ...s,
+      indexers: [IX],
+      prowlarr: { ...s.prowlarr, url: "", apiKey: "" },
+      search: { ...s.search, indexerTimeoutSec: 20 },
+    }));
   }
 });
 
 test("early stop: only for a result nothing later can beat (SeaDex best, sure, preferred protocol, no warnings)", () => {
-  const o = { profile: { protocolOrder: ["usenet", "torrent"] as ("usenet" | "torrent")[], resolution: 1080 }, minConfidence: 80, seasonGroup: null };
-  const best = withFlags(res("[Kekkan] Queue Show - 05 (BD 1080p)", [6005], { group: "Kekkan" }), ["seadex", "SeaDex best", "good"], ["lang", "English 97%", "good"]);
+  const o = {
+    profile: { protocolOrder: ["usenet", "torrent"] as ("usenet" | "torrent")[], resolution: 1080 },
+    minConfidence: 80,
+    seasonGroup: null,
+  };
+  const best = withFlags(
+    res("[Kekkan] Queue Show - 05 (BD 1080p)", [6005], { group: "Kekkan" }),
+    ["seadex", "SeaDex best", "good"],
+    ["lang", "English 97%", "good"],
+  );
   assert.equal(clearlyBest(best, o), true);
   assert.equal(clearlyBest(withFlags(best, ["seadex", "SeaDex alt", "good"]), o), false, "an alt can be beaten by the best");
   assert.equal(clearlyBest(withFlags(best), o), false, "a top-tier group without SeaDex isn't the ceiling");
@@ -208,7 +305,9 @@ test("early stop: only for a result nothing later can beat (SeaDex best, sure, p
 
 test("early stop in a real Deep Search: a SeaDex-best hit skips the queries still waiting; a mediocre one doesn't", async () => {
   clearQueryCache();
-  db.prepare("INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, tvdb_offset, kind, title_english, synonyms, status, start_date, episodes, fetched_at) VALUES (96000, 700600, '1', 0, 'TV', 'Queue Show', '[]', 'FINISHED', '2020-01-01', 8, 1)").run();
+  db.prepare(
+    "INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, tvdb_offset, kind, title_english, synonyms, status, start_date, episodes, fetched_at) VALUES (96000, 700600, '1', 0, 'TV', 'Queue Show', '[]', 'FINISHED', '2020-01-01', 8, 1)",
+  ).run();
   saveSeadex(96000, { incomplete: false, torrents: [{ group: "Kekkan", tracker: "Nyaa", best: true, dualAudio: false, tags: [] }] });
   patchSettings((s) => ({ ...s, search: { ...s.search, maxQueries: 1 } }));
   const asked: string[] = [];
@@ -245,7 +344,13 @@ test("early stop in a real Deep Search: a SeaDex-best hit skips the queries stil
 test("⚡ asks for the early stop on single episodes and says so when it fired", async () => {
   const asked: unknown[] = [];
   const d = {
-    search: (async (_t: number, ids: number[], o: unknown) => (asked.push(o), { results: [res(`[Kekkan] Queue Show - ${ids[0]}`, ids)], stoppedEarly: "[Kekkan] Queue Show is SeaDex's best release (1 query skipped)" })) as never,
+    search: (async (_t: number, ids: number[], o: unknown) => (
+      asked.push(o),
+      {
+        results: [res(`[Kekkan] Queue Show - ${ids[0]}`, ids)],
+        stoppedEarly: "[Kekkan] Queue Show is SeaDex's best release (1 query skipped)",
+      }
+    )) as never,
     grab: (async () => ({ id: 1, dryRun: false, message: "Sent" })) as never,
   };
   const r = queueAutoSearch(700600, [6008], d);

@@ -29,7 +29,9 @@ try {
   fs.accessSync(CONFIG_DIR, fs.constants.W_OK);
 } catch {
   const who = typeof process.getuid === "function" ? `${process.getuid()}:${process.getgid?.()}` : "the container user";
-  console.error(`AnimeArr can't write to ${CONFIG_DIR}. Give it to the user the container runs as (${who}), e.g. on Unraid: chown -R 99:100 /mnt/cache/appdata/animearr`);
+  console.error(
+    `AnimeArr can't write to ${CONFIG_DIR}. Give it to the user the container runs as (${who}), e.g. on Unraid: chown -R 99:100 /mnt/cache/appdata/animearr`,
+  );
   process.exit(1);
 }
 
@@ -51,7 +53,9 @@ function takeLock() {
   } catch {
     const other = Number(fs.readFileSync(LOCK, "utf8").trim());
     if (other && other !== process.pid && pidAlive(other)) {
-      console.error(`Another AnimeArr (process ${other}) is already using ${CONFIG_DIR}. Only one may run per config folder, or the database can be damaged.`);
+      console.error(
+        `Another AnimeArr (process ${other}) is already using ${CONFIG_DIR}. Only one may run per config folder, or the database can be damaged.`,
+      );
       process.exit(1);
     }
     fs.writeFileSync(LOCK, String(process.pid)); // stale lock left by a crash
@@ -74,7 +78,11 @@ if (!process.env.ANIMEARR_NO_LOCK) takeLock();
 function networkFs(dir: string): string | null {
   if (process.platform === "win32") return /^\\\\/.test(dir) ? "a network share (UNC path)" : null;
   try {
-    const mounts = fs.readFileSync("/proc/mounts", "utf8").split("\n").map((l) => l.split(" ")).filter((p) => p.length > 2);
+    const mounts = fs
+      .readFileSync("/proc/mounts", "utf8")
+      .split("\n")
+      .map((l) => l.split(" "))
+      .filter((p) => p.length > 2);
     let best: string[] | null = null;
     for (const m of mounts) {
       const mp = m[1].replace(/\\040/g, " ");
@@ -127,7 +135,9 @@ function openUser(): DatabaseSync {
       d.close();
       dbState.corrupt = true;
       dbState.detail = r;
-      console.error(`animearr.db failed its integrity check (${r}). AnimeArr will not write to it. Restore a backup in Settings → System → Backups, or from ${BACKUP_DIR}.`);
+      console.error(
+        `animearr.db failed its integrity check (${r}). AnimeArr will not write to it. Restore a backup in Settings → System → Backups, or from ${BACKUP_DIR}.`,
+      );
       try {
         return new DatabaseSync(USER_DB, { readOnly: true });
       } catch {
@@ -187,7 +197,10 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
   const name = `animearr-${kind}-${stamp}${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`;
   const file = path.join(BACKUP_DIR, name);
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  for (const old of listBackups().filter((b) => b.kind === kind).slice(KEEP[kind])) fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+  for (const old of listBackups()
+    .filter((b) => b.kind === kind)
+    .slice(KEEP[kind]))
+    fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
   return name;
 }
 
@@ -511,7 +524,9 @@ function migrateCache() {
     if (cols.length && !cols.includes("genres")) cache.exec("ALTER TABLE movies ADD COLUMN genres TEXT NOT NULL DEFAULT '[]'");
     return;
   }
-  const tables = (cache.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((t) => t.name);
+  const tables = (
+    cache.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]
+  ).map((t) => t.name);
   cache.exec("BEGIN IMMEDIATE");
   try {
     for (const t of tables) cache.exec(`DROP TABLE IF EXISTS "${t}"`);
@@ -529,7 +544,13 @@ migrateCache();
 // Additive cache columns (no version bump, so the cache — covers included — isn't wiped).
 {
   const cols = new Set((cache.prepare("PRAGMA table_info(movies)").all() as { name: string }[]).map((c) => c.name));
-  for (const [c, type] of [["status", "TEXT"], ["is_available", "INTEGER NOT NULL DEFAULT 0"], ["in_cinemas", "INTEGER"], ["digital_release", "INTEGER"], ["physical_release", "INTEGER"]] as const)
+  for (const [c, type] of [
+    ["status", "TEXT"],
+    ["is_available", "INTEGER NOT NULL DEFAULT 0"],
+    ["in_cinemas", "INTEGER"],
+    ["digital_release", "INTEGER"],
+    ["physical_release", "INTEGER"],
+  ] as const)
     if (!cols.has(c)) cache.exec(`ALTER TABLE movies ADD COLUMN ${c} ${type}`);
   const scols = new Set((cache.prepare("PRAGMA table_info(series)").all() as { name: string }[]).map((c) => c.name));
   // Sonarr's "Season folder" flag per show (null until the next sync; the importer then infers it from the files).
@@ -584,9 +605,10 @@ export function listJobs() {
 }
 
 export function getMeta(source: string) {
-  return cache.prepare("SELECT source, fetched_at AS fetchedAt, etag, last_modified AS lastModified, info FROM meta WHERE source = ?").get(source) as
-    | { source: string; fetchedAt: number | null; etag: string | null; lastModified: string | null; info: string }
-    | undefined;
+  return cache
+    .prepare("SELECT source, fetched_at AS fetchedAt, etag, last_modified AS lastModified, info FROM meta WHERE source = ?")
+    .get(source) as
+    { source: string; fetchedAt: number | null; etag: string | null; lastModified: string | null; info: string } | undefined;
 }
 export function setMeta(source: string, m: { fetchedAt: number; etag?: string | null; lastModified?: string | null; info?: unknown }) {
   cache

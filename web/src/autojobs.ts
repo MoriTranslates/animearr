@@ -7,10 +7,33 @@ import { useSyncExternalStore } from "react";
 import { api } from "./api";
 import { t, type I18nKey } from "./i18n";
 
-export interface AutoOutcome { episodeIds: number[]; label: string; outcome: "grabbed" | "would-grab" | "needs-look" | "skipped" | "failed"; release?: string; why: string }
-export interface AutoJob { id: string; kind: "episodes" | "movie"; tvdbId: number | null; movieId: number | null; title: string; episodeIds: number[]; state: "queued" | "running" | "done" | "failed"; position: number; results: AutoOutcome[]; queued?: { n: number; where: "soon" | "fillin" }; error: string | null }
+export interface AutoOutcome {
+  episodeIds: number[];
+  label: string;
+  outcome: "grabbed" | "would-grab" | "needs-look" | "skipped" | "failed";
+  release?: string;
+  why: string;
+}
+export interface AutoJob {
+  id: string;
+  kind: "episodes" | "movie";
+  tvdbId: number | null;
+  movieId: number | null;
+  title: string;
+  episodeIds: number[];
+  state: "queued" | "running" | "done" | "failed";
+  position: number;
+  results: AutoOutcome[];
+  queued?: { n: number; where: "soon" | "fillin" };
+  error: string | null;
+}
 /** What POST /autosearch (and /movies/:id/autosearch) answer. */
-export interface AutoQueued { queued: true; jobId: string; episodes: number; position: number }
+export interface AutoQueued {
+  queued: true;
+  jobId: string;
+  episodes: number;
+  position: number;
+}
 
 const POLL_MS = 3000;
 let view = { jobs: [] as AutoJob[], episodes: new Set<number>(), movies: new Set<number>() };
@@ -79,12 +102,14 @@ export function queuedMessage(r: AutoQueued, movie?: string) {
 /** The finished job as one toast: the episode's outcome and why, or a count per outcome for several. */
 export function outcomeMessage(job: AutoJob) {
   const r = job.results;
-  if (job.state === "failed") return { msg: `${job.title}: ${t("auto.failed")} · ${job.error ?? ""}`, error: true, look: [] as number[], got: 0 };
+  if (job.state === "failed")
+    return { msg: `${job.title}: ${t("auto.failed")} · ${job.error ?? ""}`, error: true, look: [] as number[], got: 0 };
   const look = r.filter((x) => x.outcome === "needs-look");
   const got = r.filter((x) => x.outcome === "grabbed" || x.outcome === "would-grab").length;
   const msg =
     r.length === 1
       ? `${r[0].label}: ${t(`auto.${r[0].outcome}` as I18nKey)}${r[0].release ? ` · ${r[0].release}` : ""} · ${r[0].why}`
-      : t("auto.summary", { got, look: look.length, other: r.length - got - look.length }) + (job.queued ? ` · ${t(job.queued.where === "soon" ? "auto.queuedSoon" : "auto.queuedFillIn", { n: job.queued.n })}` : "");
+      : t("auto.summary", { got, look: look.length, other: r.length - got - look.length }) +
+        (job.queued ? ` · ${t(job.queued.where === "soon" ? "auto.queuedSoon" : "auto.queuedFillIn", { n: job.queued.n })}` : "");
   return { msg, error: r.length > 0 && r.every((x) => x.outcome === "failed"), look: look.flatMap((x) => x.episodeIds), got };
 }

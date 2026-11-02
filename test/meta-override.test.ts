@@ -25,12 +25,18 @@ test("the override replaces the catalog mapping for its season only, with the of
   assert.deepEqual(tmdbTarget(rows, 2, 4, null, o), { tv: 72041, season: 1, episode: 7 });
   assert.deepEqual(tmdbTarget(rows, 1, 4, null, o), { tv: 100, season: 1, episode: 4 }, "season 1 keeps the catalog mapping");
   assert.deepEqual(tmdbTarget(rows, 2, 4, null), { tv: 42713, season: 2, episode: 4 }, "no override: as before");
-  assert.deepEqual(tmdbTarget(rows, 2, 4, null, new Map([[2, { tmdbTv: 5, tmdbSeason: 0, tmdbOffset: -1, setAt: 0 }]])), { tv: 5, season: 0, episode: 3 }, "negative offset");
+  assert.deepEqual(
+    tmdbTarget(rows, 2, 4, null, new Map([[2, { tmdbTv: 5, tmdbSeason: 0, tmdbOffset: -1, setAt: 0 }]])),
+    { tv: 5, season: 0, episode: 3 },
+    "negative offset",
+  );
 });
 
 test("enrichEpisodes asks TMDB for the override's show and season, then goes back to the catalog once reset", async () => {
   patchSettings((s) => ({ ...s, metadata: { ...s.metadata, tmdbKey: "test-tmdb-key" } }));
-  db.prepare("INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset, fetched_at) VALUES (1, 78777, '2', 0, 13, 42713, 2, 0, 0)").run();
+  db.prepare(
+    "INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset, fetched_at) VALUES (1, 78777, '2', 0, 13, 42713, 2, 0, 0)",
+  ).run();
   const asked: string[] = [];
   const fetchMock = (async (url: string) => {
     const m = /\/tv\/(\d+)\/season\/(\d+)/.exec(url);
@@ -58,7 +64,8 @@ test("routes: validate ids and body, save, read back, reset; the TMDB helper nee
   let key = "";
   const app = Fastify();
   const fetchMock = (async (url: string) => {
-    if (url.includes("/search/tv")) return new Response(JSON.stringify({ results: [{ id: 72041, name: "Chronicles", first_air_date: "1998-04-01" }] }));
+    if (url.includes("/search/tv"))
+      return new Response(JSON.stringify({ results: [{ id: 72041, name: "Chronicles", first_air_date: "1998-04-01" }] }));
     if (/\/tv\/72041\?/.test(url)) return new Response(JSON.stringify({ seasons: [{ season_number: 1, episode_count: 27 }] }));
     return new Response(JSON.stringify({ episodes: [{ episode_number: 1, name: "The Knight" }] }));
   }) as unknown as typeof fetch;
@@ -96,7 +103,8 @@ test("only metadata reads the override table", () => {
   const walk = (d: string) => {
     for (const f of fs.readdirSync(d, { withFileTypes: true })) {
       if (f.isDirectory()) walk(path.join(d, f.name));
-      else if (f.name.endsWith(".ts") && /meta_overrides|metaoverride\.js/.test(fs.readFileSync(path.join(d, f.name), "utf8"))) readers.push(f.name);
+      else if (f.name.endsWith(".ts") && /meta_overrides|metaoverride\.js/.test(fs.readFileSync(path.join(d, f.name), "utf8")))
+        readers.push(f.name);
     }
   };
   walk(dir);

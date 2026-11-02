@@ -119,12 +119,33 @@ export interface IndexerCfg {
 export const SIZE_PRESETS: SizePreset[] = ["lean", "balanced", "best"];
 
 export type MediaServerKind = "none" | "plex" | "jellyfin" | "emby" | "kodi";
-export interface MediaServerConn { url: string; apiKey: string; enabled: boolean; pathMappings: PathMapping[] }
+export interface MediaServerConn {
+  url: string;
+  apiKey: string;
+  enabled: boolean;
+  pathMappings: PathMapping[];
+}
 
 export interface Settings {
-  sonarr: { url: string; apiKey: string; /** Optional: also import series with this Sonarr tag even when not seriesType=anime. */ animeTag: string };
-  radarr: { url: string; apiKey: string; /** Movies under these root folders count as anime. */ animeRoots: string[]; animeProfileIds: number[] };
-  prowlarr: { url: string; apiKey: string; /** Newznab categories searched. */ categories: number[]; /** Indexers AnimeArr asks (empty = all). */ indexerIds: number[]; /** Prowlarr indexers seen (defaults applied). */ knownIds: number[]; /** New ones to review (badge). */ newIds: number[] };
+  sonarr: {
+    url: string;
+    apiKey: string;
+    /** Optional: also import series with this Sonarr tag even when not seriesType=anime. */ animeTag: string;
+  };
+  radarr: {
+    url: string;
+    apiKey: string;
+    /** Movies under these root folders count as anime. */ animeRoots: string[];
+    animeProfileIds: number[];
+  };
+  prowlarr: {
+    url: string;
+    apiKey: string;
+    /** Newznab categories searched. */ categories: number[];
+    /** Indexers AnimeArr asks (empty = all). */ indexerIds: number[];
+    /** Prowlarr indexers seen (defaults applied). */ knownIds: number[];
+    /** New ones to review (badge). */ newIds: number[];
+  };
   sabnzbd: { url: string; apiKey: string; category: string };
   qbittorrent: { url: string; username: string; password: string; category: string };
   /** Priority / enabled for the SABnzbd and qBittorrent slots (by id "sabnzbd" / "qbittorrent"). */
@@ -197,7 +218,14 @@ export interface Settings {
    * with guard rails: seasonsPerDay grabs at most, searches within perHour, recheckDays between looks (weekly in the
    * Blu-ray window 3–6 months after airing), a pause switch, and a first run that only lists its plan.
    */
-  qualityUpgrade: { mode: "off" | "auto"; paused: boolean; seasonsPerDay: number; /** Estimated download size of the day's upgrade grabs, in GB (a season that doesn't fit waits). */ gbPerDay: number; perHour: number; recheckDays: number };
+  qualityUpgrade: {
+    mode: "off" | "auto";
+    paused: boolean;
+    seasonsPerDay: number;
+    /** Estimated download size of the day's upgrade grabs, in GB (a season that doesn't fit waits). */ gbPerDay: number;
+    perHour: number;
+    recheckDays: number;
+  };
   /** The one-time "pick your quality goal" question was answered (wizard, Home card or Settings → Profiles). */
   qualityGoalAsked: boolean;
   /**
@@ -275,7 +303,13 @@ export interface Settings {
     sourceRoots: string[];
   };
   /** Notifications (minimal): Discord webhook and/or ntfy, per event. Webhook URL and ntfy token are stored encrypted. */
-  notify: { discordWebhook: string; ntfyUrl: string; ntfyToken: string; events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean }; /** Webhook, Telegram, Pushover and email channels (edited through /api/notify/channels only). */ channels: NotifyChannel[] };
+  notify: {
+    discordWebhook: string;
+    ntfyUrl: string;
+    ntfyToken: string;
+    events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean };
+    /** Webhook, Telegram, Pushover and email channels (edited through /api/notify/channels only). */ channels: NotifyChannel[];
+  };
   /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
   cutover: { allowArrWrites: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
@@ -321,8 +355,20 @@ export interface Settings {
   metadata: { anidbClient: string; anidbClientVer: number; tmdbKey: string; tvdbKey: string };
   /** Default monitoring scope for managed shows without their own (see scope.ts). */
   scope: {
-    ended: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean; creditless?: boolean };
-    continuing: { seasons: "all" | "first" | "latest" | "recent"; recentN: number; episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none"; specials: boolean; creditless?: boolean };
+    ended: {
+      seasons: "all" | "first" | "latest" | "recent";
+      recentN: number;
+      episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
+      specials: boolean;
+      creditless?: boolean;
+    };
+    continuing: {
+      seasons: "all" | "first" | "latest" | "recent";
+      recentN: number;
+      episodes: "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
+      specials: boolean;
+      creditless?: boolean;
+    };
   };
   /** Staged fill-in queue (see fillin.ts). */
   fillIn: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
@@ -387,23 +433,42 @@ const DEFAULTS: Settings = {
   // Off for existing installs (they add files to every show folder); the new-user wizard turns them on.
   mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false, episodeThumbs: true, episodeThumbsFromVideo: false },
   cutover: { allowArrWrites: false },
-  notify: { discordWebhook: "", ntfyUrl: "", ntfyToken: "", events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true }, channels: [] },
-  downloads: { rules: [], freeSpaceGb: 50, freeSpacePath: "", excludeSeeding: true, cleanup: "plan", allowDelete: false, minRatio: 1, minSeedDays: 7, maxSeedDays: 30 },
+  notify: {
+    discordWebhook: "",
+    ntfyUrl: "",
+    ntfyToken: "",
+    events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true },
+    channels: [],
+  },
+  downloads: {
+    rules: [],
+    freeSpaceGb: 50,
+    freeSpacePath: "",
+    excludeSeeding: true,
+    cleanup: "plan",
+    allowDelete: false,
+    minRatio: 1,
+    minSeedDays: 7,
+    maxSeedDays: 30,
+  },
   media: {
     renameEpisodes: true,
     replaceIllegalCharacters: true,
     colonReplacement: "smart",
     multiEpisodeStyle: "prefixedRange",
-    standardEpisodeFormat: "{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
+    standardEpisodeFormat:
+      "{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
     dailyEpisodeFormat: "{Series TitleYear} - {Air-Date} - {Episode CleanTitle} [{Quality Full}]{-Release Group}",
-    animeEpisodeFormat: "{Series TitleYear} - S{season:00}E{episode:00} - {absolute:000} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{MediaInfo VideoBitDepth}bit]{[MediaInfo VideoCodec]}[{Mediainfo AudioCodec} { Mediainfo AudioChannels}]{MediaInfo AudioLanguages}{-Release Group}",
+    animeEpisodeFormat:
+      "{Series TitleYear} - S{season:00}E{episode:00} - {absolute:000} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{MediaInfo VideoBitDepth}bit]{[MediaInfo VideoCodec]}[{Mediainfo AudioCodec} { Mediainfo AudioChannels}]{MediaInfo AudioLanguages}{-Release Group}",
     seriesFolderFormat: "{Series TitleYear}",
     seasonFolderFormat: "Season {season:00}",
     specialsFolderFormat: "Specials",
     creditlessAs: "s00",
     renameMovies: true,
     movieColonReplacement: "smart",
-    movieFormat: "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
+    movieFormat:
+      "{Movie CleanTitle} {(Release Year)} {imdb-{ImdbId}} {edition-{Edition Tags}} {[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoCodec]}{-Release Group}",
     movieFolderFormat: "{Movie CleanTitle} ({Release Year})",
     createEmptyFolders: false,
     deleteEmptyFolders: false,
@@ -426,8 +491,18 @@ const DEFAULTS: Settings = {
     renameAfterReencode: false,
     importedFromArr: false,
   },
-  importer: { engine: "animearr", allowReal: true, allowRename: false, realBudget: -1, movies: true, sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"] },
-  scope: { ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true }, continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false, creditless: true } },
+  importer: {
+    engine: "animearr",
+    allowReal: true,
+    allowRename: false,
+    realBudget: -1,
+    movies: true,
+    sourceRoots: ["/data/completed/animearr", "/data/qbittorrent/completed/animearr"],
+  },
+  scope: {
+    ended: { seasons: "all", recentN: 3, episodes: "missing", specials: false, creditless: true },
+    continuing: { seasons: "latest", recentN: 1, episodes: "futureAndMissing", specials: false, creditless: true },
+  },
   fillIn: { paused: false, waveSize: 5, advancePct: 90, stallDays: 7 },
   sync: { intervalHours: 6 },
   lists: { intervalHours: 6, malClientId: "" },
@@ -439,9 +514,61 @@ const DEFAULTS: Settings = {
   secret: "",
 };
 
-const SECRET_PATHS = ["sonarr.apiKey", "radarr.apiKey", "prowlarr.apiKey", "sabnzbd.apiKey", "qbittorrent.password", "metadata.tmdbKey", "metadata.tvdbKey", "plex.token", "jellyfin.apiKey", "emby.apiKey", "kodi.password", "notify.discordWebhook", "notify.ntfyToken", "lists.malClientId"] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
+const SECRET_PATHS = [
+  "sonarr.apiKey",
+  "radarr.apiKey",
+  "prowlarr.apiKey",
+  "sabnzbd.apiKey",
+  "qbittorrent.password",
+  "metadata.tmdbKey",
+  "metadata.tvdbKey",
+  "plex.token",
+  "jellyfin.apiKey",
+  "emby.apiKey",
+  "kodi.password",
+  "notify.discordWebhook",
+  "notify.ntfyToken",
+  "lists.malClientId",
+] as const; // (an ntfy topic on ntfy.sh is guessable-by-name only; kept visible so it can be shared)
 /** Settings the browser may change through PUT /api/settings. Everything else has its own endpoint. */
-const EDITABLE = ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "protocol", "remotePathMappings", "localPathMappings", "allowedRoots", "managed", "repair", "backlog", "queueHealth", "malware", "extraction", "dualUpgrade", "qualityUpgrade", "movieSearch", "search", "library", "metadata", "media", "downloads", "plex", "jellyfin", "emby", "kodi", "mediaOutput", "notify", "scope", "fillIn", "sync", "lists", "externalUrl", "urlBase", "ui"];
+const EDITABLE = [
+  "sonarr",
+  "radarr",
+  "prowlarr",
+  "sabnzbd",
+  "qbittorrent",
+  "protocol",
+  "remotePathMappings",
+  "localPathMappings",
+  "allowedRoots",
+  "managed",
+  "repair",
+  "backlog",
+  "queueHealth",
+  "malware",
+  "extraction",
+  "dualUpgrade",
+  "qualityUpgrade",
+  "movieSearch",
+  "search",
+  "library",
+  "metadata",
+  "media",
+  "downloads",
+  "plex",
+  "jellyfin",
+  "emby",
+  "kodi",
+  "mediaOutput",
+  "notify",
+  "scope",
+  "fillIn",
+  "sync",
+  "lists",
+  "externalUrl",
+  "urlBase",
+  "ui",
+];
 /** Each secret is only valid for the address it was saved with: if the address changes, a masked secret is dropped. */
 const SECRET_FOR_URL: [string, string][] = [
   ["sonarr.url", "sonarr.apiKey"],
@@ -455,7 +582,14 @@ const SECRET_FOR_URL: [string, string][] = [
   ["kodi.url", "kodi.password"],
   ["notify.ntfyUrl", "notify.ntfyToken"],
 ];
-const NUMERIC_ARRAYS = new Set(["prowlarr.categories", "prowlarr.indexerIds", "prowlarr.knownIds", "prowlarr.newIds", "radarr.animeProfileIds", "managed.backoffMin"]);
+const NUMERIC_ARRAYS = new Set([
+  "prowlarr.categories",
+  "prowlarr.indexerIds",
+  "prowlarr.knownIds",
+  "prowlarr.newIds",
+  "radarr.animeProfileIds",
+  "managed.backoffMin",
+]);
 const SEASONS = ["all", "first", "latest", "recent"];
 const EPISODES = ["all", "missing", "future", "futureAndMissing", "existing", "none"];
 /** URL base: "" or "/segment[/segment…]" (no quotes, spaces or anything HTML/URL-special). */
@@ -557,17 +691,27 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
     throw Object.assign(new Error(`${path} must start with http:// or https://`), { statusCode: 400 });
   }
   if (path === "urlBase") {
-    const v = String(patch ?? "").trim().replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1");
+    const v = String(patch ?? "")
+      .trim()
+      .replace(/\/+$/, "")
+      .replace(/^(?!\/)(.)/, "/$1");
     if (URL_BASE_RE.test(v)) return v;
     throw Object.assign(new Error("The URL base looks like /animearr (letters, digits, . _ ~ - only)"), { statusCode: 400 });
   }
   if (path === "notify.discordWebhook") {
     const v = String(patch ?? "").trim();
-    if (v === "" || v === MASK || /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+(?:\?[\w=&-]*)?$/.test(v)) return v;
+    if (
+      v === "" ||
+      v === MASK ||
+      /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+(?:\?[\w=&-]*)?$/.test(v)
+    )
+      return v;
     throw Object.assign(new Error("That isn't a Discord webhook URL (https://discord.com/api/webhooks/…)"), { statusCode: 400 });
   }
   if (path === "notify.ntfyUrl") {
-    const v = String(patch ?? "").trim().replace(/\/+$/, "");
+    const v = String(patch ?? "")
+      .trim()
+      .replace(/\/+$/, "");
     if (v === "") return v;
     let u: URL | null = null;
     try {
@@ -575,7 +719,17 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
     } catch {
       u = null;
     }
-    if (u && /^https?:$/.test(u.protocol) && !u.username && !u.password && !u.search && !u.hash && u.pathname.length > 1 && !/^(169\.254\.|0\.|\[?fe80:|\[::ffff:169\.254)/i.test(u.hostname)) return v;
+    if (
+      u &&
+      /^https?:$/.test(u.protocol) &&
+      !u.username &&
+      !u.password &&
+      !u.search &&
+      !u.hash &&
+      u.pathname.length > 1 &&
+      !/^(169\.254\.|0\.|\[?fe80:|\[::ffff:169\.254)/i.test(u.hostname)
+    )
+      return v;
     throw Object.assign(new Error("That isn't an ntfy topic URL (e.g. https://ntfy.sh/my-topic)"), { statusCode: 400 });
   }
   if (path === "downloads.rules") {
@@ -586,10 +740,14 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
       .slice(0, 20)
       .map((x, i) => {
         const r = x as Record<string, unknown>;
-        const n = (v: unknown, d: number) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.min(1_000_000, Math.round(Number(v))) : d);
+        const n = (v: unknown, d: number) =>
+          Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.min(1_000_000, Math.round(Number(v))) : d;
         return {
           id: /^[\w-]{1,40}$/.test(String(r.id ?? "")) ? String(r.id) : `rule-${Date.now().toString(36)}-${i}`,
-          name: String(r.name ?? "Rule").trim().slice(0, 60) || "Rule",
+          name:
+            String(r.name ?? "Rule")
+              .trim()
+              .slice(0, 60) || "Rule",
           metric: pick(r.metric, ["sizeGb", "items"] as const, "sizeGb"),
           threshold: n(r.threshold, 100),
           action: pick(r.action, ["pauseUntilUnder", "pauseUntilCleared", "pauseAndClean"] as const, "pauseUntilUnder"),
@@ -602,8 +760,15 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
   }
   if (Array.isArray(shape)) {
     if (!Array.isArray(patch)) return undefined;
-    if (NUMERIC_ARRAYS.has(path)) return patch.map(Number).filter((x) => Number.isFinite(x) && x >= 0).slice(0, 50);
-    return patch.map((x) => String(x).trim()).filter((x) => x !== "" && x.length < 300).slice(0, 50);
+    if (NUMERIC_ARRAYS.has(path))
+      return patch
+        .map(Number)
+        .filter((x) => Number.isFinite(x) && x >= 0)
+        .slice(0, 50);
+    return patch
+      .map((x) => String(x).trim())
+      .filter((x) => x !== "" && x.length < 300)
+      .slice(0, 50);
   }
   if (shape !== null && typeof shape === "object") {
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) return undefined;
@@ -640,15 +805,33 @@ export function getSettings(): Settings {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined;
     if (row) stored = JSON.parse(open(row.value)) as Record<string, unknown>;
   } catch (e) {
-    if (!dbState.corrupt) throw new Error(`Can't read settings (${(e as Error).message}). Was secret.key replaced? Put the original back, or restore a backup together with its key.`);
+    if (!dbState.corrupt)
+      throw new Error(
+        `Can't read settings (${(e as Error).message}). Was secret.key replaced? Put the original back, or restore a backup together with its key.`,
+      );
   }
   let s = merge(DEFAULTS, stored);
   // Migration: the single 0.1 "profile" becomes the seeded default profile.
-  const old = stored.profile as { subLangs?: string[]; softOnly?: boolean; preferUncensored?: boolean; protocolOrder?: ("usenet" | "torrent")[]; resolution?: number } | undefined;
+  const old = stored.profile as
+    | { subLangs?: string[]; softOnly?: boolean; preferUncensored?: boolean; protocolOrder?: ("usenet" | "torrent")[]; resolution?: number }
+    | undefined;
   let migrated = false;
   if (old && !stored.profiles) {
     const langs = (old.subLangs ?? []).map((x) => String(x).trim().toLowerCase()).filter((x) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(x));
-    s = { ...s, profiles: [{ ...DEFAULT_PROFILE, subLangs: langs.length ? langs : DEFAULT_PROFILE.subLangs, softOnly: old.softOnly ?? true, preferUncensored: old.preferUncensored ?? true, protocolOrder: old.protocolOrder ?? DEFAULT_PROFILE.protocolOrder, resolution: old.resolution ?? 1080 }], defaultProfileId: "default" };
+    s = {
+      ...s,
+      profiles: [
+        {
+          ...DEFAULT_PROFILE,
+          subLangs: langs.length ? langs : DEFAULT_PROFILE.subLangs,
+          softOnly: old.softOnly ?? true,
+          preferUncensored: old.preferUncensored ?? true,
+          protocolOrder: old.protocolOrder ?? DEFAULT_PROFILE.protocolOrder,
+          resolution: old.resolution ?? 1080,
+        },
+      ],
+      defaultProfileId: "default",
+    };
     delete (s as unknown as Record<string, unknown>).profile;
     migrated = true;
   }
@@ -662,8 +845,11 @@ export function getSettings(): Settings {
 }
 
 function write(s: Settings) {
-  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
-  db.prepare("INSERT INTO settings (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(seal(JSON.stringify(s)));
+  if (dbState.corrupt)
+    throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
+  db.prepare("INSERT INTO settings (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+    seal(JSON.stringify(s)),
+  );
   cache = s;
 }
 
@@ -704,9 +890,11 @@ export function updateSettings(patch: unknown) {
   for (const p of EDITABLE) if (clean[p] !== undefined) allowed[p] = clean[p];
   const next = merge(cur, allowed) as Settings;
   // Arrays replace rather than merge (merge() already replaces arrays; this keeps it explicit).
-  for (const p of ["remotePathMappings", "localPathMappings", "allowedRoots"] as const) if (allowed[p]) (next as unknown as Record<string, unknown>)[p] = allowed[p];
+  for (const p of ["remotePathMappings", "localPathMappings", "allowedRoots"] as const)
+    if (allowed[p]) (next as unknown as Record<string, unknown>)[p] = allowed[p];
   for (const p of SECRET_PATHS) if (isMasked(getPath(next, p))) setPath(next as unknown as Record<string, unknown>, p, getPath(cur, p));
-  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex", "jellyfin", "emby", "kodi"] as const) next[k].url = trimUrl(next[k].url);
+  for (const k of ["sonarr", "radarr", "prowlarr", "sabnzbd", "qbittorrent", "plex", "jellyfin", "emby", "kodi"] as const)
+    next[k].url = trimUrl(next[k].url);
   next.allowedRoots = [...new Set(next.allowedRoots.map((r) => r.trim().replace(/\/+$/, "")).filter(Boolean))];
   // A newly added library folder must be a real one (never /config, AnimeArr's own data, or a system folder).
   // Ones saved before this check stay (a save elsewhere mustn't fail over them); Settings flags them.
@@ -719,7 +907,8 @@ export function updateSettings(patch: unknown) {
     const [svc, field] = k.split(".");
     const sv = (allowed[svc] as Record<string, unknown> | undefined)?.[field];
     const keptOld = sv === undefined || isMasked(sv);
-    if (keptOld && trimUrl(String(getPath(next, u) ?? "")) !== trimUrl(String(getPath(cur, u) ?? ""))) setPath(next as unknown as Record<string, unknown>, k, "");
+    if (keptOld && trimUrl(String(getPath(next, u) ?? "")) !== trimUrl(String(getPath(cur, u) ?? "")))
+      setPath(next as unknown as Record<string, unknown>, k, "");
   }
   next.externalUrl = trimUrl(next.externalUrl);
   write(next);

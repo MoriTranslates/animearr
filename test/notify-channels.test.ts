@@ -12,16 +12,37 @@ const { patchSettings, getSettings, publicSettings, MASK } = await import("../se
 const { send, testChannel, channelStatus } = await import("../server/notify.js");
 const { newChannel, cleanChannels, maskChannel, buildRequest, deliver } = await import("../server/notifyChannels.js");
 
-const note = { event: "grabbed", head: "⬇️ Grabbed: Frieren", title: "Frieren", body: "Sent [Group] Frieren - 05 <1080p> & more", link: "http://animearr.lan/show/1", meta: { tvdbId: 424536, episodeIds: [5], release: "[Group] Frieren - 05", grabId: 9 }, at: Date.UTC(2026, 9, 31, 12) };
-const ok = (calls: { url: string; init: RequestInit }[], status = 200) => ((async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response("", { status }))) as unknown as typeof fetch);
+const note = {
+  event: "grabbed",
+  head: "⬇️ Grabbed: Frieren",
+  title: "Frieren",
+  body: "Sent [Group] Frieren - 05 <1080p> & more",
+  link: "http://animearr.lan/show/1",
+  meta: { tvdbId: 424536, episodeIds: [5], release: "[Group] Frieren - 05", grabId: 9 },
+  at: Date.UTC(2026, 9, 31, 12),
+};
+const ok = (calls: { url: string; init: RequestInit }[], status = 200) =>
+  (async (url: string, init: RequestInit) => (calls.push({ url, init }), new Response("", { status }))) as unknown as typeof fetch;
 
 const full = () => {
   const mk = (type: "webhook" | "telegram" | "pushover" | "email", patch: object) => ({ ...newChannel(type, type), name: type, ...patch });
   return [
-    mk("webhook", { url: "https://hooks.example.com/in/SECRETPATH", method: "PUT", headers: [{ name: "Authorization", value: "Bearer SECRETHDR" }] }),
+    mk("webhook", {
+      url: "https://hooks.example.com/in/SECRETPATH",
+      method: "PUT",
+      headers: [{ name: "Authorization", value: "Bearer SECRETHDR" }],
+    }),
     mk("telegram", { botToken: "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ012", chatId: "-100200", threadId: "7", silent: true }),
     mk("pushover", { userKey: "USERKEY1234", appToken: "APPTOKEN1234", priority: 1, device: "phone", sound: "magic" }),
-    mk("email", { host: "smtp.example.com", port: 465, secure: "tls", username: "me", password: "SMTPPASSWORD", from: "animearr@example.com", to: "a@example.com, b@example.com" }),
+    mk("email", {
+      host: "smtp.example.com",
+      port: 465,
+      secure: "tls",
+      username: "me",
+      password: "SMTPPASSWORD",
+      from: "animearr@example.com",
+      to: "a@example.com, b@example.com",
+    }),
   ];
 };
 
@@ -76,12 +97,22 @@ test("send(): each channel follows its own switch and event toggles; results lan
   patchSettings((s) => ({ ...s, notify: { ...s.notify, events: { ...s.notify.events, grabbed: false }, channels: [wh, tg, po, em] } }));
   const calls: { url: string; init: RequestInit }[] = [];
   const mails: unknown[] = [];
-  const out = await send("grabbed", "Frieren", "Sent it", { fetch: ok(calls), sendMail: async (_c, m) => void mails.push(m) }, null, { tvdbId: 1 });
-  assert.deepEqual(out.map((o) => o.id), ["webhook", "email"], "telegram has grabbed off, pushover is disabled, legacy has none set");
+  const out = await send("grabbed", "Frieren", "Sent it", { fetch: ok(calls), sendMail: async (_c, m) => void mails.push(m) }, null, {
+    tvdbId: 1,
+  });
+  assert.deepEqual(
+    out.map((o) => o.id),
+    ["webhook", "email"],
+    "telegram has grabbed off, pushover is disabled, legacy has none set",
+  );
   assert.equal(calls.length, 1);
   assert.equal(mails.length, 1);
   assert.equal(channelStatus().webhook.ok, true);
-  assert.deepEqual(await send("imported", "x", "y", { fetch: ok([]), sendMail: async () => undefined }).then((r) => r.map((o) => o.id)), ["webhook", "telegram", "email"]);
+  assert.deepEqual(await send("imported", "x", "y", { fetch: ok([]), sendMail: async () => undefined }).then((r) => r.map((o) => o.id)), [
+    "webhook",
+    "telegram",
+    "email",
+  ]);
 });
 
 test("a failing channel never throws, shows its last error, and no secret appears in it", async () => {
@@ -90,11 +121,17 @@ test("a failing channel never throws, shows its last error, and no secret appear
   const boom = (async (url: string, init: RequestInit) => {
     throw new Error(`connect ECONNREFUSED ${url} ${JSON.stringify(init.headers)} ${init.body}`); // a transport that echoes the whole request
   }) as unknown as typeof fetch;
-  const out = await send("failed", "Frieren", "Broke", { fetch: boom, sendMail: async () => { throw new Error("535 auth failed for me:SMTPPASSWORD"); } });
+  const out = await send("failed", "Frieren", "Broke", {
+    fetch: boom,
+    sendMail: async () => {
+      throw new Error("535 auth failed for me:SMTPPASSWORD");
+    },
+  });
   assert.equal(out.length, 4);
   assert.ok(out.every((o) => !o.ok));
   const all = JSON.stringify([out, channelStatus()]);
-  for (const secret of ["SECRETPATH", "SECRETHDR", "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ012", "USERKEY1234", "APPTOKEN1234", "SMTPPASSWORD"]) assert.ok(!all.includes(secret), `${secret} leaked`);
+  for (const secret of ["SECRETPATH", "SECRETHDR", "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ012", "USERKEY1234", "APPTOKEN1234", "SMTPPASSWORD"])
+    assert.ok(!all.includes(secret), `${secret} leaked`);
   assert.ok(channelStatus().email.error);
   const t = await testChannel(ch[0], { fetch: ok([], 500) });
   assert.equal(t.ok, false);
@@ -108,7 +145,8 @@ test("secrets are masked for the browser and kept when saved back masked", () =>
   assert.equal((publicSettings().notify as Record<string, unknown>).channels, undefined);
   const masked = saved.map(maskChannel);
   const text = JSON.stringify(masked);
-  for (const secret of ["SECRETPATH", "SECRETHDR", "ABCDEFGHIJKL", "USERKEY1234", "APPTOKEN1234", "SMTPPASSWORD"]) assert.ok(!text.includes(secret));
+  for (const secret of ["SECRETPATH", "SECRETHDR", "ABCDEFGHIJKL", "USERKEY1234", "APPTOKEN1234", "SMTPPASSWORD"])
+    assert.ok(!text.includes(secret));
   assert.equal(masked[0].url, MASK);
   const back = cleanChannels(masked, getSettings().notify.channels);
   assert.deepEqual(back, saved, "masked values come back as the saved ones");

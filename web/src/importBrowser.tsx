@@ -4,9 +4,27 @@ import { api, fmtSize } from "./api";
 import { t } from "./i18n";
 import { Chip, ErrorBox, Spinner, relTime } from "./ui";
 
-export interface BrowseEntry { name: string; path: string; dir: boolean; size: number; mtime: number; video: boolean; videos: number }
-interface Root { path: string; label: string }
-interface Browse { roots: Root[]; path: string | null; parent: string | null; entries: BrowseEntry[]; truncated: boolean; grabPath: string | null }
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  dir: boolean;
+  size: number;
+  mtime: number;
+  video: boolean;
+  videos: number;
+}
+interface Root {
+  path: string;
+  label: string;
+}
+interface Browse {
+  roots: Root[];
+  path: string | null;
+  parent: string | null;
+  entries: BrowseEntry[];
+  truncated: boolean;
+  grabPath: string | null;
+}
 
 const base = (p: string) => p.replace(/\/+$/, "").split("/").pop() || p;
 
@@ -30,7 +48,12 @@ export function friendlyPath(p: string | null, roots: Root[], grabPath?: string 
     const others = own.filter((r) => r !== root).map((r) => r.path.split("/"));
     return parts.find((seg, i) => seg && others.every((o) => o[i] !== seg)) ?? base(root.path);
   };
-  const name = root.label === "download" ? t("import.thisDownload") : own.length > 1 ? t("import.ownFolderNamed", { name: tell() }) : t("import.ownFolder");
+  const name =
+    root.label === "download"
+      ? t("import.thisDownload")
+      : own.length > 1
+        ? t("import.ownFolderNamed", { name: tell() })
+        : t("import.ownFolder");
   return [name, ...rest].join(" › ");
 }
 
@@ -39,7 +62,19 @@ export function friendlyPath(p: string | null, roots: Root[], grabPath?: string 
  * selected on click (so is the open folder, to import all of it). Starts in the grab's own download when there is one;
  * that first selection is reported with auto = true (nothing is planned until the user asks).
  */
-export function ImportBrowser({ start, grabId, selected, onSelect, onPlace }: { start?: string | null; grabId?: number | null; selected: string; onSelect: (path: string, dir: boolean, auto: boolean) => void; onPlace?: (name: string) => void }) {
+export function ImportBrowser({
+  start,
+  grabId,
+  selected,
+  onSelect,
+  onPlace,
+}: {
+  start?: string | null;
+  grabId?: number | null;
+  selected: string;
+  onSelect: (path: string, dir: boolean, auto: boolean) => void;
+  onPlace?: (name: string) => void;
+}) {
   const [data, setData] = useState<Browse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,7 +106,8 @@ export function ImportBrowser({ start, grabId, selected, onSelect, onPlace }: { 
   const up = () => void load(data?.parent ?? "");
   const where = data ? friendlyPath(data.path, data.roots, data.grabPath) : t("import.roots");
   // Roots are listed by what they are, not by their path.
-  const nameOf = (e: BrowseEntry) => (data && !data.path ? friendlyPath(e.path, data.roots, data.grabPath) + (e.dir ? "" : ` › ${e.name}`) : e.name);
+  const nameOf = (e: BrowseEntry) =>
+    data && !data.path ? friendlyPath(e.path, data.roots, data.grabPath) + (e.dir ? "" : ` › ${e.name}`) : e.name;
   return (
     <div className="import-browser stack">
       <div className="row browse-bar">

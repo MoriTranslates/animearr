@@ -25,7 +25,21 @@ import { ToastProvider, usePoll, useToast } from "./ui";
 import { confirmLeave } from "./unsaved";
 import { applyFont, applyTextScale } from "./appearance";
 import { applySeason, seasonOf } from "./season";
-import { CalendarDays, Download, Ellipsis, History, House, LibraryBig, ListFilter, ListOrdered, ScanSearch, Search as SearchIcon, Settings as SettingsIcon, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  CalendarDays,
+  Download,
+  Ellipsis,
+  History,
+  House,
+  LibraryBig,
+  ListFilter,
+  ListOrdered,
+  ScanSearch,
+  Search as SearchIcon,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 
 /**
  * Navigation. Desktop: a sidebar grouped Watch · Get · Automate · Maintain, with the season card at the bottom and a
@@ -33,12 +47,42 @@ import { CalendarDays, Download, Ellipsis, History, House, LibraryBig, ListFilte
  * with the rest, so nothing is unreachable.
  */
 type Icon = typeof House;
-interface NavItem { path: string; label: I18nKey; icon: Icon }
+interface NavItem {
+  path: string;
+  label: I18nKey;
+  icon: Icon;
+}
 const GROUPS: { label: I18nKey; items: NavItem[] }[] = [
-  { label: "nav.group.watch", items: [{ path: "/", label: "nav.home", icon: House }, { path: "/calendar", label: "nav.calendar", icon: CalendarDays }, { path: "/shows", label: "nav.library", icon: LibraryBig }] },
-  { label: "nav.group.get", items: [{ path: "/find", label: "nav.find", icon: SearchIcon }, { path: "/queue", label: "nav.queue", icon: Download }] },
-  { label: "nav.group.automate", items: [{ path: "/managed", label: "nav.managed", icon: Sparkles }, { path: "/fillin", label: "nav.fillin", icon: ListOrdered }] },
-  { label: "nav.group.maintain", items: [{ path: "/audit", label: "nav.audit", icon: ShieldCheck }, { path: "/activity", label: "nav.activity", icon: History }, { path: "/settings", label: "nav.settings", icon: SettingsIcon }] },
+  {
+    label: "nav.group.watch",
+    items: [
+      { path: "/", label: "nav.home", icon: House },
+      { path: "/calendar", label: "nav.calendar", icon: CalendarDays },
+      { path: "/shows", label: "nav.library", icon: LibraryBig },
+    ],
+  },
+  {
+    label: "nav.group.get",
+    items: [
+      { path: "/find", label: "nav.find", icon: SearchIcon },
+      { path: "/queue", label: "nav.queue", icon: Download },
+    ],
+  },
+  {
+    label: "nav.group.automate",
+    items: [
+      { path: "/managed", label: "nav.managed", icon: Sparkles },
+      { path: "/fillin", label: "nav.fillin", icon: ListOrdered },
+    ],
+  },
+  {
+    label: "nav.group.maintain",
+    items: [
+      { path: "/audit", label: "nav.audit", icon: ShieldCheck },
+      { path: "/activity", label: "nav.activity", icon: History },
+      { path: "/settings", label: "nav.settings", icon: SettingsIcon },
+    ],
+  },
 ];
 const PHONE_TABS: NavItem[] = [
   { path: "/", label: "nav.home", icon: House },
@@ -57,7 +101,24 @@ const MORE: NavItem[] = [
   { path: "/settings", label: "nav.settings", icon: SettingsIcon },
 ];
 
-const KNOWN = ["/", "/welcome", "/managed", "/shows", "/add", "/find", "/show", "/movies", "/movie", "/calendar", "/fillin", "/queue", "/audit", "/search", "/activity", "/settings"];
+const KNOWN = [
+  "/",
+  "/welcome",
+  "/managed",
+  "/shows",
+  "/add",
+  "/find",
+  "/show",
+  "/movies",
+  "/movie",
+  "/calendar",
+  "/fillin",
+  "/queue",
+  "/audit",
+  "/search",
+  "/activity",
+  "/settings",
+];
 
 export function navigate(to: string) {
   // Unsaved changes on the page: ask before leaving (they'd be lost).
@@ -67,9 +128,30 @@ export function navigate(to: string) {
   window.scrollTo(0, 0);
 }
 
-export function Link({ to, children, className, current, style, title }: { to: string; children: React.ReactNode; className?: string; current?: boolean; style?: React.CSSProperties; title?: string }) {
+export function Link({
+  to,
+  children,
+  className,
+  current,
+  style,
+  title,
+}: {
+  to: string;
+  children: React.ReactNode;
+  className?: string;
+  current?: boolean;
+  style?: React.CSSProperties;
+  title?: string;
+}) {
   return (
-    <a href={withBase(to)} className={className} style={style} title={title} aria-current={current ? "page" : undefined} onClick={(e) => (e.preventDefault(), navigate(to))}>
+    <a
+      href={withBase(to)}
+      className={className}
+      style={style}
+      title={title}
+      aria-current={current ? "page" : undefined}
+      onClick={(e) => (e.preventDefault(), navigate(to))}
+    >
       {children}
     </a>
   );
@@ -166,7 +248,6 @@ export function App() {
   if (!status) return <div className="center-msg">{t("app.loading")}</div>;
   if (!status.loggedIn) return <Login onDone={refreshStatus} defaultLogin={status.defaultLogin} />;
 
-
   const section = "/" + (path.split("/")[1] ?? "");
   const active = (p: string) =>
     p === "/"
@@ -177,7 +258,13 @@ export function App() {
         (p === "/managed" && section === "/fillin");
   const moreActive = !PHONE_TABS.some((x) => active(x.path));
   const q = status.queue ?? { active: 0, attention: 0 };
-  const badge = q.attention ? <span className="nav-badge warn" aria-label={t("nav.queueBadge", { n: q.attention })}>{q.attention}</span> : q.active ? <span className="nav-badge">{q.active}</span> : null;
+  const badge = q.attention ? (
+    <span className="nav-badge warn" aria-label={t("nav.queueBadge", { n: q.attention })}>
+      {q.attention}
+    </span>
+  ) : q.active ? (
+    <span className="nav-badge">{q.active}</span>
+  ) : null;
 
   const season = seasonOf();
   const navLink = (n: NavItem) => (
@@ -213,7 +300,9 @@ export function App() {
             <span className="season-name">
               {t(`season.${season.key}` as I18nKey)} {season.year}
             </span>
-            <span className="muted small">{t("season.cardSub", { week: season.week, weeks: season.weeks, n: status.airingShows ?? 0 })}</span>
+            <span className="muted small">
+              {t("season.cardSub", { week: season.week, weeks: season.weeks, n: status.airingShows ?? 0 })}
+            </span>
             <span className="season-bar" aria-hidden="true">
               <i style={{ width: `${Math.round((season.week / season.weeks) * 100)}%` }} />
             </span>
@@ -257,7 +346,9 @@ export function App() {
             {status.grabsPaused && (
               <p className="banner warn" role="status">
                 {t("dl.banner", { why: status.grabsPaused.why })}
-                {status.grabsPaused.diskRule && status.grabsPaused.disk ? ` ${t("dl.bannerDisk", { label: status.grabsPaused.disk.label, free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}${status.grabsPaused.disk.shareFreeGb !== null ? ` ${t("dl.bannerArray", { free: status.grabsPaused.disk.shareFreeGb })}` : ""}` : ""}{" "}
+                {status.grabsPaused.diskRule && status.grabsPaused.disk
+                  ? ` ${t("dl.bannerDisk", { label: status.grabsPaused.disk.label, free: status.grabsPaused.disk.freeGb, ours: status.grabsPaused.disk.animearrGb, other: status.grabsPaused.disk.otherGb })}${status.grabsPaused.disk.shareFreeGb !== null ? ` ${t("dl.bannerArray", { free: status.grabsPaused.disk.shareFreeGb })}` : ""}`
+                  : ""}{" "}
                 <Link to="/settings?tab=downloads">{t("dl.bannerLink")}</Link>
               </p>
             )}
@@ -294,7 +385,13 @@ export function App() {
               {t(n.label)}
             </Link>
           ))}
-          <button type="button" className={`tab-more${moreActive || moreOpen ? " active" : ""}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => setMoreOpen(true)}>
+          <button
+            type="button"
+            className={`tab-more${moreActive || moreOpen ? " active" : ""}`}
+            aria-haspopup="dialog"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen(true)}
+          >
             <span className="tab-pill" aria-hidden="true">
               <Ellipsis className="lucide" />
             </span>
@@ -319,7 +416,7 @@ function Brand({ listen = false }: { listen?: boolean }) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest?.("input, textarea, select")) return;
       i = e.key === seq[i] ? i + 1 : e.key === seq[0] ? 1 : 0;
-      if (i === seq.length) (i = 0), toggleComic(toast);
+      if (i === seq.length) ((i = 0), toggleComic(toast));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -384,8 +481,17 @@ function GlobalSearch() {
       }}
     >
       <SearchIcon aria-hidden="true" className="lucide" />
-      <input ref={ref} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("find.global")} aria-label={t("find.title")} />
-      <kbd aria-hidden="true" className={q.trim() ? "kbd-enter" : undefined}>{q.trim() ? t("find.pressEnter") : "Ctrl K"}</kbd>
+      <input
+        ref={ref}
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={t("find.global")}
+        aria-label={t("find.title")}
+      />
+      <kbd aria-hidden="true" className={q.trim() ? "kbd-enter" : undefined}>
+        {q.trim() ? t("find.pressEnter") : "Ctrl K"}
+      </kbd>
     </form>
   );
 }
@@ -402,7 +508,17 @@ function DryRunBanner({ status }: { status: Status }) {
 }
 
 /** Phone "More": everything that isn't one of the four tabs. */
-function MoreSheet({ active, badge, version, onClose }: { active: (p: string) => boolean; badge: React.ReactNode; version: string; onClose: () => void }) {
+function MoreSheet({
+  active,
+  badge,
+  version,
+  onClose,
+}: {
+  active: (p: string) => boolean;
+  badge: React.ReactNode;
+  version: string;
+  onClose: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -427,7 +543,14 @@ function MoreSheet({ active, badge, version, onClose }: { active: (p: string) =>
   }, []);
   return (
     <div className="sheet-back" onClick={onClose}>
-      <div className="sheet card more-sheet" role="dialog" aria-modal="true" aria-label={t("nav.more")} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div
+        className="sheet card more-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("nav.more")}
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+      >
         <span className="sheet-grip" aria-hidden="true" />
         <ul className="more-list">
           {MORE.map((n) => (

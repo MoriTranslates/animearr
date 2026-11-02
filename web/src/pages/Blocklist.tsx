@@ -3,8 +3,22 @@ import { api } from "../api";
 import { t } from "../i18n";
 import { Chip, Confirm, dateTime, Empty, ErrorBox, Spinner, useLoad, useToast, ReleaseName } from "../ui";
 
-interface Entry { id: number; release: string; tvdbId: number | null; movieId: number | null; title: string; reason: string; at: number; protocol: string | null; indexer: string | null }
-interface Data { items: Entry[]; total: number; shows: { tvdbId: number | null; movieId: number | null; title: string; count: number }[] }
+interface Entry {
+  id: number;
+  release: string;
+  tvdbId: number | null;
+  movieId: number | null;
+  title: string;
+  reason: string;
+  at: number;
+  protocol: string | null;
+  indexer: string | null;
+}
+interface Data {
+  items: Entry[];
+  total: number;
+  shows: { tvdbId: number | null; movieId: number | null; title: string; count: number }[];
+}
 
 /** Releases AnimeArr won't pick again, with why and where they came from; remove one, many, or a whole show's. */
 export function Blocklist() {
@@ -54,7 +68,12 @@ export function Blocklist() {
           <article key={x.id} className="card pad stack">
             <div className="row between">
               <label className="check">
-                <input type="checkbox" aria-label={t("blocklist.select", { name: x.release })} checked={picked.includes(x.id)} onChange={() => setPicked((p) => (p.includes(x.id) ? p.filter((i) => i !== x.id) : [...p, x.id]))} />
+                <input
+                  type="checkbox"
+                  aria-label={t("blocklist.select", { name: x.release })}
+                  checked={picked.includes(x.id)}
+                  onChange={() => setPicked((p) => (p.includes(x.id) ? p.filter((i) => i !== x.id) : [...p, x.id]))}
+                />
                 <span className="strong">{x.title || t("blocklist.show")}</span>
               </label>
               <button className="small" onClick={() => setConfirm([x.id])}>
@@ -73,7 +92,12 @@ export function Blocklist() {
       </div>
       <p className="muted small">{t("blocklist.total", { shown: items.length, total })}</p>
       {confirm && (
-        <Confirm title={t("blocklist.confirmTitle")} confirmLabel={t("blocklist.remove")} onClose={() => setConfirm(null)} onConfirm={() => remove(confirm)}>
+        <Confirm
+          title={t("blocklist.confirmTitle")}
+          confirmLabel={t("blocklist.remove")}
+          onClose={() => setConfirm(null)}
+          onConfirm={() => remove(confirm)}
+        >
           <p>{t("blocklist.confirmBody", { n: confirm.length })}</p>
         </Confirm>
       )}

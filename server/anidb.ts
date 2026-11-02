@@ -39,10 +39,32 @@ export const ANIDB_URL = "http://api.anidb.net:9001/httpapi";
 export type AnidbEpType = "regular" | "special" | "credit" | "trailer" | "parody" | "other";
 const TYPES: Record<string, AnidbEpType> = { "1": "regular", "2": "special", "3": "credit", "4": "trailer", "5": "parody", "6": "other" };
 
-export interface AnidbEpisode { epno: string; type: AnidbEpType; number: number; length: number | null; airdate: string | null; titleEn: string | null; titleXjat: string | null; titleJa: string | null }
-export interface AnidbAnime { aid: number; type: string | null; episodeCount: number | null; endDate: string | null; episodes: AnidbEpisode[] }
+export interface AnidbEpisode {
+  epno: string;
+  type: AnidbEpType;
+  number: number;
+  length: number | null;
+  airdate: string | null;
+  titleEn: string | null;
+  titleXjat: string | null;
+  titleJa: string | null;
+}
+export interface AnidbAnime {
+  aid: number;
+  type: string | null;
+  episodeCount: number | null;
+  endDate: string | null;
+  episodes: AnidbEpisode[];
+}
 
-const decode = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d))).replace(/&amp;/g, "&");
+const decode = (s: string) =>
+  s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&amp;/g, "&");
 
 /** Parses AniDB's anime XML (only what AnimeArr uses). */
 export function parseAnime(xml: string, aid: number): AnidbAnime {
@@ -67,16 +89,25 @@ export function parseAnime(xml: string, aid: number): AnidbAnime {
       titleJa: title("ja"),
     });
   }
-  return { aid, type: /<type>([^<]*)<\/type>/.exec(xml)?.[1] ?? null, episodeCount: Number(/<episodecount>(\d+)<\/episodecount>/.exec(xml)?.[1]) || null, endDate: /<enddate>([\d-]+)<\/enddate>/.exec(xml)?.[1] ?? null, episodes };
+  return {
+    aid,
+    type: /<type>([^<]*)<\/type>/.exec(xml)?.[1] ?? null,
+    episodeCount: Number(/<episodecount>(\d+)<\/episodecount>/.exec(xml)?.[1]) || null,
+    endDate: /<enddate>([\d-]+)<\/enddate>/.exec(xml)?.[1] ?? null,
+    episodes,
+  };
 }
 
 // ---------------------------------------------------------------- state (persisted: a ban survives a restart)
 
-const state = (k: string) => (db.prepare("SELECT value FROM anidb_state WHERE key = ?").get(k) as { value: string } | undefined)?.value ?? null;
-const setState = (k: string, v: string) => db.prepare("INSERT INTO anidb_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
+const state = (k: string) =>
+  (db.prepare("SELECT value FROM anidb_state WHERE key = ?").get(k) as { value: string } | undefined)?.value ?? null;
+const setState = (k: string, v: string) =>
+  db.prepare("INSERT INTO anidb_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
 
 /** Requests in the last `ms` (from the persisted log). */
-const sent = (ms: number, now = Date.now()) => (db.prepare("SELECT COUNT(*) AS n FROM anidb_requests WHERE at > ?").get(now - ms) as { n: number }).n;
+const sent = (ms: number, now = Date.now()) =>
+  (db.prepare("SELECT COUNT(*) AS n FROM anidb_requests WHERE at > ?").get(now - ms) as { n: number }).n;
 
 /** The current budgets: normal, or probation for three days after a ban ends. */
 function caps(now = Date.now()) {
@@ -115,7 +146,8 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
     if (!s.anidbClient) throw new Error("AniDB client not set");
     const now = Date.now();
     const st = anidbStatus(now);
-    if (st.blockedUntil) throw new Error(`AniDB paused until ${new Date(st.blockedUntil).toISOString()} (${st.lastError ?? "earlier error"})`);
+    if (st.blockedUntil)
+      throw new Error(`AniDB paused until ${new Date(st.blockedUntil).toISOString()} (${st.lastError ?? "earlier error"})`);
     if (st.capped) throw new Error(`AniDB budget used up (${st.lastHour}/${st.hourlyCap} this hour, ${st.today}/${st.dailyCap} today)`);
     last = Math.max(last, Number(state("lastAt") ?? 0)); // spacing survives a restart
     const wait = Math.max(0, last + SPACING_MS + Math.round(Math.random() * JITTER_MS) - now);
@@ -138,7 +170,10 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
     };
     let res: Response;
     try {
-      res = await deps.fetch(url, { headers: { "Accept-Encoding": "gzip", "User-Agent": `${s.anidbClient}/${s.anidbClientVer}` }, signal: AbortSignal.timeout(30_000) });
+      res = await deps.fetch(url, {
+        headers: { "Accept-Encoding": "gzip", "User-Agent": `${s.anidbClient}/${s.anidbClientVer}` },
+        signal: AbortSignal.timeout(30_000),
+      });
     } catch (e) {
       throw block(`unreachable (${(e as Error).message})`, 3_600_000);
     }
@@ -160,7 +195,9 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
       }
       if (/client/i.test(err)) throw block(`client problem (${err}); check Settings → Metadata`, DAY);
       if (/no such anime|anime not found/i.test(err)) {
-        db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, 1, NULL, NULL, 1)").run(aid, Date.now());
+        db.prepare(
+          "INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, 1, NULL, NULL, 1)",
+        ).run(aid, Date.now());
         throw new Error(`AniDB: ${err}`);
       }
       throw block(err, 3_600_000);
@@ -176,27 +213,54 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
 export function storeAnime(a: AnidbAnime, now = Date.now()) {
   const ended = !!a.endDate && Date.parse(a.endDate) < now;
   tx(db, () => {
-    db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, ?, ?, ?, 0)").run(a.aid, now, ended ? 1 : 0, a.type, a.episodeCount);
+    db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, ?, ?, ?, 0)").run(
+      a.aid,
+      now,
+      ended ? 1 : 0,
+      a.type,
+      a.episodeCount,
+    );
     db.prepare("DELETE FROM anidb_episodes WHERE aid = ?").run(a.aid);
-    const ins = db.prepare("INSERT OR REPLACE INTO anidb_episodes (aid, epno, type, number, length, airdate, title_en, title_xjat, title_ja) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const ins = db.prepare(
+      "INSERT OR REPLACE INTO anidb_episodes (aid, epno, type, number, length, airdate, title_en, title_xjat, title_ja) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    );
     for (const e of a.episodes) ins.run(a.aid, e.epno, e.type, e.number, e.length, e.airdate, e.titleEn, e.titleXjat, e.titleJa);
   });
 }
 
 /** Due for a (re)fetch: never fetched, or older than a day (airing) / a week (finished). */
 export function due(aid: number, now = Date.now()) {
-  const r = db.prepare("SELECT fetched_at, ended FROM anidb_anime WHERE aid = ?").get(aid) as { fetched_at: number; ended: number } | undefined;
+  const r = db.prepare("SELECT fetched_at, ended FROM anidb_anime WHERE aid = ?").get(aid) as
+    { fetched_at: number; ended: number } | undefined;
   return !r || now - r.fetched_at > (r.ended ? 7 * DAY : DAY);
 }
 
 export function anidbEpisodes(aid: number) {
-  return (db.prepare("SELECT epno, type, number, length, airdate, title_en, title_xjat, title_ja FROM anidb_episodes WHERE aid = ?").all(aid) as { epno: string; type: AnidbEpType; number: number; length: number | null; airdate: string | null; title_en: string | null; title_xjat: string | null; title_ja: string | null }[]);
+  return db
+    .prepare("SELECT epno, type, number, length, airdate, title_en, title_xjat, title_ja FROM anidb_episodes WHERE aid = ?")
+    .all(aid) as {
+    epno: string;
+    type: AnidbEpType;
+    number: number;
+    length: number | null;
+    airdate: string | null;
+    title_en: string | null;
+    title_xjat: string | null;
+    title_ja: string | null;
+  }[];
 }
 
 /** The library's AniDB ids, most-needed first. `priority` ids (e.g. blocked cutover shows) go before everything. */
 export function wantedAids(priority: number[] = []) {
-  const seriesAids = (cache.prepare("SELECT id, anidb_ids FROM series").all() as { id: number; anidb_ids: string }[]).map((r) => ({ id: r.id, aids: (JSON.parse(r.anidb_ids) as { aid: number }[]).map((x) => x.aid) }));
-  const withS0 = new Set((cache.prepare("SELECT DISTINCT series_id FROM episodes WHERE season = 0 AND has_file = 1").all() as { series_id: number }[]).map((r) => r.series_id));
+  const seriesAids = (cache.prepare("SELECT id, anidb_ids FROM series").all() as { id: number; anidb_ids: string }[]).map((r) => ({
+    id: r.id,
+    aids: (JSON.parse(r.anidb_ids) as { aid: number }[]).map((x) => x.aid),
+  }));
+  const withS0 = new Set(
+    (cache.prepare("SELECT DISTINCT series_id FROM episodes WHERE season = 0 AND has_file = 1").all() as { series_id: number }[]).map(
+      (r) => r.series_id,
+    ),
+  );
   const ordered = [...priority, ...seriesAids.filter((s) => withS0.has(s.id)).flatMap((s) => s.aids), ...seriesAids.flatMap((s) => s.aids)];
   return [...new Set(ordered)];
 }
@@ -211,7 +275,9 @@ export async function anidbTick(priority: number[] = [], deps = { fetch }, now =
   running = true;
   let fetched = 0;
   try {
-    const todo = wantedAids(priority).filter((a) => due(a, now)).slice(0, Math.max(0, Math.min(PER_RUN, st.dailyCap - st.today, st.hourlyCap - st.lastHour)));
+    const todo = wantedAids(priority)
+      .filter((a) => due(a, now))
+      .slice(0, Math.max(0, Math.min(PER_RUN, st.dailyCap - st.today, st.hourlyCap - st.lastHour)));
     for (const aid of todo) {
       try {
         storeAnime(await fetchAnime(aid, deps, "tick"));
@@ -256,7 +322,16 @@ export function listEntriesForTvdb(tvdbId: number): ListEntry[] {
 }
 
 export function anidbForTvdb(tvdbId: number) {
-  const out: { season: number; episode: number; title: string | null; air: number | null; length: number | null; type: AnidbEpType; aid: number; epno: string }[] = [];
+  const out: {
+    season: number;
+    episode: number;
+    title: string | null;
+    air: number | null;
+    length: number | null;
+    type: AnidbEpType;
+    aid: number;
+    epno: string;
+  }[] = [];
   for (const e of listEntriesForTvdb(tvdbId)) {
     for (const ep of anidbEpisodes(e.aid)) {
       if (ep.type !== "regular" && ep.type !== "special") continue;
@@ -264,7 +339,16 @@ export function anidbForTvdb(tvdbId: number) {
       // user's override for the entry.
       const t = placeOf(e, ep.number, ep.type === "regular" ? 1 : 0);
       if (!t) continue;
-      out.push({ season: t.season, episode: t.episode, title: ep.title_en ?? ep.title_xjat ?? ep.title_ja, air: ep.airdate ? Date.parse(`${ep.airdate}T00:00:00Z`) : null, length: ep.length, type: ep.type, aid: e.aid, epno: ep.epno });
+      out.push({
+        season: t.season,
+        episode: t.episode,
+        title: ep.title_en ?? ep.title_xjat ?? ep.title_ja,
+        air: ep.airdate ? Date.parse(`${ep.airdate}T00:00:00Z`) : null,
+        length: ep.length,
+        type: ep.type,
+        aid: e.aid,
+        epno: ep.epno,
+      });
     }
   }
   return out;
@@ -273,7 +357,8 @@ export function anidbForTvdb(tvdbId: number) {
 /** For the specials list: AniDB's type of a TVDB S0 episode (OP/ED/trailer/… come from AniDB's own episode types). */
 export function anidbSpecialKind(tvdbId: number) {
   const m = new Map<number, { type: AnidbEpType; title: string | null; length: number | null }>();
-  for (const x of anidbForTvdb(tvdbId)) if (x.season === 0 && !m.has(x.episode)) m.set(x.episode, { type: x.type, title: x.title, length: x.length }); // first wins, as in native shows
+  for (const x of anidbForTvdb(tvdbId))
+    if (x.season === 0 && !m.has(x.episode)) m.set(x.episode, { type: x.type, title: x.title, length: x.length }); // first wins, as in native shows
   return m;
 }
 
@@ -281,17 +366,28 @@ export function anidbSpecialKind(tvdbId: number) {
 
 /** The user's placement of an AniDB entry on TVDB numbering (wins over Anime-Lists' default season/offset). */
 export function anidbOverride(aid: number) {
-  return db.prepare("SELECT tvdb_id, season, offset FROM anidb_overrides WHERE aid = ?").get(aid) as { tvdb_id: number; season: number; offset: number } | undefined;
+  return db.prepare("SELECT tvdb_id, season, offset FROM anidb_overrides WHERE aid = ?").get(aid) as
+    { tvdb_id: number; season: number; offset: number } | undefined;
 }
 
 export function setAnidbOverride(aid: number, tvdbId: number, season: number | null, offset = 0) {
   if (season === null) db.prepare("DELETE FROM anidb_overrides WHERE aid = ?").run(aid);
-  else db.prepare("INSERT OR REPLACE INTO anidb_overrides (aid, tvdb_id, season, offset, at) VALUES (?, ?, ?, ?, ?)").run(aid, tvdbId, season, offset, Date.now());
+  else
+    db.prepare("INSERT OR REPLACE INTO anidb_overrides (aid, tvdb_id, season, offset, at) VALUES (?, ?, ?, ?, ?)").run(
+      aid,
+      tvdbId,
+      season,
+      offset,
+      Date.now(),
+    );
 }
 
 /** Queues this show's AniDB entries now (still through the one slow queue, the cache and the daily cap). */
 export async function fetchForTvdb(tvdbId: number, deps = { fetch }) {
-  const all = [...animeListEntries().values()].filter((e) => e.tvdbId === tvdbId).map((e) => e.aid).filter((a) => due(a));
+  const all = [...animeListEntries().values()]
+    .filter((e) => e.tvdbId === tvdbId)
+    .map((e) => e.aid)
+    .filter((a) => due(a));
   // At most PER_SHOW per click: the rest follows on the regular slow schedule (this is what flooded AniDB once).
   const aids = all.slice(0, PER_SHOW);
   let fetched = 0;
@@ -321,19 +417,32 @@ function placeOf(e: Parameters<typeof anidbToTvdb>[0], n: number, anidbSeason: n
  * onto TVDB numbering ("AniDB ep 1–22 → S02E01–E22"), and have/missing from the library.
  */
 export function anidbView(tvdbId: number) {
-  const eps = cache.prepare("SELECT e.season, e.episode, e.has_file FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as { season: number; episode: number; has_file: number }[];
+  const eps = cache
+    .prepare("SELECT e.season, e.episode, e.has_file FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?")
+    .all(tvdbId) as { season: number; episode: number; has_file: number }[];
   const have = new Map(eps.map((e) => [`${e.season}x${e.episode}`, !!e.has_file]));
   const out = [];
   for (const e of listEntriesForTvdb(tvdbId)) {
-    const a = db.prepare("SELECT fetched_at, type, episode_count, missing FROM anidb_anime WHERE aid = ?").get(e.aid) as { fetched_at: number; type: string | null; episode_count: number | null; missing: number } | undefined;
+    const a = db.prepare("SELECT fetched_at, type, episode_count, missing FROM anidb_anime WHERE aid = ?").get(e.aid) as
+      { fetched_at: number; type: string | null; episode_count: number | null; missing: number } | undefined;
     const list = anidbEpisodes(e.aid);
-    const firstAir = list.filter((x) => x.airdate).map((x) => x.airdate!).sort()[0] ?? null;
+    const firstAir =
+      list
+        .filter((x) => x.airdate)
+        .map((x) => x.airdate!)
+        .sort()[0] ?? null;
     const mapped: { kind: "regular" | "special"; from: number; season: number; episode: number; have: boolean | null }[] = [];
     for (const x of list) {
       if (x.type !== "regular" && x.type !== "special") continue;
       const t = placeOf(e, x.number, x.type === "regular" ? 1 : 0);
       if (!t) continue;
-      mapped.push({ kind: x.type, from: x.number, season: t.season, episode: t.episode, have: have.has(`${t.season}x${t.episode}`) ? have.get(`${t.season}x${t.episode}`)! : null });
+      mapped.push({
+        kind: x.type,
+        from: x.number,
+        season: t.season,
+        episode: t.episode,
+        have: have.has(`${t.season}x${t.episode}`) ? have.get(`${t.season}x${t.episode}`)! : null,
+      });
     }
     // Runs of consecutive episodes that land consecutively on one TVDB season.
     const runs: string[] = [];
@@ -343,8 +452,16 @@ export function anidbView(tvdbId: number) {
       let i = 0;
       while (i < ms.length) {
         let j = i;
-        while (j + 1 < ms.length && ms[j + 1].from === ms[j].from + 1 && ms[j + 1].season === ms[i].season && ms[j + 1].episode === ms[j].episode + 1) j++;
-        runs.push(`AniDB ${kind === "special" ? "S" : "ep "}${range(ms.slice(i, j + 1).map((m) => m.from))} → S${pad(ms[i].season)}E${pad(ms[i].episode)}${j > i ? `–E${pad(ms[j].episode)}` : ""}`);
+        while (
+          j + 1 < ms.length &&
+          ms[j + 1].from === ms[j].from + 1 &&
+          ms[j + 1].season === ms[i].season &&
+          ms[j + 1].episode === ms[j].episode + 1
+        )
+          j++;
+        runs.push(
+          `AniDB ${kind === "special" ? "S" : "ep "}${range(ms.slice(i, j + 1).map((m) => m.from))} → S${pad(ms[i].season)}E${pad(ms[i].episode)}${j > i ? `–E${pad(ms[j].episode)}` : ""}`,
+        );
         i = j + 1;
       }
     }
@@ -357,13 +474,19 @@ export function anidbView(tvdbId: number) {
       episodes: a?.episode_count ?? (regular || null),
       firstAir,
       fetched: !!a && !a.missing,
-      defaultMapping: e.defaultSeason === null ? "no TVDB season" : e.defaultSeason === "a" ? `absolute (offset ${e.offset})` : `season ${e.defaultSeason}${e.offset ? `, offset ${e.offset}` : ""}`,
+      defaultMapping:
+        e.defaultSeason === null
+          ? "no TVDB season"
+          : e.defaultSeason === "a"
+            ? `absolute (offset ${e.offset})`
+            : `season ${e.defaultSeason}${e.offset ? `, offset ${e.offset}` : ""}`,
       override: anidbOverride(e.aid) ?? null,
       mapping: runs,
       have: placedRegular.filter((m) => m.have).length,
       missing: placedRegular.filter((m) => m.have === false).length,
       specialsHave: mapped.filter((m) => m.kind === "special" && m.have).length,
-      unplaced: list.filter((x) => (x.type === "regular" || x.type === "special") && !placeOf(e, x.number, x.type === "regular" ? 1 : 0)).length,
+      unplaced: list.filter((x) => (x.type === "regular" || x.type === "special") && !placeOf(e, x.number, x.type === "regular" ? 1 : 0))
+        .length,
     });
   }
   return out.sort((p, q) => (p.firstAir ?? "9999").localeCompare(q.firstAir ?? "9999") || p.aid - q.aid);

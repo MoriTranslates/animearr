@@ -61,13 +61,18 @@ export interface EpisodeMeta {
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const el = (name: string, v: string | number | null | undefined, attrs = "") => (v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`);
+const el = (name: string, v: string | number | null | undefined, attrs = "") =>
+  v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
 /** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)"): plain text for the NFO. */
 export const plainText = (html: string | null | undefined) =>
   (html ?? "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 const head = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<!-- ${NOTE} -->\n`;
@@ -101,7 +106,13 @@ export function tvshowNfo(m: ShowMeta) {
 }
 
 export function seasonNfo(season: number, title?: string | null) {
-  return head + "<season>\n" + el("seasonnumber", season) + el("title", title ?? (season === 0 ? "Specials" : `Season ${season}`)) + "</season>\n";
+  return (
+    head +
+    "<season>\n" +
+    el("seasonnumber", season) +
+    el("title", title ?? (season === 0 ? "Specials" : `Season ${season}`)) +
+    "</season>\n"
+  );
 }
 
 /** One <episodedetails> block per episode in the file (a multi-episode file lists them all). */
@@ -109,13 +120,35 @@ export function episodeNfo(showTitle: string, eps: EpisodeMeta[]) {
   return (
     head +
     eps
-      .map((e) => "<episodedetails>\n" + el("title", e.title || `Episode ${e.episode}`) + el("showtitle", showTitle) + el("plot", plainText(e.plot)) + el("season", e.season) + el("episode", e.episode) + el("aired", e.aired) + el("runtime", e.runtime) + "</episodedetails>\n")
+      .map(
+        (e) =>
+          "<episodedetails>\n" +
+          el("title", e.title || `Episode ${e.episode}`) +
+          el("showtitle", showTitle) +
+          el("plot", plainText(e.plot)) +
+          el("season", e.season) +
+          el("episode", e.episode) +
+          el("aired", e.aired) +
+          el("runtime", e.runtime) +
+          "</episodedetails>\n",
+      )
       .join("")
   );
 }
 
 export function plexmatch(m: ShowMeta) {
-  return [`# ${NOTE}`, `title: ${m.title}`, m.year ? `year: ${m.year}` : "", m.ids.tvdb ? `tvdbid: ${m.ids.tvdb}` : "", m.ids.tmdb ? `tmdbid: ${m.ids.tmdb}` : "", m.ids.imdb ? `imdbid: ${m.ids.imdb}` : ""].filter(Boolean).join("\n") + "\n";
+  return (
+    [
+      `# ${NOTE}`,
+      `title: ${m.title}`,
+      m.year ? `year: ${m.year}` : "",
+      m.ids.tvdb ? `tvdbid: ${m.ids.tvdb}` : "",
+      m.ids.tmdb ? `tmdbid: ${m.ids.tmdb}` : "",
+      m.ids.imdb ? `imdbid: ${m.ids.imdb}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n") + "\n"
+  );
 }
 
 const isOurs = (text: string) => text.includes(MARKER);
@@ -179,7 +212,16 @@ async function fetchImage(url: string): Promise<{ data: Buffer; ext: string } | 
 }
 
 /** thumbs: written or moved along; thumbsSkipped: the user's own thumbnail was there, so left alone; thumbsMissing: no source had one. */
-export interface SyncCounts { written: number; unchanged: number; userFiles: number; removed: number; artwork: number; thumbs: number; thumbsSkipped: number; thumbsMissing: number }
+export interface SyncCounts {
+  written: number;
+  unchanged: number;
+  userFiles: number;
+  removed: number;
+  artwork: number;
+  thumbs: number;
+  thumbsSkipped: number;
+  thumbsMissing: number;
+}
 
 /** Writes text unless the file is the user's own; unchanged content isn't rewritten. */
 function put(file: string, text: string, deps: WriteDeps, c: SyncCounts) {
@@ -199,21 +241,56 @@ export interface SeriesOutput {
   /** A grab of the show is being imported right now. */
   importing?: boolean;
 }
-export interface SyncOpts { nfo: boolean; plexmatch: boolean; artwork: boolean; thumbs?: boolean; thumbsFromVideo?: boolean }
+export interface SyncOpts {
+  nfo: boolean;
+  plexmatch: boolean;
+  artwork: boolean;
+  thumbs?: boolean;
+  thumbsFromVideo?: boolean;
+}
 
-interface ThumbRow { path: string; source: string; ep_key: string }
+interface ThumbRow {
+  path: string;
+  source: string;
+  ep_key: string;
+}
 
 /** Episode thumbnails: writes the missing ones from the best source, moves ours along with a renamed video, drops ours whose video is gone. */
 async function syncThumbs(o: SeriesOutput, opts: SyncOpts, deps: WriteDeps, c: SyncCounts) {
-  const owned = new Map((db.prepare("SELECT path, source, ep_key FROM media_thumbs WHERE substr(path, 1, ?) = ?").all(o.folder.length, o.folder) as unknown as ThumbRow[]).map((r) => [r.path, r]));
+  const owned = new Map(
+    (
+      db
+        .prepare("SELECT path, source, ep_key FROM media_thumbs WHERE substr(path, 1, ?) = ?")
+        .all(o.folder.length, o.folder) as unknown as ThumbRow[]
+    ).map((r) => [r.path, r]),
+  );
   const lists = new Map<string, Set<string>>();
   const hasVideo = (thumb: string) => {
     const dir = path.dirname(thumb);
-    if (!lists.has(dir)) lists.set(dir, new Set(deps.list(dir).filter((x) => !x.dir && VIDEO.test(x.name)).map((x) => x.name.replace(/\.[^.]+$/, "").toLowerCase())));
-    return lists.get(dir)!.has(path.basename(thumb).replace(/-thumb\.[^.]+$/i, "").toLowerCase());
+    if (!lists.has(dir))
+      lists.set(
+        dir,
+        new Set(
+          deps
+            .list(dir)
+            .filter((x) => !x.dir && VIDEO.test(x.name))
+            .map((x) => x.name.replace(/\.[^.]+$/, "").toLowerCase()),
+        ),
+      );
+    return lists.get(dir)!.has(
+      path
+        .basename(thumb)
+        .replace(/-thumb\.[^.]+$/i, "")
+        .toLowerCase(),
+    );
   };
   const save = (file: string, source: string, key: string) => {
-    db.prepare("INSERT OR REPLACE INTO media_thumbs (path, source, ep_key, written_at) VALUES (?, ?, ?, ?)").run(file, source, key, Date.now());
+    db.prepare("INSERT OR REPLACE INTO media_thumbs (path, source, ep_key, written_at) VALUES (?, ?, ?, ?)").run(
+      file,
+      source,
+      key,
+      Date.now(),
+    );
     owned.set(file, { path: file, source, ep_key: key });
   };
   const forget = (file: string) => (db.prepare("DELETE FROM media_thumbs WHERE path = ?").run(file), owned.delete(file));
@@ -226,7 +303,9 @@ async function syncThumbs(o: SeriesOutput, opts: SyncOpts, deps: WriteDeps, c: S
       const existing = THUMB_EXTS.map((x) => `${base}-thumb.${x}`).find((p) => deps.exists(p));
       if (!existing) {
         // The video was renamed: our thumbnail for this episode moves along instead of being fetched again.
-        const old = [...owned.values()].find((r) => r.ep_key === key && path.dirname(r.path) === path.dirname(f.path) && deps.exists(r.path) && !hasVideo(r.path));
+        const old = [...owned.values()].find(
+          (r) => r.ep_key === key && path.dirname(r.path) === path.dirname(f.path) && deps.exists(r.path) && !hasVideo(r.path),
+        );
         if (old) {
           const to = `${base}-thumb.${old.path.slice(old.path.lastIndexOf(".") + 1)}`;
           deps.rename(old.path, to);
@@ -298,7 +377,10 @@ export async function syncSeriesFiles(o: SeriesOutput, opts: SyncOpts, deps: Wri
   if (opts.plexmatch) put(path.join(o.folder, ".plexmatch"), plexmatch(o.show), deps, c);
   if (opts.artwork) {
     const names = new Set(deps.list(o.folder).map((x) => x.name.toLowerCase()));
-    for (const [kind, url] of [["poster", o.show.poster], ["banner", o.show.banner]] as const) {
+    for (const [kind, url] of [
+      ["poster", o.show.poster],
+      ["banner", o.show.banner],
+    ] as const) {
       if (!url || [...names].some((n) => n.startsWith(`${kind}.`))) continue; // the folder already has one (maybe the user's)
       const img = await deps.image(url);
       if (!img) continue;
@@ -308,12 +390,24 @@ export async function syncSeriesFiles(o: SeriesOutput, opts: SyncOpts, deps: Wri
   }
   await syncThumbs(o, opts, deps, c);
   // AnimeArr's own episode NFOs whose video is gone (show folder and one level of season folders).
-  const dirs = [o.folder, ...deps.list(o.folder).filter((x) => x.dir).map((x) => path.join(o.folder, x.name))];
+  const dirs = [
+    o.folder,
+    ...deps
+      .list(o.folder)
+      .filter((x) => x.dir)
+      .map((x) => path.join(o.folder, x.name)),
+  ];
   for (const dir of dirs) {
     const entries = deps.list(dir);
     const videos = new Set(entries.filter((x) => !x.dir && VIDEO.test(x.name)).map((x) => x.name.replace(/\.[^.]+$/, "").toLowerCase()));
     for (const x of entries) {
-      if (x.dir || !/\.nfo$/i.test(x.name) || /^(tvshow|season)\.nfo$/i.test(x.name) || videos.has(x.name.replace(/\.nfo$/i, "").toLowerCase())) continue;
+      if (
+        x.dir ||
+        !/\.nfo$/i.test(x.name) ||
+        /^(tvshow|season)\.nfo$/i.test(x.name) ||
+        videos.has(x.name.replace(/\.nfo$/i, "").toLowerCase())
+      )
+        continue;
       const file = path.join(dir, x.name);
       const text = deps.read(file);
       if (text !== null && isOurs(text)) {
@@ -335,16 +429,52 @@ const json = <T>(s: string | null | undefined, d: T): T => {
 
 /** What AnimeArr knows about a show, from its own catalog (series row + the AniList entries mapped to it). */
 export function seriesOutput(tvdbId: number): SeriesOutput | null {
-  const s = cache.prepare("SELECT id, tvdb_id, tmdb_id, imdb_id, title, year, status, network, overview, genres, first_aired, path, poster, anidb_ids FROM series WHERE tvdb_id = ?").get(tvdbId) as
-    | { id: number; tvdb_id: number; tmdb_id: number | null; imdb_id: string | null; title: string; year: number | null; status: string | null; network: string | null; overview: string | null; genres: string; first_aired: string | null; path: string | null; poster: string | null; anidb_ids: string }
+  const s = cache
+    .prepare(
+      "SELECT id, tvdb_id, tmdb_id, imdb_id, title, year, status, network, overview, genres, first_aired, path, poster, anidb_ids FROM series WHERE tvdb_id = ?",
+    )
+    .get(tvdbId) as
+    | {
+        id: number;
+        tvdb_id: number;
+        tmdb_id: number | null;
+        imdb_id: string | null;
+        title: string;
+        year: number | null;
+        status: string | null;
+        network: string | null;
+        overview: string | null;
+        genres: string;
+        first_aired: string | null;
+        path: string | null;
+        poster: string | null;
+        anidb_ids: string;
+      }
     | undefined;
   if (!s?.path) return null;
-  const native = db.prepare("SELECT anilist_id, synthetic FROM native_series WHERE tvdb_id = ?").get(tvdbId) as { anilist_id: number; synthetic: number } | undefined;
+  const native = db.prepare("SELECT anilist_id, synthetic FROM native_series WHERE tvdb_id = ?").get(tvdbId) as
+    { anilist_id: number; synthetic: number } | undefined;
   // The earliest AniList entry of the show (season 1), or the native show's own entry when TVDB doesn't have it.
-  const e = (native?.synthetic
-    ? db.prepare("SELECT * FROM entries WHERE anilist_id = ?").get(native.anilist_id)
-    : db.prepare("SELECT * FROM entries WHERE tvdb_id = ? AND (tvdb_season IS NULL OR tvdb_season != '0') ORDER BY start_date IS NULL, start_date LIMIT 1").get(tvdbId)) as
-    | { anilist_id: number; anidb_id: number | null; title_native: string | null; description: string | null; cover: string | null; banner: string | null; start_date: string | null; genres: string; tmdb_tv: number | null }
+  const e = (
+    native?.synthetic
+      ? db.prepare("SELECT * FROM entries WHERE anilist_id = ?").get(native.anilist_id)
+      : db
+          .prepare(
+            "SELECT * FROM entries WHERE tvdb_id = ? AND (tvdb_season IS NULL OR tvdb_season != '0') ORDER BY start_date IS NULL, start_date LIMIT 1",
+          )
+          .get(tvdbId)
+  ) as
+    | {
+        anilist_id: number;
+        anidb_id: number | null;
+        title_native: string | null;
+        description: string | null;
+        cover: string | null;
+        banner: string | null;
+        start_date: string | null;
+        genres: string;
+        tmdb_tv: number | null;
+      }
     | undefined;
   const status = (s.status ?? "").toLowerCase();
   const show: ShowMeta = {
@@ -356,15 +486,40 @@ export function seriesOutput(tvdbId: number): SeriesOutput | null {
     status: status === "ended" || status === "finished" ? "Ended" : status ? "Continuing" : null,
     studio: s.network,
     genres: json<string[]>(e?.genres, []).length ? json<string[]>(e?.genres, []) : json<string[]>(s.genres, []),
-    ids: { tvdb: native?.synthetic ? null : s.tvdb_id, tmdb: s.tmdb_id ?? e?.tmdb_tv ?? null, imdb: s.imdb_id, anidb: e?.anidb_id ?? json<number[]>(s.anidb_ids, [])[0] ?? null, anilist: e?.anilist_id ?? native?.anilist_id ?? null },
+    ids: {
+      tvdb: native?.synthetic ? null : s.tvdb_id,
+      tmdb: s.tmdb_id ?? e?.tmdb_tv ?? null,
+      imdb: s.imdb_id,
+      anidb: e?.anidb_id ?? json<number[]>(s.anidb_ids, [])[0] ?? null,
+      anilist: e?.anilist_id ?? native?.anilist_id ?? null,
+    },
     poster: e?.cover ?? s.poster,
     banner: e?.banner ?? null,
   };
-  const rows = cache.prepare("SELECT e.season, e.episode, e.absolute, e.title, e.air_date, e.runtime, f.path FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? ORDER BY e.season, e.episode").all(s.id) as { season: number; episode: number; absolute: number | null; title: string | null; air_date: string | null; runtime: number | null; path: string }[];
+  const rows = cache
+    .prepare(
+      "SELECT e.season, e.episode, e.absolute, e.title, e.air_date, e.runtime, f.path FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? ORDER BY e.season, e.episode",
+    )
+    .all(s.id) as {
+    season: number;
+    episode: number;
+    absolute: number | null;
+    title: string | null;
+    air_date: string | null;
+    runtime: number | null;
+    path: string;
+  }[];
   const byFile = new Map<string, EpisodeMeta[]>();
   for (const r of rows) {
     const list = byFile.get(r.path) ?? [];
-    list.push({ season: r.season, episode: r.episode, absolute: r.absolute, title: r.title, aired: r.air_date?.slice(0, 10) ?? null, runtime: r.runtime });
+    list.push({
+      season: r.season,
+      episode: r.episode,
+      absolute: r.absolute,
+      title: r.title,
+      aired: r.air_date?.slice(0, 10) ?? null,
+      runtime: r.runtime,
+    });
     byFile.set(r.path, list);
   }
   const importing = !!db.prepare("SELECT 1 FROM grabs WHERE tvdb_id = ? AND state = 'importing'").get(tvdbId);
@@ -372,7 +527,11 @@ export function seriesOutput(tvdbId: number): SeriesOutput | null {
   return {
     show,
     folder: mappedPath(s.path),
-    files: [...byFile].map(([p, eps]) => ({ path: mappedPath(p), episodes: eps, durationSec: (duration.get(p) as { duration: number | null } | undefined)?.duration ?? null })),
+    files: [...byFile].map(([p, eps]) => ({
+      path: mappedPath(p),
+      episodes: eps,
+      durationSec: (duration.get(p) as { duration: number | null } | undefined)?.duration ?? null,
+    })),
     sonarrId: s.id,
     importing,
   };
@@ -381,7 +540,13 @@ export function seriesOutput(tvdbId: number): SeriesOutput | null {
 const enabledOutput = () => {
   const m = getSettings().mediaOutput;
   // Thumbnails ride on the artwork switch (they're images); the frame-from-video option is its own, off by default.
-  return { nfo: !!m?.nfo, plexmatch: !!m?.plexmatch, artwork: !!m?.artwork, thumbs: !!m?.artwork && m?.episodeThumbs !== false, thumbsFromVideo: !!m?.artwork && m?.episodeThumbs !== false && !!m?.episodeThumbsFromVideo };
+  return {
+    nfo: !!m?.nfo,
+    plexmatch: !!m?.plexmatch,
+    artwork: !!m?.artwork,
+    thumbs: !!m?.artwork && m?.episodeThumbs !== false,
+    thumbsFromVideo: !!m?.artwork && m?.episodeThumbs !== false && !!m?.episodeThumbsFromVideo,
+  };
 };
 
 /** Writes one show's metadata files (when any are switched on and the show is inside an allowed root folder). */
@@ -416,19 +581,32 @@ let running: Promise<SyncCounts & { shows: number }> | null = null;
 export function syncAllMetadata(deps: WriteDeps = realWriteDeps, meta?: MetaDeps) {
   if (running) return { started: false };
   running = (async () => {
-    const total: SyncCounts & { shows: number } = { written: 0, unchanged: 0, userFiles: 0, removed: 0, artwork: 0, thumbs: 0, thumbsSkipped: 0, thumbsMissing: 0, shows: 0 };
+    const total: SyncCounts & { shows: number } = {
+      written: 0,
+      unchanged: 0,
+      userFiles: 0,
+      removed: 0,
+      artwork: 0,
+      thumbs: 0,
+      thumbsSkipped: 0,
+      thumbsMissing: 0,
+      shows: 0,
+    };
     const ids = (cache.prepare("SELECT tvdb_id FROM series ORDER BY title").all() as { tvdb_id: number }[]).map((x) => x.tvdb_id);
     for (const id of ids) {
       try {
         const c = await syncSeriesMetadata(id, deps, meta);
         if (!c) continue;
         total.shows++;
-        for (const k of ["written", "unchanged", "userFiles", "removed", "artwork", "thumbs", "thumbsSkipped", "thumbsMissing"] as const) total[k] += c[k];
+        for (const k of ["written", "unchanged", "userFiles", "removed", "artwork", "thumbs", "thumbsSkipped", "thumbsMissing"] as const)
+          total[k] += c[k];
       } catch {
         /* one unreadable folder doesn't stop the rest */
       }
     }
-    logDecision("info", { why: `Media-server files for ${total.shows} ${total.shows === 1 ? "show" : "shows"}: ${total.written} written, ${total.unchanged} already up to date, ${total.removed} removed, ${total.artwork} artwork, ${total.thumbs} episode thumbnails${total.thumbsSkipped ? ` (${total.thumbsSkipped} of your own left alone)` : ""}${total.userFiles ? `; ${total.userFiles} of your own files left alone` : ""}` });
+    logDecision("info", {
+      why: `Media-server files for ${total.shows} ${total.shows === 1 ? "show" : "shows"}: ${total.written} written, ${total.unchanged} already up to date, ${total.removed} removed, ${total.artwork} artwork, ${total.thumbs} episode thumbnails${total.thumbsSkipped ? ` (${total.thumbsSkipped} of your own left alone)` : ""}${total.userFiles ? `; ${total.userFiles} of your own files left alone` : ""}`,
+    });
     return total;
   })().finally(() => (running = null));
   return { started: true };

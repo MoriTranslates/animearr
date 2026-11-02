@@ -14,8 +14,25 @@ import { cache } from "./db.js";
 import { localPath } from "./paths.js";
 import { underAllowedRoot } from "./settings.js";
 
-export interface RecycleItem { path: string; series: string | null; tvdbId: number | null; size: number; deletedAt: number; purgeAt: number | null }
-export interface RecycleStatus { configured: boolean; path: string; cleanupDays: number; reachable: boolean; items: RecycleItem[]; totalCount: number; totalBytes: number; truncated: boolean; error?: string }
+export interface RecycleItem {
+  path: string;
+  series: string | null;
+  tvdbId: number | null;
+  size: number;
+  deletedAt: number;
+  purgeAt: number | null;
+}
+export interface RecycleStatus {
+  configured: boolean;
+  path: string;
+  cleanupDays: number;
+  reachable: boolean;
+  items: RecycleItem[];
+  totalCount: number;
+  totalBytes: number;
+  truncated: boolean;
+  error?: string;
+}
 
 const TTL = 60_000;
 const MAX_FILES = 3000;
@@ -55,7 +72,11 @@ async function walk(root: string, rel: string, depth: number, out: { rel: string
 }
 
 /** What's in Sonarr's recycle bin for anime shows in the allowed root folders, newest first. */
-export async function recycleStatus(deps = { get: sonarr.getMediaManagement, localPath }, now = Date.now(), fresh = false): Promise<RecycleStatus> {
+export async function recycleStatus(
+  deps = { get: sonarr.getMediaManagement, localPath },
+  now = Date.now(),
+  fresh = false,
+): Promise<RecycleStatus> {
   const empty = { reachable: false, items: [], totalCount: 0, totalBytes: 0, truncated: false };
   let s: Awaited<ReturnType<typeof recycleSetting>>;
   try {
@@ -93,8 +114,22 @@ export async function recycleStatus(deps = { get: sonarr.getMediaManagement, loc
   const items: RecycleItem[] = files.map((f) => {
     const name = f.rel.split("/")[0];
     const show = shows.get(name)!;
-    return { path: `${s.path.replace(/\/+$/, "")}/${f.rel}`, series: show.title, tvdbId: show.tvdb_id, size: f.size, deletedAt: f.mtime, purgeAt: s.cleanupDays ? newest.get(name)! + s.cleanupDays * 86_400_000 : null };
+    return {
+      path: `${s.path.replace(/\/+$/, "")}/${f.rel}`,
+      series: show.title,
+      tvdbId: show.tvdb_id,
+      size: f.size,
+      deletedAt: f.mtime,
+      purgeAt: s.cleanupDays ? newest.get(name)! + s.cleanupDays * 86_400_000 : null,
+    };
   });
   items.sort((a, b) => b.deletedAt - a.deletedAt);
-  return { ...s, reachable: true, items: items.slice(0, SHOWN), totalCount: items.length, totalBytes: items.reduce((n, i) => n + i.size, 0), truncated: files.length >= MAX_FILES || items.length > SHOWN };
+  return {
+    ...s,
+    reachable: true,
+    items: items.slice(0, SHOWN),
+    totalCount: items.length,
+    totalBytes: items.reduce((n, i) => n + i.size, 0),
+    truncated: files.length >= MAX_FILES || items.length > SHOWN,
+  };
 }

@@ -20,7 +20,12 @@ const guard = () => {
 };
 
 /** Sonarr keeps tag labels lower-case and trimmed. */
-export const normLabel = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ").slice(0, 40);
+export const normLabel = (v: unknown) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 40);
 
 export function listTags(): Tag[] {
   return db
@@ -67,11 +72,16 @@ export function deleteTag(id: number) {
     db.prepare("DELETE FROM release_rule_tags WHERE tag_id = ?").run(id);
     db.prepare("DELETE FROM tags WHERE id = ?").run(id);
   });
-  logDecision("info", { why: `Deleted tag "${t.label}"${t.series + t.movies + t.rules ? `; unlinked from ${t.series} show(s), ${t.movies} movie(s) and ${t.rules} release rule(s)` : ""}` });
+  logDecision("info", {
+    why: `Deleted tag "${t.label}"${t.series + t.movies + t.rules ? `; unlinked from ${t.series} show(s), ${t.movies} movie(s) and ${t.rules} release rule(s)` : ""}`,
+  });
   return { series: t.series, movies: t.movies, rules: t.rules };
 }
 
-export const tagsOf = (kind: TagKind, ref: number) => (db.prepare("SELECT tag_id FROM tag_links WHERE kind = ? AND ref = ? ORDER BY tag_id").all(kind, ref) as { tag_id: number }[]).map((r) => r.tag_id);
+export const tagsOf = (kind: TagKind, ref: number) =>
+  (db.prepare("SELECT tag_id FROM tag_links WHERE kind = ? AND ref = ? ORDER BY tag_id").all(kind, ref) as { tag_id: number }[]).map(
+    (r) => r.tag_id,
+  );
 
 /** Replaces a show's or movie's tags (unknown ids are ignored). */
 export function setTags(kind: TagKind, ref: number, ids: unknown) {
@@ -80,7 +90,8 @@ export function setTags(kind: TagKind, ref: number, ids: unknown) {
   const known = new Set(tagRows().map((t) => t.id));
   tx(db, () => {
     db.prepare("DELETE FROM tag_links WHERE kind = ? AND ref = ?").run(kind, ref);
-    for (const t of new Set(ids.map(Number))) if (known.has(t)) db.prepare("INSERT INTO tag_links (kind, ref, tag_id) VALUES (?, ?, ?)").run(kind, ref, t);
+    for (const t of new Set(ids.map(Number)))
+      if (known.has(t)) db.prepare("INSERT INTO tag_links (kind, ref, tag_id) VALUES (?, ?, ?)").run(kind, ref, t);
   });
   return tagsOf(kind, ref);
 }
@@ -91,7 +102,8 @@ export function bulkTags(kind: TagKind, refs: number[], add: number[], remove: n
   const known = new Set(tagRows().map((t) => t.id));
   tx(db, () => {
     for (const ref of refs) {
-      for (const t of add) if (known.has(t)) db.prepare("INSERT OR IGNORE INTO tag_links (kind, ref, tag_id) VALUES (?, ?, ?)").run(kind, ref, t);
+      for (const t of add)
+        if (known.has(t)) db.prepare("INSERT OR IGNORE INTO tag_links (kind, ref, tag_id) VALUES (?, ?, ?)").run(kind, ref, t);
       for (const t of remove) db.prepare("DELETE FROM tag_links WHERE kind = ? AND ref = ? AND tag_id = ?").run(kind, ref, t);
     }
   });

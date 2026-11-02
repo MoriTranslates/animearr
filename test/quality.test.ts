@@ -3,7 +3,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { beatsCurrent, compileTiers, goalCategory, goalLabel, isCategoryBest, LOCK_TAG, meetsGoal, qualityOf, qualityScore, seadexPick, sonarrQualityName, tierOf, type SeadexEntry, type TierTable } from "../server/core/quality.js";
+import {
+  beatsCurrent,
+  compileTiers,
+  goalCategory,
+  goalLabel,
+  isCategoryBest,
+  LOCK_TAG,
+  meetsGoal,
+  qualityOf,
+  qualityScore,
+  seadexPick,
+  sonarrQualityName,
+  tierOf,
+  type SeadexEntry,
+  type TierTable,
+} from "../server/core/quality.js";
 import { rankRelease } from "../server/core/rank.js";
 import { parseRelease } from "../server/core/parser.js";
 import { renderEpisode } from "../server/naming.js";
@@ -16,7 +31,10 @@ test("the shipped TRaSH tier patterns all compile in JavaScript", () => {
   assert.equal(tiers.bd.flatMap((t) => t.re).length, n(raw.bd));
   assert.equal(tiers.web.flatMap((t) => t.re).length, n(raw.web));
   assert.equal(tiers.lq.length, raw.lq.length);
-  assert.deepEqual(tiers.bd.map((t) => t.tier), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(
+    tiers.bd.map((t) => t.tier),
+    [1, 2, 3, 4, 5, 6, 7, 8],
+  );
 });
 
 test("categories: Sonarr names, TRaSH anime grouping", () => {
@@ -88,14 +106,27 @@ test("SeaDex: best is the top score, alt next; dual and either modes prefer the 
   const alt = qualityScore("[AltGroup] Show - S01 (BD 1080p)", { seadex: SEADEX, tiers });
   assert.ok(best.points > alt.points);
   assert.equal(best.why[0], "SeaDex best release (SubGroup)");
-  assert.equal(qualityScore("[DualGroup] Show - S01 (BD 1080p)", { seadex: SEADEX, mode: "dual" }).why[0], "SeaDex best release (DualGroup, dual audio)");
+  assert.equal(
+    qualityScore("[DualGroup] Show - S01 (BD 1080p)", { seadex: SEADEX, mode: "dual" }).why[0],
+    "SeaDex best release (DualGroup, dual audio)",
+  );
 });
 
 test("SeaDex ranks above tiers and size in rankRelease, after the language fit", () => {
-  const prof = { subLangs: ["en"], softOnly: true, preferUncensored: false, protocolOrder: ["usenet", "torrent"] as ("usenet" | "torrent")[], resolution: 1080, sizePreset: "lean" as const };
+  const prof = {
+    subLangs: ["en"],
+    softOnly: true,
+    preferUncensored: false,
+    protocolOrder: ["usenet", "torrent"] as ("usenet" | "torrent")[],
+    resolution: 1080,
+    sizePreset: "lean" as const,
+  };
   const info = { protocol: "torrent" as const, size: 12e9, seeders: 20, episodeCount: 12 };
   const seadexBig = rankRelease(parseRelease("[SubGroup] Show (BD 1080p) [Eng Subs]"), info, prof, null, { seadex: SEADEX, tiers });
-  const plain = rankRelease(parseRelease("[SomeGroup] Show (BD 1080p) [Eng Subs]"), { ...info, size: 6e9 }, prof, null, { seadex: SEADEX, tiers });
+  const plain = rankRelease(parseRelease("[SomeGroup] Show (BD 1080p) [Eng Subs]"), { ...info, size: 6e9 }, prof, null, {
+    seadex: SEADEX,
+    tiers,
+  });
   assert.ok(seadexBig.score > plain.score, "the SeaDex pick wins even when it's over the Lean size");
   assert.match(seadexBig.why, /SeaDex best release/);
   const raw = rankRelease(parseRelease("[SubGroup] Show - 01 (1080p) [RAW]"), info, prof, null, { seadex: SEADEX, tiers });
@@ -114,7 +145,11 @@ test("no churn: a higher category always beats; the same category only when the 
   assert.equal(beatsCurrent(newPick, curPick).ok, false);
   // A plain BD file in the same category: SeaDex's pick does qualify.
   assert.equal(beatsCurrent(newPick, bd).ok, true);
-  assert.equal(beatsCurrent(bd, qualityScore("[OtherGroup] Show - 01 (BD 1080p)", { tiers, seadex: SEADEX })).ok, false, "equal releases don't swap");
+  assert.equal(
+    beatsCurrent(bd, qualityScore("[OtherGroup] Show - 01 (BD 1080p)", { tiers, seadex: SEADEX })).ok,
+    false,
+    "equal releases don't swap",
+  );
 });
 
 test("collector goal: met by SeaDex's best when SeaDex knows the show, else by a category best", () => {

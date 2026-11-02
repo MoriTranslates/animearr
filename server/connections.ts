@@ -18,13 +18,39 @@ import { getSettings as settingsNow } from "./settings.js";
 import { clientConfigured, testClient } from "./arr/clients.js";
 import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
-export interface ConnStatus { key: string; configured: boolean; ok: boolean | null; version: string | null; error: string | null; errorDetail: string | null; grabs: number; lastGrabAt: number | null }
-export interface IndexerRow { id: number; key?: string; name: string; protocol: "usenet" | "torrent"; enabled: boolean; priority: number | null; source: "prowlarr" | "direct"; kind?: string; grabs: number; failures: number; lastError: string | null; breaker?: ReturnType<typeof breakerList>[number] | null; pick?: { use: boolean; fit: AnimeFit | null; animeCategories: boolean; isNew: boolean } | null }
+export interface ConnStatus {
+  key: string;
+  configured: boolean;
+  ok: boolean | null;
+  version: string | null;
+  error: string | null;
+  errorDetail: string | null;
+  grabs: number;
+  lastGrabAt: number | null;
+}
+export interface IndexerRow {
+  id: number;
+  key?: string;
+  name: string;
+  protocol: "usenet" | "torrent";
+  enabled: boolean;
+  priority: number | null;
+  source: "prowlarr" | "direct";
+  kind?: string;
+  grabs: number;
+  failures: number;
+  lastError: string | null;
+  breaker?: ReturnType<typeof breakerList>[number] | null;
+  pick?: { use: boolean; fit: AnimeFit | null; animeCategories: boolean; isNew: boolean } | null;
+}
 
 const TIMEOUT = 6000;
 async function probe<T>(fn: () => Promise<T>): Promise<{ ok: boolean; v: T | null; error: string | null }> {
   try {
-    const v = await Promise.race([fn(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("no answer within 6 seconds")), TIMEOUT))]);
+    const v = await Promise.race([
+      fn(),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("no answer within 6 seconds")), TIMEOUT)),
+    ]);
     return { ok: true, v, error: null };
   } catch (e) {
     return { ok: false, v: null, error: redactUrl((e as Error).message) };
@@ -32,13 +58,26 @@ async function probe<T>(fn: () => Promise<T>): Promise<{ ok: boolean; v: T | nul
 }
 
 const usage = (where: string, ...args: (string | number)[]) =>
-  db.prepare(`SELECT COUNT(*) AS n, MAX(at) AS last FROM grabs WHERE dry_run = 0 AND client_ref IS NOT NULL AND ${where}`).get(...args) as { n: number; last: number | null };
+  db.prepare(`SELECT COUNT(*) AS n, MAX(at) AS last FROM grabs WHERE dry_run = 0 AND client_ref IS NOT NULL AND ${where}`).get(...args) as {
+    n: number;
+    last: number | null;
+  };
 
 let cache: { at: number; v: Promise<Awaited<ReturnType<typeof build>>> } | null = null;
 /** After a change in Settings: the next overview is fresh. */
 export const invalidateConnections = () => void (cache = null);
 /** Cached for 20 s (the page polls; the services shouldn't be hammered). */
-const NAMES = { sabnzbd: "SABnzbd", qbittorrent: "qBittorrent", prowlarr: "Prowlarr", plex: "Plex", sonarr: "Sonarr", radarr: "Radarr", jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" } as const;
+const NAMES = {
+  sabnzbd: "SABnzbd",
+  qbittorrent: "qBittorrent",
+  prowlarr: "Prowlarr",
+  plex: "Plex",
+  sonarr: "Sonarr",
+  radarr: "Radarr",
+  jellyfin: "Jellyfin",
+  emby: "Emby",
+  kodi: "Kodi",
+} as const;
 /** A status card's error in plain words, naming the service and its address; the raw text as `errorDetail`. */
 function plain(service: string, url: string, error: string | null) {
   if (!error) return { error: null, errorDetail: null };
@@ -76,11 +115,16 @@ async function build() {
     conf.emby ? probe(() => testEmbyLike("emby", s.emby)) : null,
     conf.kodi ? probe(() => testKodi(s.kodi)) : null,
   ]);
-  const st = (key: keyof typeof conf, p: { ok: boolean; v: unknown; error: string | null } | null, use = { n: 0, last: null as number | null }): ConnStatus => ({
+  const st = (
+    key: keyof typeof conf,
+    p: { ok: boolean; v: unknown; error: string | null } | null,
+    use = { n: 0, last: null as number | null },
+  ): ConnStatus => ({
     key,
     configured: conf[key],
     ok: p ? p.ok : null,
-    version: p?.v && typeof p.v === "object" && "version" in (p.v as object) ? String((p.v as { version: unknown }).version ?? "") || null : null,
+    version:
+      p?.v && typeof p.v === "object" && "version" in (p.v as object) ? String((p.v as { version: unknown }).version ?? "") || null : null,
     ...plain(NAMES[key], s[key].url, p?.error ?? null),
     grabs: use.n,
     lastGrabAt: use.last,
@@ -88,10 +132,25 @@ async function build() {
   const indexers: IndexerRow[] = [];
   if (prow?.ok && prow.v) {
     const since = Date.now() - 3 * 86_400_000;
-    for (const ix of (prow.v as { indexers: { id: number; name: string; protocol: string; enable: boolean; priority?: number }[] }).indexers) {
+    for (const ix of (prow.v as { indexers: { id: number; name: string; protocol: string; enable: boolean; priority?: number }[] })
+      .indexers) {
       const u = usage("indexer_id = ?", ix.id);
-      const f = db.prepare("SELECT COUNT(*) AS n, (SELECT why FROM indexer_failures WHERE indexer_id = ? ORDER BY at DESC LIMIT 1) AS last FROM indexer_failures WHERE indexer_id = ? AND at > ?").get(ix.id, ix.id, since) as { n: number; last: string | null };
-      indexers.push({ id: ix.id, name: ix.name, protocol: ix.protocol === "torrent" ? "torrent" : "usenet", enabled: ix.enable, priority: ix.priority ?? null, source: "prowlarr", grabs: u.n, failures: f.n, lastError: f.n ? f.last : null });
+      const f = db
+        .prepare(
+          "SELECT COUNT(*) AS n, (SELECT why FROM indexer_failures WHERE indexer_id = ? ORDER BY at DESC LIMIT 1) AS last FROM indexer_failures WHERE indexer_id = ? AND at > ?",
+        )
+        .get(ix.id, ix.id, since) as { n: number; last: string | null };
+      indexers.push({
+        id: ix.id,
+        name: ix.name,
+        protocol: ix.protocol === "torrent" ? "torrent" : "usenet",
+        enabled: ix.enable,
+        priority: ix.priority ?? null,
+        source: "prowlarr",
+        grabs: u.n,
+        failures: f.n,
+        lastError: f.n ? f.last : null,
+      });
     }
   }
   // Added clients (NZBGet, Transmission, Deluge, rTorrent) and direct indexers.
@@ -99,11 +158,35 @@ async function build() {
     (settingsNow().extraClients ?? []).map(async (c) => {
       const p = clientConfigured(c) ? await probe(() => testClient(c)) : null;
       const u = usage("client = ?", c.id);
-      return { key: c.id, type: c.type, name: c.name, configured: clientConfigured(c), ok: p ? p.ok : null, version: p?.v?.version ?? null, ...plain(c.name, (c as { url?: string }).url ?? "", p?.error ?? null), grabs: u.n, lastGrabAt: u.last, priority: c.priority, enabled: c.enabled };
+      return {
+        key: c.id,
+        type: c.type,
+        name: c.name,
+        configured: clientConfigured(c),
+        ok: p ? p.ok : null,
+        version: p?.v?.version ?? null,
+        ...plain(c.name, (c as { url?: string }).url ?? "", p?.error ?? null),
+        grabs: u.n,
+        lastGrabAt: u.last,
+        priority: c.priority,
+        enabled: c.enabled,
+      };
     }),
   );
   for (const ix of listIndexers())
-    indexers.push({ id: ix.numId, key: ix.id, name: ix.name, protocol: ix.protocol, enabled: ix.enabled, priority: ix.priority, source: "direct", kind: ix.kind, grabs: ix.grabs, failures: ix.failures, lastError: ix.lastError });
+    indexers.push({
+      id: ix.numId,
+      key: ix.id,
+      name: ix.name,
+      protocol: ix.protocol,
+      enabled: ix.enabled,
+      priority: ix.priority,
+      source: "direct",
+      kind: ix.kind,
+      grabs: ix.grabs,
+      failures: ix.failures,
+      lastError: ix.lastError,
+    });
   // Which Prowlarr indexers AnimeArr asks (defaults for new ones), with the anime-fit hint.
   if (prow?.ok) {
     try {
@@ -119,8 +202,20 @@ async function build() {
   const prefs = s.clientPrefs ?? {};
   return {
     clients: [
-      { ...st("sabnzbd", sab, usage("client = 'sabnzbd'")), type: "sabnzbd", name: "SABnzbd", priority: prefs.sabnzbd?.priority ?? 1, enabled: prefs.sabnzbd?.enabled ?? true },
-      { ...st("qbittorrent", qbit, usage("client = 'qbittorrent'")), type: "qbittorrent", name: "qBittorrent", priority: prefs.qbittorrent?.priority ?? 1, enabled: prefs.qbittorrent?.enabled ?? true },
+      {
+        ...st("sabnzbd", sab, usage("client = 'sabnzbd'")),
+        type: "sabnzbd",
+        name: "SABnzbd",
+        priority: prefs.sabnzbd?.priority ?? 1,
+        enabled: prefs.sabnzbd?.enabled ?? true,
+      },
+      {
+        ...st("qbittorrent", qbit, usage("client = 'qbittorrent'")),
+        type: "qbittorrent",
+        name: "qBittorrent",
+        priority: prefs.qbittorrent?.priority ?? 1,
+        enabled: prefs.qbittorrent?.enabled ?? true,
+      },
       ...extras,
     ],
     duplicates: indexerDuplicates(indexers.filter((x) => x.source === "prowlarr").map((x) => x.name)),

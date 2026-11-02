@@ -16,28 +16,99 @@ type Deps = import("../server/repair.js").RepairDeps;
 type Probe = import("../server/verify.js").ProbeResult;
 
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (10, 800001, 'Managed Show', '/media/AnimeArr/Managed Show', 0, 'Japanese', 0)").run();
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (11, 800002, 'Other Show', '/media/AnimeArr/Other Show', 1, 'Japanese', 0)").run();
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (12, 800003, 'Main Library', '/media/Anime/Main Library', 1, 'Japanese', 0)").run();
-  for (const [id, sid, ep] of [[1001, 10, 1], [1002, 10, 2], [1003, 11, 1], [1004, 12, 1], [1005, 10, 3], [1006, 10, 4], [1007, 10, 5], [1008, 10, 6], [1009, 11, 2], [1010, 11, 3], [1011, 10, 7]]) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (?, ?, 1, ?, 1, 1, 24)").run(id, sid, ep);
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (10, 800001, 'Managed Show', '/media/AnimeArr/Managed Show', 0, 'Japanese', 0)",
+    )
+    .run();
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (11, 800002, 'Other Show', '/media/AnimeArr/Other Show', 1, 'Japanese', 0)",
+    )
+    .run();
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (12, 800003, 'Main Library', '/media/Anime/Main Library', 1, 'Japanese', 0)",
+    )
+    .run();
+  for (const [id, sid, ep] of [
+    [1001, 10, 1],
+    [1002, 10, 2],
+    [1003, 11, 1],
+    [1004, 12, 1],
+    [1005, 10, 3],
+    [1006, 10, 4],
+    [1007, 10, 5],
+    [1008, 10, 6],
+    [1009, 11, 2],
+    [1010, 11, 3],
+    [1011, 10, 7],
+  ])
+    cache
+      .prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (?, ?, 1, ?, 1, 1, 24)")
+      .run(id, sid, ep);
   db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (800001, 10, 'Managed Show', 0, 0)").run();
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], managed: { ...s.managed, dryRun: false }, repair: { mode: "log", maxPerDay: 10 } }));
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/AnimeArr"],
+    managed: { ...s.managed, dryRun: false },
+    repair: { mode: "log", maxPerDay: 10 },
+  }));
 });
 
 let hid = 100;
-const item = (episodeId: number, seriesId: number, title: string, show: string, downloadId?: string) => ({ id: ++hid, episodeId, seriesId, sourceTitle: title, date: new Date().toISOString(), downloadId: downloadId ?? `dl${hid}`, eventType: "downloadFolderImported", data: { fileId: String(hid), importedPath: `/media/${seriesId === 12 ? "Anime" : "AnimeArr"}/${show}/Season 1/x${hid}.mkv`, releaseGroup: "Group" } });
+const item = (episodeId: number, seriesId: number, title: string, show: string, downloadId?: string) => ({
+  id: ++hid,
+  episodeId,
+  seriesId,
+  sourceTitle: title,
+  date: new Date().toISOString(),
+  downloadId: downloadId ?? `dl${hid}`,
+  eventType: "downloadFolderImported",
+  data: {
+    fileId: String(hid),
+    importedPath: `/media/${seriesId === 12 ? "Anime" : "AnimeArr"}/${show}/Season 1/x${hid}.mkv`,
+    releaseGroup: "Group",
+  },
+});
 
 function deps(items: ReturnType<typeof item>[], probes: Record<number, Partial<Probe>>, sonarrSubs: Record<number, string>) {
   const calls = { failed: [] as number[], failNext: false };
   const d: Deps = {
     history: async () => items,
-    episodeFile: async (id) => ({ id, seriesId: 0, seasonNumber: 1, path: "", size: 1, quality: { quality: { name: "x" } }, mediaInfo: { subtitles: sonarrSubs[id] ?? "", audioLanguages: "jpn" } }),
-    grabsOf: async (episodeId) => [{ id: 9000 + episodeId, episodeId, seriesId: 0, sourceTitle: items.find((i) => i.episodeId === episodeId)!.sourceTitle, date: "", downloadId: items.find((i) => i.episodeId === episodeId)!.downloadId, eventType: "grabbed", data: {} }],
+    episodeFile: async (id) => ({
+      id,
+      seriesId: 0,
+      seasonNumber: 1,
+      path: "",
+      size: 1,
+      quality: { quality: { name: "x" } },
+      mediaInfo: { subtitles: sonarrSubs[id] ?? "", audioLanguages: "jpn" },
+    }),
+    grabsOf: async (episodeId) => [
+      {
+        id: 9000 + episodeId,
+        episodeId,
+        seriesId: 0,
+        sourceTitle: items.find((i) => i.episodeId === episodeId)!.sourceTitle,
+        date: "",
+        downloadId: items.find((i) => i.episodeId === episodeId)!.downloadId,
+        eventType: "grabbed",
+        data: {},
+      },
+    ],
     markFailed: async (id) => {
       if (calls.failNext) throw new Error("Sonarr said 500");
       calls.failed.push(id);
     },
-    probe: async (f) => ({ subs: [], audio: ["ja"], durationSec: 1400, sidecars: [], untagged: 0, ...(probes[Number(f.match(/x(\d+)/)![1])] ?? {}) }),
+    probe: async (f) => ({
+      subs: [],
+      audio: ["ja"],
+      durationSec: 1400,
+      sidecars: [],
+      untagged: 0,
+      ...(probes[Number(f.match(/x(\d+)/)![1])] ?? {}),
+    }),
     localPath: (p) => p,
   };
   return { d, calls };
@@ -61,7 +132,10 @@ test("auto mode: two signals → managed show is blocklisted and re-searched by 
   const o = item(1003, 11, "[ZhGroup] Other Show - 01 [CHS]", "Other Show");
   const { d, calls } = deps([m, o], { [m.id]: { subs: ["zh"] }, [o.id]: { subs: ["zh"] } }, { [m.id]: "chi", [o.id]: "chi" });
   const r = await checkNewImports(d);
-  assert.deepEqual(r.map((x) => x.action), ["repaired", "repaired"]);
+  assert.deepEqual(
+    r.map((x) => x.action),
+    ["repaired", "repaired"],
+  );
   assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get(m.sourceTitle));
   assert.equal((db.prepare("SELECT state FROM search_state WHERE episode_id = 1002").get() as { state: string }).state, "replace");
   // The bad file is still there: the scheduler must not end the search because "Sonarr has a file".
@@ -82,11 +156,16 @@ test("one signal only (Sonarr's track info says English) → suspected, nothing 
 test("files outside the allowed roots are ignored; AnimeArr's own grabs are skipped; daily cap holds", async () => {
   const outside = item(1004, 12, "[ZhGroup] Main Library - 01 [CHS]", "Main Library");
   const ownTitle = "[SubsPlease] Managed Show - 04 (1080p)";
-  db.prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, client_ref) VALUES (0, 0, 800001, 10, '[1006]', ?, 'g', 'torrent', 'done', 0, 'abcdef0123')").run(ownTitle);
+  db.prepare(
+    "INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, client_ref) VALUES (0, 0, 800001, 10, '[1006]', ?, 'g', 'torrent', 'done', 0, 'abcdef0123')",
+  ).run(ownTitle);
   const own = item(1006, 10, "Managed.Show.S01E04.1080p.mkv", "Managed Show", "ABCDEF0123");
   const { d } = deps([outside, own], {}, {});
   const r = await checkNewImports(d);
-  assert.deepEqual(r.map((x) => x.action), ["skipped"]);
+  assert.deepEqual(
+    r.map((x) => x.action),
+    ["skipped"],
+  );
   patchSettings((s) => ({ ...s, repair: { mode: "auto", maxPerDay: 2 } }));
   const c = item(1001, 10, "[ZhGroup] Managed Show - 01 v2 [CHS]", "Managed Show");
   const deps2 = deps([c], { [c.id]: { subs: ["zh"] } }, { [c.id]: "chi" });
@@ -101,9 +180,13 @@ test("a bad season pack is one repair: blocklisted once, each episode re-searche
   const b = item(1008, 10, pack, "Managed Show", "PACK1");
   const { d } = deps([a, b], { [a.id]: { subs: ["zh"] }, [b.id]: { subs: ["zh"] } }, { [a.id]: "chi", [b.id]: "chi" });
   const r = await checkNewImports(d);
-  assert.deepEqual(r.map((x) => x.action), ["repaired", "repaired"]);
+  assert.deepEqual(
+    r.map((x) => x.action),
+    ["repaired", "repaired"],
+  );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM blocklist WHERE release = ?").get(pack) as { n: number }).n, 1);
-  for (const e of [1007, 1008]) assert.equal((db.prepare("SELECT state FROM search_state WHERE episode_id = ?").get(e) as { state: string }).state, "replace");
+  for (const e of [1007, 1008])
+    assert.equal((db.prepare("SELECT state FROM search_state WHERE episode_id = ?").get(e) as { state: string }).state, "replace");
 });
 
 test("a Sonarr error during repair is recorded once and not retried", async () => {
@@ -121,9 +204,16 @@ test("global dry-run: non-managed shows aren't touched; a short file alone is on
   const a = item(1010, 11, "[ZhGroup] Other Show - 03 [CHS]", "Other Show");
   const short = item(1011, 10, "[Group] Managed Show - 07", "Managed Show");
   const unknown = { ...item(1, 99, "[Group] New Show - 01", "New Show"), seriesId: 99 };
-  const { d, calls } = deps([a, short, unknown], { [a.id]: { subs: ["zh"] }, [short.id]: { subs: ["en"], durationSec: 300 } }, { [a.id]: "chi", [short.id]: "eng" });
+  const { d, calls } = deps(
+    [a, short, unknown],
+    { [a.id]: { subs: ["zh"] }, [short.id]: { subs: ["en"], durationSec: 300 } },
+    { [a.id]: "chi", [short.id]: "eng" },
+  );
   const r = await checkNewImports(d);
-  assert.deepEqual(r.map((x) => x.action), ["would-repair", "suspected"]);
+  assert.deepEqual(
+    r.map((x) => x.action),
+    ["would-repair", "suspected"],
+  );
   assert.equal(calls.failed.length, 0);
   patchSettings((s) => ({ ...s, managed: { ...s.managed, dryRun: false } }));
 });
@@ -137,13 +227,23 @@ test("no import vanishes: one outside the roots or of a show not synced yet gets
   const outside = item(1004, 12, "[Group] Main Library - 01", "Main Library");
   const first = deps([early, outside], { [early.id]: { subs: ["fr"] } }, { [early.id]: "fre" });
   await checkNewImports(first.d, now);
-  const row = (id: number) => db.prepare("SELECT action, why, ok FROM checked_imports WHERE history_id = ?").get(id) as { action: string; why: string; ok: number } | undefined;
+  const row = (id: number) =>
+    db.prepare("SELECT action, why, ok FROM checked_imports WHERE history_id = ?").get(id) as
+      { action: string; why: string; ok: number } | undefined;
   assert.equal(row(early.id)?.why, NOT_SYNCED);
   assert.equal(row(outside.id)?.why, OUTSIDE_ROOTS);
   // A later run asks Sonarr from before that import, even after newer imports moved the watermark on.
-  db.prepare("INSERT INTO kv (key, value) VALUES ('repair-watermark', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(now + 30 * 3_600_000));
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (13, 800004, 'Late Show', '/media/AnimeArr/Late Show', 1, 'Japanese', 0)").run();
-  cache.prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (1201, 13, 1, 1, 1, 1, 24)").run();
+  db.prepare("INSERT INTO kv (key, value) VALUES ('repair-watermark', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+    String(now + 30 * 3_600_000),
+  );
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (13, 800004, 'Late Show', '/media/AnimeArr/Late Show', 1, 'Japanese', 0)",
+    )
+    .run();
+  cache
+    .prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (1201, 13, 1, 1, 1, 1, 24)")
+    .run();
   let asked: Date | null = null;
   const second = deps([early], { [early.id]: { subs: ["fr"] } }, { [early.id]: "fre" });
   const r = await checkNewImports({ ...second.d, history: async (since) => ((asked = since), [early]) }, now + 32 * 3_600_000);

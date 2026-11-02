@@ -92,7 +92,11 @@ export function parseAnimeList(xml: string): Map<number, AnimeListEntry> {
         const [a, ...b] = p.split("-");
         if (!a || !b.length) continue;
         const an = Number(a);
-        const tv = b.join("-").split("+").map(Number).filter((x) => Number.isFinite(x));
+        const tv = b
+          .join("-")
+          .split("+")
+          .map(Number)
+          .filter((x) => Number.isFinite(x));
         if (Number.isFinite(an)) pairs.set(an, tv);
       }
       mappings.push({
@@ -127,7 +131,11 @@ export function parseAnimeList(xml: string): Map<number, AnimeListEntry> {
  * explicit pairs first, then ranged mappings with offset, then defaulttvdbseason + episodeoffset.
  * Returns null when the entry has no TVDB placement ("a" = absolute is returned as season -1 with the absolute number).
  */
-export function anidbToTvdb(e: AnimeListEntry, ep: number, anidbSeason = 1): { season: number; episode: number; absolute?: boolean } | null {
+export function anidbToTvdb(
+  e: AnimeListEntry,
+  ep: number,
+  anidbSeason = 1,
+): { season: number; episode: number; absolute?: boolean } | null {
   for (const mp of e.mappings) {
     if (mp.anidbSeason !== anidbSeason) continue;
     const pair = mp.pairs.get(ep);

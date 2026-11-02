@@ -19,7 +19,9 @@ import type { ClientFile, ClientStatus } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
 export const mapClientPath = (p: string, c: ClientCfg) => {
-  for (const m of c.pathMappings ?? []) if (m.from && (p === m.from || p.startsWith(`${m.from.replace(/\/+$/, "")}/`))) return m.to.replace(/\/+$/, "") + p.slice(m.from.replace(/\/+$/, "").length);
+  for (const m of c.pathMappings ?? [])
+    if (m.from && (p === m.from || p.startsWith(`${m.from.replace(/\/+$/, "")}/`)))
+      return m.to.replace(/\/+$/, "") + p.slice(m.from.replace(/\/+$/, "").length);
   return p;
 };
 type AddOpts = { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean };
@@ -88,13 +90,21 @@ export function torrentHash(src: { data?: Buffer; magnet?: string }): string | n
 const delugeCookies = new Map<string, string>();
 let rpcId = 0;
 
-async function delugeRaw<T>(c: ClientCfg, method: string, params: unknown[]): Promise<{ result: T; error: { message?: string; code?: number } | null; status: number }> {
+async function delugeRaw<T>(
+  c: ClientCfg,
+  method: string,
+  params: unknown[],
+): Promise<{ result: T; error: { message?: string; code?: number } | null; status: number }> {
   const url = /\/json$/.test(trim(c.url)) ? trim(c.url) : `${trim(c.url)}/json`;
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", ...(delugeCookies.get(url) ? { Cookie: delugeCookies.get(url)! } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(delugeCookies.get(url) ? { Cookie: delugeCookies.get(url)! } : {}),
+      },
       body: JSON.stringify({ method, params, id: ++rpcId }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -143,8 +153,38 @@ async function delugeEither<T>(c: ClientCfg, a: [string, unknown[]], b: [string,
   }
 }
 
-interface DelugeTorrent { name: string; progress: number; state: string; save_path: string; eta: number; download_payload_rate: number; total_wanted: number; num_seeds: number; ratio: number; label?: string; message?: string; is_finished?: boolean; files?: { index: number; path: string; size: number }[]; file_priorities?: number[]; seeding_time?: number }
-const DELUGE_KEYS = ["name", "progress", "state", "save_path", "eta", "download_payload_rate", "total_wanted", "num_seeds", "ratio", "label", "message", "is_finished", "seeding_time"];
+interface DelugeTorrent {
+  name: string;
+  progress: number;
+  state: string;
+  save_path: string;
+  eta: number;
+  download_payload_rate: number;
+  total_wanted: number;
+  num_seeds: number;
+  ratio: number;
+  label?: string;
+  message?: string;
+  is_finished?: boolean;
+  files?: { index: number; path: string; size: number }[];
+  file_priorities?: number[];
+  seeding_time?: number;
+}
+const DELUGE_KEYS = [
+  "name",
+  "progress",
+  "state",
+  "save_path",
+  "eta",
+  "download_payload_rate",
+  "total_wanted",
+  "num_seeds",
+  "ratio",
+  "label",
+  "message",
+  "is_finished",
+  "seeding_time",
+];
 
 async function delugeTorrent(c: ClientCfg, ref: string, keys = DELUGE_KEYS): Promise<DelugeTorrent | null> {
   const r = await deluge<Record<string, DelugeTorrent>>(c, "core.get_torrents_status", [{ id: [ref] }, keys]);
@@ -183,7 +223,8 @@ export const delugeDriver = {
     let id: string | null;
     try {
       if (src.magnet) id = await deluge<string | null>(c, "core.add_torrent_magnet", [src.magnet, options]);
-      else if (src.data) id = await deluge<string | null>(c, "core.add_torrent_file", ["animearr.torrent", src.data.toString("base64"), options]);
+      else if (src.data)
+        id = await deluge<string | null>(c, "core.add_torrent_file", ["animearr.torrent", src.data.toString("base64"), options]);
       else throw new Error(`Nothing to send to ${c.name}`);
     } catch (e) {
       // Deluge 2 raises "Torrent already in session"; 1.3 returns null. Either way: not freshly added.
@@ -205,9 +246,16 @@ export const delugeDriver = {
     const t = await delugeTorrent(c, ref);
     if (!t) return { state: "missing", progress: 0 };
     const progress = (t.progress ?? 0) / 100;
-    const live = { etaSec: t.eta > 0 ? t.eta : null, speed: t.download_payload_rate, sizeBytes: t.total_wanted, clientStatus: t.state, seeders: t.num_seeds };
+    const live = {
+      etaSec: t.eta > 0 ? t.eta : null,
+      speed: t.download_payload_rate,
+      sizeBytes: t.total_wanted,
+      clientStatus: t.state,
+      seeders: t.num_seeds,
+    };
     if (t.state === "Error") return { state: "error", progress, message: `${c.name}: ${t.message || "error"}`, ...live };
-    if (progress >= 1 || t.is_finished) return { state: "completed", progress: 1, path: mapClientPath(`${t.save_path.replace(/\/+$/, "")}/${t.name}`, c), ...live };
+    if (progress >= 1 || t.is_finished)
+      return { state: "completed", progress: 1, path: mapClientPath(`${t.save_path.replace(/\/+$/, "")}/${t.name}`, c), ...live };
     return { state: /Downloading/i.test(t.state) ? "downloading" : "queued", progress, ...live };
   },
   async remove(c: ClientCfg, ref: string, withData = true) {
@@ -230,7 +278,11 @@ export const delugeDriver = {
     const skip = new Set(skipped);
     const prios = Array.from({ length: n }, (_, i) => (skip.has(i) ? 0 : 1));
     void wanted;
-    await delugeEither(c, ["core.set_torrent_options", [[ref], { file_priorities: prios }]], ["core.set_torrent_file_priorities", [ref, prios]]);
+    await delugeEither(
+      c,
+      ["core.set_torrent_options", [[ref], { file_priorities: prios }]],
+      ["core.set_torrent_file_priorities", [ref, prios]],
+    );
   },
   async start(c: ClientCfg, ref: string) {
     await delugeEither(c, ["core.resume_torrents", [[ref]]], ["core.resume_torrent", [[ref]]]);
@@ -251,11 +303,21 @@ function encodeValue(v: XmlValue): string {
   if (typeof v === "boolean") return `<value><boolean>${v ? 1 : 0}</boolean></value>`;
   if (typeof v === "string") return `<value><string>${esc(v)}</string></value>`;
   if (Array.isArray(v)) return `<value><array><data>${v.map(encodeValue).join("")}</data></array></value>`;
-  return `<value><struct>${Object.entries(v).map(([k, x]) => `<member><name>${esc(k)}</name>${encodeValue(x)}</member>`).join("")}</struct></value>`;
+  return `<value><struct>${Object.entries(v)
+    .map(([k, x]) => `<member><name>${esc(k)}</name>${encodeValue(x)}</member>`)
+    .join("")}</struct></value>`;
 }
-export const encodeCall = (method: string, params: XmlValue[]) => `<?xml version="1.0"?><methodCall><methodName>${esc(method)}</methodName><params>${params.map((p) => `<param>${encodeValue(p)}</param>`).join("")}</params></methodCall>`;
+export const encodeCall = (method: string, params: XmlValue[]) =>
+  `<?xml version="1.0"?><methodCall><methodName>${esc(method)}</methodName><params>${params.map((p) => `<param>${encodeValue(p)}</param>`).join("")}</params></methodCall>`;
 
-const unesc = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d))).replace(/&amp;/g, "&");
+const unesc = (s: string) =>
+  s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d)))
+    .replace(/&amp;/g, "&");
 
 /** A small XML-RPC response parser (the subset rTorrent sends). */
 export function decodeResponse(xml: string): XmlValue {
@@ -347,7 +409,10 @@ async function rtorrent<T extends XmlValue>(c: ClientCfg, method: string, params
   try {
     res = await fetch(trim(c.url), {
       method: "POST",
-      headers: { "Content-Type": "text/xml", ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}) },
+      headers: {
+        "Content-Type": "text/xml",
+        ...(c.username ? { Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}` } : {}),
+      },
       body: encodeCall(method, params),
       signal: AbortSignal.timeout(60_000),
     });
@@ -363,11 +428,83 @@ async function rtorrent<T extends XmlValue>(c: ClientCfg, method: string, params
   }
 }
 
-const RT_FIELDS = ["d.hash=", "d.name=", "d.custom1=", "d.size_bytes=", "d.completed_bytes=", "d.down.rate=", "d.ratio=", "d.state=", "d.is_active=", "d.complete=", "d.base_path=", "d.directory=", "d.message=", "d.peers_complete=", "d.wanted_chunks=", "d.is_meta=", "d.left_bytes="];
-interface RtTorrent { hash: string; name: string; label: string; size: number; done: number; rate: number; ratio: number; state: number; active: number; complete: number; basePath: string; directory: string; message: string; seeders: number; wantedChunks: number; meta: number; left: number }
+const RT_FIELDS = [
+  "d.hash=",
+  "d.name=",
+  "d.custom1=",
+  "d.size_bytes=",
+  "d.completed_bytes=",
+  "d.down.rate=",
+  "d.ratio=",
+  "d.state=",
+  "d.is_active=",
+  "d.complete=",
+  "d.base_path=",
+  "d.directory=",
+  "d.message=",
+  "d.peers_complete=",
+  "d.wanted_chunks=",
+  "d.is_meta=",
+  "d.left_bytes=",
+];
+interface RtTorrent {
+  hash: string;
+  name: string;
+  label: string;
+  size: number;
+  done: number;
+  rate: number;
+  ratio: number;
+  state: number;
+  active: number;
+  complete: number;
+  basePath: string;
+  directory: string;
+  message: string;
+  seeders: number;
+  wantedChunks: number;
+  meta: number;
+  left: number;
+}
 const rtRow = (r: XmlValue[]): RtTorrent => {
-  const [hash, name, label, size, done, rate, ratio, state, active, complete, basePath, directory, message, seeders, wantedChunks, meta, left] = r as (string | number)[];
-  return { hash: String(hash).toLowerCase(), name: String(name), label: decodeURIComponent(String(label ?? "")), size: Number(size), done: Number(done), rate: Number(rate), ratio: Number(ratio) / 1000, state: Number(state), active: Number(active), complete: Number(complete), basePath: String(basePath ?? ""), directory: String(directory ?? ""), message: String(message ?? ""), seeders: Number(seeders), wantedChunks: Number(wantedChunks), meta: Number(meta), left: Number(left) };
+  const [
+    hash,
+    name,
+    label,
+    size,
+    done,
+    rate,
+    ratio,
+    state,
+    active,
+    complete,
+    basePath,
+    directory,
+    message,
+    seeders,
+    wantedChunks,
+    meta,
+    left,
+  ] = r as (string | number)[];
+  return {
+    hash: String(hash).toLowerCase(),
+    name: String(name),
+    label: decodeURIComponent(String(label ?? "")),
+    size: Number(size),
+    done: Number(done),
+    rate: Number(rate),
+    ratio: Number(ratio) / 1000,
+    state: Number(state),
+    active: Number(active),
+    complete: Number(complete),
+    basePath: String(basePath ?? ""),
+    directory: String(directory ?? ""),
+    message: String(message ?? ""),
+    seeders: Number(seeders),
+    wantedChunks: Number(wantedChunks),
+    meta: Number(meta),
+    left: Number(left),
+  };
 };
 
 async function rtTorrent(c: ClientCfg, ref: string): Promise<RtTorrent | null> {
@@ -408,10 +545,23 @@ export const rtorrentDriver = {
     const t = await rtTorrent(c, ref);
     if (!t) return { state: "missing", progress: 0 };
     const progress = t.size > 0 ? Math.min(1, t.done / t.size) : 0;
-    const live = { etaSec: t.rate > 0 ? Math.round(t.left / t.rate) : null, speed: t.rate, sizeBytes: t.size, clientStatus: t.meta ? "metaDL" : t.state === 0 ? "stopped" : t.complete ? "seeding" : t.active ? "downloading" : "paused", seeders: t.seeders };
-    if (t.message && /error|failed|no space|permission/i.test(t.message) && !/tracker/i.test(t.message)) return { state: "error", progress, message: `${c.name}: ${t.message}`, ...live };
+    const live = {
+      etaSec: t.rate > 0 ? Math.round(t.left / t.rate) : null,
+      speed: t.rate,
+      sizeBytes: t.size,
+      clientStatus: t.meta ? "metaDL" : t.state === 0 ? "stopped" : t.complete ? "seeding" : t.active ? "downloading" : "paused",
+      seeders: t.seeders,
+    };
+    if (t.message && /error|failed|no space|permission/i.test(t.message) && !/tracker/i.test(t.message))
+      return { state: "error", progress, message: `${c.name}: ${t.message}`, ...live };
     // Complete = every wanted chunk is in (skipped files don't count).
-    if (!t.meta && (t.complete === 1 || t.wantedChunks === 0) && t.size > 0) return { state: "completed", progress: 1, path: mapClientPath(t.basePath || `${t.directory.replace(/\/+$/, "")}/${t.name}`, c), ...live };
+    if (!t.meta && (t.complete === 1 || t.wantedChunks === 0) && t.size > 0)
+      return {
+        state: "completed",
+        progress: 1,
+        path: mapClientPath(t.basePath || `${t.directory.replace(/\/+$/, "")}/${t.name}`, c),
+        ...live,
+      };
     return { state: t.state === 1 && t.active ? "downloading" : "queued", progress, ...live };
   },
   /** Erases the torrent; with data, AnimeArr then deletes its folder (rTorrent can't), under the clean-up's rules. */

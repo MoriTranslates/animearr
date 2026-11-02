@@ -16,11 +16,34 @@ const { delayLeftMin } = await import("../server/managed.js");
 const realFetch = globalThis.fetch;
 after(() => void (globalThis.fetch = realFetch));
 const seen: string[] = [];
-const reply = (body: string, type = "application/xml") => (globalThis.fetch = (async (u: string | URL) => (seen.push(String(u)), new Response(body, { headers: { "content-type": type } }))) as typeof fetch);
-const ix = (over: Record<string, unknown>) => ({ id: "t1", kind: "newznab", protocol: "usenet", name: "T", url: "https://ix.example", apiPath: "/api", apiKey: "K", categories: [5070], priority: 25, enabled: true, seedRatio: null, seedTimeMin: null, tags: [], catalogId: null, ...over }) as never;
+const reply = (body: string, type = "application/xml") =>
+  (globalThis.fetch = (async (u: string | URL) => (
+    seen.push(String(u)),
+    new Response(body, { headers: { "content-type": type } })
+  )) as typeof fetch);
+const ix = (over: Record<string, unknown>) =>
+  ({
+    id: "t1",
+    kind: "newznab",
+    protocol: "usenet",
+    name: "T",
+    url: "https://ix.example",
+    apiPath: "/api",
+    apiKey: "K",
+    categories: [5070],
+    priority: 25,
+    enabled: true,
+    seedRatio: null,
+    seedTimeMin: null,
+    tags: [],
+    catalogId: null,
+    ...over,
+  }) as never;
 
 test("Newznab: query, categories and key in the URL; size, links and age from the feed", async () => {
-  reply(`<rss><channel><item><title>[Grp] Show - 01 (1080p)</title><guid>g1</guid><link>https://ix.example/get/1?apikey=K</link><pubDate>${new Date(Date.now() - 3_600_000).toUTCString()}</pubDate><enclosure url="https://ix.example/get/1?apikey=K" length="123" type="application/x-nzb"/><newznab:attr name="size" value="734003200"/><newznab:attr name="grabs" value="9"/></item></channel></rss>`);
+  reply(
+    `<rss><channel><item><title>[Grp] Show - 01 (1080p)</title><guid>g1</guid><link>https://ix.example/get/1?apikey=K</link><pubDate>${new Date(Date.now() - 3_600_000).toUTCString()}</pubDate><enclosure url="https://ix.example/get/1?apikey=K" length="123" type="application/x-nzb"/><newznab:attr name="size" value="734003200"/><newznab:attr name="grabs" value="9"/></item></channel></rss>`,
+  );
   const r = await searchIndexer(ix({}), "show 01");
   assert.match(seen.at(-1)!, /t=search&q=show\+01&cat=5070.*apikey=K/);
   assert.equal(r.length, 1);
@@ -29,7 +52,9 @@ test("Newznab: query, categories and key in the URL; size, links and age from th
 });
 
 test("Nyaa: seeders, size, and the .torrent link (it carries the trackers)", async () => {
-  reply(`<rss><channel><item><title>[SubsPlease] Show - 02 (1080p)</title><link>https://nyaa.si/download/1.torrent</link><guid>https://nyaa.si/view/1</guid><pubDate>Sat, 12 Sep 2026 15:45:00 -0000</pubDate><nyaa:seeders>42</nyaa:seeders><nyaa:leechers>3</nyaa:leechers><nyaa:infoHash>${"ef3e".repeat(10)}</nyaa:infoHash><nyaa:size>1.4 GiB</nyaa:size></item></channel></rss>`);
+  reply(
+    `<rss><channel><item><title>[SubsPlease] Show - 02 (1080p)</title><link>https://nyaa.si/download/1.torrent</link><guid>https://nyaa.si/view/1</guid><pubDate>Sat, 12 Sep 2026 15:45:00 -0000</pubDate><nyaa:seeders>42</nyaa:seeders><nyaa:leechers>3</nyaa:leechers><nyaa:infoHash>${"ef3e".repeat(10)}</nyaa:infoHash><nyaa:size>1.4 GiB</nyaa:size></item></channel></rss>`,
+  );
   const r = await searchIndexer(ix({ kind: "nyaa", protocol: "torrent", url: "https://nyaa.si" }), "show");
   assert.match(seen.at(-1)!, /page=rss&q=show&c=1_0&f=0/);
   assert.equal(r[0].seeders, 42);
@@ -39,10 +64,28 @@ test("Nyaa: seeders, size, and the .torrent link (it carries the trackers)", asy
 });
 
 test("SubsPlease JSON and a generic RSS template", async () => {
-  reply(JSON.stringify({ "Show - 03": { show: "Show", episode: "03", release_date: new Date().toUTCString(), downloads: [{ res: "1080", magnet: "magnet:?xt=urn:btih:AAA" }, { res: "720", magnet: "magnet:?xt=urn:btih:BBB" }] } }), "application/json");
+  reply(
+    JSON.stringify({
+      "Show - 03": {
+        show: "Show",
+        episode: "03",
+        release_date: new Date().toUTCString(),
+        downloads: [
+          { res: "1080", magnet: "magnet:?xt=urn:btih:AAA" },
+          { res: "720", magnet: "magnet:?xt=urn:btih:BBB" },
+        ],
+      },
+    }),
+    "application/json",
+  );
   const sp = await searchIndexer(ix({ kind: "subsplease", protocol: "torrent", url: "https://subsplease.org" }), "show");
-  assert.deepEqual(sp.map((x) => x.title), ["[SubsPlease] Show - 03 (1080p)", "[SubsPlease] Show - 03 (720p)"]);
-  reply(`<rss><channel><item><title>Show 04</title><link>https://t.example/a.torrent</link><description>Size: 151.57MB magnet:?xt=urn:btih:CCC</description></item></channel></rss>`);
+  assert.deepEqual(
+    sp.map((x) => x.title),
+    ["[SubsPlease] Show - 03 (1080p)", "[SubsPlease] Show - 03 (720p)"],
+  );
+  reply(
+    `<rss><channel><item><title>Show 04</title><link>https://t.example/a.torrent</link><description>Size: 151.57MB magnet:?xt=urn:btih:CCC</description></item></channel></rss>`,
+  );
   const rss = await searchIndexer(ix({ kind: "rss", protocol: "torrent", url: "https://t.example/rss.php?terms={q}" }), "show 04");
   assert.equal(seen.at(-1), "https://t.example/rss.php?terms=show%2004");
   assert.deepEqual([rss[0].size, rss[0].magnetUrl], [151570000, "magnet:?xt=urn:btih:CCC"]);
@@ -50,10 +93,20 @@ test("SubsPlease JSON and a generic RSS template", async () => {
 });
 
 test("searchAll: Prowlarr optional; one failing indexer doesn't fail the search", async () => {
-  patchSettings((s) => ({ ...s, prowlarr: { ...s.prowlarr, url: "", apiKey: "" }, indexers: [ix({ id: "a", name: "A" }), ix({ id: "b", name: "B", url: "https://down.example" })] }));
-  globalThis.fetch = (async (u: string | URL) => (String(u).includes("down.example") ? new Response("", { status: 502 }) : new Response(`<rss><item><title>X</title><link>https://ix.example/x</link></item></rss>`))) as typeof fetch;
+  patchSettings((s) => ({
+    ...s,
+    prowlarr: { ...s.prowlarr, url: "", apiKey: "" },
+    indexers: [ix({ id: "a", name: "A" }), ix({ id: "b", name: "B", url: "https://down.example" })],
+  }));
+  globalThis.fetch = (async (u: string | URL) =>
+    String(u).includes("down.example")
+      ? new Response("", { status: 502 })
+      : new Response(`<rss><item><title>X</title><link>https://ix.example/x</link></item></rss>`)) as typeof fetch;
   const r = await searchAll("x");
-  assert.deepEqual(r.map((x) => x.indexer), ["A"]);
+  assert.deepEqual(
+    r.map((x) => x.indexer),
+    ["A"],
+  );
   patchSettings((s) => ({ ...s, indexers: [] }));
   await assert.rejects(searchAll("x"), /No indexer is set up/);
 });
@@ -68,7 +121,8 @@ test("indexer settings: validation, masked keys kept, key dropped when the addre
   assert.equal(getSettings().indexers.find((x) => x.id === a.id)!.apiKey, "", "a key isn't sent to another address");
   // The API path is appended to the URL: it may only add a path, and changing it drops a saved key too.
   const p = saveIndexer(null, { kind: "newznab", name: "Path", url: "https://p.example", apiKey: "PKEY" });
-  for (const bad of [":18999/api", ".evil.tld/api", "/../x", "api", "/api?x=1"]) assert.throws(() => saveIndexer(p.id!, { apiPath: bad, apiKey: MASK }), /API path/, bad);
+  for (const bad of [":18999/api", ".evil.tld/api", "/../x", "api", "/api?x=1"])
+    assert.throws(() => saveIndexer(p.id!, { apiPath: bad, apiKey: MASK }), /API path/, bad);
   assert.equal(getSettings().indexers.find((x) => x.id === p.id)!.apiKey, "PKEY");
   saveIndexer(p.id!, { apiPath: "/newznab/api", apiKey: MASK });
   assert.equal(getSettings().indexers.find((x) => x.id === p.id)!.apiKey, "", "a key isn't sent to another path");
@@ -76,9 +130,18 @@ test("indexer settings: validation, masked keys kept, key dropped when the addre
   assert.deepEqual(seedLimitsFor(indexerNumId(t1.id!)), { seedRatio: 1.5, seedTimeMin: 4320 });
   saveIndexer(null, { kind: "torznab", name: "Tracker again", url: "https://tr.example" });
   const d = indexerDuplicates(["AnimeTosho", "Geek 2"]);
-  assert.ok(d.some((x) => x.name === "Tracker"), "same host twice");
-  assert.ok(d.some((x) => x.with.includes("via Prowlarr")), "same site via Prowlarr");
-  assert.ok(listIndexers().every((x) => x.apiKey === "" || x.apiKey === MASK), "keys never leave masked");
+  assert.ok(
+    d.some((x) => x.name === "Tracker"),
+    "same host twice",
+  );
+  assert.ok(
+    d.some((x) => x.with.includes("via Prowlarr")),
+    "same site via Prowlarr",
+  );
+  assert.ok(
+    listIndexers().every((x) => x.apiKey === "" || x.apiKey === MASK),
+    "keys never leave masked",
+  );
 });
 
 test("the catalogue loads, with a check date on every entry", () => {
@@ -89,9 +152,17 @@ test("the catalogue loads, with a check date on every entry", () => {
 });
 
 test("download clients: by protocol and priority; the next one when the first refuses", async () => {
-  patchSettings((s) => ({ ...s, sabnzbd: { url: "http://sab", apiKey: "k", category: "animearr" }, clientPrefs: { sabnzbd: { priority: 2, enabled: true } }, extraClients: [] }));
+  patchSettings((s) => ({
+    ...s,
+    sabnzbd: { url: "http://sab", apiKey: "k", category: "animearr" },
+    clientPrefs: { sabnzbd: { priority: 2, enabled: true } },
+    extraClients: [],
+  }));
   saveClient(null, { type: "nzbget", name: "NZBGet", url: "http://nzbget:6789", username: "u", password: "p", priority: 1 });
-  assert.deepEqual(clientsFor("usenet").map((c) => c.type), ["nzbget", "sabnzbd"]);
+  assert.deepEqual(
+    clientsFor("usenet").map((c) => c.type),
+    ["nzbget", "sabnzbd"],
+  );
   const calls: string[] = [];
   globalThis.fetch = (async (u: string | URL) => {
     calls.push(String(u));
@@ -113,7 +184,25 @@ test("protocol delays: a release waits until it's old enough; no delay = no wait
 test("secrets: keys masked in /api/settings, credentials out of guids and error texts", async () => {
   const { publicSettings } = await import("../server/settings.js");
   const { redactUrl } = await import("../server/arr/http.js");
-  patchSettings((s) => ({ ...s, indexers: [ix({ id: "k", apiKey: "TOPSECRET" })], extraClients: [{ id: "n", type: "nzbget", name: "N", url: "http://n", username: "u", password: "PW", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [] }] }));
+  patchSettings((s) => ({
+    ...s,
+    indexers: [ix({ id: "k", apiKey: "TOPSECRET" })],
+    extraClients: [
+      {
+        id: "n",
+        type: "nzbget",
+        name: "N",
+        url: "http://n",
+        username: "u",
+        password: "PW",
+        category: "animearr",
+        priority: 1,
+        enabled: true,
+        removeCompleted: true,
+        pathMappings: [],
+      },
+    ],
+  }));
   const pub = JSON.stringify(publicSettings());
   assert.ok(!pub.includes("TOPSECRET") && !pub.includes('"PW"'));
   assert.equal(redactUrl("https://j/dl?jackett_apikey=abc&path=x"), "https://j/dl?jackett_apikey=***&path=x");

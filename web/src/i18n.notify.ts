@@ -1,7 +1,8 @@
 /** Extra notification channels, the log viewer and backup download/upload (kept apart from i18n.ts; spread into the English dictionary there). */
 export const notifyStrings = {
   "nch.title": "More ways to be told",
-  "nch.help": "Webhooks, Telegram, Pushover and email, each with its own events. Secrets (tokens, passwords, webhook addresses) are stored encrypted and never shown again once saved.",
+  "nch.help":
+    "Webhooks, Telegram, Pushover and email, each with its own events. Secrets (tokens, passwords, webhook addresses) are stored encrypted and never shown again once saved.",
   "nch.add": "Add a channel",
   "nch.type.webhook": "Webhook (JSON)",
   "nch.type.telegram": "Telegram",
@@ -27,7 +28,8 @@ export const notifyStrings = {
   "nch.wh.headerName": "Header name",
   "nch.wh.headerValue": "Value",
   "nch.wh.addHeader": "Add a header",
-  "nch.wh.help": "Each event is sent as JSON: eventType, title, message, show or movie, episodeIds, release, reason, link, timestamp and applicationVersion.",
+  "nch.wh.help":
+    "Each event is sent as JSON: eventType, title, message, show or movie, episodeIds, release, reason, link, timestamp and applicationVersion.",
   "nch.tg.token": "Bot token (from @BotFather)",
   "nch.tg.chat": "Chat id",
   "nch.tg.thread": "Topic (thread) id, optional",
@@ -54,7 +56,8 @@ export const notifyStrings = {
   "nch.em.to": "To addresses (comma separated)",
 
   "logs.title": "Logs",
-  "logs.help": "The last lines AnimeArr printed, newest at the bottom. Keys, tokens and passwords are blanked out. A copy is kept in the data folder (logs/animearr.log). Debug lines only appear when AnimeArr runs with LOG_LEVEL=debug.",
+  "logs.help":
+    "The last lines AnimeArr printed, newest at the bottom. Keys, tokens and passwords are blanked out. A copy is kept in the data folder (logs/animearr.log). Debug lines only appear when AnimeArr runs with LOG_LEVEL=debug.",
   "logs.level": "Show",
   "logs.lvl.error": "Errors",
   "logs.lvl.warn": "Warnings and errors",
@@ -68,13 +71,15 @@ export const notifyStrings = {
   "logs.empty": "Nothing matches.",
 
   "bt.title": "Backup file",
-  "bt.help": "Download everything AnimeArr needs on a new machine: a copy of its database and the key that unlocks your saved passwords. Upload one to restore it.",
+  "bt.help":
+    "Download everything AnimeArr needs on a new machine: a copy of its database and the key that unlocks your saved passwords. Upload one to restore it.",
   "bt.warn": "The backup file contains your passwords, API keys and the key to unlock them. Keep it private, like a password file.",
   "bt.download": "Download backup",
   "bt.upload": "Restore from a backup file…",
   "bt.checking": "Checking the file…",
   "bt.found": "This is an AnimeArr {version} backup from {when}.",
-  "bt.confirm": "Restoring replaces your current settings, history and library data with this backup, and the saved passwords with the ones in it. A safety copy of what is here now is kept in the backups folder first. AnimeArr then restarts.",
+  "bt.confirm":
+    "Restoring replaces your current settings, history and library data with this backup, and the saved passwords with the ones in it. A safety copy of what is here now is kept in the backups folder first. AnimeArr then restarts.",
   "bt.restore": "Restore this backup",
   "bt.pw": "Your AnimeArr password",
   "bt.downloadPw": "The backup file holds the key to your saved passwords, so AnimeArr asks for your password first.",

@@ -58,7 +58,12 @@ export function splitSeason(title: string): SeasonSplit {
   // Single-letter "v"/"x" endings are usually words or titles ("Dragon Ball X"?) only when the base is long enough.
   if (m && (m[2].length > 1 || m[1].length >= 6)) return { base: m[1], season: ROMAN[m[2]], kind: "season" };
   m = n.match(/^(.*\S)\s+(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+season$/);
-  if (m) return { base: m[1], season: ["second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].indexOf(m[2]) + 2, kind: "season" };
+  if (m)
+    return {
+      base: m[1],
+      season: ["second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"].indexOf(m[2]) + 2,
+      kind: "season",
+    };
   return { base: n, season: null, kind: null };
 }
 

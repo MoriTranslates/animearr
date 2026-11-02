@@ -25,7 +25,10 @@ let tiersCache: { at: number; v: CompiledTiers | null } | null = null;
 /** The TRaSH anime tiers (catalog/anime-tiers.json next to the app); null when the file is missing. */
 export function animeTiers(): CompiledTiers | null {
   if (tiersCache && Date.now() - tiersCache.at < 10 * 60_000) return tiersCache.v;
-  const file = [path.join(process.cwd(), "catalog", "anime-tiers.json"), path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "catalog", "anime-tiers.json")].find((f) => fs.existsSync(f));
+  const file = [
+    path.join(process.cwd(), "catalog", "anime-tiers.json"),
+    path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "catalog", "anime-tiers.json"),
+  ].find((f) => fs.existsSync(f));
   let v: CompiledTiers | null = null;
   try {
     v = file ? compileTiers(JSON.parse(fs.readFileSync(file, "utf8")) as TierTable) : null;
@@ -38,7 +41,13 @@ export function animeTiers(): CompiledTiers | null {
 
 // ---------------------------------------------------------------- cache
 
-interface Row { anilist_id: number; fetched_at: number; found: number; incomplete: number; torrents: string }
+interface Row {
+  anilist_id: number;
+  fetched_at: number;
+  found: number;
+  incomplete: number;
+  torrents: string;
+}
 const rowOf = (id: number) => db.prepare("SELECT * FROM seadex WHERE anilist_id = ?").get(id) as Row | undefined;
 
 /** Entries waiting for their first lookup (newly added shows jump the queue). */
@@ -58,7 +67,11 @@ export function seadexFor(anilistId: number): SeadexEntry | null {
 
 /** The AniList entries behind a TVDB season (native shows TVDB doesn't have are their own single entry). */
 export function anilistIdsFor(tvdbId: number, season: number): number[] {
-  const ids = (db.prepare("SELECT anilist_id FROM entries WHERE tvdb_id = ? AND tvdb_season = ? ORDER BY start_date IS NULL, start_date").all(tvdbId, String(season)) as { anilist_id: number }[]).map((r) => r.anilist_id);
+  const ids = (
+    db
+      .prepare("SELECT anilist_id FROM entries WHERE tvdb_id = ? AND tvdb_season = ? ORDER BY start_date IS NULL, start_date")
+      .all(tvdbId, String(season)) as { anilist_id: number }[]
+  ).map((r) => r.anilist_id);
   if (ids.length) return ids;
   const native = db.prepare("SELECT anilist_id FROM native_series WHERE tvdb_id = ?").get(tvdbId) as { anilist_id: number } | undefined;
   return native ? [native.anilist_id] : [];
@@ -83,7 +96,13 @@ export function parseSeadex(json: unknown): SeadexEntry | null {
   const torrents = (item.expand?.trs ?? [])
     .map((t) => t as { releaseGroup?: string; tracker?: string; isBest?: boolean; dualAudio?: boolean; tags?: unknown })
     .filter((t) => typeof t.releaseGroup === "string" && t.releaseGroup.trim())
-    .map((t) => ({ group: t.releaseGroup!.trim(), tracker: String(t.tracker ?? ""), best: !!t.isBest, dualAudio: !!t.dualAudio, tags: Array.isArray(t.tags) ? t.tags.map(String).slice(0, 10) : [] }));
+    .map((t) => ({
+      group: t.releaseGroup!.trim(),
+      tracker: String(t.tracker ?? ""),
+      best: !!t.isBest,
+      dualAudio: !!t.dualAudio,
+      tags: Array.isArray(t.tags) ? t.tags.map(String).slice(0, 10) : [],
+    }));
   // The same group listed per tracker: keep one entry per group + best + dual flag + source.
   const seen = new Map<string, SeadexTorrent>();
   for (const t of torrents) seen.set(`${t.group.toLowerCase()}|${t.best}|${t.dualAudio}|${seadexSource(t)}`, t);
@@ -92,22 +111,35 @@ export function parseSeadex(json: unknown): SeadexEntry | null {
 
 export async function fetchSeadex(anilistId: number, fetcher: typeof fetch = fetch): Promise<SeadexEntry | null> {
   const url = `${SEADEX_URL}?${new URLSearchParams({ filter: `(alID=${anilistId})`, expand: "trs", perPage: "1" })}`;
-  const res = await fetcher(url, { redirect: "follow", headers: { Accept: "application/json", "User-Agent": "AnimeArr" }, signal: AbortSignal.timeout(20_000) });
+  const res = await fetcher(url, {
+    redirect: "follow",
+    headers: { Accept: "application/json", "User-Agent": "AnimeArr" },
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!res.ok) throw new Error(`SeaDex answered HTTP ${res.status}`);
   return parseSeadex(await res.json());
 }
 
 export function saveSeadex(anilistId: number, e: SeadexEntry | null, now = Date.now()) {
-  db.prepare("INSERT OR REPLACE INTO seadex (anilist_id, fetched_at, found, incomplete, torrents) VALUES (?, ?, ?, ?, ?)").run(anilistId, now, e ? 1 : 0, e?.incomplete ? 1 : 0, JSON.stringify(e?.torrents ?? []));
+  db.prepare("INSERT OR REPLACE INTO seadex (anilist_id, fetched_at, found, incomplete, torrents) VALUES (?, ?, ?, ?, ?)").run(
+    anilistId,
+    now,
+    e ? 1 : 0,
+    e?.incomplete ? 1 : 0,
+    JSON.stringify(e?.torrents ?? []),
+  );
 }
 
-const fetchedLastHour = (now: number) => (db.prepare("SELECT COUNT(*) AS n FROM seadex WHERE fetched_at > ?").get(now - HOUR) as { n: number }).n;
+const fetchedLastHour = (now: number) =>
+  (db.prepare("SELECT COUNT(*) AS n FROM seadex WHERE fetched_at > ?").get(now - HOUR) as { n: number }).n;
 
 /** AniList entries of managed shows (their seasons) whose SeaDex picks are missing or older than a week. */
 export function dueEntries(now = Date.now()): number[] {
   const out = new Set<number>(wanted);
   for (const m of listManaged()) {
-    const seasons = (cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ? AND season > 0").all(m.seriesId) as { season: number }[]).map((r) => r.season);
+    const seasons = (
+      cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ? AND season > 0").all(m.seriesId) as { season: number }[]
+    ).map((r) => r.season);
     for (const s of seasons) for (const id of anilistIdsFor(m.tvdbId, s)) out.add(id);
   }
   return [...out].filter((id) => {
@@ -140,7 +172,12 @@ export async function seadexTick() {
   running = true;
   try {
     const r = await seadexPass();
-    if (r.fetched || r.failed) setJob("SeaDex", r.failed && !r.fetched ? "error" : "done", `${r.fetched} shows updated${r.failed ? `, ${r.failed} lookups failed` : ""}`);
+    if (r.fetched || r.failed)
+      setJob(
+        "SeaDex",
+        r.failed && !r.fetched ? "error" : "done",
+        `${r.fetched} shows updated${r.failed ? `, ${r.failed} lookups failed` : ""}`,
+      );
   } catch (e) {
     setJob("SeaDex", "error", (e as Error).message);
   } finally {
@@ -164,7 +201,9 @@ export const cooldownLeft = (last: number | null, now = Date.now()) => (last ===
 export function showEntries(tvdbId: number): number[] {
   const series = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
   if (!series) return [];
-  const seasons = (cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ?").all(series.id) as { season: number }[]).map((r) => r.season);
+  const seasons = (cache.prepare("SELECT DISTINCT season FROM episodes WHERE series_id = ?").all(series.id) as { season: number }[]).map(
+    (r) => r.season,
+  );
   return [...new Set(seasons.flatMap((s) => anilistIdsFor(tvdbId, s)))];
 }
 
@@ -172,7 +211,11 @@ export function showEntries(tvdbId: number): number[] {
  * Fetches and saves SeaDex's picks for a show's AniList entries right now (the weekly pass is the normal way).
  * A show can be checked again after CHECK_COOLDOWN_MS; within it nothing is fetched.
  */
-export async function checkSeadexNow(tvdbId: number, deps: { fetch: typeof fetch } = { fetch }, now = Date.now()): Promise<{ status: "checked" | "cooldown" | "none"; entries: number; found: number; retryInMs: number }> {
+export async function checkSeadexNow(
+  tvdbId: number,
+  deps: { fetch: typeof fetch } = { fetch },
+  now = Date.now(),
+): Promise<{ status: "checked" | "cooldown" | "none"; entries: number; found: number; retryInMs: number }> {
   const left = cooldownLeft(lastCheck(tvdbId), now);
   if (left > 0) return { status: "cooldown", entries: 0, found: 0, retryInMs: left };
   const ids = showEntries(tvdbId);
@@ -184,6 +227,9 @@ export async function checkSeadexNow(tvdbId: number, deps: { fetch: typeof fetch
     wanted.delete(id);
     if (e) found++;
   }
-  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(checkKey(tvdbId), String(now));
+  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+    checkKey(tvdbId),
+    String(now),
+  );
   return { status: "checked", entries: ids.length, found, retryInMs: CHECK_COOLDOWN_MS };
 }

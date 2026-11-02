@@ -46,7 +46,13 @@ export function IcalLink({ onClose }: { onClose: () => void }) {
                 <legend>{t("ical.tags")}</legend>
                 <span className="row wrap">
                   {tags.data.tags.map((x) => (
-                    <button key={x.id} type="button" className={`small${picked.includes(x.id) ? " on" : ""}`} aria-pressed={picked.includes(x.id)} onClick={() => setPicked((p) => (p.includes(x.id) ? p.filter((y) => y !== x.id) : [...p, x.id]))}>
+                    <button
+                      key={x.id}
+                      type="button"
+                      className={`small${picked.includes(x.id) ? " on" : ""}`}
+                      aria-pressed={picked.includes(x.id)}
+                      onClick={() => setPicked((p) => (p.includes(x.id) ? p.filter((y) => y !== x.id) : [...p, x.id]))}
+                    >
                       {x.label}
                     </button>
                   ))}

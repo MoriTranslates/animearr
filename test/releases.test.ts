@@ -11,7 +11,10 @@ test("version order: numbers, then a release beats its pre-release", () => {
 });
 
 test("finds a newer release; a beta user hears about betas; offline says so", async () => {
-  const list = [{ tag_name: "v0.9.1-beta", html_url: "https://example.invalid/r/1", draft: false, prerelease: true }, { tag_name: "v0.8.0", html_url: "x", draft: false, prerelease: false }];
+  const list = [
+    { tag_name: "v0.9.1-beta", html_url: "https://example.invalid/r/1", draft: false, prerelease: true },
+    { tag_name: "v0.8.0", html_url: "x", draft: false, prerelease: false },
+  ];
   const ok = (async () => new Response(JSON.stringify(list), { status: 200 })) as unknown as typeof fetch;
   const r = await checkForUpdates(ok, 1, "0.9.0-beta");
   assert.equal(r.newer, true);

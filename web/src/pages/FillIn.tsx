@@ -5,8 +5,28 @@ import { t, type I18nKey } from "../i18n";
 import { useState } from "react";
 import { Chip, Confirm, Cover, dateTime, Empty, ErrorBox, Menu, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 
-interface Item { tvdbId: number; title: string; cover: string | null; state: "queued" | "active" | "done" | "skipped"; wave: number | null; position: number; startMissing: number | null; missing: number | null; note: string; activatedAt: number | null; doneAt: number | null; scope: { seasons: string; recentN: number; episodes: string; specials: boolean; picked?: number[] } }
-interface View { settings: { paused: boolean; waveSize: number; advancePct: number; stallDays: number }; backlogEnabled: boolean; perHour: number; remaining: number; etaHours: number; items: Item[] }
+interface Item {
+  tvdbId: number;
+  title: string;
+  cover: string | null;
+  state: "queued" | "active" | "done" | "skipped";
+  wave: number | null;
+  position: number;
+  startMissing: number | null;
+  missing: number | null;
+  note: string;
+  activatedAt: number | null;
+  doneAt: number | null;
+  scope: { seasons: string; recentN: number; episodes: string; specials: boolean; picked?: number[] };
+}
+interface View {
+  settings: { paused: boolean; waveSize: number; advancePct: number; stallDays: number };
+  backlogEnabled: boolean;
+  perHour: number;
+  remaining: number;
+  etaHours: number;
+  items: Item[];
+}
 
 const TONE = { active: "accent", queued: "info", done: "good", skipped: "warn" } as const;
 
@@ -47,12 +67,20 @@ export function FillIn() {
         <AutomateTabs current="fillin" />
       </div>
       <p className="muted">{t("fill.intro", { size: v.settings.waveSize, pct: v.settings.advancePct, days: v.settings.stallDays })}</p>
-      {!v.backlogEnabled && <p className="banner warn">{t("fill.backlogOff")} <Link to="/settings?tab=safety">{t("nav.settings")} →</Link></p>}
+      {!v.backlogEnabled && (
+        <p className="banner warn">
+          {t("fill.backlogOff")} <Link to="/settings?tab=safety">{t("nav.settings")} →</Link>
+        </p>
+      )}
       <div className="card pad stack">
         <p>{t("fill.eta", { n: v.remaining, per: v.perHour, h: v.etaHours, d: Math.ceil(v.etaHours / 24) })}</p>
         <Toggle checked={v.settings.paused} onChange={(x) => void setPaused(x)} label={t("fill.paused")} help={t("fill.pausedHelp")} />
       </div>
-      {!v.items.length && <Empty icon="⇣" action={{ label: t("managed.choose"), run: () => navigate("/shows") }}>{t("fill.empty")}</Empty>}
+      {!v.items.length && (
+        <Empty icon="⇣" action={{ label: t("managed.choose"), run: () => navigate("/shows") }}>
+          {t("fill.empty")}
+        </Empty>
+      )}
       {groups.map(
         ([k, list]) =>
           !!list.length && (
@@ -60,7 +88,9 @@ export function FillIn() {
               <h2>{t(`fill.group.${k}` as I18nKey)}</h2>
               <ul className="list plain">
                 {list.map((i) => {
-                  const pct = i.startMissing ? Math.max(0, Math.min(100, Math.round(((i.startMissing - (i.missing ?? 0)) / i.startMissing) * 100))) : null;
+                  const pct = i.startMissing
+                    ? Math.max(0, Math.min(100, Math.round(((i.startMissing - (i.missing ?? 0)) / i.startMissing) * 100)))
+                    : null;
                   return (
                     <li key={i.tvdbId} className="card pad row fill-row">
                       <Cover src={i.cover} alt={i.title} size="sm" />
@@ -73,15 +103,29 @@ export function FillIn() {
                             {t(`fill.state.${i.state}` as I18nKey)}
                             {i.wave ? ` · ${t("fill.wave", { n: i.wave })}` : ""}
                           </Chip>
-                          <span className="muted small">{t(`scope.ep.${i.scope.episodes}` as I18nKey)} · {i.scope.seasons === "recent" ? t("scope.recentShort", { n: i.scope.recentN }) : t(`scope.season.${i.scope.seasons}` as I18nKey, { list: (i.scope.picked ?? []).join(", ") })}</span>
+                          <span className="muted small">
+                            {t(`scope.ep.${i.scope.episodes}` as I18nKey)} ·{" "}
+                            {i.scope.seasons === "recent"
+                              ? t("scope.recentShort", { n: i.scope.recentN })
+                              : t(`scope.season.${i.scope.seasons}` as I18nKey, { list: (i.scope.picked ?? []).join(", ") })}
+                          </span>
                         </div>
                         <p className="small">
-                          {i.state === "active" && pct !== null ? t("fill.progress", { pct, missing: i.missing ?? 0, start: i.startMissing ?? 0 }) : t("fill.missing", { n: i.missing ?? 0 })}
+                          {i.state === "active" && pct !== null
+                            ? t("fill.progress", { pct, missing: i.missing ?? 0, start: i.startMissing ?? 0 })
+                            : t("fill.missing", { n: i.missing ?? 0 })}
                           {i.note ? ` · ${i.note}` : ""}
                           {i.doneAt ? ` · ${dateTime(i.doneAt)}` : ""}
                         </p>
                         {i.state === "active" && pct !== null && (
-                          <div className="progressbar" role="progressbar" aria-label={t("fill.progressLabel", { title: i.title })} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                          <div
+                            className="progressbar"
+                            role="progressbar"
+                            aria-label={t("fill.progressLabel", { title: i.title })}
+                            aria-valuenow={pct}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          >
                             <div style={{ width: `${pct}%` }} />
                           </div>
                         )}
@@ -91,8 +135,16 @@ export function FillIn() {
                         items={[
                           { label: t("fill.up"), onSelect: () => void act(i.tvdbId, "up"), hidden: i.state !== "queued" },
                           { label: t("fill.down"), onSelect: () => void act(i.tvdbId, "down"), hidden: i.state !== "queued" },
-                          { label: t("fill.skip"), onSelect: () => void act(i.tvdbId, "skip"), hidden: !(i.state === "queued" || i.state === "active") },
-                          { label: t("fill.requeue"), onSelect: () => void act(i.tvdbId, "requeue"), hidden: !(i.state === "skipped" || i.state === "done") },
+                          {
+                            label: t("fill.skip"),
+                            onSelect: () => void act(i.tvdbId, "skip"),
+                            hidden: !(i.state === "queued" || i.state === "active"),
+                          },
+                          {
+                            label: t("fill.requeue"),
+                            onSelect: () => void act(i.tvdbId, "requeue"),
+                            hidden: !(i.state === "skipped" || i.state === "done"),
+                          },
                           { label: t("fill.remove"), onSelect: () => setRemoving(i), danger: true },
                         ]}
                       />

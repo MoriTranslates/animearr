@@ -7,12 +7,37 @@ import { api } from "./api";
 import { t } from "./i18n";
 import { Modal, Spinner, useToast } from "./ui";
 
-interface Source { tmdbTv: number; tmdbSeason: number; tmdbOffset: number }
-interface Current { override: (Source & { setAt: number }) | null; catalog: Source | null }
-interface Hit { id: number; name: string; year: number | null; seasons: { season: number; episodes: number }[] | null }
-interface Titles { seasons: Hit["seasons"]; titles: { episode: number; name: string }[] | null }
+interface Source {
+  tmdbTv: number;
+  tmdbSeason: number;
+  tmdbOffset: number;
+}
+interface Current {
+  override: (Source & { setAt: number }) | null;
+  catalog: Source | null;
+}
+interface Hit {
+  id: number;
+  name: string;
+  year: number | null;
+  seasons: { season: number; episodes: number }[] | null;
+}
+interface Titles {
+  seasons: Hit["seasons"];
+  titles: { episode: number; name: string }[] | null;
+}
 
-export function MetaSource({ tvdbId, season, episodes, onClose }: { tvdbId: number; season: number; episodes: { episode: number; title: string | null }[]; onClose: () => void }) {
+export function MetaSource({
+  tvdbId,
+  season,
+  episodes,
+  onClose,
+}: {
+  tvdbId: number;
+  season: number;
+  episodes: { episode: number; title: string | null }[];
+  onClose: () => void;
+}) {
   const toast = useToast();
   const base = `/series/${tvdbId}/meta-override/${season}`;
   const [cur, setCur] = useState<Current | null>(null);
@@ -85,10 +110,17 @@ export function MetaSource({ tvdbId, season, episodes, onClose }: { tvdbId: numb
           className="row"
           onSubmit={(e) => {
             e.preventDefault();
-            if (q.trim()) void run(async () => (setPick(null), setHits(await api<Hit[]>(`/tmdb/search?q=${encodeURIComponent(q.trim())}`))));
+            if (q.trim())
+              void run(async () => (setPick(null), setHits(await api<Hit[]>(`/tmdb/search?q=${encodeURIComponent(q.trim())}`))));
           }}
         >
-          <input className="grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("metasrc.search")} aria-label={t("metasrc.search")} />
+          <input
+            className="grow"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("metasrc.search")}
+            aria-label={t("metasrc.search")}
+          />
           <button disabled={busy || !q.trim()}>{t("common.search")}</button>
         </form>
         {hits && !hits.length && <p className="small muted">{t("metasrc.none")}</p>}
@@ -157,7 +189,9 @@ export function MetaSource({ tvdbId, season, episodes, onClose }: { tvdbId: numb
                 disabled={busy || tmSeason === ""}
                 onClick={() =>
                   void run(async () => {
-                    setCur(await api<Current>(base, { method: "PUT", body: { tmdbTv: pick.id, tmdbSeason: Number(tmSeason), tmdbOffset: off } }));
+                    setCur(
+                      await api<Current>(base, { method: "PUT", body: { tmdbTv: pick.id, tmdbSeason: Number(tmSeason), tmdbOffset: off } }),
+                    );
                     setSaved(true);
                     setPick(null);
                     setHits(null);

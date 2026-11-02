@@ -18,7 +18,10 @@ const sections = [
 ];
 
 test("AnimeArr paths map to Plex paths (longest prefix) and to the right library", () => {
-  const maps = [{ from: "/media/Anime", to: "/data/Anime" }, { from: "/media/Movies", to: "/data/Movies" }];
+  const maps = [
+    { from: "/media/Anime", to: "/data/Anime" },
+    { from: "/media/Movies", to: "/data/Movies" },
+  ];
   assert.equal(toPlexPath("/media/Anime/Frieren/Season 1", maps), "/data/Anime/Frieren/Season 1");
   assert.equal(toPlexPath("/elsewhere/x", maps), "/elsewhere/x");
   assert.equal(sectionFor("/data/Movies/Anime/Suzume (2022)", sections)?.title, "Anime Movies", "the most specific library wins");
@@ -30,7 +33,10 @@ test("notify: nothing unless switched on; then one scan per folder, batched", as
   const deps = { sections: async () => sections, refresh: async (k: string, p: string) => void calls.push(`${k}:${p}`) };
   notifyPlex(["/media/Anime/Frieren/Season 1"], deps, 1);
   assert.deepEqual(await flush(deps), []);
-  patchSettings((s) => ({ ...s, plex: { url: "http://plex:32400", token: "t0k3n", enabled: true, pathMappings: [{ from: "/media", to: "/data" }] } }));
+  patchSettings((s) => ({
+    ...s,
+    plex: { url: "http://plex:32400", token: "t0k3n", enabled: true, pathMappings: [{ from: "/media", to: "/data" }] },
+  }));
   notifyPlex(["/media/Anime/Frieren/Season 1", "/media/Anime/Frieren/Season 1/", "/media/Unknown/x"], deps, 60_000);
   const out = await flush(deps);
   assert.deepEqual(calls, ["1:/data/Anime/Frieren/Season 1"]);

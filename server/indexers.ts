@@ -33,7 +33,9 @@ const tag = (item: string, name: string) => {
   return m ? decode(m[1]) : null;
 };
 const attr = (item: string, name: string) => {
-  const m = new RegExp(`<(?:newznab|torznab):attr[^>]*name="${name}"[^>]*value="([^"]*)"`, "i").exec(item) ?? new RegExp(`<(?:newznab|torznab):attr[^>]*value="([^"]*)"[^>]*name="${name}"`, "i").exec(item);
+  const m =
+    new RegExp(`<(?:newznab|torznab):attr[^>]*name="${name}"[^>]*value="([^"]*)"`, "i").exec(item) ??
+    new RegExp(`<(?:newznab|torznab):attr[^>]*value="([^"]*)"[^>]*name="${name}"`, "i").exec(item);
   return m ? decode(m[1]) : null;
 };
 const enclosure = (item: string) => {
@@ -57,18 +59,24 @@ export function parseSize(s: string | null | undefined): number {
   const pow = u.startsWith("K") ? 1 : u.startsWith("M") ? 2 : u.startsWith("G") ? 3 : u.startsWith("T") ? 4 : 0;
   return Math.round(n * (u.includes("I") ? 1024 : 1000) ** pow);
 }
-const num = (v: string | null | undefined) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
+const num = (v: string | null | undefined) =>
+  v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v);
 const magnetIn = (s: string | null) => /magnet:\?xt=urn:btih:[^"'<\s]+/i.exec(s ?? "")?.[0]?.replace(/&amp;/g, "&") ?? null;
 
 async function fetchText(url: string, timeout = 30_000) {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, application/json, text/xml" }, signal: AbortSignal.timeout(timeout), redirect: "manual" });
+    res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, application/json, text/xml" },
+      signal: AbortSignal.timeout(timeout),
+      redirect: "manual",
+    });
     // One redirect, same scheme rules (sites moving to https or a new domain), never to link-local addresses.
     const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
     if (loc) {
       const next = new URL(loc, url);
-      if (!/^https?:$/.test(next.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(next.hostname)) throw new Error("redirected somewhere not allowed");
+      if (!/^https?:$/.test(next.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(next.hostname))
+        throw new Error("redirected somewhere not allowed");
       res = await fetch(next.href, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(timeout), redirect: "manual" });
     }
   } catch (e) {
@@ -83,7 +91,9 @@ async function fetchText(url: string, timeout = 30_000) {
 /** A guid that never carries credentials: a URL as guid (often the download link with a key) becomes a hash. */
 const safeGuid = (g: string | null | undefined, title: string) => {
   const v = g ?? title;
-  return /^https?:\/\//i.test(v) && /[?&][\w-]*(?:key|pass|auth|token)[\w-]*=|\/[0-9a-f]{20,}\//i.test(v) ? `aa:${crypto.createHash("sha1").update(v).digest("hex")}` : v;
+  return /^https?:\/\//i.test(v) && /[?&][\w-]*(?:key|pass|auth|token)[\w-]*=|\/[0-9a-f]{20,}\//i.test(v)
+    ? `aa:${crypto.createHash("sha1").update(v).digest("hex")}`
+    : v;
 };
 
 const base = (ix: IndexerCfg, r: Partial<ProwlarrRelease> & { title: string }): ProwlarrRelease => ({
@@ -97,7 +107,11 @@ const base = (ix: IndexerCfg, r: Partial<ProwlarrRelease> & { title: string }): 
 });
 
 /** One search on one direct indexer. Empty query = its latest releases (RSS-style). */
-export async function searchIndexer(ix: IndexerCfg, query: string, opts: { categories?: number[]; limit?: number; timeoutMs?: number } = {}): Promise<ProwlarrRelease[]> {
+export async function searchIndexer(
+  ix: IndexerCfg,
+  query: string,
+  opts: { categories?: number[]; limit?: number; timeoutMs?: number } = {},
+): Promise<ProwlarrRelease[]> {
   const q = query.trim();
   const get = (url: string) => fetchText(url, opts.timeoutMs || 30_000);
   if (ix.kind === "newznab" || ix.kind === "torznab") {
@@ -151,7 +165,10 @@ export async function searchIndexer(ix: IndexerCfg, query: string, opts: { categ
         size: parseSize(tag(it, "nyaa:size")),
         downloadUrl: tag(it, "link") ?? undefined,
         // The .torrent carries the trackers; a hash-only magnet only when there's no link.
-        magnetUrl: !tag(it, "link") && hash ? `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(title)}&tr=${encodeURIComponent("http://nyaa.tracker.wf:7777/announce")}` : undefined,
+        magnetUrl:
+          !tag(it, "link") && hash
+            ? `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(title)}&tr=${encodeURIComponent("http://nyaa.tracker.wf:7777/announce")}`
+            : undefined,
         infoUrl: tag(it, "guid") ?? undefined,
         publishDate: tag(it, "pubDate") ?? undefined,
         ageMinutes: ageMin(tag(it, "pubDate")),
@@ -167,7 +184,8 @@ export async function searchIndexer(ix: IndexerCfg, query: string, opts: { categ
     u.searchParams.set("f", q ? "search" : "latest");
     u.searchParams.set("tz", "UTC");
     if (q) u.searchParams.set("s", q);
-    const j = JSON.parse(await get(u.toString())) as Record<string, { show: string; episode: string; release_date?: string; downloads: { res: string; magnet: string }[] }> | unknown[];
+    const j = JSON.parse(await get(u.toString())) as
+      Record<string, { show: string; episode: string; release_date?: string; downloads: { res: string; magnet: string }[] }> | unknown[];
     if (Array.isArray(j)) return [];
     return Object.values(j).flatMap((e) =>
       (e.downloads ?? []).map((d) =>
@@ -258,11 +276,23 @@ async function prowlarrPerIndexer(query: string, opts: { limit?: number; categor
  * Every call takes one slot of the app-wide query scheduler (server/searchQueue.ts), and identical searches within
  * 10 minutes reuse the answers per indexer (`fresh` asks again); the empty recent-releases poll is never cached.
  */
-export async function searchAll(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean; /** Checked when the slot comes: true = not needed any more (answers nothing). */ skip?: () => boolean } = {}): Promise<ProwlarrRelease[]> {
+export async function searchAll(
+  query: string,
+  opts: {
+    limit?: number;
+    categories?: number[];
+    fresh?: boolean;
+    perIndexer?: boolean;
+    /** Checked when the slot comes: true = not needed any more (answers nothing). */ skip?: () => boolean;
+  } = {},
+): Promise<ProwlarrRelease[]> {
   return querySlot(() => (opts.skip?.() ? Promise.resolve([]) : searchAllNow(query, opts)));
 }
 
-async function searchAllNow(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean }): Promise<ProwlarrRelease[]> {
+async function searchAllNow(
+  query: string,
+  opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean },
+): Promise<ProwlarrRelease[]> {
   const jobs: Promise<ProwlarrRelease[]>[] = [];
   const timeoutMs = indexerTimeoutMs();
   if (prowlarrConfigured()) {
@@ -273,10 +303,19 @@ async function searchAllNow(query: string, opts: { limit?: number; categories?: 
   for (const ix of directIndexers()) {
     // A search-URL template needs words; the empty "latest releases" poll skips it.
     if (ix.kind === "rss" && !query.trim()) continue;
-    const o = { limit: opts.limit, categories: opts.categories && opts.categories.length ? opts.categories : undefined, ...(timeoutMs ? { timeoutMs } : {}) };
+    const o = {
+      limit: opts.limit,
+      categories: opts.categories && opts.categories.length ? opts.categories : undefined,
+      ...(timeoutMs ? { timeoutMs } : {}),
+    };
     const run = () => searchIndexer(ix, query, o);
     jobs.push(
-      (query.trim() ? cachedQuery(`direct:${ix.id}:${ix.url}:${query.trim()}:${(o.categories ?? ix.categories).join(",")}:${o.limit ?? ""}`, run, { fresh: opts.fresh }) : run()).then(
+      (query.trim()
+        ? cachedQuery(`direct:${ix.id}:${ix.url}:${query.trim()}:${(o.categories ?? ix.categories).join(",")}:${o.limit ?? ""}`, run, {
+            fresh: opts.fresh,
+          })
+        : run()
+      ).then(
         (rows) => (lastErrors.delete(ix.id), recordIndexerSuccess(indexerNumId(ix.id), "search"), rows),
         (e) => {
           const why = redactUrl(describeFetchError(e));
@@ -292,7 +331,15 @@ async function searchAllNow(query: string, opts: { limit?: number; categories?: 
   const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
   if (!ok.length) throw (settled[0] as PromiseRejectedResult).reason;
   const all = ok.flatMap((r) => r.value);
-  for (const r of all) noteSeen(r.indexerId, { guid: r.guid, title: r.title, protocol: r.protocol, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, size: r.size });
+  for (const r of all)
+    noteSeen(r.indexerId, {
+      guid: r.guid,
+      title: r.title,
+      protocol: r.protocol,
+      downloadUrl: r.downloadUrl,
+      magnetUrl: r.magnetUrl,
+      size: r.size,
+    });
   return all;
 }
 

@@ -22,14 +22,49 @@ import { combineHave, haveRevisions, properMode } from "./propers.js";
 import { currentLane, inLane } from "./searchQueue.js";
 
 export function episodesFor(tvdbId: number): LibEpisode[] {
-  const rows = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(tvdbId) as {
-    id: number; season: number; episode: number; absolute: number | null; scene_season: number | null; scene_episode: number | null; scene_absolute: number | null; air_utc: number | null; title: string | null; has_file: number; monitored: number; runtime: number | null;
+  const rows = cache
+    .prepare(
+      "SELECT e.id, e.season, e.episode, e.absolute, e.scene_season, e.scene_episode, e.scene_absolute, e.air_utc, e.title, e.has_file, e.monitored, e.runtime FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?",
+    )
+    .all(tvdbId) as {
+    id: number;
+    season: number;
+    episode: number;
+    absolute: number | null;
+    scene_season: number | null;
+    scene_episode: number | null;
+    scene_absolute: number | null;
+    air_utc: number | null;
+    title: string | null;
+    has_file: number;
+    monitored: number;
+    runtime: number | null;
   }[];
-  return rows.map((r) => ({ id: r.id, season: r.season, episode: r.episode, absolute: r.absolute, sceneSeason: r.scene_season, sceneEpisode: r.scene_episode, sceneAbsolute: r.scene_absolute, airUtc: r.air_utc, title: r.title, hasFile: !!r.has_file, monitored: !!r.monitored, runtime: r.runtime }));
+  return rows.map((r) => ({
+    id: r.id,
+    season: r.season,
+    episode: r.episode,
+    absolute: r.absolute,
+    sceneSeason: r.scene_season,
+    sceneEpisode: r.scene_episode,
+    sceneAbsolute: r.scene_absolute,
+    airUtc: r.air_utc,
+    title: r.title,
+    hasFile: !!r.has_file,
+    monitored: !!r.monitored,
+    runtime: r.runtime,
+  }));
 }
 
 export function rulesFor(tvdbId: number): NumberingRule[] {
-  return (db.prepare("SELECT grp, mode, season, offset FROM rules WHERE tvdb_id = ? ORDER BY grp IS NULL, id").all(tvdbId) as { grp: string | null; mode: NumberingRule["mode"]; season: number | null; offset: number }[]).map((r) => ({ group: r.grp, mode: r.mode, season: r.season, offset: r.offset }));
+  return (
+    db.prepare("SELECT grp, mode, season, offset FROM rules WHERE tvdb_id = ? ORDER BY grp IS NULL, id").all(tvdbId) as {
+      grp: string | null;
+      mode: NumberingRule["mode"];
+      season: number | null;
+      offset: number;
+    }[]
+  ).map((r) => ({ group: r.grp, mode: r.mode, season: r.season, offset: r.offset }));
 }
 
 export function identifyContext(): IdentifyContext {
@@ -45,8 +80,18 @@ export interface SeriesInfo {
   cover: string | null;
 }
 export function seriesByTvdb(tvdbId: number): SeriesInfo | null {
-  const r = cache.prepare("SELECT id, tvdb_id, title, path, original_language, poster FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number; tvdb_id: number; title: string; path: string; original_language: string | null; poster: string | null } | undefined;
-  return r ? { id: r.id, tvdbId: r.tvdb_id, title: r.title, path: r.path, originalLanguage: r.original_language, cover: coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }) } : null;
+  const r = cache.prepare("SELECT id, tvdb_id, title, path, original_language, poster FROM series WHERE tvdb_id = ?").get(tvdbId) as
+    { id: number; tvdb_id: number; title: string; path: string; original_language: string | null; poster: string | null } | undefined;
+  return r
+    ? {
+        id: r.id,
+        tvdbId: r.tvdb_id,
+        title: r.title,
+        path: r.path,
+        originalLanguage: r.original_language,
+        cover: coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }),
+      }
+    : null;
 }
 
 export interface SearchResult {
@@ -86,7 +131,12 @@ export function queryGrid(titles: string[], targets: LibEpisode[], budget = 18):
   // token forms (not compact keys), drop titles that carry their own season marker, short Latin ones first.
   const seen = new Set<string>();
   const list = titles
-    .map((t) => t.replace(/[:!?'’"]/g, " ").replace(/\s+/g, " ").trim())
+    .map((t) =>
+      t
+        .replace(/[:!?'’"]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
     .filter((t) => t.length >= 3 && /^[ -~À-ɏ]+$/.test(t))
     .filter((t) => splitSeason(t).season === null)
     .filter((t) => {
@@ -117,7 +167,16 @@ export function queryGrid(titles: string[], targets: LibEpisode[], budget = 18):
  */
 export function comboQueries(titles: string[], libraryTitle: string, max = 3): string[] {
   const lib = normalizeTitle(libraryTitle);
-  const others = [...new Set(titles.map((t) => t.replace(/[:!?'’"]/g, " ").replace(/\s+/g, " ").trim()))]
+  const others = [
+    ...new Set(
+      titles.map((t) =>
+        t
+          .replace(/[:!?'’"]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      ),
+    ),
+  ]
     .filter((t) => normalizeTitle(t) !== lib && splitSeason(t).season === null && /^[ -~]+$/.test(t))
     .sort((a, b) => a.length - b.length);
   return others.slice(0, max).map((t) => `${t} ${libraryTitle}`);
@@ -129,9 +188,18 @@ export function comboQueries(titles: string[], libraryTitle: string, max = 3): s
  * with its source, when the profile wants consistency. Files being replaced still count (they show the season's style
  * only if most agree; a mixed season has no clear group).
  */
-export function seasonGroupOf(seriesId: number, season: number | null, weight: "off" | "prefer" | "strong" = "prefer", exclude: number[] = []): Known["seasonGroup"] {
+export function seasonGroupOf(
+  seriesId: number,
+  season: number | null,
+  weight: "off" | "prefer" | "strong" = "prefer",
+  exclude: number[] = [],
+): Known["seasonGroup"] {
   if (weight === "off" || season === null) return null;
-  const rows = cache.prepare("SELECT e.id, e.episode, f.release_group AS grp, f.scene_name AS scene FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? ORDER BY e.episode").all(seriesId, season) as { id: number; episode: number; grp: string | null; scene: string | null }[];
+  const rows = cache
+    .prepare(
+      "SELECT e.id, e.episode, f.release_group AS grp, f.scene_name AS scene FROM episodes e JOIN files f ON f.id = e.file_id WHERE e.series_id = ? AND e.season = ? ORDER BY e.episode",
+    )
+    .all(seriesId, season) as { id: number; episode: number; grp: string | null; scene: string | null }[];
   const counts = new Map<string, { n: number; last: number; source: string | null }>();
   for (const r of rows) {
     if (exclude.includes(r.id)) continue;
@@ -146,20 +214,37 @@ export function seasonGroupOf(seriesId: number, season: number | null, weight: "
   const total = [...counts.values()].reduce((a, c) => a + c.n, 0);
   // A real majority only (a season of 3 groups has no group to stay consistent with).
   if (best[1].n * 2 <= total && total > 1) return null;
-  const name = rows.map((r) => r.grp ?? (r.scene ? parseRelease(r.scene).group : null)).find((g) => g?.toLowerCase() === best[0]) ?? best[0];
+  const name =
+    rows.map((r) => r.grp ?? (r.scene ? parseRelease(r.scene).group : null)).find((g) => g?.toLowerCase() === best[0]) ?? best[0];
   return { group: name, source: best[1].source, weight };
 }
 
-function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null, groupLess: boolean, groups?: Map<string, Known["seasonGroup"]>, rules: Known["rules"] = []): Known {
+function knownFor(
+  r: ProwlarrRelease,
+  series: SeriesInfo,
+  season: number | null,
+  groupLess: boolean,
+  groups?: Map<string, Known["seasonGroup"]>,
+  rules: Known["rules"] = [],
+): Known {
   const k: Known = {};
   const prof = profileFor(series.tvdbId);
   for (const lang of prof.subLangs) {
     const f = burnedInFact(series.tvdbId, season, lang);
-    if (f && groupLess) k.burnedIn = { lang, resolution: season !== null ? seasonResolution(series.id, season) : null, note: f.note || `you confirmed season ${season} has burned-in subs` };
+    if (f && groupLess)
+      k.burnedIn = {
+        lang,
+        resolution: season !== null ? seasonResolution(series.id, season) : null,
+        note: f.note || `you confirmed season ${season} has burned-in subs`,
+      };
   }
-  const bl = db.prepare("SELECT reason FROM blocklist WHERE release = ? OR (guid IS NOT NULL AND guid = ?) LIMIT 1").get(r.title, r.guid) as { reason: string } | undefined;
+  const bl = db
+    .prepare("SELECT reason FROM blocklist WHERE release = ? OR (guid IS NOT NULL AND guid = ?) LIMIT 1")
+    .get(r.title, r.guid) as { reason: string } | undefined;
   if (bl) k.blocklisted = bl.reason;
-  const scene = cache.prepare("SELECT 1 FROM files WHERE series_id = ? AND scene_name = ? LIMIT 1").get(series.id, r.title.replace(/-xpost$/i, ""));
+  const scene = cache
+    .prepare("SELECT 1 FROM files WHERE series_id = ? AND scene_name = ? LIMIT 1")
+    .get(series.id, r.title.replace(/-xpost$/i, ""));
   if (scene) k.inLibrary = true;
   k.indexerHealth = indexerHealth(r.indexerId);
   k.seasonGroup = groups?.get(`${season}`) ?? null;
@@ -171,7 +256,10 @@ function knownFor(r: ProwlarrRelease, series: SeriesInfo, season: number | null,
 
 /** Short, search-friendly form of a long title: "Magic Repo Man: Dumped by My Party, ..." → "Magic Repo Man". */
 export function shortTitle(t: string): string {
-  const clean = t.replace(/[!?'’"]/g, " ").replace(/\s+/g, " ").trim();
+  const clean = t
+    .replace(/[!?'’"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (clean.length <= 40) return clean.replace(/:/g, " ").replace(/\s+/g, " ").trim();
   const head = clean.split(/[:：–—]|\s-\s/)[0].trim();
   return head.length >= 4 ? head : clean.slice(0, 40);
@@ -181,8 +269,21 @@ export function shortTitle(t: string): string {
  * Tier 1: the canonical title and the top romaji title, with the episode forms groups actually use
  * (S01E01 and "- 01"), or the season form for several episodes. 2-4 queries; most searches end here.
  */
-export function tier1Queries(canonical: string, romaji: string | null, targets: LibEpisode[], seasonSize: Map<number, number> = new Map()): string[] {
-  const titles = [...new Map([canonical, romaji].filter((x): x is string => !!x).map(shortTitle).filter((t) => t.length >= 3).map((t) => [normalizeTitle(t), t])).values()];
+export function tier1Queries(
+  canonical: string,
+  romaji: string | null,
+  targets: LibEpisode[],
+  seasonSize: Map<number, number> = new Map(),
+): string[] {
+  const titles = [
+    ...new Map(
+      [canonical, romaji]
+        .filter((x): x is string => !!x)
+        .map(shortTitle)
+        .filter((t) => t.length >= 3)
+        .map((t) => [normalizeTitle(t), t]),
+    ).values(),
+  ];
   const out = new Set<string>();
   const seasons = [...new Set(targets.map((t) => t.season))];
   for (const t of titles) {
@@ -224,7 +325,10 @@ export interface SearchProgress {
  * season's group when the season has one, and no warning or problem flag (burn-in, censored, size, seeders, indexer
  * health, placeholder...). Another copy of the same release elsewhere ties at best.
  */
-export function clearlyBest(r: SearchResult, o: { profile: Pick<Profile, "protocolOrder" | "noProtocolPreference" | "resolution">; minConfidence: number; seasonGroup: string | null }) {
+export function clearlyBest(
+  r: SearchResult,
+  o: { profile: Pick<Profile, "protocolOrder" | "noProtocolPreference" | "resolution">; minConfidence: number; seasonGroup: string | null },
+) {
   return (
     r.rank.accept &&
     r.rank.flags.some((f) => f.key === "seadex" && f.label === "SeaDex best") &&
@@ -243,7 +347,18 @@ export function clearlyBest(r: SearchResult, o: { profile: Pick<Profile, "protoc
  * `earlyStop` (automatic searches of one episode): once the best result is clearlyBest(), the queries not sent yet are
  * skipped (tier 1's rest and tier 2). Interactive searches always run in full.
  */
-export async function deepSearch(tvdbId: number, episodeIds: number[], opts: { extraQueries?: string[]; budget?: number; full?: boolean; packs?: boolean; earlyStop?: { minConfidence: number }; onProgress?: (p: SearchProgress) => void } = {}) {
+export async function deepSearch(
+  tvdbId: number,
+  episodeIds: number[],
+  opts: {
+    extraQueries?: string[];
+    budget?: number;
+    full?: boolean;
+    packs?: boolean;
+    earlyStop?: { minConfidence: number };
+    onProgress?: (p: SearchProgress) => void;
+  } = {},
+) {
   // Each search waits its turn for indexer queries in its own lane (or its caller's, e.g. a ⚡ job).
   return currentLane() ? deepSearchNow(tvdbId, episodeIds, opts) : inLane(null, () => deepSearchNow(tvdbId, episodeIds, opts));
 }
@@ -263,7 +378,16 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
   const weight = profileFor(tvdbId).groupConsistency ?? "prefer";
   // Per search (concurrent searches don't share it); only the seasons this search is about.
   const groups = new Map<string, Known["seasonGroup"]>();
-  for (const s of new Set(targets.map((e) => e.season))) groups.set(`${s}`, seasonGroupOf(series.id, s, weight, targets.map((t) => t.id)));
+  for (const s of new Set(targets.map((e) => e.season)))
+    groups.set(
+      `${s}`,
+      seasonGroupOf(
+        series.id,
+        s,
+        weight,
+        targets.map((t) => t.id),
+      ),
+    );
   const seasonSize = new Map<number, number>();
   for (const e of all) seasonSize.set(e.season, (seasonSize.get(e.season) ?? 0) + 1);
   const tier1 = [...tier1Queries(series.title, romaji, targets, seasonSize), ...(opts.extraQueries ?? [])];
@@ -278,7 +402,10 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
   const runtimeOf = new Map(all.map((e) => [e.id, e.runtime]));
   // The files the targets have now (group + version), for "newer version" upgrades; only when the setting looks at versions.
   const propers = properMode();
-  const haveOf = haveRevisions(tvdbId, targets.filter((t) => t.hasFile).map((t) => t.id));
+  const haveOf = haveRevisions(
+    tvdbId,
+    targets.filter((t) => t.hasFile).map((t) => t.id),
+  );
   const results: SearchResult[] = [];
   const skipped: Record<string, number> = {};
   const queries: string[] = [];
@@ -306,9 +433,25 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
     const ss = eps[0]?.season ?? null;
     const known = knownFor(r, series, ss, !id.parsed.group, groups, ruleSet);
     known.propers = propers;
-    known.have = combineHave(haveOf, eps.map((e) => e.id));
+    known.have = combineHave(
+      haveOf,
+      eps.map((e) => e.id),
+    );
     const learned = learnedFor(id.parsed.group, id.parsed.platform ?? sourceKey(r.title, null, id.parsed.source));
-    const rank = rankRelease(id.parsed, { protocol: r.protocol, size: r.size, seeders: r.seeders ?? null, indexer: r.indexer, episodeCount: eps.length, runtimeMin: runtimeOf.get(eps[0]?.id) ?? null }, prof, learned, known);
+    const rank = rankRelease(
+      id.parsed,
+      {
+        protocol: r.protocol,
+        size: r.size,
+        seeders: r.seeders ?? null,
+        indexer: r.indexer,
+        episodeCount: eps.length,
+        runtimeMin: runtimeOf.get(eps[0]?.id) ?? null,
+      },
+      prof,
+      learned,
+      known,
+    );
     results.push({
       guid: r.guid,
       title: r.title,
@@ -380,12 +523,15 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
   await run(tier1);
   // Tier 2 only when tier 1 left a target episode without a usable candidate (or when asked for the full search).
   // Replace season wants packs: single episodes don't count as covering it.
-  const usable = (eid: number) => results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid) && (!opts.packs || r.episodeIds.length > 1));
+  const usable = (eid: number) =>
+    results.some((r) => r.rank.accept && r.confidence >= 60 && r.episodeIds.includes(eid) && (!opts.packs || r.episodeIds.length > 1));
   const uncovered = targets.filter((t) => !usable(t.id));
   if (!stop() && (opts.full || uncovered.length)) {
     tier = 2;
     const done = new Set(queries);
-    const more = [...queryGrid(titles, targets, opts.budget), ...(opts.budget && opts.budget < 10 ? [] : combos)].filter((q) => !done.has(q));
+    const more = [...queryGrid(titles, targets, opts.budget), ...(opts.budget && opts.budget < 10 ? [] : combos)].filter(
+      (q) => !done.has(q),
+    );
     queries.push(...more);
     total += more.length;
     report();
@@ -395,7 +541,14 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
   if (stoppedEarly && skippedQueries) stoppedEarly += ` (${skippedQueries} ${skippedQueries === 1 ? "query" : "queries"} skipped)`;
   return {
     series: { tvdbId: series.tvdbId, title: series.title, cover: series.cover },
-    targets: targets.map((t) => ({ id: t.id, season: t.season, episode: t.episode, absolute: t.absolute, title: t.title ?? null, hasFile: !!t.hasFile })),
+    targets: targets.map((t) => ({
+      id: t.id,
+      season: t.season,
+      episode: t.episode,
+      absolute: t.absolute,
+      title: t.title ?? null,
+      hasFile: !!t.hasFile,
+    })),
     queries,
     tier,
     /** True when the wider alias grid was searched too (tier 2); otherwise "Search more" can widen it. */

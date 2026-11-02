@@ -30,18 +30,49 @@ const write = (p: string, s = "x", mtime?: number) => {
   fs.writeFileSync(p, s);
   if (mtime) fs.utimesSync(p, mtime / 1000, mtime / 1000);
 };
-const DAL = { title: "Date A Live: Date to Date", original_title: "デート・ア・ライブ DATE TO DATE", alt_titles: [] as string[], year: 2013 };
+const DAL = {
+  title: "Date A Live: Date to Date",
+  original_title: "デート・ア・ライブ DATE TO DATE",
+  alt_titles: [] as string[],
+  year: 2013,
+};
 const BATCH = "[Beltraz] Date A Live [2013] [Directors Cut] [BD 1080p HEVC OPUS]";
 
 before(() => {
-  const ins = cache.prepare("INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 1, 0, ?, 1, '[]', ?, NULL, 1, NULL, 0)");
-  ins.run(1338, 1608694, DAL.title, DAL.original_title, 2013, "/media/Movies/Anime/Date A Live Date to Date (2013)", "/media/Movies/Anime", 24, "[]");
-  ins.run(1355, 412383, "KanColle Movie", "劇場版 艦これ", 2016, "/media/Movies/Anime/KanColle Movie (2016)", "/media/Movies/Anime", 93, JSON.stringify(["Kantai Collection: KanColle Movie"]));
+  const ins = cache.prepare(
+    "INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 1, 0, ?, 1, '[]', ?, NULL, 1, NULL, 0)",
+  );
+  ins.run(
+    1338,
+    1608694,
+    DAL.title,
+    DAL.original_title,
+    2013,
+    "/media/Movies/Anime/Date A Live Date to Date (2013)",
+    "/media/Movies/Anime",
+    24,
+    "[]",
+  );
+  ins.run(
+    1355,
+    412383,
+    "KanColle Movie",
+    "劇場版 艦これ",
+    2016,
+    "/media/Movies/Anime/KanColle Movie (2016)",
+    "/media/Movies/Anime",
+    93,
+    JSON.stringify(["Kantai Collection: KanColle Movie"]),
+  );
   patchSettings((s) => ({
     ...s,
     allowedRoots: ["/media/Movies/Anime"],
     managed: { ...s.managed, dryRun: false },
-    localPathMappings: [{ from: "/media/Movies/Anime", to: LIB }, { from: "/data/completed/animearr", to: DL }, { from: "/data/other", to: OTHER }],
+    localPathMappings: [
+      { from: "/media/Movies/Anime", to: LIB },
+      { from: "/data/completed/animearr", to: DL },
+      { from: "/data/other", to: OTHER },
+    ],
     importer: { ...s.importer, engine: "sonarr", sourceRoots: ["/data/completed/animearr"] },
   }));
 });
@@ -62,18 +93,39 @@ test("subtitles: the part that tells a franchise movie apart; names carry it or 
 
 test("files: the one named after the movie is picked; numbered episodes look like a series batch", () => {
   const subs = ["date to date"];
-  const files = [...Array.from({ length: 12 }, (_, i) => ({ path: `/d/${BATCH}/[Beltraz] Date A Live - ${String(i + 1).padStart(2, "0")} - Title.mkv` })), { path: `/d/${BATCH}/Specials/[Beltraz] Date A Live - OVA - Date to Date.mkv` }];
+  const files = [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      path: `/d/${BATCH}/[Beltraz] Date A Live - ${String(i + 1).padStart(2, "0")} - Title.mkv`,
+    })),
+    { path: `/d/${BATCH}/Specials/[Beltraz] Date A Live - OVA - Date to Date.mkv` },
+  ];
   assert.equal(fileForMovie(files, subs)?.path, files[12].path);
   assert.equal(fileForMovie(files.slice(0, 12), subs), null);
   assert.ok(looksLikeEpisodes(files.slice(0, 12)));
-  assert.ok(!looksLikeEpisodes([{ path: "/d/Movie Part 1.mkv" }, { path: "/d/Movie Part 2.mkv" }]), "two parts of one movie are not a batch");
+  assert.ok(
+    !looksLikeEpisodes([{ path: "/d/Movie Part 1.mkv" }, { path: "/d/Movie Part 2.mkv" }]),
+    "two parts of one movie are not a batch",
+  );
   assert.ok(!looksLikeEpisodes([{ path: "/d/Movie.2016.1080p.mkv" }]));
 });
 
-const rel = (title: string, size = 6e9) => ({ guid: `g-${title}`, title, indexer: "X", indexerId: 1, protocol: "usenet" as const, size, seeders: null, downloadUrl: "http://x/dl", publishDate: new Date().toISOString() });
+const rel = (title: string, size = 6e9) => ({
+  guid: `g-${title}`,
+  title,
+  indexer: "X",
+  indexerId: 1,
+  protocol: "usenet" as const,
+  size,
+  seeders: null,
+  downloadUrl: "http://x/dl",
+  publishDate: new Date().toISOString(),
+});
 
 test("search: a batch that doesn't name the special stays a candidate, ranked below one that does", async () => {
-  const r = await searchMovie(1338, async () => [rel(BATCH, 7e10), rel("[Beltraz] Date A Live - Date to Date [2013] [BD 1080p HEVC OPUS]", 4e8)] as never);
+  const r = await searchMovie(
+    1338,
+    async () => [rel(BATCH, 7e10), rel("[Beltraz] Date A Live - Date to Date [2013] [BD 1080p HEVC OPUS]", 4e8)] as never,
+  );
   assert.equal(r.matched, 2, JSON.stringify(r.skipped));
   assert.match(r.results[0].title, /Date to Date/);
   assert.equal(r.results[1].title, BATCH);
@@ -83,14 +135,35 @@ test("search: a batch that doesn't name the special stays a candidate, ranked be
 function deps(files: { path: string; size: number }[], imports: { path: string }[][], fetched: string[] = []): Deps {
   let imported = false;
   return {
-    clients: { addNzb: async () => ({ client: "sabnzbd", ref: `nzo${fetched.length}` }), addTorrent: async () => ({ client: "qbittorrent", ref: "h" }), remove: async () => undefined, status: async () => ({ state: "completed", progress: 1, path: `/data/completed/animearr/${BATCH}` }) },
+    clients: {
+      addNzb: async () => ({ client: "sabnzbd", ref: `nzo${fetched.length}` }),
+      addTorrent: async () => ({ client: "qbittorrent", ref: "h" }),
+      remove: async () => undefined,
+      status: async () => ({ state: "completed", progress: 1, path: `/data/completed/animearr/${BATCH}` }),
+    },
     fetchRelease: async (r) => (fetched.push(r.title), { data: Buffer.from("x"), filename: r.title }),
     sonarr: {} as never,
     radarr: {
       preview: async () => files.map((f) => ({ ...f, quality: {}, languages: [] })),
       importFiles: async (f) => (imports.push(f as { path: string }[]), (imported = true), { id: 1 }),
       command: async () => ({ id: 1, status: "completed" }),
-      movie: async (id) => ({ id, tmdbId: 1, title: DAL.title, year: 2013, path: "/media/Movies/Anime/Date A Live Date to Date (2013)", monitored: true, hasFile: imported, qualityProfileId: 1, tags: [], runtime: 24, movieFile: { path: "/media/Movies/Anime/Date A Live Date to Date (2013)/x.mkv", dateAdded: new Date().toISOString(), mediaInfo: { subtitles: "eng", audioLanguages: "jpn" } } }),
+      movie: async (id) => ({
+        id,
+        tmdbId: 1,
+        title: DAL.title,
+        year: 2013,
+        path: "/media/Movies/Anime/Date A Live Date to Date (2013)",
+        monitored: true,
+        hasFile: imported,
+        qualityProfileId: 1,
+        tags: [],
+        runtime: 24,
+        movieFile: {
+          path: "/media/Movies/Anime/Date A Live Date to Date (2013)/x.mkv",
+          dateAdded: new Date().toISOString(),
+          mediaInfo: { subtitles: "eng", audioLanguages: "jpn" },
+        },
+      }),
     },
     probe: async () => {
       throw new Error("unreachable");
@@ -99,9 +172,24 @@ function deps(files: { path: string; size: number }[], imports: { path: string }
     sleep: async () => undefined,
   };
 }
-const cand = (title: string) => ({ guid: `g-${title}`, title, indexerId: 1, indexer: "X", protocol: "usenet" as const, size: 6e9, downloadUrl: "http://x/dl", label: "Date A Live: Date to Date (2013)", group: null, why: "test", episodeIds: [] });
+const cand = (title: string) => ({
+  guid: `g-${title}`,
+  title,
+  indexerId: 1,
+  indexer: "X",
+  protocol: "usenet" as const,
+  size: 6e9,
+  downloadUrl: "http://x/dl",
+  label: "Date A Live: Date to Date (2013)",
+  group: null,
+  why: "test",
+  episodeIds: [],
+});
 const folder = `/data/completed/animearr/${BATCH}`;
-const episodes = Array.from({ length: 12 }, (_, i) => ({ path: `${folder}/[Beltraz] Date A Live - ${String(i + 1).padStart(2, "0")} - Ep.mkv`, size: 5e9 + i }));
+const episodes = Array.from({ length: 12 }, (_, i) => ({
+  path: `${folder}/[Beltraz] Date A Live - ${String(i + 1).padStart(2, "0")} - Ep.mkv`,
+  size: 5e9 + i,
+}));
 
 test("import: a season batch that bundles the special imports just the special", async () => {
   const imports: { path: string }[][] = [];
@@ -111,7 +199,10 @@ test("import: a season batch that bundles the special imports just the special",
   await pipelineTick(d);
   const row = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(g.id) as { state: string; error: string | null };
   assert.equal(row.state, "done", row.error ?? "");
-  assert.deepEqual(imports.map((f) => f.map((x) => path.posix.basename(x.path))), [["[Beltraz] Date A Live - OVA - Date to Date.mkv"]]);
+  assert.deepEqual(
+    imports.map((f) => f.map((x) => path.posix.basename(x.path))),
+    [["[Beltraz] Date A Live - OVA - Date to Date.mkv"]],
+  );
   cache.prepare("UPDATE movies SET has_file = 0, file = NULL WHERE id = 1338").run();
 });
 
@@ -121,7 +212,10 @@ test("import: a season batch without the special is the wrong release: blocklist
   const fetched: string[] = [];
   const d = deps(episodes, imports, fetched);
   const other = `${BATCH} v2`;
-  const g = await startMovieGrab({ movieId: 1338, candidate: cand(other), fallbacks: [cand("[Grp] Date A Live Date to Date (2013) [BD]")], origin: "manual" }, d);
+  const g = await startMovieGrab(
+    { movieId: 1338, candidate: cand(other), fallbacks: [cand("[Grp] Date A Live Date to Date (2013) [BD]")], origin: "manual" },
+    d,
+  );
   await pipelineTick(d);
   const row = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(g.id) as { state: string; error: string | null };
   assert.equal(row.state, "failed");
@@ -134,8 +228,17 @@ test("import: a season batch without the special is the wrong release: blocklist
 test("import: two big files that aren't episodes are still for the user to pick", async () => {
   db.prepare("UPDATE grabs SET state = 'failed' WHERE movie_id = 1338 AND state != 'failed'").run();
   const imports: { path: string }[][] = [];
-  const d = deps([{ path: `${folder}/Movie A.mkv`, size: 5e9 }, { path: `${folder}/Other Film.mkv`, size: 4e9 }], imports);
-  const g = await startMovieGrab({ movieId: 1338, candidate: cand("[X] Date A Live Date to Date two"), fallbacks: [], origin: "manual" }, d);
+  const d = deps(
+    [
+      { path: `${folder}/Movie A.mkv`, size: 5e9 },
+      { path: `${folder}/Other Film.mkv`, size: 4e9 },
+    ],
+    imports,
+  );
+  const g = await startMovieGrab(
+    { movieId: 1338, candidate: cand("[X] Date A Live Date to Date two"), fallbacks: [], origin: "manual" },
+    d,
+  );
   await pipelineTick(d);
   const row = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(g.id) as { state: string; error: string | null };
   assert.equal(row.state, "needs-attention");
@@ -148,7 +251,10 @@ test("manual movie plan of a batch folder picks the special; the episodes are le
   const dir = path.join(DL, "plan-batch");
   for (let i = 1; i <= 3; i++) write(path.join(dir, `[Beltraz] Date A Live - 0${i} - Ep.mkv`), "e".repeat(50));
   write(path.join(dir, "Specials", "[Beltraz] Date A Live - OVA - Date to Date.mkv"), "s".repeat(10));
-  const plan = await planMovieImport({ movieId: 1338, path: "/data/completed/animearr/plan-batch" }, { probe: async () => null as never, minBytes: 0 });
+  const plan = await planMovieImport(
+    { movieId: 1338, path: "/data/completed/animearr/plan-batch" },
+    { probe: async () => null as never, minBytes: 0 },
+  );
   assert.equal(plan.items.length, 1);
   assert.equal(path.basename(plan.items[0].source), "[Beltraz] Date A Live - OVA - Date to Date.mkv");
   assert.equal(plan.items[0].problem, null);
@@ -163,7 +269,10 @@ test("browse: only inside the download roots, newest first, sizes and videos fla
   write(path.join(DL, "new", "b.nfo"), "n");
   write(path.join(OTHER, "secret.mkv"), "s");
   const roots = await browseImport({});
-  assert.deepEqual(roots.entries.map((e) => e.path), ["/data/completed/animearr"]);
+  assert.deepEqual(
+    roots.entries.map((e) => e.path),
+    ["/data/completed/animearr"],
+  );
   const top = await browseImport({ path: "/data/completed/animearr" });
   assert.equal(top.parent, null);
   const names = top.entries.map((e) => e.name);
@@ -174,7 +283,10 @@ test("browse: only inside the download roots, newest first, sizes and videos fla
   assert.equal(nw.size, 31);
   const inside = await browseImport({ path: "/data/completed/animearr/new" });
   assert.equal(inside.parent, "/data/completed/animearr");
-  assert.deepEqual(inside.entries.map((e) => [e.name, e.video]).sort(), [["b.mkv", true], ["b.nfo", false]]);
+  assert.deepEqual(inside.entries.map((e) => [e.name, e.video]).sort(), [
+    ["b.mkv", true],
+    ["b.nfo", false],
+  ]);
   await assert.rejects(() => browseImport({ path: "/data/completed/animearr/../other" }), /isn't allowed/);
   await assert.rejects(() => browseImport({ path: "/data/other" }), /only browses/);
   await assert.rejects(() => browseImport({ path: "/etc" }), /only browses/);
@@ -201,8 +313,14 @@ test("browse: a grab whose download is one file outside the roots shows that fil
   const r = await browseImport({ path: grab, extra: [grab] });
   assert.equal(r.path, grab);
   assert.equal(r.parent, null, "no way up out of a single-file download");
-  assert.deepEqual(r.entries.map((e) => [e.name, e.dir, e.video]), [["[RUDY] Quints - 01.mkv", false, true]]);
-  assert.ok((await browseImport({ extra: [grab] })).entries.some((e) => e.path === grab), "listed among the roots");
+  assert.deepEqual(
+    r.entries.map((e) => [e.name, e.dir, e.video]),
+    [["[RUDY] Quints - 01.mkv", false, true]],
+  );
+  assert.ok(
+    (await browseImport({ extra: [grab] })).entries.some((e) => e.path === grab),
+    "listed among the roots",
+  );
   await assert.rejects(() => browseImport({ path: "/data/other/single", extra: [grab] }), /only browses/);
   await assert.rejects(() => browseImport({ path: "/data/other/single/neighbour.mkv", extra: [grab] }), /only browses/);
   // Without the grab, the same file stays off limits (a typed path can't reach it).
@@ -225,7 +343,11 @@ test("a leftover .animearr-part from a cut-off import is cleared before the retr
 test("fixes: an import that broke off offers the manual import from the grab", () => {
   const f = fixesFor("AnimeArr restarted during the import; check the show folder, then retry the import", { grabId: 80, movieId: 1355 });
   assert.ok(f.some((x) => x.action === "importManual" && (x.params as { grabId: number }).grabId === 80));
-  assert.ok(!fixesFor("real movie imports by AnimeArr's importer are switched off (Settings)", { grabId: 1, movieId: 1 }).some((x) => x.action === "importManual"));
+  assert.ok(
+    !fixesFor("real movie imports by AnimeArr's importer are switched off (Settings)", { grabId: 1, movieId: 1 }).some(
+      (x) => x.action === "importManual",
+    ),
+  );
 });
 
 test("JSON responses are ASCII-only (a client that decodes as cp1252 can't garble them)", () => {
@@ -242,7 +364,10 @@ test("a manual import from a grab's fix finishes that grab (and cleans up by the
   const { finishGrabByHand } = await import("../server/pipeline.js");
   const g = db.prepare("SELECT id FROM grabs WHERE state = 'needs-attention' ORDER BY id DESC LIMIT 1").get() as { id: number };
   const cleaned: [number, string][] = [];
-  assert.equal(await finishGrabByHand(g.id, "Date A Live: Date to Date (2013)", { cleanup: async (id, o) => (cleaned.push([id, o]), null) }), true);
+  assert.equal(
+    await finishGrabByHand(g.id, "Date A Live: Date to Date (2013)", { cleanup: async (id, o) => (cleaned.push([id, o]), null) }),
+    true,
+  );
   assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(g.id) as { state: string }).state, "done");
   assert.deepEqual(cleaned, [[g.id, "imported"]]);
   assert.equal(await finishGrabByHand(g.id, "again", { cleanup: async () => null }), false, "only once");

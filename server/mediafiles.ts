@@ -23,9 +23,20 @@ import { PARTIAL_TRACK } from "./verify.js";
 export const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm|wmv|mov)$/i;
 const SIDECAR = /\.(ass|ssa|srt|sup|sub|vtt)$/i;
 
-export interface Track { index: number; codec: string | null; lang: string | null; title: string | null; default: boolean; forced: boolean }
-export interface AudioTrack extends Track { channels: number | null }
-export interface SubTrack extends Track { /** Not full dialogue: forced flag, or a "Signs & Songs" / "Forced" title. */ partial: boolean }
+export interface Track {
+  index: number;
+  codec: string | null;
+  lang: string | null;
+  title: string | null;
+  default: boolean;
+  forced: boolean;
+}
+export interface AudioTrack extends Track {
+  channels: number | null;
+}
+export interface SubTrack extends Track {
+  /** Not full dialogue: forced flag, or a "Signs & Songs" / "Forced" title. */ partial: boolean;
+}
 export interface MediaRecord {
   path: string;
   root: string;
@@ -33,7 +44,13 @@ export interface MediaRecord {
   mtime: number;
   duration: number | null;
   container: string | null;
-  video: { codec: string | null; width: number | null; height: number | null; hdr: boolean; /** Absent in records made before it was probed. */ bitDepth?: number | null } | null;
+  video: {
+    codec: string | null;
+    width: number | null;
+    height: number | null;
+    hdr: boolean;
+    /** Absent in records made before it was probed. */ bitDepth?: number | null;
+  } | null;
   audio: AudioTrack[];
   subs: SubTrack[];
   sidecars: { file: string; lang: string | null; forced: boolean }[];
@@ -41,35 +58,82 @@ export interface MediaRecord {
 
 const FULL = /\b(full|dialog(ue)?|complete)\b/i;
 
-interface RawStream { index: number; codec_type: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; bits_per_raw_sample?: string; channels?: number; color_transfer?: string; disposition?: { default?: number; forced?: number }; tags?: { language?: string; title?: string } }
+interface RawStream {
+  index: number;
+  codec_type: string;
+  codec_name?: string;
+  width?: number;
+  height?: number;
+  pix_fmt?: string;
+  bits_per_raw_sample?: string;
+  channels?: number;
+  color_transfer?: string;
+  disposition?: { default?: number; forced?: number };
+  tags?: { language?: string; title?: string };
+}
 
 /** ffprobe with everything the records need. */
-export function probeFile(file: string, bin = process.env.FFPROBE_PATH || "ffprobe"): Promise<Omit<MediaRecord, "path" | "root" | "size" | "mtime" | "sidecars">> {
+export function probeFile(
+  file: string,
+  bin = process.env.FFPROBE_PATH || "ffprobe",
+): Promise<Omit<MediaRecord, "path" | "root" | "size" | "mtime" | "sidecars">> {
   return new Promise((resolve, reject) => {
-    execFile(bin, ["-v", "error", "-show_entries", "stream=index,codec_type,codec_name,width,height,channels,color_transfer,pix_fmt,bits_per_raw_sample:stream_disposition=default,forced:stream_tags=language,title:format=duration,format_name", "-of", "json", file], { timeout: 120_000, maxBuffer: 16 << 20 }, (err, stdout) => {
-      if (err) return reject(new Error(`ffprobe failed: ${err.message.split("\n")[0]}`));
-      try {
-        const j = JSON.parse(stdout) as { streams?: RawStream[]; format?: { duration?: string; format_name?: string } };
-        const lang = (s: RawStream) => {
-          const l = toLang(s.tags?.language ?? "");
-          return l && l !== "und" ? l : null;
-        };
-        const base = (s: RawStream): Track => ({ index: s.index, codec: s.codec_name ?? null, lang: lang(s), title: s.tags?.title ?? null, default: s.disposition?.default === 1, forced: s.disposition?.forced === 1 });
-        const v = (j.streams ?? []).find((s) => s.codec_type === "video" && s.codec_name !== "mjpeg" && s.codec_name !== "png");
-        resolve({
-          duration: j.format?.duration ? Number(j.format.duration) : null,
-          container: j.format?.format_name ?? null,
-          video: v ? { codec: v.codec_name ?? null, width: v.width ?? null, height: v.height ?? null, hdr: /smpte2084|arib-std-b67/.test(v.color_transfer ?? ""), bitDepth: Number(v.bits_per_raw_sample) || (/p12/.test(v.pix_fmt ?? "") ? 12 : /p10/.test(v.pix_fmt ?? "") ? 10 : v.pix_fmt ? 8 : null) } : null,
-          audio: (j.streams ?? []).filter((s) => s.codec_type === "audio").map((s) => ({ ...base(s), channels: s.channels ?? null })),
-          subs: (j.streams ?? []).filter((s) => s.codec_type === "subtitle").map((s) => {
-            const t = base(s);
-            return { ...t, partial: t.forced || (PARTIAL_TRACK.test(t.title ?? "") && !FULL.test(t.title ?? "")) };
-          }),
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
+    execFile(
+      bin,
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=index,codec_type,codec_name,width,height,channels,color_transfer,pix_fmt,bits_per_raw_sample:stream_disposition=default,forced:stream_tags=language,title:format=duration,format_name",
+        "-of",
+        "json",
+        file,
+      ],
+      { timeout: 120_000, maxBuffer: 16 << 20 },
+      (err, stdout) => {
+        if (err) return reject(new Error(`ffprobe failed: ${err.message.split("\n")[0]}`));
+        try {
+          const j = JSON.parse(stdout) as { streams?: RawStream[]; format?: { duration?: string; format_name?: string } };
+          const lang = (s: RawStream) => {
+            const l = toLang(s.tags?.language ?? "");
+            return l && l !== "und" ? l : null;
+          };
+          const base = (s: RawStream): Track => ({
+            index: s.index,
+            codec: s.codec_name ?? null,
+            lang: lang(s),
+            title: s.tags?.title ?? null,
+            default: s.disposition?.default === 1,
+            forced: s.disposition?.forced === 1,
+          });
+          const v = (j.streams ?? []).find((s) => s.codec_type === "video" && s.codec_name !== "mjpeg" && s.codec_name !== "png");
+          resolve({
+            duration: j.format?.duration ? Number(j.format.duration) : null,
+            container: j.format?.format_name ?? null,
+            video: v
+              ? {
+                  codec: v.codec_name ?? null,
+                  width: v.width ?? null,
+                  height: v.height ?? null,
+                  hdr: /smpte2084|arib-std-b67/.test(v.color_transfer ?? ""),
+                  bitDepth:
+                    Number(v.bits_per_raw_sample) ||
+                    (/p12/.test(v.pix_fmt ?? "") ? 12 : /p10/.test(v.pix_fmt ?? "") ? 10 : v.pix_fmt ? 8 : null),
+                }
+              : null,
+            audio: (j.streams ?? []).filter((s) => s.codec_type === "audio").map((s) => ({ ...base(s), channels: s.channels ?? null })),
+            subs: (j.streams ?? [])
+              .filter((s) => s.codec_type === "subtitle")
+              .map((s) => {
+                const t = base(s);
+                return { ...t, partial: t.forced || (PARTIAL_TRACK.test(t.title ?? "") && !FULL.test(t.title ?? "")) };
+              }),
+          });
+        } catch (e) {
+          reject(e);
+        }
+      },
+    );
   });
 }
 
@@ -79,13 +143,21 @@ export const keyOf = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
 /** The library roots: the root folders of the synced anime series and movies (as the *arrs see them), nested ones folded. */
 export function libraryRoots(): string[] {
   const set = new Set<string>();
-  for (const r of cache.prepare("SELECT DISTINCT root_folder FROM series WHERE root_folder IS NOT NULL").all() as { root_folder: string }[]) set.add(r.root_folder.replace(/[\\/]+$/, ""));
-  for (const r of cache.prepare("SELECT DISTINCT root_folder FROM movies WHERE is_anime = 1 AND root_folder IS NOT NULL").all() as { root_folder: string }[]) set.add(r.root_folder.replace(/[\\/]+$/, ""));
+  for (const r of cache.prepare("SELECT DISTINCT root_folder FROM series WHERE root_folder IS NOT NULL").all() as { root_folder: string }[])
+    set.add(r.root_folder.replace(/[\\/]+$/, ""));
+  for (const r of cache.prepare("SELECT DISTINCT root_folder FROM movies WHERE is_anime = 1 AND root_folder IS NOT NULL").all() as {
+    root_folder: string;
+  }[])
+    set.add(r.root_folder.replace(/[\\/]+$/, ""));
   const all = [...set].filter(Boolean).sort();
   return all.filter((r) => !all.some((o) => o !== r && keyOf(r).startsWith(`${keyOf(o)}/`)));
 }
 
-interface WalkState { files: { file: string; size: number; mtime: number }[]; side: Map<string, string[]>; failures: number }
+interface WalkState {
+  files: { file: string; size: number; mtime: number }[];
+  side: Map<string, string[]>;
+  failures: number;
+}
 async function walk(dir: string, depth: number, st: WalkState) {
   let entries: import("node:fs").Dirent[];
   try {
@@ -125,11 +197,24 @@ async function walk(dir: string, depth: number, st: WalkState) {
 function sidecarsOf(local: string, side: Map<string, string[]>) {
   const base = path.basename(local).replace(/\.[^.]+$/, "");
   return (side.get(path.dirname(local)) ?? [])
-    .filter((f) => f.startsWith(`${base}.`) && /^(\.[A-Za-z]{2,3}(-[A-Za-z]{2,4})?|\.(forced|signs?|sdh|cc|default|full))*\.[a-z0-9]{2,4}$/i.test(f.slice(base.length)))
+    .filter(
+      (f) =>
+        f.startsWith(`${base}.`) &&
+        /^(\.[A-Za-z]{2,3}(-[A-Za-z]{2,4})?|\.(forced|signs?|sdh|cc|default|full))*\.[a-z0-9]{2,4}$/i.test(f.slice(base.length)),
+    )
     .map((f) => ({ file: f, lang: sidecarLang(f) ?? null, forced: /\.(forced|signs?)(\.|$)/i.test(f) }));
 }
 
-export interface ScanResult { roots: string[]; unreachable: string[]; files: number; probed: number; removed: number; errors: number; skippedRemoval: string[]; tookMs: number }
+export interface ScanResult {
+  roots: string[];
+  unreachable: string[];
+  files: number;
+  probed: number;
+  removed: number;
+  errors: number;
+  skippedRemoval: string[];
+  tookMs: number;
+}
 
 let running: Promise<ScanResult> | null = null;
 let progress = { phase: "idle", done: 0, total: 0 };
@@ -164,13 +249,39 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
       const st: WalkState = { files: [], side: new Map(), failures: 0 };
       await walk(local, 8, st);
       walked.set(keyOf(root), { files: st.files.length, failures: st.failures });
-      for (const f of st.files) found.push({ arr: `${keyOf(root)}/${path.relative(local, f.file).replace(/\\/g, "/")}`, root: keyOf(root), local: f.file, size: f.size, mtime: f.mtime, sidecars: sidecarsOf(f.file, st.side) });
+      for (const f of st.files)
+        found.push({
+          arr: `${keyOf(root)}/${path.relative(local, f.file).replace(/\\/g, "/")}`,
+          root: keyOf(root),
+          local: f.file,
+          size: f.size,
+          mtime: f.mtime,
+          sidecars: sidecarsOf(f.file, st.side),
+        });
     }
     res.files = found.length;
-    const known = new Map((db.prepare("SELECT path, size, mtime, probed_at, sidecars, error FROM media_files").all() as { path: string; size: number; mtime: number; probed_at: number | null; sidecars: string; error: string | null }[]).map((r) => [r.path, r]));
+    const known = new Map(
+      (
+        db.prepare("SELECT path, size, mtime, probed_at, sidecars, error FROM media_files").all() as {
+          path: string;
+          size: number;
+          mtime: number;
+          probed_at: number | null;
+          sidecars: string;
+          error: string | null;
+        }[]
+      ).map((r) => [r.path, r]),
+    );
     const todo = found.filter((f) => {
       const k = known.get(f.arr);
-      return opts.full || !k || k.size !== f.size || k.mtime !== f.mtime || !k.probed_at || (!!k.error && started - k.probed_at > RETRY_ERRORS_MS);
+      return (
+        opts.full ||
+        !k ||
+        k.size !== f.size ||
+        k.mtime !== f.mtime ||
+        !k.probed_at ||
+        (!!k.error && started - k.probed_at > RETRY_ERRORS_MS)
+      );
     });
     // Sidecars can change without the video changing; mark everything seen.
     const setSide = db.prepare("UPDATE media_files SET sidecars = ? WHERE path = ?");
@@ -205,7 +316,21 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
             error = (e as Error).message;
             res.errors++;
           }
-          upsert.run(f.arr, f.root, f.size, f.mtime, Date.now(), rec?.duration ?? null, rec?.container ?? null, JSON.stringify(rec?.video ?? null), JSON.stringify(rec?.audio ?? []), JSON.stringify(rec?.subs ?? []), JSON.stringify(f.sidecars), error, started);
+          upsert.run(
+            f.arr,
+            f.root,
+            f.size,
+            f.mtime,
+            Date.now(),
+            rec?.duration ?? null,
+            rec?.container ?? null,
+            JSON.stringify(rec?.video ?? null),
+            JSON.stringify(rec?.audio ?? []),
+            JSON.stringify(rec?.subs ?? []),
+            JSON.stringify(f.sidecars),
+            error,
+            started,
+          );
           res.probed++;
           progress.done++;
           if (progress.done % 200 === 0) setJob("file scan", "running", `Probed ${progress.done} of ${todo.length} new or changed files`);
@@ -215,7 +340,8 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
     // Files no longer on disk, only for roots whose walk was clean and plausible.
     for (const [root, w] of walked) {
       const had = (db.prepare("SELECT COUNT(*) AS n FROM media_files WHERE root = ?").get(root) as { n: number }).n;
-      const gone = (db.prepare("SELECT COUNT(*) AS n FROM media_files WHERE root = ? AND seen_at < ?").get(root, started) as { n: number }).n;
+      const gone = (db.prepare("SELECT COUNT(*) AS n FROM media_files WHERE root = ? AND seen_at < ?").get(root, started) as { n: number })
+        .n;
       if (w.failures || (w.files === 0 && had > 0) || (had > 20 && gone > had * 0.2)) {
         if (gone) res.skippedRemoval.push(root);
         continue;
@@ -225,7 +351,8 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
     // Roots that aren't library roots any more (moved or removed in Sonarr/Radarr).
     if (!opts.roots && roots.length) {
       const current = new Set(roots.map(keyOf));
-      for (const r of db.prepare("SELECT DISTINCT root FROM media_files").all() as { root: string }[]) if (!current.has(r.root)) res.removed += Number(db.prepare("DELETE FROM media_files WHERE root = ?").run(r.root).changes);
+      for (const r of db.prepare("SELECT DISTINCT root FROM media_files").all() as { root: string }[])
+        if (!current.has(r.root)) res.removed += Number(db.prepare("DELETE FROM media_files WHERE root = ?").run(r.root).changes);
     }
     summaryCache = null;
     res.tookMs = Date.now() - started;
@@ -244,7 +371,20 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
 
 // ---------------------------------------------------------------- reading the records
 
-interface Row { path: string; root: string; size: number; mtime: number; probed_at: number | null; duration: number | null; container: string | null; video: string; audio: string; subs: string; sidecars: string; error: string | null }
+interface Row {
+  path: string;
+  root: string;
+  size: number;
+  mtime: number;
+  probed_at: number | null;
+  duration: number | null;
+  container: string | null;
+  video: string;
+  audio: string;
+  subs: string;
+  sidecars: string;
+  error: string | null;
+}
 const toRecord = (r: Row) => ({
   path: r.path,
   root: r.root,
@@ -295,13 +435,21 @@ let summaryCache: { key: string; forcedOnly: number; samples: string[] } | null 
 /** Summary for the System page: counts, problems worth a look (the forced-only count is cached until files change). */
 export function fileSummary() {
   const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
-  const roots = db.prepare("SELECT root, COUNT(*) AS n, SUM(size) AS bytes FROM media_files GROUP BY root ORDER BY root").all() as { root: string; n: number; bytes: number }[];
+  const roots = db.prepare("SELECT root, COUNT(*) AS n, SUM(size) AS bytes FROM media_files GROUP BY root ORDER BY root").all() as {
+    root: string;
+    n: number;
+    bytes: number;
+  }[];
   const stamp = db.prepare("SELECT COUNT(*) AS n, MAX(probed_at) AS m FROM media_files").get() as { n: number; m: number | null };
   const key = `${stamp.n}:${stamp.m}`;
   if (!summaryCache || summaryCache.key !== key) {
     let count = 0;
     const samples: string[] = [];
-    for (const r of db.prepare(`SELECT path, subs, sidecars FROM media_files WHERE probed_at IS NOT NULL AND error IS NULL AND subs LIKE '%"partial":true%'`).all() as { path: string; subs: string; sidecars: string }[]) {
+    for (const r of db
+      .prepare(
+        `SELECT path, subs, sidecars FROM media_files WHERE probed_at IS NOT NULL AND error IS NULL AND subs LIKE '%"partial":true%'`,
+      )
+      .all() as { path: string; subs: string; sidecars: string }[]) {
       const subs = JSON.parse(r.subs) as SubTrack[];
       const side = JSON.parse(r.sidecars) as MediaRecord["sidecars"];
       const fullEn = subs.some((x) => x.lang === "en" && !x.partial) || side.some((x) => x.lang === "en" && !x.forced);
@@ -320,10 +468,15 @@ export function fileSummary() {
     total: n("SELECT COUNT(*) AS n FROM media_files"),
     probed: n("SELECT COUNT(*) AS n FROM media_files WHERE probed_at IS NOT NULL AND error IS NULL"),
     errors: n("SELECT COUNT(*) AS n FROM media_files WHERE error IS NOT NULL"),
-    errorSamples: (db.prepare("SELECT path, error FROM media_files WHERE error IS NOT NULL LIMIT 20").all() as { path: string; error: string }[]),
+    errorSamples: db.prepare("SELECT path, error FROM media_files WHERE error IS NOT NULL LIMIT 20").all() as {
+      path: string;
+      error: string;
+    }[],
     forcedOnlyEnglish: forcedOnly,
     forcedSamples,
-    lastScan: (cache.prepare("SELECT state, detail, finished_at FROM jobs WHERE name = 'file scan'").get() as { state: string; detail: string; finished_at: number } | undefined) ?? null,
+    lastScan:
+      (cache.prepare("SELECT state, detail, finished_at FROM jobs WHERE name = 'file scan'").get() as
+        { state: string; detail: string; finished_at: number } | undefined) ?? null,
     progress: scanProgress(),
   };
 }
@@ -344,17 +497,41 @@ export const lastFolderScan = (arrFolder: string) => folderScans.get(keyOf(arrFo
  * series page opens). Records keep the library root they belong to; removal only inside this folder, and only after
  * a clean walk.
  */
-export async function scanFolder(arrFolder: string, probe: typeof probeFile = probeFile): Promise<{ files: number; probed: number; removed: number }> {
+export async function scanFolder(
+  arrFolder: string,
+  probe: typeof probeFile = probeFile,
+): Promise<{ files: number; probed: number; removed: number }> {
   const folder = keyOf(arrFolder);
   folderScans.set(folder, Date.now());
   const local = localPath(arrFolder);
   if (!local) return { files: 0, probed: 0, removed: 0 };
-  const root = libraryRoots().map(keyOf).find((r) => folder === r || folder.startsWith(`${r}/`)) ?? folder;
+  const root =
+    libraryRoots()
+      .map(keyOf)
+      .find((r) => folder === r || folder.startsWith(`${r}/`)) ?? folder;
   const st: WalkState = { files: [], side: new Map(), failures: 0 };
   await walk(local, 6, st);
   const started = Date.now();
-  const found = st.files.map((f) => ({ arr: `${folder}/${path.relative(local, f.file).split(path.sep).join("/")}`, local: f.file, size: f.size, mtime: f.mtime, sidecars: sidecarsOf(f.file, st.side) }));
-  const known = new Map((db.prepare("SELECT path, size, mtime, probed_at, error FROM media_files WHERE substr(path, 1, ?) = ?").all(folder.length + 1, `${folder}/`) as { path: string; size: number; mtime: number; probed_at: number | null; error: string | null }[]).map((r) => [r.path, r]));
+  const found = st.files.map((f) => ({
+    arr: `${folder}/${path.relative(local, f.file).split(path.sep).join("/")}`,
+    local: f.file,
+    size: f.size,
+    mtime: f.mtime,
+    sidecars: sidecarsOf(f.file, st.side),
+  }));
+  const known = new Map(
+    (
+      db
+        .prepare("SELECT path, size, mtime, probed_at, error FROM media_files WHERE substr(path, 1, ?) = ?")
+        .all(folder.length + 1, `${folder}/`) as {
+        path: string;
+        size: number;
+        mtime: number;
+        probed_at: number | null;
+        error: string | null;
+      }[]
+    ).map((r) => [r.path, r]),
+  );
   const upsert = db.prepare(
     `INSERT INTO media_files (path, root, size, mtime, probed_at, duration, container, video, audio, subs, sidecars, error, seen_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -375,11 +552,27 @@ export async function scanFolder(arrFolder: string, probe: typeof probeFile = pr
     } catch (e) {
       error = (e as Error).message;
     }
-    upsert.run(f.arr, root, f.size, f.mtime, Date.now(), rec?.duration ?? null, rec?.container ?? null, JSON.stringify(rec?.video ?? null), JSON.stringify(rec?.audio ?? []), JSON.stringify(rec?.subs ?? []), JSON.stringify(f.sidecars), error, started);
+    upsert.run(
+      f.arr,
+      root,
+      f.size,
+      f.mtime,
+      Date.now(),
+      rec?.duration ?? null,
+      rec?.container ?? null,
+      JSON.stringify(rec?.video ?? null),
+      JSON.stringify(rec?.audio ?? []),
+      JSON.stringify(rec?.subs ?? []),
+      JSON.stringify(f.sidecars),
+      error,
+      started,
+    );
     probed++;
   }
   let removed = 0;
-  if (!st.failures) for (const p of known.keys()) if (!found.some((f) => f.arr === p)) removed += Number(db.prepare("DELETE FROM media_files WHERE path = ?").run(p).changes);
+  if (!st.failures)
+    for (const p of known.keys())
+      if (!found.some((f) => f.arr === p)) removed += Number(db.prepare("DELETE FROM media_files WHERE path = ?").run(p).changes);
   summaryCache = null;
   return { files: found.length, probed, removed };
 }

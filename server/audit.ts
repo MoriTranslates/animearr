@@ -32,7 +32,10 @@ interface SeriesRow {
   original_language: string | null;
 }
 
-const seriesRows = () => cache.prepare("SELECT id, tvdb_id, title, path, monitored, status, poster, seasons, original_language FROM series ORDER BY sort_title").all() as unknown as SeriesRow[];
+const seriesRows = () =>
+  cache
+    .prepare("SELECT id, tvdb_id, title, path, monitored, status, poster, seasons, original_language FROM series ORDER BY sort_title")
+    .all() as unknown as SeriesRow[];
 
 export function coverFor(s: { tvdb_id: number; poster: string | null }): string | null {
   // AniList art when mapped (newest entry first), else Sonarr's poster.
@@ -45,7 +48,8 @@ export function coverFor(s: { tvdb_id: number; poster: string | null }): string 
 }
 function animeListEntriesFor(tvdbId: number): number[] {
   const out: { aid: number; season: number }[] = [];
-  for (const e of animeListEntries().values()) if (e.tvdbId === tvdbId) out.push({ aid: e.aid, season: typeof e.defaultSeason === "number" ? e.defaultSeason : 0 });
+  for (const e of animeListEntries().values())
+    if (e.tvdbId === tvdbId) out.push({ aid: e.aid, season: typeof e.defaultSeason === "number" ? e.defaultSeason : 0 });
   return out.sort((a, b) => b.season - a.season).map((x) => x.aid);
 }
 
@@ -61,7 +65,15 @@ export interface Fact {
   at: number;
 }
 export function listFacts(tvdbId?: number): Fact[] {
-  const rows = (tvdbId ? db.prepare("SELECT * FROM facts WHERE tvdb_id = ?").all(tvdbId) : db.prepare("SELECT * FROM facts").all()) as { id: number; tvdb_id: number; season: number | null; kind: Fact["kind"]; lang: string; note: string; at: number }[];
+  const rows = (tvdbId ? db.prepare("SELECT * FROM facts WHERE tvdb_id = ?").all(tvdbId) : db.prepare("SELECT * FROM facts").all()) as {
+    id: number;
+    tvdb_id: number;
+    season: number | null;
+    kind: Fact["kind"];
+    lang: string;
+    note: string;
+    at: number;
+  }[];
   return rows.map((r) => ({ id: r.id, tvdbId: r.tvdb_id, season: r.season, kind: r.kind, lang: r.lang, note: r.note, at: r.at }));
 }
 export function burnedInFact(tvdbId: number, season: number | null, lang: string) {
@@ -70,7 +82,11 @@ export function burnedInFact(tvdbId: number, season: number | null, lang: string
 
 /** Most common resolution of the library files of a season ("1280x720" → "720p"). */
 export function seasonResolution(seriesId: number, season: number): string | null {
-  const rows = cache.prepare("SELECT resolution, COUNT(*) AS n FROM files WHERE series_id = ? AND season = ? AND resolution IS NOT NULL GROUP BY resolution ORDER BY n DESC").all(seriesId, season) as { resolution: string; n: number }[];
+  const rows = cache
+    .prepare(
+      "SELECT resolution, COUNT(*) AS n FROM files WHERE series_id = ? AND season = ? AND resolution IS NOT NULL GROUP BY resolution ORDER BY n DESC",
+    )
+    .all(seriesId, season) as { resolution: string; n: number }[];
   const r = rows[0]?.resolution;
   const h = r ? Number(r.split("x")[1]) : NaN;
   if (!Number.isFinite(h)) return null;
@@ -85,7 +101,16 @@ export interface MissingGroup {
   title: string;
   cover: string | null;
   season: number;
-  files: { id: number; path: string; name: string; group: string | null; audio: string[]; subs: string[]; sidecar: string | null; reason: string }[];
+  files: {
+    id: number;
+    path: string;
+    name: string;
+    group: string | null;
+    audio: string[];
+    subs: string[];
+    sidecar: string | null;
+    reason: string;
+  }[];
   /** User confirmed burned-in subs in a profile language for this season. */
   confirmedBurnedIn: boolean;
 }
@@ -113,7 +138,20 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
   let checked = 0;
   for (const s of seriesRows()) {
     const prof = profileFor(s.tvdb_id);
-    const files = cache.prepare("SELECT id, season, path, size, date_added, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path").all(s.id) as { id: number; season: number; path: string; size: number | null; date_added: string | null; release_group: string | null; audio_langs: string; sub_langs: string }[];
+    const files = cache
+      .prepare(
+        "SELECT id, season, path, size, date_added, release_group, audio_langs, sub_langs FROM files WHERE series_id = ? ORDER BY season, path",
+      )
+      .all(s.id) as {
+      id: number;
+      season: number;
+      path: string;
+      size: number | null;
+      date_added: string | null;
+      release_group: string | null;
+      audio_langs: string;
+      sub_langs: string;
+    }[];
     const bySeason = new Map<number, MissingGroup>();
     for (const f of files) {
       checked++;
@@ -123,34 +161,77 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
       const subs = p ? p.subs : f.sub_langs.split("/").filter(Boolean);
       const audio = p ? p.audio : f.audio_langs.split("/").filter(Boolean);
       // A file you marked as hardsubbed counts as having that language.
-      const v = judge(p ? { ...p, durationSec: null } : { subs, audio, durationSec: null, sidecars: [], untagged: 0 }, prof, null, burnedInFile(f.path));
+      const v = judge(
+        p ? { ...p, durationSec: null } : { subs, audio, durationSec: null, sidecars: [], untagged: 0 },
+        prof,
+        null,
+        burnedInFile(f.path),
+      );
       if (v.ok) continue;
       const sidecar = opts.checkSidecars && prof.watchMode !== "dub" ? sidecarFor(f.path, prof.subLangs) : null;
       if (sidecar) continue;
       const reason = !subs.length && !audio.length ? "no track languages recorded (MP4 with burned-in or sidecar subs?)" : v.why;
       // (Without our own scan, Sonarr's mediaInfo has no forced flag: a forced-only track can look like full subtitles.)
-      const g = bySeason.get(f.season) ?? { seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: null, season: f.season, files: [], confirmedBurnedIn: prof.subLangs.some((l) => !!burnedInFact(s.tvdb_id, f.season, l)) };
+      const g = bySeason.get(f.season) ?? {
+        seriesId: s.id,
+        tvdbId: s.tvdb_id,
+        title: s.title,
+        cover: null,
+        season: f.season,
+        files: [],
+        confirmedBurnedIn: prof.subLangs.some((l) => !!burnedInFact(s.tvdb_id, f.season, l)),
+      };
       g.files.push({ id: f.id, path: f.path, name: path.posix.basename(f.path), group: f.release_group, audio, subs, sidecar, reason });
       bySeason.set(f.season, g);
     }
     for (const g of bySeason.values()) out.push({ ...g, cover: coverFor(s) });
   }
   // Movies (Radarr anime), against the default profile.
-  const movies = (cache.prepare("SELECT id, tmdb_id, title, year, file, poster FROM movies WHERE is_anime = 1 AND file IS NOT NULL ORDER BY title").all() as { id: number; tmdb_id: number; title: string; year: number; file: string; poster: string | null }[])
+  const movies = (
+    cache
+      .prepare("SELECT id, tmdb_id, title, year, file, poster FROM movies WHERE is_anime = 1 AND file IS NOT NULL ORDER BY title")
+      .all() as { id: number; tmdb_id: number; title: string; year: number; file: string; poster: string | null }[]
+  )
     .map((m) => ({ ...m, f: JSON.parse(m.file) as { path: string | null; audio: string[]; subs: string[]; releaseGroup: string | null } }))
     .map((m) => {
       const own = m.f.path ? ownFile(m.f.path) : null;
-      return own ? { ...m, f: { ...m.f, audio: probeOf(own).audio, subs: [...new Set([...probeOf(own).subs, ...probeOf(own).sidecars])] }, p: probeOf(own) } : { ...m, p: null };
+      return own
+        ? {
+            ...m,
+            f: { ...m.f, audio: probeOf(own).audio, subs: [...new Set([...probeOf(own).subs, ...probeOf(own).sidecars])] },
+            p: probeOf(own),
+          }
+        : { ...m, p: null };
     })
-    .map((m) => ({ ...m, v: judge(m.p ? { ...m.p, durationSec: null } : { subs: m.f.subs, audio: m.f.audio, durationSec: null, sidecars: [], untagged: 0 }, def, null, null) }))
+    .map((m) => ({
+      ...m,
+      v: judge(
+        m.p ? { ...m.p, durationSec: null } : { subs: m.f.subs, audio: m.f.audio, durationSec: null, sidecars: [], untagged: 0 },
+        def,
+        null,
+        null,
+      ),
+    }))
     .filter((m) => !m.v.ok)
-    .map((m) => ({ movieId: m.id, tmdbId: m.tmdb_id, title: `${m.title} (${m.year})`, cover: m.poster, path: m.f.path, group: m.f.releaseGroup, audio: m.f.audio, subs: m.f.subs, reason: !m.f.subs.length && !m.f.audio.length ? "no track languages recorded" : m.v.why }));
+    .map((m) => ({
+      movieId: m.id,
+      tmdbId: m.tmdb_id,
+      title: `${m.title} (${m.year})`,
+      cover: m.poster,
+      path: m.f.path,
+      group: m.f.releaseGroup,
+      audio: m.f.audio,
+      subs: m.f.subs,
+      reason: !m.f.subs.length && !m.f.audio.length ? "no track languages recorded" : m.v.why,
+    }));
   return {
     profile: def.watchMode === "dub" ? def.dubLangs : def.subLangs,
     mode: def.watchMode,
     checkedFiles: checked,
     series: out.filter((g) => !g.confirmedBurnedIn),
-    confirmed: out.filter((g) => g.confirmedBurnedIn).map((g) => ({ seriesId: g.seriesId, tvdbId: g.tvdbId, title: g.title, season: g.season, files: g.files.length })),
+    confirmed: out
+      .filter((g) => g.confirmedBurnedIn)
+      .map((g) => ({ seriesId: g.seriesId, tvdbId: g.tvdbId, title: g.title, season: g.season, files: g.files.length })),
     movies,
   };
 }
@@ -159,9 +240,30 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
 
 export function gaps() {
   const now = Date.now();
-  const out: { seriesId: number; tvdbId: number; title: string; cover: string | null; status: string; missing: { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null }[]; missingSeasons: { season: number; aired: number; monitored: boolean }[] }[] = [];
+  const out: {
+    seriesId: number;
+    tvdbId: number;
+    title: string;
+    cover: string | null;
+    status: string;
+    missing: { id: number; season: number; episode: number; absolute: number | null; title: string | null; airUtc: number | null }[];
+    missingSeasons: { season: number; aired: number; monitored: boolean }[];
+  }[] = [];
   for (const s of seriesRows()) {
-    const eps = cache.prepare("SELECT id, season, episode, absolute, title, air_utc, monitored, has_file FROM episodes WHERE series_id = ? AND season > 0 ORDER BY season, episode").all(s.id) as { id: number; season: number; episode: number; absolute: number | null; title: string | null; air_utc: number | null; monitored: number; has_file: number }[];
+    const eps = cache
+      .prepare(
+        "SELECT id, season, episode, absolute, title, air_utc, monitored, has_file FROM episodes WHERE series_id = ? AND season > 0 ORDER BY season, episode",
+      )
+      .all(s.id) as {
+      id: number;
+      season: number;
+      episode: number;
+      absolute: number | null;
+      title: string | null;
+      air_utc: number | null;
+      monitored: number;
+      has_file: number;
+    }[];
     const aired = eps.filter((e) => e.air_utc !== null && e.air_utc <= now);
     // The shared definition (scope.ts isMissing), over every monitored episode (Gaps ignores a managed show's scope).
     const missing = aired.filter((e) => e.monitored && isMissing(e, now));
@@ -176,19 +278,42 @@ export function gaps() {
     const anyFiles = eps.some((e) => e.has_file);
     // A whole season with nothing: a monitored one always (a show added with nothing yet has every season missing),
     // an unmonitored one only when the show has files elsewhere (it's being collected).
-    const missingSeasons = [...seasons].filter(([, x]) => x.files === 0 && (anyFiles || x.monitored)).map(([season, x]) => ({ season, aired: x.aired, monitored: x.monitored }));
+    const missingSeasons = [...seasons]
+      .filter(([, x]) => x.files === 0 && (anyFiles || x.monitored))
+      .map(([season, x]) => ({ season, aired: x.aired, monitored: x.monitored }));
     // Every missing episode is listed (whole seasons too), so the counts match the show page and the search covers them.
     const partial = missing;
     if (partial.length || missingSeasons.length)
-      out.push({ seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: coverFor(s), status: s.status, missing: partial.map((e) => ({ id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: e.title, airUtc: e.air_utc })), missingSeasons });
+      out.push({
+        seriesId: s.id,
+        tvdbId: s.tvdb_id,
+        title: s.title,
+        cover: coverFor(s),
+        status: s.status,
+        missing: partial.map((e) => ({
+          id: e.id,
+          season: e.season,
+          episode: e.episode,
+          absolute: e.absolute,
+          title: e.title,
+          airUtc: e.air_utc,
+        })),
+        missingSeasons,
+      });
   }
-  return { series: out, episodes: out.reduce((n, s) => n + s.missing.length, 0), seasons: out.reduce((n, s) => n + s.missingSeasons.length, 0) };
+  return {
+    series: out,
+    episodes: out.reduce((n, s) => n + s.missing.length, 0),
+    seasons: out.reduce((n, s) => n + s.missingSeasons.length, 0),
+  };
 }
 
 // ---------------------------------------------------------------- specials
 
-const JUNK = /\b(PV|CM|trailer|teaser|promo(?:tion(?:al)?)?|preview|recap|digest|picture drama|mini ?anime|chibi|commentary|music video|MV|interview|making of|behind the scenes|announcement|web preview|character song|bonus|omake|talk|event|live|stage|radio|countdown|summary|highlights?|blooper|spot)\b/i;
-const REAL = /\b(OVA|OAD|ONA|episode\s*\d+(\.\d)?|special episode|movie|film|gekijouban|the movie|extra episode|unaired)\b|劇場版|\d+\.5\b/i;
+const JUNK =
+  /\b(PV|CM|trailer|teaser|promo(?:tion(?:al)?)?|preview|recap|digest|picture drama|mini ?anime|chibi|commentary|music video|MV|interview|making of|behind the scenes|announcement|web preview|character song|bonus|omake|talk|event|live|stage|radio|countdown|summary|highlights?|blooper|spot)\b/i;
+const REAL =
+  /\b(OVA|OAD|ONA|episode\s*\d+(\.\d)?|special episode|movie|film|gekijouban|the movie|extra episode|unaired)\b|劇場版|\d+\.5\b/i;
 
 /** "creditless": a creditless opening/ending (NCOP/NCED) — collected, never junk. */
 export type SpecialClass = "movie" | "real" | "junk" | "unknown" | "creditless";
@@ -196,7 +321,8 @@ export function classifySpecial(title: string | null, runtime: number | null): {
   const t = title ?? "";
   if (isCreditlessTitle(title)) return { cls: "creditless", why: "a creditless opening/ending" };
   if (runtime !== null && runtime >= 60) return { cls: "movie", why: `${runtime} min long` };
-  if (/\b(movie|film|gekijouban)\b|劇場版/i.test(t) && (runtime === null || runtime >= 40)) return { cls: "movie", why: "titled as a movie" };
+  if (/\b(movie|film|gekijouban)\b|劇場版/i.test(t) && (runtime === null || runtime >= 40))
+    return { cls: "movie", why: "titled as a movie" };
   if (JUNK.test(t)) return { cls: "junk", why: `title looks like "${t.match(JUNK)![0]}"` };
   if (runtime !== null && runtime > 0 && runtime < 8) return { cls: "junk", why: `only ${runtime} min` };
   if (REAL.test(t)) return { cls: "real", why: `title looks like "${t.match(REAL)![0]}"` };
@@ -222,32 +348,74 @@ export function specialType(title: string | null, runtime: number | null): { typ
 }
 
 export function specials() {
-  const movies = cache.prepare("SELECT id, tmdb_id, title, original_title, year, alt_titles, has_file FROM movies").all() as { id: number; tmdb_id: number | null; title: string; original_title: string | null; year: number; alt_titles: string; has_file: number }[];
+  const movies = cache.prepare("SELECT id, tmdb_id, title, original_title, year, alt_titles, has_file FROM movies").all() as {
+    id: number;
+    tmdb_id: number | null;
+    title: string;
+    original_title: string | null;
+    year: number;
+    alt_titles: string;
+    has_file: number;
+  }[];
   const movieKeys = new Map<string, (typeof movies)[number]>();
-  for (const m of movies) for (const t of [m.title, m.original_title ?? "", ...(JSON.parse(m.alt_titles) as string[])]) if (t) movieKeys.set(compactKey(t), m);
+  for (const m of movies)
+    for (const t of [m.title, m.original_title ?? "", ...(JSON.parse(m.alt_titles) as string[])]) if (t) movieKeys.set(compactKey(t), m);
   const byTmdb = new Map(movies.filter((m) => m.tmdb_id).map((m) => [m.tmdb_id!, m]));
-  const out: { seriesId: number; tvdbId: number; title: string; cover: string | null; items: { id: number; episode: number; title: string | null; runtime: number | null; hasFile: boolean; monitored: boolean; cls: SpecialClass; why: string; radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null }[] }[] = [];
+  const out: {
+    seriesId: number;
+    tvdbId: number;
+    title: string;
+    cover: string | null;
+    items: {
+      id: number;
+      episode: number;
+      title: string | null;
+      runtime: number | null;
+      hasFile: boolean;
+      monitored: boolean;
+      cls: SpecialClass;
+      why: string;
+      radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null;
+    }[];
+  }[] = [];
   const totals = { movie: 0, real: 0, junk: 0, unknown: 0, creditless: 0, movieInRadarr: 0 };
   const allSpecials = movieSpecials();
   for (const s of seriesRows()) {
-    const eps = cache.prepare("SELECT id, episode, title, runtime, has_file, monitored FROM episodes WHERE series_id = ? AND season = 0 ORDER BY episode").all(s.id) as { id: number; episode: number; title: string | null; runtime: number | null; has_file: number; monitored: number }[];
+    const eps = cache
+      .prepare("SELECT id, episode, title, runtime, has_file, monitored FROM episodes WHERE series_id = ? AND season = 0 ORDER BY episode")
+      .all(s.id) as { id: number; episode: number; title: string | null; runtime: number | null; has_file: number; monitored: number }[];
     if (!eps.length) continue;
     const s0Movies = [...animeListEntries().values()].filter((e) => e.tvdbId === s.tvdb_id && e.tmdbMovie);
     const linked = allSpecials;
     const items = eps.map((e) => {
       const fm = linked.get(e.id);
-      const c = fm ? { cls: "movie" as SpecialClass, why: "a movie of this franchise (handled by Radarr)" } : classifySpecial(e.title, e.runtime);
+      const c = fm
+        ? { cls: "movie" as SpecialClass, why: "a movie of this franchise (handled by Radarr)" }
+        : classifySpecial(e.title, e.runtime);
       totals[c.cls]++;
       let radarr: { inRadarr: boolean; title?: string; hasFile?: boolean; movieId?: number } | null = null;
       if (c.cls === "movie") {
         const keys = [compactKey(e.title ?? ""), compactKey(`${s.title} ${e.title ?? ""}`)];
         let m = fm?.movieId ? movies.find((x) => x.id === fm.movieId) : keys.map((k) => movieKeys.get(k)).find(Boolean);
         // Anime-Lists may know the TMDB movie id of this franchise's movies.
-        if (!m) for (const al of s0Movies) if (byTmdb.has(al.tmdbMovie!) && compactKey(al.name).includes(compactKey(e.title ?? "").slice(0, 12))) m = byTmdb.get(al.tmdbMovie!);
+        if (!m)
+          for (const al of s0Movies)
+            if (byTmdb.has(al.tmdbMovie!) && compactKey(al.name).includes(compactKey(e.title ?? "").slice(0, 12)))
+              m = byTmdb.get(al.tmdbMovie!);
         radarr = m ? { inRadarr: true, title: `${m.title} (${m.year})`, hasFile: !!m.has_file, movieId: m.id } : { inRadarr: false };
         if (m) totals.movieInRadarr++;
       }
-      return { id: e.id, episode: e.episode, title: e.title, runtime: e.runtime, hasFile: !!e.has_file, monitored: !!e.monitored, cls: c.cls, why: c.why, radarr };
+      return {
+        id: e.id,
+        episode: e.episode,
+        title: e.title,
+        runtime: e.runtime,
+        hasFile: !!e.has_file,
+        monitored: !!e.monitored,
+        cls: c.cls,
+        why: c.why,
+        radarr,
+      };
     });
     out.push({ seriesId: s.id, tvdbId: s.tvdb_id, title: s.title, cover: coverFor(s), items });
   }

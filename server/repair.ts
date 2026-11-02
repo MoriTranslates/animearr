@@ -61,15 +61,28 @@ const MAX_PER_EPISODE = 3;
 const EXPLICIT: VerifyVerdict["code"][] = ["forced-only", "dub-only"];
 
 export type CheckAction = "none" | "unchecked" | "suspected" | "would-repair" | "repaired" | "capped" | "gave-up" | "skipped" | "error";
-export interface CheckOutcome { historyId: number; title: string; label: string; ok: boolean; action: CheckAction; why: string }
+export interface CheckOutcome {
+  historyId: number;
+  title: string;
+  label: string;
+  ok: boolean;
+  action: CheckAction;
+  why: string;
+}
 
 const kvGet = (k: string) => (db.prepare("SELECT value FROM kv WHERE key = ?").get(k) as { value: string } | undefined)?.value;
-const kvSet = (k: string, v: string) => db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
+const kvSet = (k: string, v: string) =>
+  db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
 
 /** Is this import AnimeArr's own (already verified by the pipeline, or still being handled by it)? */
 function ownImport(h: sonarr.HistoryItem, importedAt: number): string | null {
-  if (h.downloadId && db.prepare("SELECT 1 FROM grabs WHERE lower(client_ref) = lower(?) LIMIT 1").get(h.downloadId)) return "AnimeArr's own grab, checked by its pipeline";
-  const g = db.prepare("SELECT state FROM grabs WHERE EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) AND (state IN ('sending', 'downloading', 'importing', 'needs-attention', 'removing') OR (updated_at BETWEEN ? AND ?)) LIMIT 1").get(h.episodeId, importedAt - 3 * 3_600_000, importedAt + 3 * 3_600_000) as { state: string } | undefined;
+  if (h.downloadId && db.prepare("SELECT 1 FROM grabs WHERE lower(client_ref) = lower(?) LIMIT 1").get(h.downloadId))
+    return "AnimeArr's own grab, checked by its pipeline";
+  const g = db
+    .prepare(
+      "SELECT state FROM grabs WHERE EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) AND (state IN ('sending', 'downloading', 'importing', 'needs-attention', 'removing') OR (updated_at BETWEEN ? AND ?)) LIMIT 1",
+    )
+    .get(h.episodeId, importedAt - 3 * 3_600_000, importedAt + 3 * 3_600_000) as { state: string } | undefined;
   if (g) return `AnimeArr has its own grab for this episode (${g.state}), so it's left to the pipeline`;
   const st = db.prepare("SELECT state FROM search_state WHERE episode_id = ?").get(h.episodeId) as { state: string } | undefined;
   if (st?.state === "replace") return "AnimeArr is already searching for a replacement";
@@ -83,12 +96,20 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
   if (mode === "off" || dbState.corrupt) return [];
   const wm = Number(kvGet("repair-watermark") ?? 0);
   // Imports still waiting for the library sync are read again (up to a week), whatever the watermark says.
-  const pending = (db.prepare("SELECT MIN(imported_at) AS t FROM checked_imports WHERE action = 'skipped' AND why = ? AND imported_at > ?").get(NOT_SYNCED, now - PENDING_DAYS * DAY) as { t: number | null }).t;
+  const pending = (
+    db
+      .prepare("SELECT MIN(imported_at) AS t FROM checked_imports WHERE action = 'skipped' AND why = ? AND imported_at > ?")
+      .get(NOT_SYNCED, now - PENDING_DAYS * DAY) as { t: number | null }
+  ).t;
   const since = new Date(Math.min(Math.max(wm ? wm - OVERLAP : 0, now - DAY), pending ? pending - 1 : Infinity));
   const items = (await deps.history(since)).sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id - b.id);
   const out: CheckOutcome[] = [];
   // The daily budget counts releases, not episodes (a bad season pack is one repair).
-  const repairedToday = (db.prepare("SELECT COUNT(DISTINCT COALESCE(download_id, release)) AS n FROM checked_imports WHERE action = 'repaired' AND at > ?").get(now - DAY) as { n: number }).n;
+  const repairedToday = (
+    db
+      .prepare("SELECT COUNT(DISTINCT COALESCE(download_id, release)) AS n FROM checked_imports WHERE action = 'repaired' AND at > ?")
+      .get(now - DAY) as { n: number }
+  ).n;
   let budget = Math.max(0, settings.repair.maxPerDay - repairedToday);
   const probes = new Map<string, ProbeResult | null>();
   let maxSeen = wm;
@@ -96,20 +117,34 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
   for (const h of items) {
     const importedAt = Date.parse(h.date) || now;
     const imported = h.data.importedPath ?? "";
-    const series = cache.prepare("SELECT id, tvdb_id, title, path FROM series WHERE id = ?").get(h.seriesId) as { id: number; tvdb_id: number; title: string; path: string } | undefined;
-    const ep = cache.prepare("SELECT season, episode, runtime FROM episodes WHERE id = ?").get(h.episodeId) as { season: number; episode: number; runtime: number | null } | undefined;
+    const series = cache.prepare("SELECT id, tvdb_id, title, path FROM series WHERE id = ?").get(h.seriesId) as
+      { id: number; tvdb_id: number; title: string; path: string } | undefined;
+    const ep = cache.prepare("SELECT season, episode, runtime FROM episodes WHERE id = ?").get(h.episodeId) as
+      { season: number; episode: number; runtime: number | null } | undefined;
     const allowed = underAllowedRoot(imported || series?.path);
     // Checked already: only a row skipped for a reason that has gone since (the library caught up, the folder is
     // allowed now) is looked at again.
-    const prev = db.prepare("SELECT action, why FROM checked_imports WHERE history_id = ?").get(h.id) as { action: string; why: string } | undefined;
+    const prev = db.prepare("SELECT action, why FROM checked_imports WHERE history_id = ?").get(h.id) as
+      { action: string; why: string } | undefined;
     if (prev && !(prev.action === "skipped" && ((prev.why === NOT_SYNCED && series && ep) || (prev.why === OUTSIDE_ROOTS && allowed)))) {
       if (prev.why !== NOT_SYNCED) maxSeen = Math.max(maxSeen, importedAt);
       continue;
     }
     // Skipped, but never without a trace: a row says why (the Activity → after-import checks list shows it).
     const skip = (why: string) => {
-      db.prepare("INSERT OR REPLACE INTO checked_imports (history_id, tvdb_id, episode_id, release, ok, action, why, at, download_id, title, label, imported_at) VALUES (?, ?, ?, ?, 1, 'skipped', ?, ?, ?, ?, ?, ?)").run(
-        h.id, series?.tvdb_id ?? null, h.episodeId, h.sourceTitle, why, now, h.downloadId ?? null, series?.title ?? null, ep ? `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}` : null, importedAt,
+      db.prepare(
+        "INSERT OR REPLACE INTO checked_imports (history_id, tvdb_id, episode_id, release, ok, action, why, at, download_id, title, label, imported_at) VALUES (?, ?, ?, ?, 1, 'skipped', ?, ?, ?, ?, ?, ?)",
+      ).run(
+        h.id,
+        series?.tvdb_id ?? null,
+        h.episodeId,
+        h.sourceTitle,
+        why,
+        now,
+        h.downloadId ?? null,
+        series?.title ?? null,
+        ep ? `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}` : null,
+        importedAt,
       );
     };
     // Only files in the allowed root folders are AnimeArr's business.
@@ -128,7 +163,9 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
     const label = `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`;
     const dl = h.downloadId ?? null;
     const record = (o: Omit<CheckOutcome, "historyId" | "title" | "label">) => {
-      db.prepare("INSERT OR REPLACE INTO checked_imports (history_id, tvdb_id, episode_id, release, ok, action, why, at, download_id, title, label, imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(h.id, series.tvdb_id, h.episodeId, h.sourceTitle, o.ok ? 1 : 0, o.action, o.why, now, dl, series.title, label, importedAt);
+      db.prepare(
+        "INSERT OR REPLACE INTO checked_imports (history_id, tvdb_id, episode_id, release, ok, action, why, at, download_id, title, label, imported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(h.id, series.tvdb_id, h.episodeId, h.sourceTitle, o.ok ? 1 : 0, o.action, o.why, now, dl, series.title, label, importedAt);
       const i = out.findIndex((x) => x.historyId === h.id);
       if (i >= 0) out.splice(i, 1);
       out.push({ historyId: h.id, title: series.title, label, ...o });
@@ -154,7 +191,18 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
       if (fileId) {
         try {
           const f = await deps.episodeFile(fileId);
-          sonarrSays = judge({ subs: langList(f.mediaInfo?.subtitles), audio: langList(f.mediaInfo?.audioLanguages), durationSec: null, sidecars: [], untagged: 0 }, prof, null, burned);
+          sonarrSays = judge(
+            {
+              subs: langList(f.mediaInfo?.subtitles),
+              audio: langList(f.mediaInfo?.audioLanguages),
+              durationSec: null,
+              sidecars: [],
+              untagged: 0,
+            },
+            prof,
+            null,
+            burned,
+          );
         } catch {
           sonarrSays = null; // the file may have been replaced since
         }
@@ -165,18 +213,36 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
         continue;
       }
       const parsed = parseRelease(h.sourceTitle);
-      if (probe) learnFromVerify(h.data.releaseGroup ?? parsed.group, parsed.platform ?? sourceKey(h.sourceTitle, null, parsed.source), v.subs, v.audio);
+      if (probe)
+        learnFromVerify(
+          h.data.releaseGroup ?? parsed.group,
+          parsed.platform ?? sourceKey(h.sourceTitle, null, parsed.source),
+          v.subs,
+          v.audio,
+        );
       if (v.ok) {
         record({ ok: true, action: "none", why: v.why });
-        logDecision("verify-ok", { tvdbId: series.tvdb_id, title: series.title, episodeIds: [h.episodeId], release: h.sourceTitle, why: `Checked ${label} after Sonarr imported it: ${v.why}` });
+        logDecision("verify-ok", {
+          tvdbId: series.tvdb_id,
+          title: series.title,
+          episodeIds: [h.episodeId],
+          release: h.sourceTitle,
+          why: `Checked ${label} after Sonarr imported it: ${v.why}`,
+        });
         continue;
       }
       const twoSignals = !!probe && (sonarrSays?.ok === false || EXPLICIT.includes(v.code));
       const managed = listManaged().find((m) => m.tvdbId === series.tvdb_id);
       const dryRun = managed ? isDryRun(managed.dryRun) : settings.managed.dryRun;
       // The same release (a pack or multi-episode file) already repaired: don't blocklist or count it again.
-      const sameRelease = db.prepare("SELECT history_id FROM checked_imports WHERE action = 'repaired' AND history_id != ? AND ((? IS NOT NULL AND download_id = ?) OR (release = ? AND tvdb_id = ?)) LIMIT 1").get(h.id, dl, dl, h.sourceTitle, series.tvdb_id);
-      const episodeRepairs = db.prepare("SELECT COUNT(*) AS n, MAX(at) AS last FROM checked_imports WHERE episode_id = ? AND action = 'repaired'").get(h.episodeId) as { n: number; last: number | null };
+      const sameRelease = db
+        .prepare(
+          "SELECT history_id FROM checked_imports WHERE action = 'repaired' AND history_id != ? AND ((? IS NOT NULL AND download_id = ?) OR (release = ? AND tvdb_id = ?)) LIMIT 1",
+        )
+        .get(h.id, dl, dl, h.sourceTitle, series.tvdb_id);
+      const episodeRepairs = db
+        .prepare("SELECT COUNT(*) AS n, MAX(at) AS last FROM checked_imports WHERE episode_id = ? AND action = 'repaired'")
+        .get(h.episodeId) as { n: number; last: number | null };
       let action: CheckAction;
       let note: string;
       if (!twoSignals) {
@@ -210,21 +276,37 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
         let undo: { action: "unblock"; args: { id: number; release: string } } | undefined;
         if (!sameRelease) {
           budget--;
-          const existing = db.prepare("SELECT id FROM blocklist WHERE release = ? AND tvdb_id = ? LIMIT 1").get(h.sourceTitle, series.tvdb_id) as { id: number } | undefined;
-          const id = existing?.id ?? Number(db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at) VALUES (NULL, ?, ?, ?, ?)").run(h.sourceTitle, series.tvdb_id, `after-import check: ${v.why}`, now).lastInsertRowid);
+          const existing = db
+            .prepare("SELECT id FROM blocklist WHERE release = ? AND tvdb_id = ? LIMIT 1")
+            .get(h.sourceTitle, series.tvdb_id) as { id: number } | undefined;
+          const id =
+            existing?.id ??
+            Number(
+              db
+                .prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at) VALUES (NULL, ?, ?, ?, ?)")
+                .run(h.sourceTitle, series.tvdb_id, `after-import check: ${v.why}`, now).lastInsertRowid,
+            );
           undo = { action: "unblock", args: { id, release: h.sourceTitle } };
         }
         try {
           if (managed) {
-            searchAgainSoon(series.tvdb_id, [h.episodeId], { replace: true, why: `After-import check: ${label} failed the profile (${v.why}); searching for a replacement` });
-            note = sameRelease ? "same release as an earlier repair; AnimeArr is searching for a replacement for this episode too" : "blocklisted it; AnimeArr is searching for a replacement (the import replaces the file)";
+            searchAgainSoon(series.tvdb_id, [h.episodeId], {
+              replace: true,
+              why: `After-import check: ${label} failed the profile (${v.why}); searching for a replacement`,
+            });
+            note = sameRelease
+              ? "same release as an earlier repair; AnimeArr is searching for a replacement for this episode too"
+              : "blocklisted it; AnimeArr is searching for a replacement (the import replaces the file)";
           } else if (sameRelease) {
             note = "same release as an earlier repair (already marked failed in Sonarr)";
           } else {
-            const grab = (await deps.grabsOf(h.episodeId).catch(() => [] as sonarr.HistoryItem[])).find((g) => (dl && g.downloadId?.toLowerCase() === dl.toLowerCase()) || g.sourceTitle === h.sourceTitle);
+            const grab = (await deps.grabsOf(h.episodeId).catch(() => [] as sonarr.HistoryItem[])).find(
+              (g) => (dl && g.downloadId?.toLowerCase() === dl.toLowerCase()) || g.sourceTitle === h.sourceTitle,
+            );
             if (grab) {
               await deps.markFailed(grab.id);
-              note = "blocklisted it and marked the grab failed in Sonarr (Sonarr blocklists it too; it only grabs a replacement if Redownload Failed is on and the replacement counts as an upgrade, since the file stays)";
+              note =
+                "blocklisted it and marked the grab failed in Sonarr (Sonarr blocklists it too; it only grabs a replacement if Redownload Failed is on and the replacement counts as an upgrade, since the file stays)";
             } else note = "blocklisted it in AnimeArr (Sonarr's grab record wasn't found, so Sonarr wasn't told)";
           }
         } catch (e) {
@@ -244,7 +326,13 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
         continue;
       }
       record({ ok: false, action, why: `${v.why}; ${note}` });
-      logDecision(action === "suspected" ? "info" : "verify-fail", { tvdbId: series.tvdb_id, title: series.title, episodeIds: [h.episodeId], release: h.sourceTitle, why: `After-import check of ${label} (${path.posix.basename(imported)}): ${v.why}. ${action === "would-repair" ? "Would blocklist it and search again" : action === "suspected" ? "Suspected only" : "Not repaired"}: ${note}.` });
+      logDecision(action === "suspected" ? "info" : "verify-fail", {
+        tvdbId: series.tvdb_id,
+        title: series.title,
+        episodeIds: [h.episodeId],
+        release: h.sourceTitle,
+        why: `After-import check of ${label} (${path.posix.basename(imported)}): ${v.why}. ${action === "would-repair" ? "Would blocklist it and search again" : action === "suspected" ? "Suspected only" : "Not repaired"}: ${note}.`,
+      });
     } catch (e) {
       record({ ok: false, action: "error", why: `check failed: ${(e as Error).message}` });
     }
@@ -264,7 +352,11 @@ export function repairTick(): Promise<CheckOutcome[]> | null {
     try {
       const r = await checkNewImports();
       const bad = r.filter((x) => !x.ok && x.action !== "skipped").length;
-      setJob("after-import check", "done", `${r.length} new imports checked, ${bad} not meeting the profile (${getSettings().repair.mode === "auto" ? "repair on" : "log only"})`);
+      setJob(
+        "after-import check",
+        "done",
+        `${r.length} new imports checked, ${bad} not meeting the profile (${getSettings().repair.mode === "auto" ? "repair on" : "log only"})`,
+      );
       return r;
     } catch (e) {
       setJob("after-import check", "error", (e as Error).message);

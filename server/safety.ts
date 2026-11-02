@@ -11,22 +11,50 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSettings } from "./settings.js";
 
-export interface FileInfo { name: string; size: number }
+export interface FileInfo {
+  name: string;
+  size: number;
+}
 
 const VIDEO_EXT = "mkv|mp4|avi|m4v|ts|webm|mov|wmv|flv|mpg|mpeg";
 const VIDEO = new RegExp(`\\.(${VIDEO_EXT})$`, "i");
 /** A video extension followed by something else: harmless sidecar and partial-download endings are fine. */
 const DOUBLE = new RegExp(`\\.(${VIDEO_EXT})\\.([a-z0-9!_-]{1,8})$`, "i");
-const HARMLESS_AFTER_VIDEO = new Set(["srt", "ass", "ssa", "sub", "idx", "vtt", "nfo", "jpg", "jpeg", "png", "txt", "sfv", "md5", "part", "!qb", "!ut", "bak", "bc!", "crdownload", "aria2", "tmp"]);
+const HARMLESS_AFTER_VIDEO = new Set([
+  "srt",
+  "ass",
+  "ssa",
+  "sub",
+  "idx",
+  "vtt",
+  "nfo",
+  "jpg",
+  "jpeg",
+  "png",
+  "txt",
+  "sfv",
+  "md5",
+  "part",
+  "!qb",
+  "!ut",
+  "bak",
+  "bc!",
+  "crdownload",
+  "aria2",
+  "tmp",
+]);
 /** Sample, trailer and creditless/extra clips are legitimately short. */
 const SHORT_OK = /(?<![a-z])(sample|trailer|promo|pv|cm|preview|nc ?op|nc ?ed|creditless|opening|ending|extras?|menu|teaser)(?![a-z])/i;
 
 /** The smallest plausible video: 64 kbit/s for the episode's runtime (20 minutes when unknown). */
 export const MIN_VIDEO_KBPS = 64;
-export const minVideoBytes = (runtimeMin: number | null | undefined) => Math.max(1, runtimeMin && runtimeMin > 0 ? runtimeMin : 20) * 60 * (MIN_VIDEO_KBPS * 125);
+export const minVideoBytes = (runtimeMin: number | null | undefined) =>
+  Math.max(1, runtimeMin && runtimeMin > 0 ? runtimeMin : 20) * 60 * (MIN_VIDEO_KBPS * 125);
 
 /** The settings' extension list, as bare lowercase extensions ("EXE", ".exe" → "exe"). */
-export const dangerousExtensions = (list: string[] = getSettings().malware.extensions) => [...new Set(list.map((x) => x.trim().replace(/^\./, "").toLowerCase()).filter(Boolean))];
+export const dangerousExtensions = (list: string[] = getSettings().malware.extensions) => [
+  ...new Set(list.map((x) => x.trim().replace(/^\./, "").toLowerCase()).filter(Boolean)),
+];
 
 const base = (name: string) => name.replace(/\\/g, "/").split("/").pop() ?? name;
 
@@ -47,7 +75,8 @@ export function inspectFiles(files: FileInfo[], opts: { extensions?: string[]; r
   for (const f of files) {
     const n = base(f.name);
     if (!VIDEO.test(n) || SHORT_OK.test(n) || f.size <= 0) continue;
-    if (f.size < floor) return `contained ${n}, a video of only ${f.size < 1024 * 1024 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`}, far too small for an episode`;
+    if (f.size < floor)
+      return `contained ${n}, a video of only ${f.size < 1024 * 1024 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`}, far too small for an episode`;
   }
   return null;
 }

@@ -6,7 +6,11 @@ import { jsonCall, type Conn } from "./http.js";
  * bottom and are only reached from the grab/import pipeline and the "unmonitor in Sonarr" confirmation.
  */
 
-export interface SonarrSeason { seasonNumber: number; monitored: boolean; statistics?: { episodeFileCount: number; totalEpisodeCount: number; episodeCount: number; previousAiring?: string; nextAiring?: string } }
+export interface SonarrSeason {
+  seasonNumber: number;
+  monitored: boolean;
+  statistics?: { episodeFileCount: number; totalEpisodeCount: number; episodeCount: number; previousAiring?: string; nextAiring?: string };
+}
 export interface SonarrSeries {
   id: number;
   tvdbId: number;
@@ -64,7 +68,10 @@ export interface SonarrEpisodeFile {
   sceneName?: string;
   releaseGroup?: string;
   dateAdded?: string;
-  quality: { quality: { name: string; source?: string; resolution?: number }; revision?: { version?: number; real?: number; isRepack?: boolean } };
+  quality: {
+    quality: { name: string; source?: string; resolution?: number };
+    revision?: { version?: number; real?: number; isRepack?: boolean };
+  };
   mediaInfo?: { audioLanguages?: string; subtitles?: string; runTime?: string; resolution?: string };
 }
 export interface ManualImportItem {
@@ -86,7 +93,8 @@ export interface ManualImportItem {
 }
 
 const conn = (): Conn => getSettings().sonarr;
-const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) => jsonCall<T>("Sonarr", c, "/api/v3", method, path, body, timeout);
+const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) =>
+  jsonCall<T>("Sonarr", c, "/api/v3", method, path, body, timeout);
 
 export const sonarrConfigured = () => !!(getSettings().sonarr.url && getSettings().sonarr.apiKey);
 
@@ -102,7 +110,11 @@ export async function sonarrOptions(c: Conn = conn()) {
     call<{ id: number; path: string; freeSpace?: number; accessible?: boolean }[]>("GET", "/rootfolder", undefined, c),
     call<{ id: number; label: string }[]>("GET", "/tag", undefined, c),
   ]);
-  return { profiles: profiles.map(({ id, name }) => ({ id, name })), roots: roots.map(({ id, path, freeSpace, accessible }) => ({ id, path, freeSpace, accessible })), tags };
+  return {
+    profiles: profiles.map(({ id, name }) => ({ id, name })),
+    roots: roots.map(({ id, path, freeSpace, accessible }) => ({ id, path, freeSpace, accessible })),
+    tags,
+  };
 }
 
 export const getSeries = () => call<SonarrSeries[]>("GET", "/series", undefined, conn(), 120_000);
@@ -138,10 +150,21 @@ export interface HistoryItem {
 }
 /** Import (and other) history since a date (read-only). */
 export const getHistorySince = (date: Date, eventType: "downloadFolderImported" | "grabbed") =>
-  call<HistoryItem[]>("GET", `/history/since?date=${encodeURIComponent(date.toISOString())}&eventType=${eventType}`, undefined, conn(), 120_000);
+  call<HistoryItem[]>(
+    "GET",
+    `/history/since?date=${encodeURIComponent(date.toISOString())}&eventType=${eventType}`,
+    undefined,
+    conn(),
+    120_000,
+  );
 /** The grab history of one episode, newest first (to find the grab behind an import). */
 export const getEpisodeGrabs = async (episodeId: number) =>
-  (await call<{ records: HistoryItem[] }>("GET", `/history?episodeId=${episodeId}&eventType=1&sortKey=date&sortDirection=descending&pageSize=20`)).records;
+  (
+    await call<{ records: HistoryItem[] }>(
+      "GET",
+      `/history?episodeId=${episodeId}&eventType=1&sortKey=date&sortDirection=descending&pageSize=20`,
+    )
+  ).records;
 
 export interface SonarrQueueItem {
   id: number;
@@ -172,7 +195,9 @@ export const getMediaManagementFull = () => call<Record<string, unknown>>("GET",
 /** Asks Sonarr to re-read a series folder (after AnimeArr's own importer or renamer touched it). */
 /** Sonarr's own rename preview for a series (files whose names differ from Sonarr's naming). */
 export const renamePreview = (seriesId: number) =>
-  call<{ seriesId: number; seasonNumber: number; episodeNumbers: number[]; episodeFileId: number; existingPath: string; newPath: string }[]>("GET", `/rename?seriesId=${seriesId}`);
+  call<
+    { seriesId: number; seasonNumber: number; episodeNumbers: number[]; episodeFileId: number; existingPath: string; newPath: string }[]
+  >("GET", `/rename?seriesId=${seriesId}`);
 /** Asks Sonarr to rename these files itself (its file records and history stay intact). */
 export async function renameFiles(seriesId: number, files: number[]) {
   return call<{ id: number }>("POST", "/command", { name: "RenameFiles", seriesId, files });
@@ -185,7 +210,10 @@ export async function rescanSeries(seriesId: number) {
 export async function getQueue() {
   const out: SonarrQueueItem[] = [];
   for (let page = 1; page <= 20; page++) {
-    const r = await call<{ records: SonarrQueueItem[]; totalRecords: number }>("GET", `/queue?page=${page}&pageSize=500&includeSeries=true&includeEpisode=true&includeUnknownSeriesItems=false`);
+    const r = await call<{ records: SonarrQueueItem[]; totalRecords: number }>(
+      "GET",
+      `/queue?page=${page}&pageSize=500&includeSeries=true&includeEpisode=true&includeUnknownSeriesItems=false`,
+    );
     out.push(...r.records);
     if (!r.records.length || out.length >= r.totalRecords) break;
   }
@@ -195,7 +223,20 @@ export async function getQueue() {
 // ---------------------------------------------------------------- WRITE calls (pipeline only)
 
 /** Import specific files as specific episodes (explicit episode IDs: works even if the series is unmonitored). */
-export async function manualImport(files: { path: string; seriesId: number; episodeIds: number[]; quality: unknown; languages?: unknown[]; releaseGroup?: string; downloadId?: string; indexerFlags?: number; releaseType?: string }[], importMode: "auto" | "move" | "copy") {
+export async function manualImport(
+  files: {
+    path: string;
+    seriesId: number;
+    episodeIds: number[];
+    quality: unknown;
+    languages?: unknown[];
+    releaseGroup?: string;
+    downloadId?: string;
+    indexerFlags?: number;
+    releaseType?: string;
+  }[],
+  importMode: "auto" | "move" | "copy",
+) {
   return call<{ id: number }>("POST", "/command", { name: "ManualImport", files, importMode });
 }
 
@@ -221,7 +262,8 @@ export async function setSeriesMonitored(id: number, monitored: boolean) {
 }
 
 /** Sonarr's import lists (read-only): lists that could add anime back after the cutover. */
-export const getImportLists = () => call<{ id: number; name: string; enabled?: boolean; enableAutomaticAdd?: boolean }[]>("GET", "/importlist");
+export const getImportLists = () =>
+  call<{ id: number; name: string; enabled?: boolean; enableAutomaticAdd?: boolean }[]>("GET", "/importlist");
 /** Sonarr's connections (read-only), e.g. its own Plex notification. */
 export const getNotifications = () => call<{ id: number; name: string; implementation: string }[]>("GET", "/notification");
 /**

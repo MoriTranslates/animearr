@@ -44,18 +44,58 @@ export interface NotifyChannel {
 }
 
 /** What a notification carries beyond its text (webhook payloads and links). */
-export interface NotifyMeta { tvdbId?: number | null; movieId?: number | null; episodeIds?: number[]; grabId?: number | null; release?: string | null }
-export interface MailMessage { from: string; to: string[]; subject: string; text: string }
-export interface ChannelDeps { fetch: typeof fetch; sendMail?: (c: NotifyChannel, m: MailMessage) => Promise<void> }
-export interface Note { event: string; head: string; title: string; body: string; link: string | null; meta: NotifyMeta; at: number }
+export interface NotifyMeta {
+  tvdbId?: number | null;
+  movieId?: number | null;
+  episodeIds?: number[];
+  grabId?: number | null;
+  release?: string | null;
+}
+export interface MailMessage {
+  from: string;
+  to: string[];
+  subject: string;
+  text: string;
+}
+export interface ChannelDeps {
+  fetch: typeof fetch;
+  sendMail?: (c: NotifyChannel, m: MailMessage) => Promise<void>;
+}
+export interface Note {
+  event: string;
+  head: string;
+  title: string;
+  body: string;
+  link: string | null;
+  meta: NotifyMeta;
+  at: number;
+}
 
 export const newChannel = (type: ChannelType, id: string): NotifyChannel => ({
-  id, type, name: "", enabled: true,
+  id,
+  type,
+  name: "",
+  enabled: true,
   events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true },
-  url: "", method: "POST", headers: [],
-  botToken: "", chatId: "", threadId: "", silent: false,
-  userKey: "", appToken: "", priority: 0, device: "", sound: "",
-  host: "", port: 587, secure: "starttls", username: "", password: "", from: "", to: "",
+  url: "",
+  method: "POST",
+  headers: [],
+  botToken: "",
+  chatId: "",
+  threadId: "",
+  silent: false,
+  userKey: "",
+  appToken: "",
+  priority: 0,
+  device: "",
+  sound: "",
+  host: "",
+  port: 587,
+  secure: "starttls",
+  username: "",
+  password: "",
+  from: "",
+  to: "",
 });
 
 /** Every secret value on a channel (for scrubbing error text). */
@@ -65,12 +105,27 @@ export function channelSecrets(c: NotifyChannel): string[] {
 
 /** The channel as the browser sees it: every secret masked. */
 export function maskChannel(c: NotifyChannel): NotifyChannel {
-  return { ...c, url: c.url ? MASK : "", botToken: c.botToken ? MASK : "", userKey: c.userKey ? MASK : "", appToken: c.appToken ? MASK : "", password: c.password ? MASK : "", headers: c.headers.map((h) => ({ name: h.name, value: h.value ? MASK : "" })) };
+  return {
+    ...c,
+    url: c.url ? MASK : "",
+    botToken: c.botToken ? MASK : "",
+    userKey: c.userKey ? MASK : "",
+    appToken: c.appToken ? MASK : "",
+    password: c.password ? MASK : "",
+    headers: c.headers.map((h) => ({ name: h.name, value: h.value ? MASK : "" })),
+  };
 }
 
-const str = (v: unknown, max = 300) => String(v ?? "").trim().slice(0, max);
+const str = (v: unknown, max = 300) =>
+  String(v ?? "")
+    .trim()
+    .slice(0, max);
 const pick = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(v as T) ? (v as T) : d);
-const splitList = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+const splitList = (s: string) =>
+  s
+    .split(/[,;\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const refuse = (msg: string) => Object.assign(new Error(msg), { statusCode: 400 });
 
@@ -105,7 +160,13 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
       ...newChannel(type, id),
       name: str(r.name, 60) || ({ webhook: "Webhook", telegram: "Telegram", pushover: "Pushover", email: "Email" } as const)[type],
       enabled: r.enabled !== false,
-      events: { grabbed: ev.grabbed !== false, imported: ev.imported !== false, failed: ev.failed !== false, paused: ev.paused !== false, indexer: ev.indexer !== false },
+      events: {
+        grabbed: ev.grabbed !== false,
+        imported: ev.imported !== false,
+        failed: ev.failed !== false,
+        paused: ev.paused !== false,
+        indexer: ev.indexer !== false,
+      },
     };
     if (type === "webhook") {
       c.url = keep(r.url, old?.url ?? "");
@@ -117,7 +178,12 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
         .map((h) => {
           const x = (h ?? {}) as Record<string, unknown>;
           const name = str(x.name, 80);
-          return { name, value: isMasked(x.value) ? (old?.headers.find((o) => o.name.toLowerCase() === name.toLowerCase())?.value ?? "") : str(x.value, 1000) };
+          return {
+            name,
+            value: isMasked(x.value)
+              ? (old?.headers.find((o) => o.name.toLowerCase() === name.toLowerCase())?.value ?? "")
+              : str(x.value, 1000),
+          };
         })
         .filter((h) => /^[\w-]+$/.test(h.name) && h.value !== "" && !/^(host|content-length|transfer-encoding|connection)$/i.test(h.name));
     } else if (type === "telegram") {
@@ -125,7 +191,8 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
       c.chatId = str(r.chatId, 80);
       c.threadId = str(r.threadId, 20).replace(/\D/g, "");
       c.silent = r.silent === true;
-      if (c.botToken && !/^\d{5,}:[\w-]{20,}$/.test(c.botToken)) throw refuse(`${c.name}: that isn't a Telegram bot token (like 123456:ABC…, from @BotFather)`);
+      if (c.botToken && !/^\d{5,}:[\w-]{20,}$/.test(c.botToken))
+        throw refuse(`${c.name}: that isn't a Telegram bot token (like 123456:ABC…, from @BotFather)`);
     } else if (type === "pushover") {
       c.userKey = keep(r.userKey, old?.userKey ?? "");
       c.appToken = keep(r.appToken, old?.appToken ?? "");
@@ -181,24 +248,47 @@ export function buildRequest(c: NotifyChannel, n: Note): { url: string; init: Re
   }
   if (c.type === "telegram") {
     const link = n.link ? `\n<a href="${escapeHtml(n.link).replace(/"/g, "&quot;")}">Open in AnimeArr</a>` : "";
-    const body: Record<string, unknown> = { chat_id: c.chatId, text: `<b>${escapeHtml(n.head)}</b>\n${escapeHtml(n.body.slice(0, 3500))}${link}`, parse_mode: "HTML", disable_notification: c.silent, link_preview_options: { is_disabled: true } };
+    const body: Record<string, unknown> = {
+      chat_id: c.chatId,
+      text: `<b>${escapeHtml(n.head)}</b>\n${escapeHtml(n.body.slice(0, 3500))}${link}`,
+      parse_mode: "HTML",
+      disable_notification: c.silent,
+      link_preview_options: { is_disabled: true },
+    };
     if (c.threadId) body.message_thread_id = Number(c.threadId);
-    return { url: `https://api.telegram.org/bot${c.botToken}/sendMessage`, init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } };
+    return {
+      url: `https://api.telegram.org/bot${c.botToken}/sendMessage`,
+      init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    };
   }
   if (c.type === "pushover") {
-    const body: Record<string, unknown> = { token: c.appToken, user: c.userKey, title: n.head.slice(0, 250), message: (n.body || n.head).slice(0, 1000), priority: c.priority };
+    const body: Record<string, unknown> = {
+      token: c.appToken,
+      user: c.userKey,
+      title: n.head.slice(0, 250),
+      message: (n.body || n.head).slice(0, 1000),
+      priority: c.priority,
+    };
     if (c.device) body.device = c.device;
     if (c.sound) body.sound = c.sound;
     if (n.link) body.url = n.link;
     if (c.priority === 2) Object.assign(body, { retry: 60, expire: 3600 }); // emergency priority needs these
-    return { url: "https://api.pushover.net/1/messages.json", init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } };
+    return {
+      url: "https://api.pushover.net/1/messages.json",
+      init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    };
   }
   return null;
 }
 
 /** The email for a notification. */
 export function buildMail(c: NotifyChannel, n: Note): MailMessage {
-  return { from: c.from, to: splitList(c.to), subject: n.head.replace(/[\r\n]+/g, " ").slice(0, 200), text: `${n.body}${n.link ? `\n\n${n.link}` : ""}\n\n-- AnimeArr ${VERSION}` };
+  return {
+    from: c.from,
+    to: splitList(c.to),
+    subject: n.head.replace(/[\r\n]+/g, " ").slice(0, 200),
+    text: `${n.body}${n.link ? `\n\n${n.link}` : ""}\n\n-- AnimeArr ${VERSION}`,
+  };
 }
 
 /** Real SMTP delivery through nodemailer (loaded only when an email channel actually sends). */

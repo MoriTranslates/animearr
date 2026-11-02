@@ -3,7 +3,11 @@ import { api, BASE } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { Toggle, usePoll, useToast } from "./ui";
 
-interface Entry { at: number; level: "error" | "warn" | "info" | "debug"; msg: string }
+interface Entry {
+  at: number;
+  level: "error" | "warn" | "info" | "debug";
+  msg: string;
+}
 const LEVELS = ["error", "warn", "info", "debug"] as const;
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour12: false });
 
@@ -62,12 +66,14 @@ export function LogsCard() {
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
-        {r && !r.entries.length ? t("logs.empty") : r?.entries.map((e, i) => (
-          <span key={i} className={`log-${e.level}`}>
-            {time(e.at)} {e.level.toUpperCase().padEnd(5)} {e.msg}
-            {"\n"}
-          </span>
-        ))}
+        {r && !r.entries.length
+          ? t("logs.empty")
+          : r?.entries.map((e, i) => (
+              <span key={i} className={`log-${e.level}`}>
+                {time(e.at)} {e.level.toUpperCase().padEnd(5)} {e.msg}
+                {"\n"}
+              </span>
+            ))}
       </pre>
       <div className="row between">
         <span className="muted small">{r ? t("logs.count", { shown: r.entries.length, total: r.total }) : ""}</span>

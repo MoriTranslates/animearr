@@ -6,20 +6,62 @@ import { relTime, SecretInput, Toggle, useToast } from "./ui";
 type Type = "webhook" | "telegram" | "pushover" | "email";
 type Events = { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean };
 interface Channel {
-  id: string; type: Type; name: string; enabled: boolean; events: Events;
-  url: string; method: "POST" | "PUT"; headers: { name: string; value: string }[];
-  botToken: string; chatId: string; threadId: string; silent: boolean;
-  userKey: string; appToken: string; priority: number; device: string; sound: string;
-  host: string; port: number; secure: "none" | "starttls" | "tls"; username: string; password: string; from: string; to: string;
+  id: string;
+  type: Type;
+  name: string;
+  enabled: boolean;
+  events: Events;
+  url: string;
+  method: "POST" | "PUT";
+  headers: { name: string; value: string }[];
+  botToken: string;
+  chatId: string;
+  threadId: string;
+  silent: boolean;
+  userKey: string;
+  appToken: string;
+  priority: number;
+  device: string;
+  sound: string;
+  host: string;
+  port: number;
+  secure: "none" | "starttls" | "tls";
+  username: string;
+  password: string;
+  from: string;
+  to: string;
 }
-interface Loaded { channels: Channel[]; status: Record<string, { at: number; ok: boolean; error: string | null }> }
+interface Loaded {
+  channels: Channel[];
+  status: Record<string, { at: number; ok: boolean; error: string | null }>;
+}
 
 const TYPES: Type[] = ["webhook", "telegram", "pushover", "email"];
 const blank = (type: Type): Channel => ({
-  id: `ch-${Date.now().toString(36)}`, type, name: t(`nch.type.${type}` as I18nKey).replace(/ \(.*\)$/, ""), enabled: true,
+  id: `ch-${Date.now().toString(36)}`,
+  type,
+  name: t(`nch.type.${type}` as I18nKey).replace(/ \(.*\)$/, ""),
+  enabled: true,
   events: { grabbed: true, imported: true, failed: true, paused: true, indexer: true },
-  url: "", method: "POST", headers: [], botToken: "", chatId: "", threadId: "", silent: false,
-  userKey: "", appToken: "", priority: 0, device: "", sound: "", host: "", port: 587, secure: "starttls", username: "", password: "", from: "", to: "",
+  url: "",
+  method: "POST",
+  headers: [],
+  botToken: "",
+  chatId: "",
+  threadId: "",
+  silent: false,
+  userKey: "",
+  appToken: "",
+  priority: 0,
+  device: "",
+  sound: "",
+  host: "",
+  port: 587,
+  secure: "starttls",
+  username: "",
+  password: "",
+  from: "",
+  to: "",
 });
 
 /** Settings → Connections → Notifications: webhook, Telegram, Pushover and email channels. */
@@ -46,17 +88,21 @@ export function NotifyChannelsCard() {
     <div className="card pad stack">
       <div className="row between">
         <h2>{t("nch.title")}</h2>
-        <button className="small" disabled={!dirty} onClick={async () => {
-          try {
-            const r = await api<Loaded>("/notify/channels", { method: "PUT", body: { channels: list } });
-            setList(r.channels);
-            setStatus(r.status);
-            setDirty(false);
-            toast(t("nch.saved"));
-          } catch (e) {
-            toast((e as Error).message, true);
-          }
-        }}>
+        <button
+          className="small"
+          disabled={!dirty}
+          onClick={async () => {
+            try {
+              const r = await api<Loaded>("/notify/channels", { method: "PUT", body: { channels: list } });
+              setList(r.channels);
+              setStatus(r.status);
+              setDirty(false);
+              toast(t("nch.saved"));
+            } catch (e) {
+              toast((e as Error).message, true);
+            }
+          }}
+        >
           {t("nch.saveAll")}
         </button>
       </div>
@@ -68,7 +114,14 @@ export function NotifyChannelsCard() {
       ))}
       {!list.length && <p className="muted small">{t("nch.none")}</p>}
       {list.map((c, i) => (
-        <ChannelForm key={c.id} c={c} dirty={dirty} st={status[c.id]} set={(p) => edit(i, p)} onRemove={() => (setList(list.filter((_, j) => j !== i)), setDirty(true))} />
+        <ChannelForm
+          key={c.id}
+          c={c}
+          dirty={dirty}
+          st={status[c.id]}
+          set={(p) => edit(i, p)}
+          onRemove={() => (setList(list.filter((_, j) => j !== i)), setDirty(true))}
+        />
       ))}
       <div className="row">
         {TYPES.map((ty) => (
@@ -82,7 +135,19 @@ export function NotifyChannelsCard() {
   );
 }
 
-function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Partial<Channel>) => void; onRemove: () => void; st?: { at: number; ok: boolean; error: string | null }; dirty: boolean }) {
+function ChannelForm({
+  c,
+  set,
+  onRemove,
+  st,
+  dirty,
+}: {
+  c: Channel;
+  set: (p: Partial<Channel>) => void;
+  onRemove: () => void;
+  st?: { at: number; ok: boolean; error: string | null };
+  dirty: boolean;
+}) {
   const toast = useToast();
   return (
     <div className="card pad stack">
@@ -95,7 +160,10 @@ function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Par
             disabled={dirty}
             onClick={async () => {
               try {
-                const r = await api<{ results: { channel: string; ok: boolean; why: string }[] }>(`/notify/channels/${encodeURIComponent(c.id)}/test`, { body: {} });
+                const r = await api<{ results: { channel: string; ok: boolean; why: string }[] }>(
+                  `/notify/channels/${encodeURIComponent(c.id)}/test`,
+                  { body: {} },
+                );
                 const x = r.results[0];
                 toast(x.ok ? t("nch.testOk", { name: x.channel }) : t("nch.testFail", { name: x.channel, why: x.why }), !x.ok);
               } catch (e) {
@@ -110,7 +178,12 @@ function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Par
           </button>
         </span>
       </div>
-      {st && (st.ok ? <p className="muted small">{t("nch.lastOk", { when: relTime(st.at) })}</p> : <p className="banner warn slim small">{t("nch.lastError", { why: st.error ?? "" })}</p>)}
+      {st &&
+        (st.ok ? (
+          <p className="muted small">{t("nch.lastOk", { when: relTime(st.at) })}</p>
+        ) : (
+          <p className="banner warn slim small">{t("nch.lastError", { why: st.error ?? "" })}</p>
+        ))}
       <div className="form">
         <label>
           {t("nch.name")}
@@ -121,7 +194,12 @@ function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Par
           <>
             <label className="field">
               {t("nch.wh.url")}
-              <SecretInput value={c.url} onChange={(v) => set({ url: v })} label={t("nch.wh.url")} placeholder="https://example.com/hooks/animearr" />
+              <SecretInput
+                value={c.url}
+                onChange={(v) => set({ url: v })}
+                label={t("nch.wh.url")}
+                placeholder="https://example.com/hooks/animearr"
+              />
             </label>
             <label>
               {t("nch.wh.method")}
@@ -134,9 +212,23 @@ function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Par
               <span>{t("nch.wh.headers")}</span>
               {c.headers.map((h, i) => (
                 <div key={i} className="row">
-                  <input aria-label={t("nch.wh.headerName")} placeholder={t("nch.wh.headerName")} value={h.name} onChange={(e) => set({ headers: c.headers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                  <SecretInput label={t("nch.wh.headerValue")} placeholder={t("nch.wh.headerValue")} value={h.value} onChange={(v) => set({ headers: c.headers.map((x, j) => (j === i ? { ...x, value: v } : x)) })} />
-                  <button className="small ghost" aria-label={t("nch.remove")} onClick={() => set({ headers: c.headers.filter((_, j) => j !== i) })}>
+                  <input
+                    aria-label={t("nch.wh.headerName")}
+                    placeholder={t("nch.wh.headerName")}
+                    value={h.name}
+                    onChange={(e) => set({ headers: c.headers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+                  />
+                  <SecretInput
+                    label={t("nch.wh.headerValue")}
+                    placeholder={t("nch.wh.headerValue")}
+                    value={h.value}
+                    onChange={(v) => set({ headers: c.headers.map((x, j) => (j === i ? { ...x, value: v } : x)) })}
+                  />
+                  <button
+                    className="small ghost"
+                    aria-label={t("nch.remove")}
+                    onClick={() => set({ headers: c.headers.filter((_, j) => j !== i) })}
+                  >
                     ✕
                   </button>
                 </div>
@@ -234,7 +326,12 @@ function ChannelForm({ c, set, onRemove, st, dirty }: { c: Channel; set: (p: Par
           </>
         )}
         {(["grabbed", "imported", "failed", "paused", "indexer"] as const).map((ev) => (
-          <Toggle key={ev} checked={c.events[ev]} onChange={(v) => set({ events: { ...c.events, [ev]: v } })} label={t(`notify.ev.${ev}` as I18nKey)} />
+          <Toggle
+            key={ev}
+            checked={c.events[ev]}
+            onChange={(v) => set({ events: { ...c.events, [ev]: v } })}
+            label={t(`notify.ev.${ev}` as I18nKey)}
+          />
         ))}
       </div>
     </div>

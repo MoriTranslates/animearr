@@ -4,10 +4,12 @@ import { getSettings, type PathMapping } from "./settings.js";
 function apply(p: string, maps: PathMapping[]): string | null {
   const norm = p.replace(/\\/g, "/");
   // Longest prefix wins.
-  const m = [...maps].sort((a, b) => b.from.length - a.from.length).find((x) => {
-    const f = x.from.replace(/\\/g, "/").replace(/\/+$/, "");
-    return norm === f || norm.startsWith(`${f}/`);
-  });
+  const m = [...maps]
+    .sort((a, b) => b.from.length - a.from.length)
+    .find((x) => {
+      const f = x.from.replace(/\\/g, "/").replace(/\/+$/, "");
+      return norm === f || norm.startsWith(`${f}/`);
+    });
   if (!m) return null;
   const f = m.from.replace(/\\/g, "/").replace(/\/+$/, "");
   return m.to.replace(/[\\/]+$/, "") + norm.slice(f.length);

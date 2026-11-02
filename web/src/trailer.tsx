@@ -7,13 +7,27 @@ import { Modal } from "./ui";
  * "▶ Trailer": only when the show has one. Opens the trailer in a dialog, playing from YouTube/Dailymotion; closing
  * the dialog removes the player, which stops it. Nothing is downloaded.
  */
-export function TrailerButton({ trailer, title, className = "small" }: { trailer: Trailer | null | undefined; title: string; className?: string }) {
+export function TrailerButton({
+  trailer,
+  title,
+  className = "small",
+}: {
+  trailer: Trailer | null | undefined;
+  title: string;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const links = trailerLinks(trailer);
   if (!links) return null;
   return (
     <>
-      <button type="button" className={`trailer-btn ${className}`} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={t("trailer.watch", { title })}>
+      <button
+        type="button"
+        className={`trailer-btn ${className}`}
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-label={t("trailer.watch", { title })}
+      >
         {t("trailer.button")}
       </button>
       {open && (

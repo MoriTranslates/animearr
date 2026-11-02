@@ -11,8 +11,20 @@ import { detailFor } from "./errors";
 
 /** What a toast is about: picks its manga exclamation (KITA━! for a new episode, SUGOI!/YATTA! for a grab…). */
 export type ToastKind = "success" | "grab" | "import" | "new-episode" | "complete" | "download" | "error";
-export interface ToastOpts { kind?: ToastKind; burst?: "always" | "never"; cover?: string | null }
-interface Toast { id: number; msg: string; error: boolean; action?: { label: string; run: () => void }; burst: { text: string; jp: string } | null; kind: ToastKind; cover: string | null }
+export interface ToastOpts {
+  kind?: ToastKind;
+  burst?: "always" | "never";
+  cover?: string | null;
+}
+interface Toast {
+  id: number;
+  msg: string;
+  error: boolean;
+  action?: { label: string; run: () => void };
+  burst: { text: string; jp: string } | null;
+  kind: ToastKind;
+  cover: string | null;
+}
 type Push = (msg: string, error?: boolean, action?: Toast["action"], opts?: ToastOpts) => void;
 const ToastCtx = createContext<Push>(() => undefined);
 export const useToast = () => useContext(ToastCtx);
@@ -36,7 +48,15 @@ function pickBurst(kind: ToastKind, opts?: ToastOpts) {
   const key = list[Math.floor(Math.random() * list.length)];
   return { text: t(key), jp: t(`${key}.jp` as I18nKey) };
 }
-const EMOTE: Record<ToastKind, string> = { success: "✨", grab: "✨", import: "✨", "new-episode": "✨", complete: "🎉", download: "💨", error: "💢" };
+const EMOTE: Record<ToastKind, string> = {
+  success: "✨",
+  grab: "✨",
+  import: "✨",
+  "new-episode": "✨",
+  complete: "🎉",
+  download: "💨",
+  error: "💢",
+};
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -66,18 +86,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     tm.started = Date.now();
     tm.handle = setTimeout(() => drop(id), Math.max(1500, tm.left));
   };
-  const push = useCallback<Push>((msg, error = false, action, opts) => {
-    // An error the server attached a fix to gets that fix as its button.
-    if (error && !action) {
-      const f = fixesForMessage(msg)?.[0];
-      if (f) action = { label: f.label, run: () => runFix(f) };
-    }
-    const kind: ToastKind = error ? "error" : (opts?.kind ?? "success");
-    const id = Date.now() + Math.random();
-    const burst = pickBurst(kind, opts);
-    setToasts((x) => [...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2), { id, msg, error, action, kind, burst, cover: opts?.cover ?? null }]);
-    startTimer(id, error ? 12_000 : action ? 15_000 : 5000);
-  }, [startTimer]);
+  const push = useCallback<Push>(
+    (msg, error = false, action, opts) => {
+      // An error the server attached a fix to gets that fix as its button.
+      if (error && !action) {
+        const f = fixesForMessage(msg)?.[0];
+        if (f) action = { label: f.label, run: () => runFix(f) };
+      }
+      const kind: ToastKind = error ? "error" : (opts?.kind ?? "success");
+      const id = Date.now() + Math.random();
+      const burst = pickBurst(kind, opts);
+      setToasts((x) => [
+        ...x.filter((y) => !(y.error && error && y.msg === msg)).slice(-2),
+        { id, msg, error, action, kind, burst, cover: opts?.cover ?? null },
+      ]);
+      startTimer(id, error ? 12_000 : action ? 15_000 : 5000);
+    },
+    [startTimer],
+  );
   const close = (id: number) => {
     const tm = timers.current.get(id);
     if (tm?.handle) clearTimeout(tm.handle);
@@ -87,11 +113,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastCtx.Provider value={push}>
       {children}
       <div className="sr-only" role="alert">
-        {toasts.filter((x) => x.error).map((x) => x.msg).join(". ")}
+        {toasts
+          .filter((x) => x.error)
+          .map((x) => x.msg)
+          .join(". ")}
       </div>
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((x) => (
-          <div key={x.id} className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`} aria-hidden={x.error || undefined} onMouseEnter={() => pause(x.id)} onMouseLeave={() => resume(x.id)} onFocus={() => pause(x.id)} onBlur={() => resume(x.id)}>
+          <div
+            key={x.id}
+            className={`toast${x.error ? " err" : ""}${x.burst ? " has-burst" : ""}`}
+            aria-hidden={x.error || undefined}
+            onMouseEnter={() => pause(x.id)}
+            onMouseLeave={() => resume(x.id)}
+            onFocus={() => pause(x.id)}
+            onBlur={() => resume(x.id)}
+          >
             {x.burst && (
               <span className={`burst ${x.kind}`} aria-hidden="true" lang="ja">
                 <b>{x.burst.text}</b>
@@ -131,7 +168,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ---------------------------------------------------------------- dialogs
 
-export function Modal({ title, onClose, children, className }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  className,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -160,7 +207,14 @@ export function Modal({ title, onClose, children, className }: { title: string; 
   // would otherwise be centred on the bar and pushed off the top of the screen.
   return createPortal(
     <div className="modal-back" onClick={onClose}>
-      <div className={`modal card${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal card${className ? ` ${className}` : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="card-head">
           <h2>{title}</h2>
           <button className="icon" aria-label={t("common.close")} onClick={onClose}>
@@ -175,7 +229,21 @@ export function Modal({ title, onClose, children, className }: { title: string; 
 }
 
 /** Confirmation dialog with a primary action. */
-export function Confirm({ title, children, confirmLabel, onConfirm, onClose, danger }: { title: string; children: ReactNode; confirmLabel: string; onConfirm: () => Promise<void> | void; onClose: () => void; danger?: boolean }) {
+export function Confirm({
+  title,
+  children,
+  confirmLabel,
+  onConfirm,
+  onClose,
+  danger,
+}: {
+  title: string;
+  children: ReactNode;
+  confirmLabel: string;
+  onConfirm: () => Promise<void> | void;
+  onClose: () => void;
+  danger?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   return (
     <Modal title={title} onClose={onClose}>
@@ -227,7 +295,17 @@ export function ErrorText({ msg, className = "" }: { msg: string; className?: st
 }
 
 /** An empty state: one sentence and (ideally) one action, never a dashed box alone. */
-export function Empty({ children, title, icon, action }: { children?: ReactNode; title?: string; icon?: string; action?: { label: string; run: () => void } | ReactNode }) {
+export function Empty({
+  children,
+  title,
+  icon,
+  action,
+}: {
+  children?: ReactNode;
+  title?: string;
+  icon?: string;
+  action?: { label: string; run: () => void } | ReactNode;
+}) {
   return (
     <div className="empty">
       {icon && (
@@ -258,10 +336,30 @@ export function Empty({ children, title, icon, action }: { children?: ReactNode;
 
 // ---------------------------------------------------------------- overflow menu (⋯) and split button
 
-export interface MenuItem { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hidden?: boolean }
+export interface MenuItem {
+  label: string;
+  onSelect: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  hidden?: boolean;
+}
 
 /** A ⋯ menu: the less-used actions of a page/row live here instead of a wall of buttons. Arrow keys, Escape, outside click. */
-export function Menu({ items, label, trigger = "⋯", className = "", align = "right", up = false }: { items: MenuItem[]; label?: string; trigger?: ReactNode; className?: string; align?: "left" | "right"; up?: boolean }) {
+export function Menu({
+  items,
+  label,
+  trigger = "⋯",
+  className = "",
+  align = "right",
+  up = false,
+}: {
+  items: MenuItem[];
+  label?: string;
+  trigger?: ReactNode;
+  className?: string;
+  align?: "left" | "right";
+  up?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -327,7 +425,25 @@ export function Menu({ items, label, trigger = "⋯", className = "", align = "r
  * One "Find" control everywhere: the main button finds automatically; the caret holds "Choose release…" and the
  * rest (re-grab, delete…), so pages don't repeat Search / Interactive / Re-grab side by side.
  */
-export function SplitButton({ label, onClick, items, disabled, primary = true, small = false, menuLabel, up = false }: { label: ReactNode; onClick: () => void; items: MenuItem[]; disabled?: boolean; primary?: boolean; small?: boolean; menuLabel?: string; up?: boolean }) {
+export function SplitButton({
+  label,
+  onClick,
+  items,
+  disabled,
+  primary = true,
+  small = false,
+  menuLabel,
+  up = false,
+}: {
+  label: ReactNode;
+  onClick: () => void;
+  items: MenuItem[];
+  disabled?: boolean;
+  primary?: boolean;
+  small?: boolean;
+  menuLabel?: string;
+  up?: boolean;
+}) {
   return (
     <span className={`split${primary ? " primary" : ""}${small ? " small" : ""}`}>
       <button type="button" className={`${primary ? "primary" : ""}${small ? " small" : ""}`} disabled={disabled} onClick={onClick}>
@@ -347,11 +463,28 @@ export function SplitButton({ label, onClick, items, disabled, primary = true, s
 
 // ---------------------------------------------------------------- inputs
 
-export function SecretInput({ value, onChange, placeholder, label }: { value: string; onChange: (v: string) => void; placeholder?: string; label: string }) {
+export function SecretInput({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  label: string;
+}) {
   const [show, setShow] = useState(false);
   return (
     <span className="secret">
-      <input type={show ? "text" : "password"} value={value} placeholder={placeholder} aria-label={label} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        placeholder={placeholder}
+        aria-label={label}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+      />
       <button type="button" className="ghost small" onClick={() => setShow(!show)} aria-pressed={show} aria-label={label}>
         {show ? "🙈" : "👁"}
       </button>
@@ -363,13 +496,27 @@ export function SecretInput({ value, onChange, placeholder, label }: { value: st
  * Comma-separated list input: every keystroke reaches the form (so its Save bar shows at once), while the text you
  * type is kept as is until you leave the field.
  */
-export function ListInput({ value, onChange, placeholder, label }: { value: (string | number)[]; onChange: (v: string[]) => void; placeholder?: string; label: string }) {
+export function ListInput({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: (string | number)[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+  label: string;
+}) {
   const [text, setText] = useState(value.join(", "));
   const focused = useRef(false);
   useEffect(() => {
     if (!focused.current) setText(value.join(", "));
   }, [value]);
-  const split = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+  const split = (v: string) =>
+    v
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
   return (
     <input
       value={text}
@@ -386,7 +533,19 @@ export function ListInput({ value, onChange, placeholder, label }: { value: (str
 }
 
 /** A number field: each keystroke reaches the form (clamped to min–max); the field shows the clamped value on leaving. */
-export function NumberInput({ value, onChange, min, max, label }: { value: number; onChange: (v: number) => void; min: number; max: number; label: string }) {
+export function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  label,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  label: string;
+}) {
   const [text, setText] = useState(String(value));
   const focused = useRef(false);
   useEffect(() => {
@@ -416,7 +575,19 @@ export function NumberInput({ value, onChange, min, max, label }: { value: numbe
   );
 }
 
-export function Toggle({ checked, onChange, label, help, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; help?: string; disabled?: boolean }) {
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  help,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  help?: string;
+  disabled?: boolean;
+}) {
   return (
     <label className="toggle">
       <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
@@ -431,7 +602,15 @@ export function Toggle({ checked, onChange, label, help, disabled }: { checked: 
 
 // ---------------------------------------------------------------- display
 
-export function Chip({ tone = "info", children, title }: { tone?: "good" | "bad" | "warn" | "info" | "accent"; children: ReactNode; title?: string }) {
+export function Chip({
+  tone = "info",
+  children,
+  title,
+}: {
+  tone?: "good" | "bad" | "warn" | "info" | "accent";
+  children: ReactNode;
+  title?: string;
+}) {
   return (
     <span className={`chip ${tone}`} title={title}>
       {children}
@@ -469,17 +648,38 @@ export function Why({ summary, lines }: { summary?: string; lines: string[] }) {
 
 const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|image\.tmdb\.org|artworks\.thetvdb\.com|thetvdb\.com)\//;
 /** A cover at the size it's shown: AnimeArr's thumbnail cache (the provider's smaller rendition), else the URL as is. */
-export const thumbUrl = (src: string, size: "sm" | "md" | "lg" | "xl") => (IMG_HOSTS.test(src) ? `${BASE}/api/img?s=${size}&u=${encodeURIComponent(src)}` : src);
+export const thumbUrl = (src: string, size: "sm" | "md" | "lg" | "xl") =>
+  IMG_HOSTS.test(src) ? `${BASE}/api/img?s=${size}&u=${encodeURIComponent(src)}` : src;
 const COVER_PX: Record<string, [number, number]> = { sm: [48, 68], md: [84, 120], lg: [200, 300] };
 
-export function Cover({ src, alt, size = "md", hero = false }: { src: string | null | undefined; alt: string; size?: "sm" | "md" | "lg"; hero?: boolean }) {
+export function Cover({
+  src,
+  alt,
+  size = "md",
+  hero = false,
+}: {
+  src: string | null | undefined;
+  alt: string;
+  size?: "sm" | "md" | "lg";
+  hero?: boolean;
+}) {
   const [broken, setBroken] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [w, h] = COVER_PX[size];
   return (
     <div className={`cover ${size}${loaded ? " loaded" : ""}`}>
       {src && !broken ? (
-        <img src={thumbUrl(src, hero ? "lg" : size === "lg" ? "md" : size)} alt="" width={w} height={h} loading={hero ? "eager" : "lazy"} decoding="async" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />
+        <img
+          src={thumbUrl(src, hero ? "lg" : size === "lg" ? "md" : size)}
+          alt=""
+          width={w}
+          height={h}
+          loading={hero ? "eager" : "lazy"}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onLoad={() => setLoaded(true)}
+          onError={() => setBroken(true)}
+        />
       ) : (
         <div className="noimg" aria-hidden="true">
           {alt.slice(0, 1)}

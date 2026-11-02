@@ -10,7 +10,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { parseRelease } = await import("../server/core/parser.js");
 
 test("Erai-raws batch with a subtitle tag list is not an Italian dub", () => {
-  const p = parseRelease("[Erai-raws] Black Clover S01 (TV) - 001 ~ 170 [1080p][BATCH][Multiple Subtitle] [ENG][POR-BR][SPA-LA][SPA][ARA][FRE][GER][ITA][RUS]");
+  const p = parseRelease(
+    "[Erai-raws] Black Clover S01 (TV) - 001 ~ 170 [1080p][BATCH][Multiple Subtitle] [ENG][POR-BR][SPA-LA][SPA][ARA][FRE][GER][ITA][RUS]",
+  );
   assert.ok(!p.hints.audio.includes("it"));
   assert.ok(p.hints.multiSubs);
 });

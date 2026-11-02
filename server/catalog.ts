@@ -52,7 +52,8 @@ export interface Entry {
   trailer: Trailer | null;
 }
 
-const date = (d: { year: number | null; month: number | null; day: number | null }) => (d.year ? `${d.year}-${String(d.month ?? 1).padStart(2, "0")}-${String(d.day ?? 1).padStart(2, "0")}` : null);
+const date = (d: { year: number | null; month: number | null; day: number | null }) =>
+  d.year ? `${d.year}-${String(d.month ?? 1).padStart(2, "0")}-${String(d.day ?? 1).padStart(2, "0")}` : null;
 
 /** "Episode 5 - The Title" (Crunchyroll style) → [5, "The Title"]. */
 export function parseStreamingTitle(t: string | null): [number, string] | null {
@@ -88,10 +89,38 @@ export function upsertMedia(m: AniMedia, anidbId: number | null, now = Date.now(
        episodes = excluded.episodes, duration = excluded.duration, country = excluded.country, cover = excluded.cover, banner = excluded.banner, color = excluded.color, description = excluded.description,
        genres = excluded.genres, adult = excluded.adult, next_ep = excluded.next_ep, next_at = excluded.next_at, fetched_at = excluded.fetched_at, trailer = excluded.trailer`,
   ).run(
-    m.id, anidbId, m.idMal, al?.tvdbId ?? null, al?.defaultSeason === null || al?.defaultSeason === undefined ? null : String(al.defaultSeason), al?.offset ?? 0, al?.tmdbTv ?? null, al?.tmdbSeason ?? null, al?.tmdbOffset ?? 0, al?.tmdbMovie ?? null,
-    m.format, m.title.romaji, m.title.english, m.title.native, JSON.stringify(m.synonyms ?? []), m.status, m.seasonYear ?? m.startDate?.year ?? null, date(m.startDate), date(m.endDate), m.episodes, m.duration,
-    m.countryOfOrigin, m.coverImage?.large ?? null, m.bannerImage, m.coverImage?.color ?? null, (m.description ?? "").replace(/<[^>]+>/g, "").slice(0, 4000), JSON.stringify(m.genres ?? []), m.isAdult ? 1 : 0,
-    m.nextAiringEpisode?.episode ?? null, m.nextAiringEpisode ? m.nextAiringEpisode.airingAt * 1000 : null, now, storedTrailer(m.trailer),
+    m.id,
+    anidbId,
+    m.idMal,
+    al?.tvdbId ?? null,
+    al?.defaultSeason === null || al?.defaultSeason === undefined ? null : String(al.defaultSeason),
+    al?.offset ?? 0,
+    al?.tmdbTv ?? null,
+    al?.tmdbSeason ?? null,
+    al?.tmdbOffset ?? 0,
+    al?.tmdbMovie ?? null,
+    m.format,
+    m.title.romaji,
+    m.title.english,
+    m.title.native,
+    JSON.stringify(m.synonyms ?? []),
+    m.status,
+    m.seasonYear ?? m.startDate?.year ?? null,
+    date(m.startDate),
+    date(m.endDate),
+    m.episodes,
+    m.duration,
+    m.countryOfOrigin,
+    m.coverImage?.large ?? null,
+    m.bannerImage,
+    m.coverImage?.color ?? null,
+    (m.description ?? "").replace(/<[^>]+>/g, "").slice(0, 4000),
+    JSON.stringify(m.genres ?? []),
+    m.isAdult ? 1 : 0,
+    m.nextAiringEpisode?.episode ?? null,
+    m.nextAiringEpisode ? m.nextAiringEpisode.airingAt * 1000 : null,
+    now,
+    storedTrailer(m.trailer),
   );
   // Episodes: air times from the schedule, titles from the streaming list; TMDB/AniDB titles (source) are kept.
   const titles = new Map<number, string>();
@@ -109,13 +138,31 @@ export function upsertMedia(m: AniMedia, anidbId: number | null, now = Date.now(
     ).run(m.id, n, titles.get(n) ?? null, air.get(n) ?? null);
   applyOverrides(m.id); // a user's/auto match wins over the mapping just written
   db.prepare("DELETE FROM entry_relations WHERE from_id = ?").run(m.id);
-  for (const e of m.relations?.edges ?? []) if (e.node.type === "ANIME") db.prepare("INSERT OR IGNORE INTO entry_relations (from_id, to_id, type) VALUES (?, ?, ?)").run(m.id, e.node.id, e.relationType);
+  for (const e of m.relations?.edges ?? [])
+    if (e.node.type === "ANIME")
+      db.prepare("INSERT OR IGNORE INTO entry_relations (from_id, to_id, type) VALUES (?, ?, ?)").run(m.id, e.node.id, e.relationType);
 }
 
 /** User/auto matches (catalog_overrides) win over Anime-Lists/Fribb: re-applied after every mapping pass. */
 export function applyOverrides(only?: number) {
-  for (const o of (only === undefined ? db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides").all() : db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides WHERE anilist_id = ?").all(only)) as { anilist_id: number; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_movie: number | null }[]) {
-    if (o.tvdb_id) db.prepare("UPDATE entries SET tvdb_id = ?, tvdb_season = ?, tvdb_offset = ? WHERE anilist_id = ?").run(o.tvdb_id, o.tvdb_season ?? "1", o.tvdb_offset, o.anilist_id);
+  for (const o of (only === undefined
+    ? db.prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides").all()
+    : db
+        .prepare("SELECT anilist_id, tvdb_id, tvdb_season, tvdb_offset, tmdb_movie FROM catalog_overrides WHERE anilist_id = ?")
+        .all(only)) as {
+    anilist_id: number;
+    tvdb_id: number | null;
+    tvdb_season: string | null;
+    tvdb_offset: number;
+    tmdb_movie: number | null;
+  }[]) {
+    if (o.tvdb_id)
+      db.prepare("UPDATE entries SET tvdb_id = ?, tvdb_season = ?, tvdb_offset = ? WHERE anilist_id = ?").run(
+        o.tvdb_id,
+        o.tvdb_season ?? "1",
+        o.tvdb_offset,
+        o.anilist_id,
+      );
     if (o.tmdb_movie) db.prepare("UPDATE entries SET tmdb_movie = ? WHERE anilist_id = ?").run(o.tmdb_movie, o.anilist_id);
   }
 }
@@ -131,7 +178,11 @@ export function rebuildFranchises(now = Date.now()) {
     parent.set(x, r);
     return r;
   };
-  for (const r of db.prepare("SELECT from_id, to_id, type FROM entry_relations").all() as { from_id: number; to_id: number; type: string }[]) {
+  for (const r of db.prepare("SELECT from_id, to_id, type FROM entry_relations").all() as {
+    from_id: number;
+    to_id: number;
+    type: string;
+  }[]) {
     if (!FRANCHISE_REL.has(r.type) || !parent.has(r.from_id) || !parent.has(r.to_id)) continue;
     const [a, b] = [find(r.from_id), find(r.to_id)];
     if (a !== b) parent.set(Math.max(a, b), Math.min(a, b));
@@ -141,16 +192,27 @@ export function rebuildFranchises(now = Date.now()) {
   tx(db, () => {
     db.prepare("DELETE FROM franchises").run();
     for (const [root, members] of groups) {
-      const rows = db.prepare(`SELECT anilist_id, kind, title_english, title_romaji, start_date FROM entries WHERE anilist_id IN (${members.map(() => "?").join(",")}) ORDER BY (kind IN ('TV', 'TV_SHORT', 'ONA')) DESC, start_date IS NULL, start_date`).all(...members) as { title_english: string | null; title_romaji: string | null }[];
+      const rows = db
+        .prepare(
+          `SELECT anilist_id, kind, title_english, title_romaji, start_date FROM entries WHERE anilist_id IN (${members.map(() => "?").join(",")}) ORDER BY (kind IN ('TV', 'TV_SHORT', 'ONA')) DESC, start_date IS NULL, start_date`,
+        )
+        .all(...members) as { title_english: string | null; title_romaji: string | null }[];
       const id = Math.min(...members);
-      db.prepare("INSERT INTO franchises (id, title, updated_at) VALUES (?, ?, ?)").run(id, rows[0]?.title_english ?? rows[0]?.title_romaji ?? String(root), now);
+      db.prepare("INSERT INTO franchises (id, title, updated_at) VALUES (?, ?, ?)").run(
+        id,
+        rows[0]?.title_english ?? rows[0]?.title_romaji ?? String(root),
+        now,
+      );
       db.prepare(`UPDATE entries SET franchise_id = ? WHERE anilist_id IN (${members.map(() => "?").join(",")})`).run(id, ...members);
     }
   });
   return groups.size;
 }
 
-export interface CatalogDeps { media: typeof mediaByIds; fribb: typeof fribb }
+export interface CatalogDeps {
+  media: typeof mediaByIds;
+  fribb: typeof fribb;
+}
 const realDeps: CatalogDeps = { media: mediaByIds, fribb };
 
 /**
@@ -165,17 +227,30 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
   // Seeds: the library's series and movies → AniDB (Anime-Lists) → AniList (Fribb).
   const seeds = new Set<number>();
   const tvdbs = new Set((cache.prepare("SELECT tvdb_id FROM series").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id));
-  const tmdbs = new Set((cache.prepare("SELECT tmdb_id FROM movies WHERE is_anime = 1 AND tmdb_id IS NOT NULL").all() as { tmdb_id: number }[]).map((r) => r.tmdb_id));
-  for (const e of al.values()) if ((e.tvdbId && tvdbs.has(e.tvdbId)) || (e.tmdbMovie && tmdbs.has(e.tmdbMovie))) if (f.anidbToAnilist.has(e.aid)) seeds.add(f.anidbToAnilist.get(e.aid)!);
+  const tmdbs = new Set(
+    (cache.prepare("SELECT tmdb_id FROM movies WHERE is_anime = 1 AND tmdb_id IS NOT NULL").all() as { tmdb_id: number }[]).map(
+      (r) => r.tmdb_id,
+    ),
+  );
+  for (const e of al.values())
+    if ((e.tvdbId && tvdbs.has(e.tvdbId)) || (e.tmdbMovie && tmdbs.has(e.tmdbMovie)))
+      if (f.anidbToAnilist.has(e.aid)) seeds.add(f.anidbToAnilist.get(e.aid)!);
   for (const [alId, tm] of f.anilistToTmdb) if (tmdbs.has(tm)) seeds.add(alId);
   for (const r of db.prepare("SELECT anilist_id FROM catalog_pins").all() as { anilist_id: number }[]) seeds.add(r.anilist_id);
   for (const r of db.prepare("SELECT anilist_id FROM catalog_overrides").all() as { anilist_id: number }[]) seeds.add(r.anilist_id);
   // Exactly one hop out from the seeds (sequels, prequels, side stories, movies…): never a crawl.
   const want = new Set(seeds);
-  const hop = seeds.size ? (db.prepare(`SELECT to_id, type FROM entry_relations WHERE from_id IN (${[...seeds].map(() => "?").join(",")})`).all(...seeds) as { to_id: number; type: string }[]) : [];
+  const hop = seeds.size
+    ? (db.prepare(`SELECT to_id, type FROM entry_relations WHERE from_id IN (${[...seeds].map(() => "?").join(",")})`).all(...seeds) as {
+        to_id: number;
+        type: string;
+      }[])
+    : [];
   for (const r of hop) if (FRANCHISE_REL.has(r.type)) want.add(r.to_id);
   // Prune what isn't wanted any more (removed from the library, or a crawl leftover).
-  const gone = (db.prepare("SELECT anilist_id FROM entries").all() as { anilist_id: number }[]).map((r) => r.anilist_id).filter((x) => !want.has(x));
+  const gone = (db.prepare("SELECT anilist_id FROM entries").all() as { anilist_id: number }[])
+    .map((r) => r.anilist_id)
+    .filter((x) => !want.has(x));
   if (gone.length && seeds.size)
     tx(db, () => {
       for (const id of gone) {
@@ -186,8 +261,21 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
     });
   // Mappings follow Anime-Lists/Fribb changes every run (no AniList fetch needed).
   remap(f);
-  const known = new Map((db.prepare("SELECT anilist_id, status, fetched_at FROM entries").all() as { anilist_id: number; status: string | null; fetched_at: number }[]).map((r) => [r.anilist_id, r]));
-  const missing = new Map((db.prepare("SELECT anilist_id, at FROM catalog_missing").all() as { anilist_id: number; at: number }[]).map((r) => [r.anilist_id, r.at]));
+  const known = new Map(
+    (
+      db.prepare("SELECT anilist_id, status, fetched_at FROM entries").all() as {
+        anilist_id: number;
+        status: string | null;
+        fetched_at: number;
+      }[]
+    ).map((r) => [r.anilist_id, r]),
+  );
+  const missing = new Map(
+    (db.prepare("SELECT anilist_id, at FROM catalog_missing").all() as { anilist_id: number; at: number }[]).map((r) => [
+      r.anilist_id,
+      r.at,
+    ]),
+  );
   const due = (id: number) => {
     if (missing.has(id) && now - missing.get(id)! < 7 * DAY) return false; // AniList didn't return it last time
     const k = known.get(id);
@@ -205,13 +293,18 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
     const got = new Set(batch.map((m) => m.id));
     tx(db, () => {
       for (const m of batch) upsertMedia(m, anidbFor(f, m.id), now);
-      for (const id of ask) if (!got.has(id)) db.prepare("INSERT OR REPLACE INTO catalog_missing (anilist_id, at) VALUES (?, ?)").run(id, now);
+      for (const id of ask)
+        if (!got.has(id)) db.prepare("INSERT OR REPLACE INTO catalog_missing (anilist_id, at) VALUES (?, ?)").run(id, now);
     });
     fetched += batch.length;
     setJob("catalog", "running", `Fetched ${fetched} of ${todo.length} entries from AniList`);
   }
   const franchises = rebuildFranchises(now);
-  setJob("catalog", "done", `${fetched} entries refreshed; ${(db.prepare("SELECT COUNT(*) AS n FROM entries").get() as { n: number }).n} known in ${franchises} franchises`);
+  setJob(
+    "catalog",
+    "done",
+    `${fetched} entries refreshed; ${(db.prepare("SELECT COUNT(*) AS n FROM entries").get() as { n: number }).n} known in ${franchises} franchises`,
+  );
   return { fetched, franchises };
 }
 
@@ -230,12 +323,24 @@ function anidbFor(f: Awaited<ReturnType<typeof fribb>>, anilistId: number): numb
 function remap(f: Awaited<ReturnType<typeof fribb>>) {
   const al = animeListEntries();
   const rows = db.prepare("SELECT anilist_id FROM entries").all() as { anilist_id: number }[];
-  const up = db.prepare("UPDATE entries SET anidb_id = ?, tvdb_id = ?, tvdb_season = ?, tvdb_offset = ?, tmdb_tv = ?, tmdb_season = ?, tmdb_offset = ?, tmdb_movie = ? WHERE anilist_id = ?");
+  const up = db.prepare(
+    "UPDATE entries SET anidb_id = ?, tvdb_id = ?, tvdb_season = ?, tvdb_offset = ?, tmdb_tv = ?, tmdb_season = ?, tmdb_offset = ?, tmdb_movie = ? WHERE anilist_id = ?",
+  );
   tx(db, () => {
     for (const r of rows) {
       const aid = anidbFor(f, r.anilist_id);
       const e = aid ? al.get(aid) : undefined;
-      up.run(aid, e?.tvdbId ?? null, e?.defaultSeason === null || e?.defaultSeason === undefined ? null : String(e.defaultSeason), e?.offset ?? 0, e?.tmdbTv ?? null, e?.tmdbSeason ?? null, e?.tmdbOffset ?? 0, e?.tmdbMovie ?? null, r.anilist_id);
+      up.run(
+        aid,
+        e?.tvdbId ?? null,
+        e?.defaultSeason === null || e?.defaultSeason === undefined ? null : String(e.defaultSeason),
+        e?.offset ?? 0,
+        e?.tmdbTv ?? null,
+        e?.tmdbSeason ?? null,
+        e?.tmdbOffset ?? 0,
+        e?.tmdbMovie ?? null,
+        r.anilist_id,
+      );
     }
     applyOverrides(); // in the same transaction: never a moment with the override lost
   });
@@ -248,20 +353,86 @@ export async function remapNow() {
 
 // ---------------------------------------------------------------- reading
 
-interface Row { anilist_id: number; anidb_id: number | null; tvdb_id: number | null; tvdb_season: string | null; tvdb_offset: number; tmdb_tv: number | null; tmdb_season: number | null; tmdb_movie: number | null; kind: string | null; title_romaji: string | null; title_english: string | null; title_native: string | null; synonyms: string; status: string | null; season_year: number | null; start_date: string | null; end_date: string | null; episodes: number | null; duration: number | null; country: string | null; cover: string | null; banner: string | null; description: string | null; genres: string; next_ep: number | null; next_at: number | null; franchise_id: number | null; trailer?: string | null }
+interface Row {
+  anilist_id: number;
+  anidb_id: number | null;
+  tvdb_id: number | null;
+  tvdb_season: string | null;
+  tvdb_offset: number;
+  tmdb_tv: number | null;
+  tmdb_season: number | null;
+  tmdb_movie: number | null;
+  kind: string | null;
+  title_romaji: string | null;
+  title_english: string | null;
+  title_native: string | null;
+  synonyms: string;
+  status: string | null;
+  season_year: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  episodes: number | null;
+  duration: number | null;
+  country: string | null;
+  cover: string | null;
+  banner: string | null;
+  description: string | null;
+  genres: string;
+  next_ep: number | null;
+  next_at: number | null;
+  franchise_id: number | null;
+  trailer?: string | null;
+}
 export const toEntry = (r: Row): Entry => ({
-  anilistId: r.anilist_id, anidbId: r.anidb_id, tvdbId: r.tvdb_id, tvdbSeason: r.tvdb_season, tvdbOffset: r.tvdb_offset, tmdbTv: r.tmdb_tv, tmdbSeason: r.tmdb_season, tmdbMovie: r.tmdb_movie,
-  kind: r.kind, title: r.title_english ?? r.title_romaji ?? r.title_native ?? String(r.anilist_id), titleRomaji: r.title_romaji, titleEnglish: r.title_english, titleNative: r.title_native,
-  synonyms: JSON.parse(r.synonyms) as string[], status: r.status, year: r.season_year, startDate: r.start_date, endDate: r.end_date, episodes: r.episodes, duration: r.duration, country: r.country,
-  cover: r.cover, banner: r.banner, description: r.description, genres: JSON.parse(r.genres) as string[], nextEpisode: r.next_ep, nextAt: r.next_at, franchiseId: r.franchise_id, trailer: trailerOf(r.trailer),
+  anilistId: r.anilist_id,
+  anidbId: r.anidb_id,
+  tvdbId: r.tvdb_id,
+  tvdbSeason: r.tvdb_season,
+  tvdbOffset: r.tvdb_offset,
+  tmdbTv: r.tmdb_tv,
+  tmdbSeason: r.tmdb_season,
+  tmdbMovie: r.tmdb_movie,
+  kind: r.kind,
+  title: r.title_english ?? r.title_romaji ?? r.title_native ?? String(r.anilist_id),
+  titleRomaji: r.title_romaji,
+  titleEnglish: r.title_english,
+  titleNative: r.title_native,
+  synonyms: JSON.parse(r.synonyms) as string[],
+  status: r.status,
+  year: r.season_year,
+  startDate: r.start_date,
+  endDate: r.end_date,
+  episodes: r.episodes,
+  duration: r.duration,
+  country: r.country,
+  cover: r.cover,
+  banner: r.banner,
+  description: r.description,
+  genres: JSON.parse(r.genres) as string[],
+  nextEpisode: r.next_ep,
+  nextAt: r.next_at,
+  franchiseId: r.franchise_id,
+  trailer: trailerOf(r.trailer),
 });
 
 /** The entries mapped to a TVDB series, in TVDB season order, plus the rest of their franchise. */
 export function entriesForSeries(tvdbId: number) {
-  const mine = (db.prepare("SELECT * FROM entries WHERE tvdb_id = ? ORDER BY start_date IS NULL, start_date").all(tvdbId) as unknown as Row[]).map(toEntry);
+  const mine = (
+    db.prepare("SELECT * FROM entries WHERE tvdb_id = ? ORDER BY start_date IS NULL, start_date").all(tvdbId) as unknown as Row[]
+  ).map(toEntry);
   const fids = [...new Set(mine.map((e) => e.franchiseId).filter((x): x is number => !!x))];
-  const others = fids.length ? (db.prepare(`SELECT * FROM entries WHERE franchise_id IN (${fids.map(() => "?").join(",")}) AND (tvdb_id IS NULL OR tvdb_id != ?) ORDER BY start_date IS NULL, start_date`).all(...fids, tvdbId) as unknown as Row[]).map(toEntry) : [];
-  const franchise = fids.length ? (db.prepare("SELECT id, title FROM franchises WHERE id = ?").get(fids[0]) as { id: number; title: string } | undefined) ?? null : null;
+  const others = fids.length
+    ? (
+        db
+          .prepare(
+            `SELECT * FROM entries WHERE franchise_id IN (${fids.map(() => "?").join(",")}) AND (tvdb_id IS NULL OR tvdb_id != ?) ORDER BY start_date IS NULL, start_date`,
+          )
+          .all(...fids, tvdbId) as unknown as Row[]
+      ).map(toEntry)
+    : [];
+  const franchise = fids.length
+    ? ((db.prepare("SELECT id, title FROM franchises WHERE id = ?").get(fids[0]) as { id: number; title: string } | undefined) ?? null)
+    : null;
   return { franchise, entries: mine, related: others };
 }
 
@@ -275,17 +446,30 @@ export function catalogEpisode(tvdbId: number, season: number, episode: number, 
 
 /** A lookup for one series (loaded once): TVDB S/E (or absolute) → the catalog episode. Specials aren't guessed. */
 export function catalogLookup(tvdbId: number) {
-  const rows = db.prepare("SELECT anilist_id, tvdb_season, tvdb_offset, episodes FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC").all(tvdbId) as { anilist_id: number; tvdb_season: string; tvdb_offset: number; episodes: number | null }[];
+  const rows = db
+    .prepare(
+      "SELECT anilist_id, tvdb_season, tvdb_offset, episodes FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC",
+    )
+    .all(tvdbId) as { anilist_id: number; tvdb_season: string; tvdb_offset: number; episodes: number | null }[];
   const eps = new Map<number, Map<number, { title: string | null; air_utc: number | null }>>();
   if (rows.length)
-    for (const e of db.prepare(`SELECT anilist_id, number, title, air_utc FROM entry_episodes WHERE anilist_id IN (${rows.map(() => "?").join(",")})`).all(...rows.map((r) => r.anilist_id)) as { anilist_id: number; number: number; title: string | null; air_utc: number | null }[]) {
+    for (const e of db
+      .prepare(`SELECT anilist_id, number, title, air_utc FROM entry_episodes WHERE anilist_id IN (${rows.map(() => "?").join(",")})`)
+      .all(...rows.map((r) => r.anilist_id)) as { anilist_id: number; number: number; title: string | null; air_utc: number | null }[]) {
       if (!eps.has(e.anilist_id)) eps.set(e.anilist_id, new Map());
       eps.get(e.anilist_id)!.set(e.number, e);
     }
   return (season: number, episode: number, absolute: number | null) => {
     if (season === 0) return null;
     for (const r of rows) {
-      const n = r.tvdb_season === "a" ? (absolute ? absolute - r.tvdb_offset : null) : Number(r.tvdb_season) === season ? episode - r.tvdb_offset : null;
+      const n =
+        r.tvdb_season === "a"
+          ? absolute
+            ? absolute - r.tvdb_offset
+            : null
+          : Number(r.tvdb_season) === season
+            ? episode - r.tvdb_offset
+            : null;
       if (!n || n < 1 || (r.episodes && n > r.episodes)) continue;
       const e = eps.get(r.anilist_id)?.get(n);
       if (e) return { anilistId: r.anilist_id, number: n, title: e.title, airUtc: e.air_utc };
@@ -307,7 +491,9 @@ export function catalogStatus() {
     providers: { anilist: true, animeLists: animeListEntries().size > 0, tmdb: !!s.tmdbKey, anidb: !!s.anidbClient },
     /** Saved, but not used yet (coming with later rounds). */
     pending: { tvdb: !!s.tvdbKey },
-    lastJob: (cache.prepare("SELECT state, detail, finished_at FROM jobs WHERE name = 'catalog'").get() as { state: string; detail: string; finished_at: number } | undefined) ?? null,
+    lastJob:
+      (cache.prepare("SELECT state, detail, finished_at FROM jobs WHERE name = 'catalog'").get() as
+        { state: string; detail: string; finished_at: number } | undefined) ?? null,
   };
 }
 
@@ -322,7 +508,10 @@ export function tmdbFetch(pathAndQuery: string, key: string, fetcher: typeof fet
   const bearer = /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
   const sep = pathAndQuery.includes("?") ? "&" : "?";
   const url = `https://api.themoviedb.org/3${pathAndQuery}${bearer ? "" : `${sep}api_key=${encodeURIComponent(k)}`}`;
-  return fetcher(url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...(bearer ? { Authorization: `Bearer ${k}` } : {}) }, signal: AbortSignal.timeout(20_000) });
+  return fetcher(url, {
+    headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...(bearer ? { Authorization: `Bearer ${k}` } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
 }
 
 /** What kind of TMDB credential this looks like (for the settings page). */
@@ -333,7 +522,10 @@ export const tmdbKeyKind = (key: string) => {
 
 /** Settings → Metadata test: /3/configuration with the given (or saved) credential. */
 export async function testTmdb(key: string, fetcher: typeof fetch = fetch) {
-  if (tmdbKeyKind(key) === "unknown") throw Object.assign(new Error("That doesn't look like a TMDB API key (32 hex characters) or a Read Access Token (starts with eyJ)"), { statusCode: 400 });
+  if (tmdbKeyKind(key) === "unknown")
+    throw Object.assign(new Error("That doesn't look like a TMDB API key (32 hex characters) or a Read Access Token (starts with eyJ)"), {
+      statusCode: 400,
+    });
   let res: Response;
   try {
     res = await tmdbFetch("/configuration", key, fetcher);
@@ -349,7 +541,17 @@ export async function testTmdb(key: string, fetcher: typeof fetch = fetch) {
 export async function tmdbEpisodes(limit = 300, fetcher: typeof fetch = fetch, now = Date.now()) {
   const key = getSettings().metadata.tmdbKey;
   if (!key) return 0;
-  const rows = db.prepare("SELECT anilist_id, tmdb_tv, tmdb_season, tmdb_offset, episodes FROM entries WHERE tmdb_tv IS NOT NULL AND tmdb_season IS NOT NULL AND (tmdb_fetched_at IS NULL OR tmdb_fetched_at < ?) ORDER BY tmdb_fetched_at IS NOT NULL, tmdb_fetched_at LIMIT ?").all(now - 7 * DAY, limit) as { anilist_id: number; tmdb_tv: number; tmdb_season: number; tmdb_offset: number; episodes: number | null }[];
+  const rows = db
+    .prepare(
+      "SELECT anilist_id, tmdb_tv, tmdb_season, tmdb_offset, episodes FROM entries WHERE tmdb_tv IS NOT NULL AND tmdb_season IS NOT NULL AND (tmdb_fetched_at IS NULL OR tmdb_fetched_at < ?) ORDER BY tmdb_fetched_at IS NOT NULL, tmdb_fetched_at LIMIT ?",
+    )
+    .all(now - 7 * DAY, limit) as {
+    anilist_id: number;
+    tmdb_tv: number;
+    tmdb_season: number;
+    tmdb_offset: number;
+    episodes: number | null;
+  }[];
   let n = 0;
   for (const r of rows) {
     try {

@@ -25,7 +25,10 @@ const WEEK = 7 * 24 * 3600_000;
 export const STILL_SIZE = "w780";
 const DELAY_MS = 300;
 
-interface TmdbEp { overview: string | null; still: string | null }
+interface TmdbEp {
+  overview: string | null;
+  still: string | null;
+}
 type Season = Record<number, TmdbEp>;
 
 export interface MetaDeps {
@@ -44,7 +47,8 @@ export const realMetaDeps: MetaDeps = {
 /** One TMDB season (episode number → overview + still), from cache.db when fresh. null = TMDB can't be asked right now. */
 async function tmdbSeason(tv: number, season: number, key: string, deps: MetaDeps, state: { stop: boolean }): Promise<Season | null> {
   const source = `tmdb-season:${tv}:${season}`;
-  const row = cache.prepare("SELECT fetched_at, info FROM meta WHERE source = ?").get(source) as { fetched_at: number; info: string } | undefined;
+  const row = cache.prepare("SELECT fetched_at, info FROM meta WHERE source = ?").get(source) as
+    { fetched_at: number; info: string } | undefined;
   const cached = () => {
     try {
       return row ? (JSON.parse(row.info) as Season) : null;
@@ -67,24 +71,48 @@ async function tmdbSeason(tv: number, season: number, key: string, deps: MetaDep
       for (const e of j.episodes ?? []) out[e.episode_number] = { overview: e.overview?.trim() || null, still: e.still_path || null };
     } else if (res.status !== 404) return cached();
     // (a season TMDB doesn't have is remembered too, so it isn't asked again for a week)
-    cache.prepare("INSERT INTO meta (source, fetched_at, info) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET fetched_at = excluded.fetched_at, info = excluded.info").run(source, deps.now(), JSON.stringify(out));
+    cache
+      .prepare(
+        "INSERT INTO meta (source, fetched_at, info) VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET fetched_at = excluded.fetched_at, info = excluded.info",
+      )
+      .run(source, deps.now(), JSON.stringify(out));
     return out;
   } catch {
     return cached();
   }
 }
 
-interface MapRow { tvdb_season: string; tvdb_offset: number; episodes: number | null; tmdb_tv: number | null; tmdb_season: number | null; tmdb_offset: number }
+interface MapRow {
+  tvdb_season: string;
+  tvdb_offset: number;
+  episodes: number | null;
+  tmdb_tv: number | null;
+  tmdb_season: number | null;
+  tmdb_offset: number;
+}
 
 /** The TMDB episode (show, season, number) for one AnimeArr episode, through the entry that covers it. Specials aren't guessed. */
-export function tmdbTarget(rows: MapRow[], season: number, episode: number, absolute: number | null, overrides?: Map<number, MetaOverride>) {
+export function tmdbTarget(
+  rows: MapRow[],
+  season: number,
+  episode: number,
+  absolute: number | null,
+  overrides?: Map<number, MetaOverride>,
+) {
   // The user's choice for this season replaces the catalog mapping (and is the only way specials get a TMDB episode).
   const o = overrides?.get(season);
   if (o) return { tv: o.tmdbTv, season: o.tmdbSeason, episode: episode + o.tmdbOffset };
   if (season === 0) return null;
   for (const r of rows) {
     // AnimeArr/TVDB numbering → the entry's own episode number (as catalogLookup), then → TMDB numbering with tmdb_offset.
-    const n = r.tvdb_season === "a" ? (absolute ? absolute - r.tvdb_offset : null) : Number(r.tvdb_season) === season ? episode - r.tvdb_offset : null;
+    const n =
+      r.tvdb_season === "a"
+        ? absolute
+          ? absolute - r.tvdb_offset
+          : null
+        : Number(r.tvdb_season) === season
+          ? episode - r.tvdb_offset
+          : null;
     if (!n || n < 1 || (r.episodes && n > r.episodes)) continue;
     if (!r.tmdb_tv || r.tmdb_season === null) return null;
     return { tv: r.tmdb_tv, season: r.tmdb_season, episode: n + (r.tmdb_offset ?? 0) };
@@ -96,12 +124,22 @@ export function tmdbTarget(rows: MapRow[], season: number, episode: number, abso
  * Fills plot and still on the episodes. `want` says which are needed (an NFO wants plots, thumbnails want stills), so
  * nothing is fetched that wouldn't be written.
  */
-export async function enrichEpisodes(tvdbId: number | null, sonarrId: number | null, files: { episodes: EpisodeMeta[] }[], want: { plot: boolean; still: boolean }, deps: MetaDeps = realMetaDeps) {
+export async function enrichEpisodes(
+  tvdbId: number | null,
+  sonarrId: number | null,
+  files: { episodes: EpisodeMeta[] }[],
+  want: { plot: boolean; still: boolean },
+  deps: MetaDeps = realMetaDeps,
+) {
   if (!want.plot && !want.still) return;
   const eps = files.flatMap((f) => f.episodes);
   const key = getSettings().metadata.tmdbKey;
   if (key && tvdbId) {
-    const rows = db.prepare("SELECT tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC").all(tvdbId) as unknown as MapRow[];
+    const rows = db
+      .prepare(
+        "SELECT tvdb_season, tvdb_offset, episodes, tmdb_tv, tmdb_season, tmdb_offset FROM entries WHERE tvdb_id = ? AND tvdb_season IS NOT NULL AND tvdb_season != '0' ORDER BY tvdb_offset DESC",
+      )
+      .all(tvdbId) as unknown as MapRow[];
     const overrides = metaOverrides(tvdbId);
     const state = { stop: false };
     const seasons = new Map<string, Season | null>();
@@ -120,7 +158,12 @@ export async function enrichEpisodes(tvdbId: number | null, sonarrId: number | n
     }
   }
   // Sonarr for what TMDB didn't have (specials, unmapped seasons, no key).
-  if (sonarrId && sonarrId < NATIVE_BASE && sonarr.sonarrConfigured() && eps.some((e) => (want.plot && !e.plot) || (want.still && !e.still))) {
+  if (
+    sonarrId &&
+    sonarrId < NATIVE_BASE &&
+    sonarr.sonarrConfigured() &&
+    eps.some((e) => (want.plot && !e.plot) || (want.still && !e.still))
+  ) {
     try {
       const list = await deps.sonarrEpisodes(sonarrId);
       const bySE = new Map(list.map((x) => [`${x.seasonNumber}x${x.episodeNumber}`, x]));
@@ -145,7 +188,30 @@ export function ffmpegFrame(file: string, atSec: number): Promise<Buffer | null>
   return new Promise((resolve) => {
     let p;
     try {
-      p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(Math.max(0, Math.round(atSec))), "-i", file, "-frames:v", "1", "-vf", "scale='min(640,iw)':-2", "-q:v", "4", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
+      p = spawn(
+        "ffmpeg",
+        [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-ss",
+          String(Math.max(0, Math.round(atSec))),
+          "-i",
+          file,
+          "-frames:v",
+          "1",
+          "-vf",
+          "scale='min(640,iw)':-2",
+          "-q:v",
+          "4",
+          "-f",
+          "image2pipe",
+          "-c:v",
+          "mjpeg",
+          "pipe:1",
+        ],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
     } catch {
       return resolve(null);
     }

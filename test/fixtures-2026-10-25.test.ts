@@ -10,8 +10,16 @@ import { rankRelease, type Profile } from "../server/core/rank.js";
 import { fixtureContext } from "./helpers.js";
 
 const ctx = fixtureContext();
-const PROFILE: Profile = { subLangs: ["en"], audioLangs: ["ja"], softOnly: true, preferUncensored: true, protocolOrder: ["usenet", "torrent"], resolution: 1080 };
-const rank = (name: string, protocol: "usenet" | "torrent" = "usenet", known = {}) => rankRelease(parseRelease(name), { protocol, size: 1.4e9, seeders: 10, episodeCount: 1 }, PROFILE, null, known);
+const PROFILE: Profile = {
+  subLangs: ["en"],
+  audioLangs: ["ja"],
+  softOnly: true,
+  preferUncensored: true,
+  protocolOrder: ["usenet", "torrent"],
+  resolution: 1080,
+};
+const rank = (name: string, protocol: "usenet" | "torrent" = "usenet", known = {}) =>
+  rankRelease(parseRelease(name), { protocol, size: 1.4e9, seeders: 10, episodeCount: 1 }, PROFILE, null, known);
 
 function expectEpisode(name: string, tvdbId: number, season: number, episode: number) {
   const r = identify(name, ctx);
@@ -79,8 +87,14 @@ test("VOSTFR → foreign-only, rejected for an English profile, preferred for a 
 });
 
 test("(English-Sub) AMZN → burned-in English likely; ranks below a soft-sub release", () => {
-  const burned = rank("[ToonsHub] Sousou no Frieren S02E05 1080p AMZN WEB-DL AAC2.0 H.264 (Sousou no Frieren 2nd Season, English-Sub)", "torrent");
-  assert.ok(burned.flags.some((f) => f.key === "burnIn"), JSON.stringify(burned.flags));
+  const burned = rank(
+    "[ToonsHub] Sousou no Frieren S02E05 1080p AMZN WEB-DL AAC2.0 H.264 (Sousou no Frieren 2nd Season, English-Sub)",
+    "torrent",
+  );
+  assert.ok(
+    burned.flags.some((f) => f.key === "burnIn"),
+    JSON.stringify(burned.flags),
+  );
   assert.equal(burned.accept, true); // last resort, not a rejection
   const soft = rank("[SubsPlease] Sousou no Frieren S2 - 05 (1080p) [ABCDEF12]", "torrent");
   assert.ok(soft.score > burned.score);
@@ -123,20 +137,37 @@ test("ACCEPTANCE: Magister S6 Usenet releases map to S06Exx and are flagged Engl
     const name = `Quan.Zhi.Fa.Shi.S6.-.${String(n).padStart(2, "0")}`;
     const r = identify(name, ctx, { tvdbId: 328670 });
     assert.ok(r.resolution?.ok, `${name}: ${r.summary}`);
-    assert.deepEqual(r.resolution!.episodes.map((e) => [e.season, e.episode]), [[6, n]], name);
-    const rk = rankRelease(r.parsed, { protocol: "usenet", size: 450e6, episodeCount: 1 }, PROFILE, null, { burnedIn: { lang: "en", resolution: "720p", note: "you confirmed: Season 6 only exists with burned-in English" } });
+    assert.deepEqual(
+      r.resolution!.episodes.map((e) => [e.season, e.episode]),
+      [[6, n]],
+      name,
+    );
+    const rk = rankRelease(r.parsed, { protocol: "usenet", size: 450e6, episodeCount: 1 }, PROFILE, null, {
+      burnedIn: { lang: "en", resolution: "720p", note: "you confirmed: Season 6 only exists with burned-in English" },
+    });
     assert.equal(rk.accept, true, `${name}: ${rk.why}`);
-    assert.ok(rk.flags.some((f) => f.label === "English burned-in (720p)"), `${name}: ${JSON.stringify(rk.flags)}`);
+    assert.ok(
+      rk.flags.some((f) => f.label === "English burned-in (720p)"),
+      `${name}: ${JSON.stringify(rk.flags)}`,
+    );
   }
   const pack = identify("Quan.Zhi.Fa.Shi.S6.-.1-12.-.Full-Time.Magister-xpost", ctx, { tvdbId: 328670 });
   assert.ok(pack.resolution?.ok, pack.summary);
-  assert.deepEqual(pack.resolution!.episodes.map((e) => [e.season, e.episode]), Array.from({ length: 12 }, (_, i) => [6, i + 1]));
+  assert.deepEqual(
+    pack.resolution!.episodes.map((e) => [e.season, e.episode]),
+    Array.from({ length: 12 }, (_, i) => [6, i + 1]),
+  );
   assert.equal(pack.resolution!.label, "S06E01-E12");
 });
 
 test("Chinese 內嵌 (embedded) releases are flagged burned-in Chinese and rejected for an English profile", () => {
-  const r = rank("【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]", "torrent");
-  const p = parseRelease("【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]");
+  const r = rank(
+    "【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]",
+    "torrent",
+  );
+  const p = parseRelease(
+    "【今晚月色真美】[女友的朋友 / 彼女の友達 / Kanojo no Tomodachi][04][WebRip][1080P][AVC-8bit][AAC][繁日內嵌][無修正]",
+  );
   assert.equal(p.hints.hardsub, true);
   assert.equal(p.hints.hardsubLang, "zh");
   assert.deepEqual(p.absolute, [4]);

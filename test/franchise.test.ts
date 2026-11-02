@@ -26,10 +26,25 @@ const { moviesForSeries, seriesForMovie, movieSpecials, setLink, refuseMovieSpec
 const { episodeRows } = await import("../server/episodes.js");
 
 before(() => {
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (716, 74796, 'Bleach', '/media/Anime/Bleach', 1, 0), (717, 80000, 'Hell Girl', '/media/Anime/Hell Girl', 1, 0)").run();
-  for (const [id, ep, title] of [[9001, 1, "Recap"], [9003, 3, "Memories of Nobody"], [9004, 4, "The DiamondDust Rebellion"], [9006, 6, "Hell Verse"]] as const)
-    cache.prepare("INSERT INTO episodes (id, series_id, season, episode, title, monitored, has_file, runtime) VALUES (?, 716, 0, ?, ?, 0, 0, 90)").run(id, ep, title);
-  const ins = cache.prepare("INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, is_anime, synced_at) VALUES (?, ?, ?, ?, ?, 1, ?, 1, 0)");
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, synced_at) VALUES (716, 74796, 'Bleach', '/media/Anime/Bleach', 1, 0), (717, 80000, 'Hell Girl', '/media/Anime/Hell Girl', 1, 0)",
+    )
+    .run();
+  for (const [id, ep, title] of [
+    [9001, 1, "Recap"],
+    [9003, 3, "Memories of Nobody"],
+    [9004, 4, "The DiamondDust Rebellion"],
+    [9006, 6, "Hell Verse"],
+  ] as const)
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, title, monitored, has_file, runtime) VALUES (?, 716, 0, ?, ?, 0, 0, 90)",
+      )
+      .run(id, ep, title);
+  const ins = cache.prepare(
+    "INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, is_anime, synced_at) VALUES (?, ?, ?, ?, ?, 1, ?, 1, 0)",
+  );
   ins.run(1, 15575, "Bleach: Memories of Nobody", 2006, "/media/Movies/Anime/x", 1);
   ins.run(2, 17101, "Bleach: The DiamondDust Rebellion", 2007, "/media/Movies/Anime/y", 0);
   ins.run(3, 73245, "Bleach: Hell Verse", 2010, "/media/Movies/Anime/z", 0);
@@ -39,8 +54,18 @@ before(() => {
 
 test("Bleach: Anime-Lists links two movies with their S0 episodes; the title fallback adds Hell Verse (not 'Bleachers')", () => {
   const ms = moviesForSeries(74796);
-  assert.deepEqual(ms.map((m) => [m.movieId, m.source, m.s0Episode]), [[1, "anime-lists", 3], [2, "anime-lists", 4], [3, "title", null]]);
-  assert.deepEqual(seriesForMovie(3).map((s) => s.tvdbId), [74796]);
+  assert.deepEqual(
+    ms.map((m) => [m.movieId, m.source, m.s0Episode]),
+    [
+      [1, "anime-lists", 3],
+      [2, "anime-lists", 4],
+      [3, "title", null],
+    ],
+  );
+  assert.deepEqual(
+    seriesForMovie(3).map((s) => s.tvdbId),
+    [74796],
+  );
   assert.deepEqual(seriesForMovie(4), []);
 });
 
@@ -57,6 +82,9 @@ test("manual corrections win: unlink a wrong match, link one by hand", () => {
   setLink(74796, 3, false);
   assert.ok(!moviesForSeries(74796).some((m) => m.movieId === 3));
   setLink(80000, 4, true);
-  assert.deepEqual(moviesForSeries(80000).map((m) => [m.movieId, m.source]), [[4, "manual"]]);
+  assert.deepEqual(
+    moviesForSeries(80000).map((m) => [m.movieId, m.source]),
+    [[4, "manual"]],
+  );
   assert.ok(db.prepare("SELECT 1 FROM franchise_links WHERE tvdb_id = 80000 AND movie_id = 4 AND action = 'link'").get());
 });

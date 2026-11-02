@@ -14,8 +14,26 @@ const { db } = await import("../server/db.js");
 const { createTag, setTags, deleteTag } = await import("../server/tags.js");
 const { deleteRule, listRules, releaseRulesFor, saveRule, testRules } = await import("../server/releaseRules.js");
 
-const rule = (p: Partial<ReleaseRule>): ReleaseRule => ({ id: "r", name: "Rule", enabled: true, must: [], mustNot: [], preferred: [], tags: [], ...p });
-const base: Profile = { subLangs: ["en"], dubLangs: ["en"], watchMode: "sub", originalLangs: ["ja"], softOnly: true, preferUncensored: true, protocolOrder: ["usenet", "torrent"], resolution: 1080 };
+const rule = (p: Partial<ReleaseRule>): ReleaseRule => ({
+  id: "r",
+  name: "Rule",
+  enabled: true,
+  must: [],
+  mustNot: [],
+  preferred: [],
+  tags: [],
+  ...p,
+});
+const base: Profile = {
+  subLangs: ["en"],
+  dubLangs: ["en"],
+  watchMode: "sub",
+  originalLangs: ["ja"],
+  softOnly: true,
+  preferUncensored: true,
+  protocolOrder: ["usenet", "torrent"],
+  resolution: 1080,
+};
 const info = { protocol: "usenet" as const, size: 1.2e9, episodeCount: 1 };
 const rank = (name: string, rules: ReleaseRule[]) => rankRelease(parseRelease(name), info, base, null, { rules });
 
@@ -56,7 +74,15 @@ test("ranking: a blocking rule rejects the release with its reason in plain word
 });
 
 test("preferred terms add their score (negative counts against) but only as a capped nudge", () => {
-  const rules = [rule({ preferred: [{ term: "Judas", score: 5 }, { term: "/\\bweb\\b/", score: -3 }, { term: "huge", score: 100 }] })];
+  const rules = [
+    rule({
+      preferred: [
+        { term: "Judas", score: 5 },
+        { term: "/\\bweb\\b/", score: -3 },
+        { term: "huge", score: 100 },
+      ],
+    }),
+  ];
   const plain = rank("[Judas] Show - 05 (1080p) WEB", []);
   const nudged = rank("[Judas] Show - 05 (1080p) WEB", rules);
   assert.equal(nudged.score - plain.score, 2, "5 - 3");
@@ -71,7 +97,9 @@ test("preferred scores never override the language fit or rescue a blocked relea
   const none = rank("[Group] Show - 05 (1080p) Spanish", []);
   assert.ok(es.score - none.score <= PREFERRED_CAP);
   assert.ok(en.score > es.score, "the named-English release still wins");
-  const blocked = rank("[SubsPlease] Show - 05 (1080p) x265", [rule({ mustNot: ["x265"], preferred: [{ term: "SubsPlease", score: 100 }] })]);
+  const blocked = rank("[SubsPlease] Show - 05 (1080p) x265", [
+    rule({ mustNot: ["x265"], preferred: [{ term: "SubsPlease", score: 100 }] }),
+  ]);
   assert.equal(blocked.accept, false);
 });
 
@@ -81,9 +109,18 @@ test("tag scoping: a tagged rule applies only to shows carrying the tag; an unta
   setTags("movie", 9, [dubs.id]);
   saveRule(null, { name: "Everyone", mustNot: ["sample"] });
   saveRule(null, { name: "Dub shows", mustNot: ["/\\bjpn\\b/"], tags: [dubs.id] });
-  assert.deepEqual(releaseRulesFor("series", 1).map((r) => r.name), ["Everyone", "Dub shows"]);
-  assert.deepEqual(releaseRulesFor("series", 2).map((r) => r.name), ["Everyone"]);
-  assert.deepEqual(releaseRulesFor("movie", 9).map((r) => r.name), ["Everyone", "Dub shows"]);
+  assert.deepEqual(
+    releaseRulesFor("series", 1).map((r) => r.name),
+    ["Everyone", "Dub shows"],
+  );
+  assert.deepEqual(
+    releaseRulesFor("series", 2).map((r) => r.name),
+    ["Everyone"],
+  );
+  assert.deepEqual(
+    releaseRulesFor("movie", 9).map((r) => r.name),
+    ["Everyone", "Dub shows"],
+  );
   assert.equal(testRules("Show 1080p JPN", { kind: "series", ref: 2 }).rejected, null);
   assert.match(testRules("Show 1080p JPN", { kind: "series", ref: 1 }).rejected!, /'Dub shows'/);
   assert.equal(testRules("Show sample", undefined).matches.length, 2, "without a show, every enabled rule is tested");
@@ -101,6 +138,9 @@ test("rules are saved with trimmed, de-duplicated terms and survive a reload; de
   deleteTag(tag.id);
   assert.deepEqual(listRules().find((x) => x.id === r.id)!.tags, [], "the rule now applies to everyone again");
   deleteRule(r.id);
-  assert.equal(listRules().some((x) => x.id === r.id), false);
+  assert.equal(
+    listRules().some((x) => x.id === r.id),
+    false,
+  );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM release_rule_tags WHERE rule_id = ?").get(r.id) as { n: number }).n, 0);
 });

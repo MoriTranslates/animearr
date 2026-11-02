@@ -31,7 +31,11 @@ export interface AniMedia {
 }
 
 /** A show's trailer: only YouTube or Dailymotion, only a plain video id (it goes into an embed URL). */
-export interface Trailer { site: "youtube" | "dailymotion"; id: string; thumbnail: string | null }
+export interface Trailer {
+  site: "youtube" | "dailymotion";
+  id: string;
+  thumbnail: string | null;
+}
 const TRAILER_ID = /^[A-Za-z0-9_-]+$/;
 
 /** AniList's `trailer` → a Trailer, or null when there is none (or it's another site, or the id looks odd). */
@@ -53,7 +57,13 @@ const FIELDS = `id idMal title { romaji english native } synonyms format status 
   trailer { id site thumbnail }`;
 
 let last = 0;
-interface Job { priority: boolean; supersede: boolean; run: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void }
+interface Job {
+  priority: boolean;
+  supersede: boolean;
+  run: () => Promise<unknown>;
+  resolve: (v: unknown) => void;
+  reject: (e: unknown) => void;
+}
 const queue: Job[] = [];
 let working = false;
 
@@ -80,7 +90,12 @@ async function work() {
  * One GraphQL call, serialised and spaced (AniList allows ~30 per minute). `priority` calls jump the queue, and a
  * newer superseding call (a search) replaces an older one still waiting (someone typing).
  */
-export function anilistQuery<T>(query: string, variables: Record<string, unknown>, fetcher: typeof fetch = fetch, opts: { priority?: boolean; supersede?: boolean } = {}): Promise<T> {
+export function anilistQuery<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  fetcher: typeof fetch = fetch,
+  opts: { priority?: boolean; supersede?: boolean } = {},
+): Promise<T> {
   const run = async (): Promise<T> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const wait = Math.max(0, last + 2100 - Date.now());
@@ -119,16 +134,32 @@ export function anilistQuery<T>(query: string, variables: Record<string, unknown
 export async function mediaByIds(ids: number[], fetcher?: typeof fetch, opts: { priority?: boolean } = {}): Promise<AniMedia[]> {
   const out: AniMedia[] = [];
   for (let i = 0; i < ids.length; i += 50) {
-    const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { ${FIELDS} } } }`, { ids: ids.slice(i, i + 50) }, fetcher, { priority: opts.priority });
+    const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(
+      `query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: ANIME) { ${FIELDS} } } }`,
+      { ids: ids.slice(i, i + 50) },
+      fetcher,
+      { priority: opts.priority },
+    );
     out.push(...(d.Page?.media ?? []));
   }
   return out;
 }
 
 /** Title search (English, romaji, native, synonyms), anime only. */
-export async function searchMedia(q: string, perPage = 15, fetcher?: typeof fetch, opts: { interactive?: boolean } = { interactive: true }): Promise<AniMedia[]> {
+export async function searchMedia(
+  q: string,
+  perPage = 15,
+  fetcher?: typeof fetch,
+  opts: { interactive?: boolean } = { interactive: true },
+): Promise<AniMedia[]> {
   // Only what a search result shows (the full entry is fetched when something is added); first in the queue.
-  const slim = "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color } trailer { id site thumbnail }";
-  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(`query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`, { q, n: perPage }, fetcher, opts.interactive === false ? {} : { priority: true, supersede: true });
+  const slim =
+    "id idMal title { romaji english native } synonyms format status episodes duration seasonYear startDate { year month day } countryOfOrigin coverImage { large color } trailer { id site thumbnail }";
+  const d = await anilistQuery<{ Page: { media: AniMedia[] } }>(
+    `query ($q: String, $n: Int) { Page(perPage: $n) { media(search: $q, type: ANIME, sort: SEARCH_MATCH) { ${slim} } } }`,
+    { q, n: perPage },
+    fetcher,
+    opts.interactive === false ? {} : { priority: true, supersede: true },
+  );
   return d.Page?.media ?? [];
 }

@@ -60,7 +60,14 @@ export interface FileInfo {
   /** True when size/tracks come from AnimeArr's own scan (else Sonarr's data). */
   scanned?: boolean;
   /** The file changed after Sonarr imported it (e.g. Tdarr re-encoded it). */
-  changed?: { fromSize: number | null; toSize: number; codec: string | null; importedAt: string | null; changedAt: number; fromQuality: string | null } | null;
+  changed?: {
+    fromSize: number | null;
+    toSize: number;
+    codec: string | null;
+    importedAt: string | null;
+    changedAt: number;
+    fromQuality: string | null;
+  } | null;
   /**
    * The profile's language, one verdict everywhere (header, season tags, dots): ok = has it; no = AnimeArr's scan
    * says it doesn't; unknown = not checked by AnimeArr yet, or tracks without a language tag.
@@ -69,25 +76,54 @@ export interface FileInfo {
   /** You marked this file as having burned-in subtitles in this language. */
   burnedIn?: string | null;
 }
-export interface LangState { state: "ok" | "no" | "unknown"; why: string; code?: string }
+export interface LangState {
+  state: "ok" | "no" | "unknown";
+  why: string;
+  code?: string;
+}
 
 /** Groups whose releases are web rips even when the name doesn't say so (SubsPlease = CR/ADN web rips). */
 const WEB_GROUPS = new Set(["subsplease", "erai-raws", "toonshub", "varyg", "skyanime", "senpai", "kitsune", "asw", "judas"]);
 const SOURCE_LABEL: Record<string, string> = { web: "WEB", bluray: "BluRay", hdtv: "HDTV", dvd: "DVD" };
 
-function sourceLabel(sceneName: string | null, group: string | null, sonarrSource: string | null): { source: string | null; platform: string | null } {
+function sourceLabel(
+  sceneName: string | null,
+  group: string | null,
+  sonarrSource: string | null,
+): { source: string | null; platform: string | null } {
   const p = sceneName ? parseRelease(sceneName) : null;
   const g = (group ?? p?.group ?? "").toLowerCase();
-  const src = p?.source ?? (WEB_GROUPS.has(g) ? "web" : null) ?? (sonarrSource && /web/i.test(sonarrSource) ? "web" : sonarrSource && /blu/i.test(sonarrSource) ? "bluray" : null);
+  const src =
+    p?.source ??
+    (WEB_GROUPS.has(g) ? "web" : null) ??
+    (sonarrSource && /web/i.test(sonarrSource) ? "web" : sonarrSource && /blu/i.test(sonarrSource) ? "bluray" : null);
   return { source: src ? SOURCE_LABEL[src] : null, platform: p?.platform ?? null };
 }
 
-type FileRow = { id: number; path: string; size: number | null; quality: string | null; source: string | null; release_group: string | null; scene_name: string | null; audio_langs: string; sub_langs: string; run_time: string | null; resolution: string | null; date_added?: string | null };
+type FileRow = {
+  id: number;
+  path: string;
+  size: number | null;
+  quality: string | null;
+  source: string | null;
+  release_group: string | null;
+  scene_name: string | null;
+  audio_langs: string;
+  sub_langs: string;
+  run_time: string | null;
+  resolution: string | null;
+  date_added?: string | null;
+};
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 type Judge = (p: Parameters<typeof judge>[0]) => ReturnType<typeof judge>;
 function langState(own: boolean, p: Parameters<typeof judge>[0] | null, j: Judge | undefined, sonarrSays: string): LangState | undefined {
   if (!j) return undefined;
-  if (!own || !p) return { state: "unknown", why: `not checked by AnimeArr yet${sonarrSays ? ` (Sonarr reports: ${sonarrSays})` : ""}`, code: "unscanned" };
+  if (!own || !p)
+    return {
+      state: "unknown",
+      why: `not checked by AnimeArr yet${sonarrSays ? ` (Sonarr reports: ${sonarrSays})` : ""}`,
+      code: "unscanned",
+    };
   const v = j(p);
   if (v.ok) return { state: "ok", why: v.why, code: "ok" };
   if (v.code === "untagged") return { state: "unknown", why: v.why, code: "untagged" };
@@ -99,8 +135,23 @@ function fileInfo(f: FileRow, episodes: string[] = [], j?: Judge): FileInfo {
   const own = ownFile(f.path, { size: f.size, dateAdded: f.date_added ?? null });
   if (own) {
     const p = probeOf(own);
-    const lang = langState(true, { subs: p.subs, audio: p.audio, durationSec: null, sidecars: p.sidecars, untagged: p.untagged, forced: p.forced }, j, "");
-    const changed = f.size && own.size !== f.size && Math.abs(own.size - f.size) > f.size * 0.05 ? { fromSize: f.size, toSize: own.size, codec: own.video?.codec ?? null, importedAt: f.date_added ?? null, changedAt: own.mtime, fromQuality: f.quality } : null;
+    const lang = langState(
+      true,
+      { subs: p.subs, audio: p.audio, durationSec: null, sidecars: p.sidecars, untagged: p.untagged, forced: p.forced },
+      j,
+      "",
+    );
+    const changed =
+      f.size && own.size !== f.size && Math.abs(own.size - f.size) > f.size * 0.05
+        ? {
+            fromSize: f.size,
+            toSize: own.size,
+            codec: own.video?.codec ?? null,
+            importedAt: f.date_added ?? null,
+            changedAt: own.mtime,
+            fromQuality: f.quality,
+          }
+        : null;
     return {
       id: f.id,
       path: f.path,
@@ -147,19 +198,65 @@ const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e
 /** Active grabs by episode id (for "downloading 45%" / "needs attention"). */
 function grabStates() {
   const stages = grabStages();
-  const out = new Map<number, { state: string; progress: number | null; grabId: number; release: string; error: string | null; tvdbId: number; episodeIds: number[]; stage?: string; ahead?: number }>();
-  const rows = db.prepare("SELECT id, tvdb_id, episode_ids, state, progress, release, error FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id").all() as { id: number; tvdb_id: number; episode_ids: string; state: string; progress: number | null; release: string; error: string | null }[];
+  const out = new Map<
+    number,
+    {
+      state: string;
+      progress: number | null;
+      grabId: number;
+      release: string;
+      error: string | null;
+      tvdbId: number;
+      episodeIds: number[];
+      stage?: string;
+      ahead?: number;
+    }
+  >();
+  const rows = db
+    .prepare(
+      "SELECT id, tvdb_id, episode_ids, state, progress, release, error FROM grabs WHERE state IN ('sending', 'downloading', 'importing', 'needs-attention') ORDER BY id",
+    )
+    .all() as {
+    id: number;
+    tvdb_id: number;
+    episode_ids: string;
+    state: string;
+    progress: number | null;
+    release: string;
+    error: string | null;
+  }[];
   for (const r of rows) {
     const ids = JSON.parse(r.episode_ids) as number[];
-    for (const e of ids) out.set(e, { state: r.state, progress: r.progress, grabId: r.id, release: r.release, error: r.error, tvdbId: r.tvdb_id, episodeIds: ids, stage: stages.get(r.id)?.stage, ahead: stages.get(r.id)?.ahead });
+    for (const e of ids)
+      out.set(e, {
+        state: r.state,
+        progress: r.progress,
+        grabId: r.id,
+        release: r.release,
+        error: r.error,
+        tvdbId: r.tvdb_id,
+        episodeIds: ids,
+        stage: stages.get(r.id)?.stage,
+        ahead: stages.get(r.id)?.ahead,
+      });
   }
   return out;
 }
 
 /** A grab that needs the user, in plain words, with what can be done about it (the episode row, the sheet). */
-export interface AttentionNote { grabId: number; release: string; summary: string; fixes: Fix[] }
+export interface AttentionNote {
+  grabId: number;
+  release: string;
+  summary: string;
+  fixes: Fix[];
+}
 function attentionNote(g: NonNullable<ReturnType<ReturnType<typeof grabStates>["get"]>>): AttentionNote {
-  return { grabId: g.grabId, release: g.release, summary: attentionSummary(g.error), fixes: liveFixesFor(g.error ?? "", { grabId: g.grabId, tvdbId: g.tvdbId, episodeIds: g.episodeIds, kind: "attention" }) };
+  return {
+    grabId: g.grabId,
+    release: g.release,
+    summary: attentionSummary(g.error),
+    fixes: liveFixesFor(g.error ?? "", { grabId: g.grabId, tvdbId: g.tvdbId, episodeIds: g.episodeIds, kind: "attention" }),
+  };
 }
 
 /**
@@ -207,18 +304,36 @@ export interface EpisodeRow {
 export function keptWhy(tvdbId: number, season: number, episodeId: number, filePath: string): string | null {
   if (LOCK_TAG.test(path.posix.basename(filePath))) return "its name carries [Keep] or [Remaster]";
   if (isLocked(tvdbId, season)) return "the show or season is kept as is";
-  const g = db.prepare("SELECT keep FROM grabs WHERE state = 'done' AND movie_id IS NULL AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1").get(episodeId) as { keep: number } | undefined;
+  const g = db
+    .prepare(
+      "SELECT keep FROM grabs WHERE state = 'done' AND movie_id IS NULL AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1",
+    )
+    .get(episodeId) as { keep: number } | undefined;
   return g?.keep ? "you chose to keep this download despite the language check" : null;
 }
 
-const tvdbOf = (seriesId: number) => (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id ?? 0;
+const tvdbOf = (seriesId: number) =>
+  (cache.prepare("SELECT tvdb_id FROM series WHERE id = ?").get(seriesId) as { tvdb_id: number } | undefined)?.tvdb_id ?? 0;
 
 export function episodeRows(seriesId: number): EpisodeRow[] {
   const now = Date.now();
   const active = grabStates();
   const files = new Map((cache.prepare("SELECT * FROM files WHERE series_id = ?").all(seriesId) as FileRow[]).map((f) => [f.id, f]));
-  const eps = cache.prepare("SELECT id, season, episode, absolute, title, air_utc, runtime, monitored, has_file, file_id FROM episodes WHERE series_id = ? ORDER BY season DESC, episode DESC").all(seriesId) as {
-    id: number; season: number; episode: number; absolute: number | null; title: string | null; air_utc: number | null; runtime: number | null; monitored: number; has_file: number; file_id: number | null;
+  const eps = cache
+    .prepare(
+      "SELECT id, season, episode, absolute, title, air_utc, runtime, monitored, has_file, file_id FROM episodes WHERE series_id = ? ORDER BY season DESC, episode DESC",
+    )
+    .all(seriesId) as {
+    id: number;
+    season: number;
+    episode: number;
+    absolute: number | null;
+    title: string | null;
+    air_utc: number | null;
+    runtime: number | null;
+    monitored: number;
+    has_file: number;
+    file_id: number | null;
   }[];
   const asMovie = radarrMovieSpecials(seriesId);
   let lookup: ReturnType<typeof catalogLookup> | null = null;
@@ -234,7 +349,9 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
   };
   // Creditless OP/EDs kept as Plex extras aren't season-0 files: AnimeArr's own link says they're there.
   const extraLinks = new Map<number, string>();
-  for (const r of db.prepare("SELECT path, episode_ids FROM file_links WHERE tvdb_id = ? AND path LIKE '%/Other/%'").all(tvdbOf(seriesId)) as { path: string; episode_ids: string }[])
+  for (const r of db
+    .prepare("SELECT path, episode_ids FROM file_links WHERE tvdb_id = ? AND path LIKE '%/Other/%'")
+    .all(tvdbOf(seriesId)) as { path: string; episode_ids: string }[])
     for (const id of JSON.parse(r.episode_ids) as number[]) extraLinks.set(id, r.path);
   const byFile = new Map<number, string[]>();
   for (const e of [...eps].reverse()) if (e.file_id) byFile.set(e.file_id, [...(byFile.get(e.file_id) ?? []), sxe(e.season, e.episode)]);
@@ -242,17 +359,31 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
   const tvdb = tvdbOf(seriesId);
   const prof = profileFor(tvdb);
   const burned = new Map<number, string | null>();
-  const burnedFor = (season: number) => (burned.has(season) ? burned.get(season)! : (burned.set(season, prof.subLangs.find((l) => !!burnedInFact(tvdb, season, l)) ?? null), burned.get(season)!));
+  const burnedFor = (season: number) =>
+    burned.has(season)
+      ? burned.get(season)!
+      : (burned.set(season, prof.subLangs.find((l) => !!burnedInFact(tvdb, season, l)) ?? null), burned.get(season)!);
   // A file the user marked as hardsubbed counts as having that language (per file; the season fact covers a whole season).
   const marks = burnedInFiles(tvdb);
-  const judgeFor = (season: number, filePath: string): Judge => (p) => {
-    const mark = marks.get(filePath) ?? null;
-    const v = judge(p, prof, null, burnedFor(season) ?? mark);
-    return v.ok && mark && !burnedFor(season) && /burned-in/.test(v.why) ? { ...v, why: `no subtitle track, accepted because you marked this file as having burned-in ${mark} subtitles` } : v;
-  };
+  const judgeFor =
+    (season: number, filePath: string): Judge =>
+    (p) => {
+      const mark = marks.get(filePath) ?? null;
+      const v = judge(p, prof, null, burnedFor(season) ?? mark);
+      return v.ok && mark && !burnedFor(season) && /burned-in/.test(v.why)
+        ? { ...v, why: `no subtitle track, accepted because you marked this file as having burned-in ${mark} subtitles` }
+        : v;
+    };
   const managedShow = listManaged().some((m) => m.tvdbId === tvdb);
   // Why a missing episode is still missing: the scheduler's last word on it (no dead end on the row).
-  const lastWhy = new Map((db.prepare("SELECT episode_id, last_why FROM search_state WHERE tvdb_id = ? AND last_why != ''").all(tvdb) as { episode_id: number; last_why: string }[]).map((r) => [r.episode_id, r.last_why]));
+  const lastWhy = new Map(
+    (
+      db.prepare("SELECT episode_id, last_why FROM search_state WHERE tvdb_id = ? AND last_why != ''").all(tvdb) as {
+        episode_id: number;
+        last_why: string;
+      }[]
+    ).map((r) => [r.episode_id, r.last_why]),
+  );
   return eps.map((e) => {
     const g = active.get(e.id);
     const f = e.file_id ? files.get(e.file_id) : undefined;
@@ -262,16 +393,56 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const kept = file?.lang?.state === "no" ? keptWhy(tvdb, e.season, e.id, file.path) : null;
     if (base === "have" && managedShow && file?.lang?.state === "no" && !kept) base = "wrong-lang";
     const status = statusWithGrab(base, g);
-    const fallback = !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
+    const fallback =
+      !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
     const attention = g?.state === "needs-attention" ? attentionNote(g) : null;
-    return { id: e.id, season: e.season, episode: e.episode, absolute: e.absolute, title: fallback?.title ?? e.title, airUtc: e.air_utc, runtime: e.runtime, monitored: !!e.monitored, status, progress: g && status === "downloading" ? g.progress : null, stage: g && status === "downloading" ? (g.stage ?? null) : null, ahead: g && status === "downloading" ? (g.ahead ?? null) : null, file, movie: asMovie.get(e.id) ?? null, special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null, missingWhy: status === "missing" || status === "wrong-lang" ? (lastWhy.get(e.id) ?? null) : null, attention, keptWhy: kept };
+    return {
+      id: e.id,
+      season: e.season,
+      episode: e.episode,
+      absolute: e.absolute,
+      title: fallback?.title ?? e.title,
+      airUtc: e.air_utc,
+      runtime: e.runtime,
+      monitored: !!e.monitored,
+      status,
+      progress: g && status === "downloading" ? g.progress : null,
+      stage: g && status === "downloading" ? (g.stage ?? null) : null,
+      ahead: g && status === "downloading" ? (g.ahead ?? null) : null,
+      file,
+      movie: asMovie.get(e.id) ?? null,
+      special: e.season === 0 ? specialOf(e.episode, e.title, e.runtime) : null,
+      missingWhy: status === "missing" || status === "wrong-lang" ? (lastWhy.get(e.id) ?? null) : null,
+      attention,
+      keptWhy: kept,
+    };
   });
 }
 
 /** The series header: art, synopsis, status, next airing, counts, language health and links. */
 export function seriesHeader(tvdbId: number) {
-  const s = cache.prepare("SELECT id, tvdb_id, title, year, status, network, overview, genres, poster, path, next_airing, previous_airing, anidb_ids, monitored, runtime FROM series WHERE tvdb_id = ?").get(tvdbId) as
-    | { id: number; tvdb_id: number; title: string; year: number | null; status: string; network: string | null; overview: string | null; genres: string; poster: string | null; path: string; next_airing: string | null; previous_airing: string | null; anidb_ids: string; monitored: number; runtime: number | null }
+  const s = cache
+    .prepare(
+      "SELECT id, tvdb_id, title, year, status, network, overview, genres, poster, path, next_airing, previous_airing, anidb_ids, monitored, runtime FROM series WHERE tvdb_id = ?",
+    )
+    .get(tvdbId) as
+    | {
+        id: number;
+        tvdb_id: number;
+        title: string;
+        year: number | null;
+        status: string;
+        network: string | null;
+        overview: string | null;
+        genres: string;
+        poster: string | null;
+        path: string;
+        next_airing: string | null;
+        previous_airing: string | null;
+        anidb_ids: string;
+        monitored: number;
+        runtime: number | null;
+      }
     | undefined;
   if (!s) return null;
   const rows = episodeRows(s.id).filter((e) => e.season > 0);
@@ -286,8 +457,16 @@ export function seriesHeader(tvdbId: number) {
   const noLang = withFile.filter((e) => langOf(e) === "no");
   const unknownLang = withFile.filter((e) => langOf(e) === "unknown");
   const untagged = unknownLang.filter((e) => e.file?.lang?.code === "untagged");
-  const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort((a, b) => Number(b.season ?? 0) - Number(a.season ?? 0));
-  const cov = aids.length ? (cache.prepare(`SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`).all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[]) : [];
+  const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort(
+    (a, b) => Number(b.season ?? 0) - Number(a.season ?? 0),
+  );
+  const cov = aids.length
+    ? (cache
+        .prepare(
+          `SELECT anilist_id, cover, banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND cover IS NOT NULL`,
+        )
+        .all(...aids.map((a) => a.aid)) as { anilist_id: number; cover: string; banner: string | null; color: string | null }[])
+    : [];
   const next = rows.filter((e) => e.status === "unaired" && e.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0] ?? null;
   // The hero's facts from AnimeArr's catalog (AniList): native title, format, years, banner.
   const ents = entriesForSeries(tvdbId).entries.filter((e) => e.kind !== "MOVIE");
@@ -318,10 +497,42 @@ export function seriesHeader(tvdbId: number) {
     catalog,
     color: cov[0]?.color ?? null,
     nextEpisode: next ? { id: next.id, season: next.season, episode: next.episode, title: next.title, airUtc: next.airUtc } : null,
-    counts: { have: have.length, aired: aired.length, missing: rows.filter((e) => e.status === "missing" || e.status === "wrong-lang").length, wrongLang: wrongLang.length, downloading: rows.filter((e) => e.status === "downloading").length, total: rows.length },
-    language: { lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en", withLang: withLang.length, noLang: noLang.length, unknown: unknownLang.length - untagged.length, untagged: untagged.length, have: withFile.length, mode: prof.watchMode, profile: prof.name, profileSource: prof.source },
-    profile: { id: prof.id, name: prof.name, watchMode: prof.watchMode, profileMode: prof.profileMode ?? prof.watchMode, source: prof.source, original: prof.originalLangs },
-    links: { anilist: cov[0]?.anilist_id ? `https://anilist.co/anime/${cov[0].anilist_id}` : s.tvdb_id >= NATIVE_BASE ? `https://anilist.co/anime/${s.tvdb_id - NATIVE_BASE}` : null, anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null, tvdb: s.tvdb_id >= NATIVE_BASE ? null : `https://thetvdb.com/?tab=series&id=${s.tvdb_id}` },
+    counts: {
+      have: have.length,
+      aired: aired.length,
+      missing: rows.filter((e) => e.status === "missing" || e.status === "wrong-lang").length,
+      wrongLang: wrongLang.length,
+      downloading: rows.filter((e) => e.status === "downloading").length,
+      total: rows.length,
+    },
+    language: {
+      lang: (prof.watchMode === "dub" ? prof.dubLangs[0] : prof.subLangs[0]) ?? "en",
+      withLang: withLang.length,
+      noLang: noLang.length,
+      unknown: unknownLang.length - untagged.length,
+      untagged: untagged.length,
+      have: withFile.length,
+      mode: prof.watchMode,
+      profile: prof.name,
+      profileSource: prof.source,
+    },
+    profile: {
+      id: prof.id,
+      name: prof.name,
+      watchMode: prof.watchMode,
+      profileMode: prof.profileMode ?? prof.watchMode,
+      source: prof.source,
+      original: prof.originalLangs,
+    },
+    links: {
+      anilist: cov[0]?.anilist_id
+        ? `https://anilist.co/anime/${cov[0].anilist_id}`
+        : s.tvdb_id >= NATIVE_BASE
+          ? `https://anilist.co/anime/${s.tvdb_id - NATIVE_BASE}`
+          : null,
+      anidb: aids[0] ? `https://anidb.net/anime/${aids[0].aid}` : null,
+      tvdb: s.tvdb_id >= NATIVE_BASE ? null : `https://thetvdb.com/?tab=series&id=${s.tvdb_id}`,
+    },
     native: s.id >= NATIVE_BASE,
     managed: listManaged().find((m) => m.tvdbId === tvdbId) ?? null,
     allowed: underAllowedRoot(s.path),
@@ -332,20 +543,44 @@ export function seriesHeader(tvdbId: number) {
 
 /** One episode in detail: file facts, grab history with the "why", and its activity entries. */
 export function episodeDetail(episodeId: number) {
-  const e = cache.prepare("SELECT e.*, s.tvdb_id, s.title AS series_title FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id = ?").get(episodeId) as { series_id: number; tvdb_id: number; series_title: string; season: number; episode: number } | undefined;
+  const e = cache
+    .prepare("SELECT e.*, s.tvdb_id, s.title AS series_title FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.id = ?")
+    .get(episodeId) as { series_id: number; tvdb_id: number; series_title: string; season: number; episode: number } | undefined;
   if (!e) return null;
   const row = episodeRows(e.series_id).find((x) => x.id === episodeId)!;
   const grabs = db
-    .prepare("SELECT id, at, updated_at, release, protocol, state, dry_run, why, error, progress FROM grabs WHERE EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 20")
+    .prepare(
+      "SELECT id, at, updated_at, release, protocol, state, dry_run, why, error, progress FROM grabs WHERE EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 20",
+    )
     .all(episodeId);
   // Plain summaries for the sheet (the raw message stays alongside).
   const activity = listDecisions({ tvdbId: e.tvdb_id, limit: 300 })
     .filter((d) => d.episodeIds.includes(episodeId))
     .slice(0, 30)
-    .map((d) => ({ ...d, summary: summarize({ kind: d.kind, why: d.why, title: d.title || e.series_title, label: `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` }) }));
+    .map((d) => ({
+      ...d,
+      summary: summarize({
+        kind: d.kind,
+        why: d.why,
+        title: d.title || e.series_title,
+        label: `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`,
+      }),
+    }));
   const verify = activity.find((d) => d.kind === "verify-ok" || d.kind === "verify-fail") ?? null;
   const own = row.file?.scanned ? recordFor(row.file.path) : null;
-  return { ...row, own, seadex: row.file ? filePick(e.tvdb_id, e.season, row.file) : null, art: artFor(e.tvdb_id), tvdbId: e.tvdb_id, seriesTitle: e.series_title, seriesId: e.series_id, grabs, activity, verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null, currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null };
+  return {
+    ...row,
+    own,
+    seadex: row.file ? filePick(e.tvdb_id, e.season, row.file) : null,
+    art: artFor(e.tvdb_id),
+    tvdbId: e.tvdb_id,
+    seriesTitle: e.series_title,
+    seriesId: e.series_id,
+    grabs,
+    activity,
+    verify: verify ? { at: verify.at, ok: verify.kind === "verify-ok", why: verify.why } : null,
+    currentRelease: row.file ? currentRelease(episodeId, row.file.sceneName) : null,
+  };
 }
 
 /**
@@ -353,7 +588,11 @@ export function episodeDetail(episodeId: number) {
  * scene name. Null when unknown (a renamed file name never matches an indexer title).
  */
 export function currentRelease(episodeId: number, sceneName: string | null): string | null {
-  const g = db.prepare("SELECT release FROM grabs WHERE state = 'done' AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1").get(episodeId) as { release: string } | undefined;
+  const g = db
+    .prepare(
+      "SELECT release FROM grabs WHERE state = 'done' AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?) ORDER BY id DESC LIMIT 1",
+    )
+    .get(episodeId) as { release: string } | undefined;
   return g?.release ?? sceneName ?? null;
 }
 
@@ -380,24 +619,39 @@ export const realEpisodeDeps: EpisodeDeps = {
 };
 
 function guard(tvdbId: number) {
-  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
+  if (dbState.corrupt)
+    throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const s = seriesByTvdb(tvdbId);
   if (!s) throw Object.assign(new Error("Unknown series"), { statusCode: 404 });
-  if (!underAllowedRoot(s.path)) throw Object.assign(new Error(`${s.title} is outside the allowed root folders, so AnimeArr won't change its files. Allowed: ${getSettings().allowedRoots.join(", ") || "none yet"}`), { statusCode: 403 });
+  if (!underAllowedRoot(s.path))
+    throw Object.assign(
+      new Error(
+        `${s.title} is outside the allowed root folders, so AnimeArr won't change its files. Allowed: ${getSettings().allowedRoots.join(", ") || "none yet"}`,
+      ),
+      { statusCode: 403 },
+    );
   return s;
 }
 
 /** Deletes the files of the given episodes through Sonarr. Returns whether a managed, live show should search again. */
 export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], deps: EpisodeDeps = realEpisodeDeps) {
   const s = guard(tvdbId);
-  if (s.id >= NATIVE_BASE) throw Object.assign(new Error("Deleting files of a show added in AnimeArr comes with AnimeArr's own clean-up (next steps); nothing was deleted"), { statusCode: 409 });
+  if (s.id >= NATIVE_BASE)
+    throw Object.assign(
+      new Error("Deleting files of a show added in AnimeArr comes with AnimeArr's own clean-up (next steps); nothing was deleted"),
+      { statusCode: 409 },
+    );
   const all = episodesFor(tvdbId);
   const own = new Set(all.map((e) => e.id));
   const deleted: { episodeId: number; file: string; episodes: string[] }[] = [];
   const skipped: { episodeId: number; why: string }[] = [];
   const done = new Set<number>();
   const bin = deps.recycle ? await deps.recycle().catch(() => null) : null;
-  const where = !bin ? "if Sonarr has a recycle bin, the file is there" : bin.configured ? `it is in Sonarr's recycle bin (${bin.path})${bin.cleanupDays ? ` for ${bin.cleanupDays} days` : ""}` : "Sonarr has no recycle bin, so it is gone for good";
+  const where = !bin
+    ? "if Sonarr has a recycle bin, the file is there"
+    : bin.configured
+      ? `it is in Sonarr's recycle bin (${bin.path})${bin.cleanupDays ? ` for ${bin.cleanupDays} days` : ""}`
+      : "Sonarr has no recycle bin, so it is gone for good";
   for (const eid of episodeIds) {
     if (!own.has(eid)) {
       skipped.push({ episodeId: eid, why: "not an episode of this show" });
@@ -415,7 +669,9 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
       const f = await deps.episodeFile(ep.episodeFileId);
       if (f.seriesId !== s.id) throw new Error("Sonarr says this file belongs to another series");
       if (!underAllowedRoot(f.path)) throw new Error(`the file is outside the allowed root folders (${f.path})`);
-      const sharing = cache.prepare("SELECT id, season, episode FROM episodes WHERE file_id = ? ORDER BY season, episode").all(ep.episodeFileId) as { id: number; season: number; episode: number }[];
+      const sharing = cache
+        .prepare("SELECT id, season, episode FROM episodes WHERE file_id = ? ORDER BY season, episode")
+        .all(ep.episodeFileId) as { id: number; season: number; episode: number }[];
       const labels = sharing.length ? sharing.map((x) => sxe(x.season, x.episode)) : [sxe(ep.seasonNumber, ep.episodeNumber)];
       await deps.deleteFile(ep.episodeFileId);
       done.add(ep.episodeFileId);
@@ -443,7 +699,11 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
 export function wrongLanguageEpisodes(tvdbId: number): Map<number, string> {
   const s = seriesByTvdb(tvdbId);
   if (!s) return new Map();
-  return new Map(episodeRows(s.id).filter((e) => e.status === "wrong-lang").map((e) => [e.id, e.file?.lang?.why ?? "wrong language"]));
+  return new Map(
+    episodeRows(s.id)
+      .filter((e) => e.status === "wrong-lang")
+      .map((e) => [e.id, e.file?.lang?.why ?? "wrong language"]),
+  );
 }
 
 /** search_state reason of a wrong-language replacement (also how its rows are recognised). */
@@ -462,14 +722,30 @@ export function planWrongLanguage(now = Date.now()) {
   for (const m of listManaged()) {
     const wrong = wrongLanguageEpisodes(m.tvdbId);
     for (const [id, why] of wrong) {
-      const st = db.prepare("SELECT state, last_at FROM search_state WHERE episode_id = ?").get(id) as { state: string; last_at: number | null } | undefined;
+      const st = db.prepare("SELECT state, last_at FROM search_state WHERE episode_id = ?").get(id) as
+        { state: string; last_at: number | null } | undefined;
       const lastWhy = `${WRONG_LANG_WHY} (${why}); searching for a replacement`;
-      if (!st) added += Number(db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state, last_why) VALUES (?, ?, ?, 'replace', ?)").run(id, m.tvdbId, now, lastWhy).changes);
-      else if (st.state === "done" && (st.last_at ?? 0) < now - retry) added += Number(db.prepare("UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, next_at = ?, last_why = ? WHERE episode_id = ?").run(now, lastWhy, id).changes);
+      if (!st)
+        added += Number(
+          db
+            .prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state, last_why) VALUES (?, ?, ?, 'replace', ?)")
+            .run(id, m.tvdbId, now, lastWhy).changes,
+        );
+      else if (st.state === "done" && (st.last_at ?? 0) < now - retry)
+        added += Number(
+          db
+            .prepare(
+              "UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, next_at = ?, last_why = ? WHERE episode_id = ?",
+            )
+            .run(now, lastWhy, id).changes,
+        );
     }
     // Fixed, kept or marked meanwhile: no replacement needed any more.
-    for (const r of db.prepare("SELECT episode_id FROM search_state WHERE tvdb_id = ? AND state = 'replace' AND last_why LIKE ?").all(m.tvdbId, `${WRONG_LANG_WHY}%`) as { episode_id: number }[])
-      if (!wrong.has(r.episode_id)) db.prepare("UPDATE search_state SET state = 'done', last_why = 'the file is fine now' WHERE episode_id = ?").run(r.episode_id);
+    for (const r of db
+      .prepare("SELECT episode_id FROM search_state WHERE tvdb_id = ? AND state = 'replace' AND last_why LIKE ?")
+      .all(m.tvdbId, `${WRONG_LANG_WHY}%`) as { episode_id: number }[])
+      if (!wrong.has(r.episode_id))
+        db.prepare("UPDATE search_state SET state = 'done', last_why = 'the file is fine now' WHERE episode_id = ?").run(r.episode_id);
   }
   return added;
 }
@@ -481,15 +757,35 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const ids = episodeIds.filter((e) => own.has(e));
   if (!ids.length) throw Object.assign(new Error("Those aren't episodes of this show"), { statusCode: 400 });
   refuseMovieSpecials(s.id, ids);
-  logDecision("search", { tvdbId, title: s.title, episodeIds: ids, why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode${ids.length === 1 ? "" : "s"} now` });
+  logDecision("search", {
+    tvdbId,
+    title: s.title,
+    episodeIds: ids,
+    why: opts.why ?? `You asked AnimeArr to search again for ${ids.length} episode${ids.length === 1 ? "" : "s"} now`,
+  });
   const now = Date.now();
   // 'replace' = the episode has a file that must be replaced, so "Sonarr has a file" doesn't end the search.
   const state = opts.replace ? "replace" : "waiting";
   for (const e of ids)
-    db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, last_why = ?").run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
+    db.prepare(
+      "INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, last_why = ?",
+    ).run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
 }
 
-const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });
+const toCand = (r: SearchResult): Candidate => ({
+  guid: r.guid,
+  title: r.title,
+  indexerId: r.indexerId,
+  indexer: r.indexer,
+  protocol: r.protocol,
+  size: r.size,
+  downloadUrl: r.downloadUrl,
+  magnetUrl: r.magnetUrl,
+  label: r.label,
+  group: r.group,
+  why: r.rank.why,
+  episodeIds: r.episodeIds,
+});
 
 /**
  * Re-grab: searches for the next best release (single-episode, accepted, not the one you have, not blocklisted) and
@@ -515,18 +811,44 @@ export async function regrabEpisodes(tvdbId: number, episodeIds: number[], deps:
       }
       refuseMovieSpecials(s.id, [eid]);
       const res = await deps.search(tvdbId, [eid]);
-      const norm = (x: string) => x.replace(/-xpost$/i, "").replace(/\.(mkv|mp4)$/i, "").toLowerCase();
-      const ok = res.results.filter((r) => r.rank.accept && r.coversTarget && r.extra <= 0 && (!current || norm(r.title) !== norm(current)));
+      const norm = (x: string) =>
+        x
+          .replace(/-xpost$/i, "")
+          .replace(/\.(mkv|mp4)$/i, "")
+          .toLowerCase();
+      const ok = res.results.filter(
+        (r) => r.rank.accept && r.coversTarget && r.extra <= 0 && (!current || norm(r.title) !== norm(current)),
+      );
       if (!ok.length) {
         out.push({ episodeId: eid, outcome: "nothing else acceptable found; the current file stays" });
-        logDecision("skip", { tvdbId, title: s.title, episodeIds: [eid], why: `Re-grab S${ep.seasonNumber}E${ep.episodeNumber}: nothing else acceptable found, so the current file stays` });
+        logDecision("skip", {
+          tvdbId,
+          title: s.title,
+          episodeIds: [eid],
+          why: `Re-grab S${ep.seasonNumber}E${ep.episodeNumber}: nothing else acceptable found, so the current file stays`,
+        });
         continue;
       }
-      const g = await deps.grab({ tvdbId, episodeIds: [eid], candidate: toCand(ok[0]), fallbacks: ok.slice(1, 4).map(toCand), origin: "manual" });
+      const g = await deps.grab({
+        tvdbId,
+        episodeIds: [eid],
+        candidate: toCand(ok[0]),
+        fallbacks: ok.slice(1, 4).map(toCand),
+        origin: "manual",
+      });
       out.push({ episodeId: eid, outcome: g.message, release: ok[0].title, dryRun: g.dryRun });
       if (!g.dryRun && !g.failed && current) {
-        const r = db.prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at) VALUES (NULL, ?, ?, ?, ?)").run(current, tvdbId, "replaced by a re-grab", Date.now());
-        logDecision("info", { tvdbId, title: s.title, episodeIds: [eid], release: current, why: `Re-grab: blocklisted the previous release ${current} so it isn't picked again`, undo: { action: "unblock", args: { id: Number(r.lastInsertRowid), release: current } } });
+        const r = db
+          .prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at) VALUES (NULL, ?, ?, ?, ?)")
+          .run(current, tvdbId, "replaced by a re-grab", Date.now());
+        logDecision("info", {
+          tvdbId,
+          title: s.title,
+          episodeIds: [eid],
+          release: current,
+          why: `Re-grab: blocklisted the previous release ${current} so it isn't picked again`,
+          undo: { action: "unblock", args: { id: Number(r.lastInsertRowid), release: current } },
+        });
       }
     } catch (e) {
       out.push({ episodeId: eid, outcome: (e as Error).message });
@@ -541,8 +863,21 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
   const managed = new Set(listManaged().map((m) => m.tvdbId));
   const active = grabStates();
   const rows = cache
-    .prepare("SELECT e.id, e.season, e.episode, e.title, e.air_utc, e.has_file, e.monitored, s.tvdb_id, s.title AS series, s.poster FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.air_utc BETWEEN ? AND ? AND e.season > 0 ORDER BY e.air_utc")
-    .all(fromMs, toMs) as { id: number; season: number; episode: number; title: string | null; air_utc: number; has_file: number; monitored: number; tvdb_id: number; series: string; poster: string | null }[];
+    .prepare(
+      "SELECT e.id, e.season, e.episode, e.title, e.air_utc, e.has_file, e.monitored, s.tvdb_id, s.title AS series, s.poster FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.air_utc BETWEEN ? AND ? AND e.season > 0 ORDER BY e.air_utc",
+    )
+    .all(fromMs, toMs) as {
+    id: number;
+    season: number;
+    episode: number;
+    title: string | null;
+    air_utc: number;
+    has_file: number;
+    monitored: number;
+    tvdb_id: number;
+    series: string;
+    poster: string | null;
+  }[];
   const now = Date.now();
   const covers = new Map<number, string | null>();
   return rows
@@ -551,7 +886,21 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
       if (!covers.has(r.tvdb_id)) covers.set(r.tvdb_id, coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }));
       const g = active.get(r.id);
       const status = statusWithGrab(r.has_file ? "have" : r.air_utc > now ? "unaired" : "missing", g);
-      return { episodeId: r.id, tvdbId: r.tvdb_id, series: r.series, cover: covers.get(r.tvdb_id) ?? null, season: r.season, episode: r.episode, title: r.title, airUtc: r.air_utc, status, progress: g?.progress ?? null, stage: g?.stage ?? null, ahead: g?.ahead ?? null, managed: managed.has(r.tvdb_id) };
+      return {
+        episodeId: r.id,
+        tvdbId: r.tvdb_id,
+        series: r.series,
+        cover: covers.get(r.tvdb_id) ?? null,
+        season: r.season,
+        episode: r.episode,
+        title: r.title,
+        airUtc: r.air_utc,
+        status,
+        progress: g?.progress ?? null,
+        stage: g?.stage ?? null,
+        ahead: g?.ahead ?? null,
+        managed: managed.has(r.tvdb_id),
+      };
     });
 }
 
@@ -575,7 +924,11 @@ export function replaceSeasonPreview(tvdbId: number, season: number) {
   const quality = new Map<string, { source: string | null; resolution: string | null; remux: boolean; n: number }>();
   for (const e of withFile) {
     const f = e.file!;
-    const q = { source: f.source, resolution: f.resolution ?? f.quality, remux: /\bremux\b/i.test(`${f.sceneName ?? ""} ${f.quality ?? ""}`) };
+    const q = {
+      source: f.source,
+      resolution: f.resolution ?? f.quality,
+      remux: /\bremux\b/i.test(`${f.sceneName ?? ""} ${f.quality ?? ""}`),
+    };
     const k = `${q.source}|${q.resolution}|${q.remux}`;
     quality.set(k, { ...q, n: (quality.get(k)?.n ?? 0) + 1 });
   }

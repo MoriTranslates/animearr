@@ -24,16 +24,28 @@ const H = 3_600_000;
 const DIR = "/media/AnimeArr/Clover/Season 02";
 const file = (id: number, name: string, subs: string[]) => {
   const p = `${DIR}/${name}`;
-  cache.prepare("INSERT INTO files (id, series_id, season, path, size, quality, audio_langs, sub_langs) VALUES (?, 7, 2, ?, 1000, 'WEBDL-1080p', 'ja', ?)").run(id, p, subs.join("/"));
-  db.prepare("INSERT INTO media_files (path, root, size, mtime, probed_at, audio, subs, seen_at) VALUES (?, '/media/AnimeArr', 1000, 1, 1, ?, ?, 1)").run(p, JSON.stringify([{ lang: "ja" }]), JSON.stringify(subs.map((lang) => ({ lang }))));
+  cache
+    .prepare(
+      "INSERT INTO files (id, series_id, season, path, size, quality, audio_langs, sub_langs) VALUES (?, 7, 2, ?, 1000, 'WEBDL-1080p', 'ja', ?)",
+    )
+    .run(id, p, subs.join("/"));
+  db.prepare(
+    "INSERT INTO media_files (path, root, size, mtime, probed_at, audio, subs, seen_at) VALUES (?, '/media/AnimeArr', 1000, 1, 1, ?, ?, 1)",
+  ).run(p, JSON.stringify([{ lang: "ja" }]), JSON.stringify(subs.map((lang) => ({ lang }))));
   return p;
 };
 let grabId = 0;
 
 before(() => {
   const now = Date.now();
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, path, monitored, status, synced_at) VALUES (7, ?, 'Clover', '/media/AnimeArr/Clover', 1, 'continuing', 0)").run(TVDB);
-  const ep = cache.prepare("INSERT INTO episodes (id, series_id, season, episode, title, air_utc, monitored, has_file, file_id, runtime) VALUES (?, 7, 2, ?, ?, ?, 1, ?, ?, 24)");
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, path, monitored, status, synced_at) VALUES (7, ?, 'Clover', '/media/AnimeArr/Clover', 1, 'continuing', 0)",
+    )
+    .run(TVDB);
+  const ep = cache.prepare(
+    "INSERT INTO episodes (id, series_id, season, episode, title, air_utc, monitored, has_file, file_id, runtime) VALUES (?, 7, 2, ?, ?, ?, 1, ?, ?, 24)",
+  );
   ep.run(801, 1, "Good file", now - 96 * H, 1, 9801);
   ep.run(802, 2, "Not out yet", now + 96 * H, 0, null);
   ep.run(803, 3, "No file", now - 48 * H, 0, null);
@@ -45,12 +57,24 @@ before(() => {
   file(9805, "Clover - S02E05 [Keep].mkv", ["fr"]);
   file(9806, "[geckyzz] Clover - S02E06.mkv", []);
   db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, 7, 'Clover', 0, ?)").run(TVDB, now);
-  patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], managed: { ...s.managed, dryRun: false }, media: { ...s.media, recycleBin: "/media/Recycle/" } }));
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/media/AnimeArr"],
+    managed: { ...s.managed, dryRun: false },
+    media: { ...s.media, recycleBin: "/media/Recycle/" },
+  }));
   // A whole-season replace that stopped: it lists every episode of the season.
   grabId = Number(
     db
-      .prepare("INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, error, purpose) VALUES (?, ?, ?, 7, '[801, 802, 803]', 'R', 'g', 'torrent', 'qbittorrent', 'h', 'needs-attention', 0, ?, 'replace')")
-      .run(now, now, TVDB, "Season 2 replace stopped: the download was only episode 3, not the whole season. Nothing in your library changed.").lastInsertRowid,
+      .prepare(
+        "INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, error, purpose) VALUES (?, ?, ?, 7, '[801, 802, 803]', 'R', 'g', 'torrent', 'qbittorrent', 'h', 'needs-attention', 0, ?, 'replace')",
+      )
+      .run(
+        now,
+        now,
+        TVDB,
+        "Season 2 replace stopped: the download was only episode 3, not the whole season. Nothing in your library changed.",
+      ).lastInsertRowid,
   );
 });
 
@@ -61,7 +85,10 @@ test("a grab that needs you marks only the episode left without a file; good fil
   assert.equal(by.get(3)!.status, "attention");
   // Each says why, in plain words, with what can be done; the good file carries the note too.
   assert.equal(by.get(3)!.attention!.summary, "The download was only episode 3, not the whole season; nothing in your library changed.");
-  assert.ok(by.get(3)!.attention!.fixes.some((f) => f.action === "tryNext"), JSON.stringify(by.get(3)!.attention!.fixes));
+  assert.ok(
+    by.get(3)!.attention!.fixes.some((f) => f.action === "tryNext"),
+    JSON.stringify(by.get(3)!.attention!.fixes),
+  );
   assert.equal(by.get(1)!.attention!.grabId, grabId);
   // The calendar follows the same rule.
   const cal = new Map(calendar(Date.now() - 200 * H, Date.now() + 200 * H, false).map((c) => [c.episodeId, c.status]));
@@ -71,8 +98,20 @@ test("a grab that needs you marks only the episode left without a file; good fil
 });
 
 test("plain words for a download that needs you (episode rows and the Queue)", () => {
-  assert.equal(queueSummary("needs-attention", "Season 2 replace stopped: the download was only episode 3, not the whole season. Nothing in your library changed.", false), "Needs you: the download was only episode 3, not the whole season; nothing in your library changed.");
-  assert.equal(attentionSummary("Season 1 replace: 2 episodes kept their old file (no en subtitles). The others were replaced. Fix the cause, then press Retry import"), "2 episodes kept the old file, the others were replaced.");
+  assert.equal(
+    queueSummary(
+      "needs-attention",
+      "Season 2 replace stopped: the download was only episode 3, not the whole season. Nothing in your library changed.",
+      false,
+    ),
+    "Needs you: the download was only episode 3, not the whole season; nothing in your library changed.",
+  );
+  assert.equal(
+    attentionSummary(
+      "Season 1 replace: 2 episodes kept their old file (no en subtitles). The others were replaced. Fix the cause, then press Retry import",
+    ),
+    "2 episodes kept the old file, the others were replaced.",
+  );
   assert.equal(attentionSummary("the download disappeared from the download client"), "The download disappeared from the download client.");
   assert.match(attentionSummary(null), /Open the Queue/);
 });

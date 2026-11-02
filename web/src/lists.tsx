@@ -8,15 +8,59 @@ import type { Scope } from "./scope";
 import { Chip, Confirm, ErrorBox, Modal, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, useToast } from "./ui";
 
 type Status = "CURRENT" | "PLANNING" | "COMPLETED" | "PAUSED" | "DROPPED" | "REPEATING";
-interface Item { anilistId: number; title: string; kind: "show" | "movie" }
-interface ListResult { at?: number; total?: number; matched?: number; pending?: boolean; wouldAdd?: Item[]; added?: { anilistId: number; title: string; at: number }[]; skipped?: Record<string, number>; errors?: string[]; error?: string }
-interface ImportList {
-  id: number; name: string; source: "anilist" | "mal"; username: string; statuses: Status[]; profileId: string | null; rootFolder: string; movieRootFolder: string; scope: Scope | null; then: "none" | "queue";
-  tags: number[]; enabled: boolean; confirmed: boolean; lastSyncAt: number | null; lastResult: ListResult;
+interface Item {
+  anilistId: number;
+  title: string;
+  kind: "show" | "movie";
 }
-interface Exclusion { anilistId: number; title: string; listName: string; at: number }
-interface Loaded { lists: ImportList[]; exclusions: Exclusion[]; statuses: Status[]; intervalHours: number; maxAuto: number }
-interface TestResult { total: number; matched: number; wouldAdd: number; skipped: Record<string, number>; items: (Item & { action: string; reason?: string; status: Status })[] }
+interface ListResult {
+  at?: number;
+  total?: number;
+  matched?: number;
+  pending?: boolean;
+  wouldAdd?: Item[];
+  added?: { anilistId: number; title: string; at: number }[];
+  skipped?: Record<string, number>;
+  errors?: string[];
+  error?: string;
+}
+interface ImportList {
+  id: number;
+  name: string;
+  source: "anilist" | "mal";
+  username: string;
+  statuses: Status[];
+  profileId: string | null;
+  rootFolder: string;
+  movieRootFolder: string;
+  scope: Scope | null;
+  then: "none" | "queue";
+  tags: number[];
+  enabled: boolean;
+  confirmed: boolean;
+  lastSyncAt: number | null;
+  lastResult: ListResult;
+}
+interface Exclusion {
+  anilistId: number;
+  title: string;
+  listName: string;
+  at: number;
+}
+interface Loaded {
+  lists: ImportList[];
+  exclusions: Exclusion[];
+  statuses: Status[];
+  intervalHours: number;
+  maxAuto: number;
+}
+interface TestResult {
+  total: number;
+  matched: number;
+  wouldAdd: number;
+  skipped: Record<string, number>;
+  items: (Item & { action: string; reason?: string; status: Status })[];
+}
 
 const skippedText = (sk: Record<string, number> | undefined) =>
   Object.entries(sk ?? {})
@@ -38,9 +82,13 @@ export function ImportLists({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void }
     try {
       if (l) {
         const r = await api<{ preview: boolean; added: number; wouldAdd: number }>(`/import-lists/${l.id}/sync`, { body: {} });
-        toast(r.preview ? t("lists.syncedPreview", { n: r.wouldAdd }) : r.added ? t("lists.synced", { n: r.added }) : t("lists.syncedNone"));
+        toast(
+          r.preview ? t("lists.syncedPreview", { n: r.wouldAdd }) : r.added ? t("lists.synced", { n: r.added }) : t("lists.syncedNone"),
+        );
       } else {
-        const r = await api<{ lists: { name: string; added: number; preview: boolean; error?: string }[] }>("/import-lists/sync", { body: {} });
+        const r = await api<{ lists: { name: string; added: number; preview: boolean; error?: string }[] }>("/import-lists/sync", {
+          body: {},
+        });
         const bad = r.lists.find((x) => x.error);
         toast(bad ? `${bad.name}: ${bad.error}` : t("lists.synced", { n: r.lists.reduce((a, x) => a + x.added, 0) }), !!bad);
       }
@@ -60,11 +108,21 @@ export function ImportLists({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void }
         <div className="form">
           <label>
             {t("lists.interval")}
-            <NumberInput value={s.lists.intervalHours} min={1} max={168} label={t("lists.interval")} onChange={(v) => upd((x) => ({ ...x, lists: { ...x.lists, intervalHours: v } }))} />
+            <NumberInput
+              value={s.lists.intervalHours}
+              min={1}
+              max={168}
+              label={t("lists.interval")}
+              onChange={(v) => upd((x) => ({ ...x, lists: { ...x.lists, intervalHours: v } }))}
+            />
           </label>
           <label className="field">
             {t("lists.malClient")}
-            <SecretInput value={s.lists.malClientId} onChange={(v) => upd((x) => ({ ...x, lists: { ...x.lists, malClientId: v } }))} label={t("lists.malClient")} />
+            <SecretInput
+              value={s.lists.malClientId}
+              onChange={(v) => upd((x) => ({ ...x, lists: { ...x.lists, malClientId: v } }))}
+              label={t("lists.malClient")}
+            />
             <span className="muted small">{t("lists.malClientHelp")}</span>
           </label>
         </div>
@@ -72,7 +130,15 @@ export function ImportLists({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void }
       <div className="card pad stack">
         {!lists.length && <p className="muted">{t("lists.none")}</p>}
         {lists.map((l) => (
-          <ListRow key={l.id} l={l} busy={busy === l.id || busy === "all"} onSync={() => void sync(l)} onReview={() => setReview(l)} onEdit={() => setEdit(l)} onDelete={() => setDel(l)} />
+          <ListRow
+            key={l.id}
+            l={l}
+            busy={busy === l.id || busy === "all"}
+            onSync={() => void sync(l)}
+            onReview={() => setReview(l)}
+            onEdit={() => setEdit(l)}
+            onDelete={() => setDel(l)}
+          />
         ))}
         <div className="row">
           <button className="primary" onClick={() => setEdit("new")}>
@@ -130,7 +196,21 @@ export function ImportLists({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void }
   );
 }
 
-function ListRow({ l, busy, onSync, onReview, onEdit, onDelete }: { l: ImportList; busy: boolean; onSync: () => void; onReview: () => void; onEdit: () => void; onDelete: () => void }) {
+function ListRow({
+  l,
+  busy,
+  onSync,
+  onReview,
+  onEdit,
+  onDelete,
+}: {
+  l: ImportList;
+  busy: boolean;
+  onSync: () => void;
+  onReview: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const r = l.lastResult;
   const pending = !l.confirmed && r.pending ? (r.wouldAdd?.length ?? 0) : 0;
   return (
@@ -158,7 +238,9 @@ function ListRow({ l, busy, onSync, onReview, onEdit, onDelete }: { l: ImportLis
       </span>
       {!l.lastSyncAt && <span className="muted small">{t("lists.never")}</span>}
       {l.lastSyncAt && !r.error && (
-        <span className="muted small">{t("lists.last", { when: relTime(l.lastSyncAt), matched: r.matched ?? 0, total: r.total ?? 0, added: r.added?.length ?? 0 })}</span>
+        <span className="muted small">
+          {t("lists.last", { when: relTime(l.lastSyncAt), matched: r.matched ?? 0, total: r.total ?? 0, added: r.added?.length ?? 0 })}
+        </span>
       )}
       {r.error && <span className="small bad-text">{t("lists.failed", { error: r.error })}</span>}
       {!!r.errors?.length && <span className="small bad-text">{t("lists.problems", { list: r.errors.join("; ") })}</span>}
@@ -219,7 +301,9 @@ function Review({ list, onClose, onChanged }: { list: ImportList; onClose: () =>
             </li>
           ))}
         </ul>
-        {!!list.lastResult.skipped && !!Object.keys(list.lastResult.skipped).length && <p className="muted small">{t("lists.skipped", { list: skippedText(list.lastResult.skipped) })}</p>}
+        {!!list.lastResult.skipped && !!Object.keys(list.lastResult.skipped).length && (
+          <p className="muted small">{t("lists.skipped", { list: skippedText(list.lastResult.skipped) })}</p>
+        )}
         <div className="row">
           <button
             className="primary"
@@ -255,7 +339,17 @@ function ListForm({ s, list, onClose, onSaved }: { s: S; list: ImportList | null
   const [f, setF] = useState<Omit<ImportList, "id" | "confirmed" | "lastSyncAt" | "lastResult">>(
     () =>
       list ?? {
-        name: "", source: "anilist", username: "", statuses: ["CURRENT", "PLANNING"], profileId: null, rootFolder: showRoots[0] ?? s.allowedRoots[0] ?? "", movieRootFolder: "", scope: null, then: "none", tags: [], enabled: true,
+        name: "",
+        source: "anilist",
+        username: "",
+        statuses: ["CURRENT", "PLANNING"],
+        profileId: null,
+        rootFolder: showRoots[0] ?? s.allowedRoots[0] ?? "",
+        movieRootFolder: "",
+        scope: null,
+        then: "none",
+        tags: [],
+        enabled: true,
       },
   );
   const [test, setTest] = useState<TestResult | "busy" | null>(null);
@@ -288,7 +382,12 @@ function ListForm({ s, list, onClose, onSaved }: { s: S; list: ImportList | null
         <fieldset className="stack">
           <legend>{t("lists.statuses")}</legend>
           {(["CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING"] as Status[]).map((x) => (
-            <Toggle key={x} checked={f.statuses.includes(x)} onChange={() => set({ statuses: toggle(f.statuses, x) })} label={t(`lists.status.${x}` as I18nKey)} />
+            <Toggle
+              key={x}
+              checked={f.statuses.includes(x)}
+              onChange={() => set({ statuses: toggle(f.statuses, x) })}
+              label={t(`lists.status.${x}` as I18nKey)}
+            />
           ))}
         </fieldset>
         <div className="form">
@@ -326,7 +425,10 @@ function ListForm({ s, list, onClose, onSaved }: { s: S; list: ImportList | null
           </label>
           <label>
             {t("lists.monitor")}
-            <select value={f.scope ? "custom" : "default"} onChange={(e) => set({ scope: e.target.value === "custom" ? (s.scope.continuing as Scope) : null })}>
+            <select
+              value={f.scope ? "custom" : "default"}
+              onChange={(e) => set({ scope: e.target.value === "custom" ? (s.scope.continuing as Scope) : null })}
+            >
               <option value="default">{t("lists.monitorDefault")}</option>
               <option value="custom">{t("lists.monitorCustom")}</option>
             </select>
@@ -348,7 +450,13 @@ function ListForm({ s, list, onClose, onSaved }: { s: S; list: ImportList | null
             <legend>{t("lists.tags")}</legend>
             <span className="row wrap">
               {tags.data.tags.map((x) => (
-                <button key={x.id} type="button" className={`small${f.tags.includes(x.id) ? " on" : ""}`} aria-pressed={f.tags.includes(x.id)} onClick={() => set({ tags: toggle(f.tags, x.id) })}>
+                <button
+                  key={x.id}
+                  type="button"
+                  className={`small${f.tags.includes(x.id) ? " on" : ""}`}
+                  aria-pressed={f.tags.includes(x.id)}
+                  onClick={() => set({ tags: toggle(f.tags, x.id) })}
+                >
                   {x.label}
                 </button>
               ))}
@@ -452,7 +560,13 @@ function Exclusions({ items, onChanged }: { items: Exclusion[]; onChanged: () =>
           }
         }}
       >
-        <input className="grow" value={text} placeholder={t("lists.exclusionId")} aria-label={t("lists.exclusionId")} onChange={(e) => setText(e.target.value)} />
+        <input
+          className="grow"
+          value={text}
+          placeholder={t("lists.exclusionId")}
+          aria-label={t("lists.exclusionId")}
+          onChange={(e) => setText(e.target.value)}
+        />
         <button disabled={!Number.isInteger(id) || id <= 0}>{t("lists.exclusionAdd")}</button>
       </form>
     </div>

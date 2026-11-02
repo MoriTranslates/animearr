@@ -12,7 +12,25 @@ const { probeOf } = await import("../server/mediafiles.js");
 
 const SUB = { subLangs: ["en"], dubLangs: ["en"], watchMode: "sub" as const, originalLangs: ["ja"] };
 const rec = (audio: (string | null)[], subs: { lang: string | null; forced?: boolean }[]) =>
-  ({ path: "/x.mkv", size: 1, mtime: 0, duration: 1420, container: "matroska", video: null, audio: audio.map((lang, i) => ({ index: i + 1, codec: "aac", lang, title: null, default: i === 0, channels: 2 })), subs: subs.map((s, i) => ({ index: audio.length + 1 + i, codec: "ass", lang: s.lang, title: null, default: true, forced: !!s.forced, partial: !!s.forced })), sidecars: [] }) as unknown as Parameters<typeof probeOf>[0];
+  ({
+    path: "/x.mkv",
+    size: 1,
+    mtime: 0,
+    duration: 1420,
+    container: "matroska",
+    video: null,
+    audio: audio.map((lang, i) => ({ index: i + 1, codec: "aac", lang, title: null, default: i === 0, channels: 2 })),
+    subs: subs.map((s, i) => ({
+      index: audio.length + 1 + i,
+      codec: "ass",
+      lang: s.lang,
+      title: null,
+      default: true,
+      forced: !!s.forced,
+      partial: !!s.forced,
+    })),
+    sidecars: [],
+  }) as unknown as Parameters<typeof probeOf>[0];
 const v = (r: ReturnType<typeof rec>, mode: "sub" | "dub" | "either" = "sub") => judge(probeOf(r), { ...SUB, watchMode: mode }, 24, null);
 
 test("E01: untagged audio + English ASS flagged forced → signs-only, not OK", () => {

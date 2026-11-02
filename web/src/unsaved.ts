@@ -6,14 +6,20 @@ import { t } from "./i18n";
  * (confirmLeave, called by navigate()), closing the tab gets the browser's own warning, and the setup wizard saves
  * every registered form before Next (saveAllUnsaved), staying put when a save fails.
  */
-interface Entry { dirty: () => boolean; save?: () => Promise<boolean> }
+interface Entry {
+  dirty: () => boolean;
+  save?: () => Promise<boolean>;
+}
 const entries = new Set<Entry>();
 
 export function useUnsaved(dirty: boolean, save?: () => Promise<boolean>) {
   const latest = useRef({ dirty, save });
   latest.current = { dirty, save };
   useEffect(() => {
-    const e: Entry = { dirty: () => latest.current.dirty, save: () => (latest.current.save ? latest.current.save() : Promise.resolve(false)) };
+    const e: Entry = {
+      dirty: () => latest.current.dirty,
+      save: () => (latest.current.save ? latest.current.save() : Promise.resolve(false)),
+    };
     entries.add(e);
     return () => void entries.delete(e);
   }, []);

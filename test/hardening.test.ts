@@ -27,17 +27,37 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-harden-fs-"));
 const LIB = path.join(tmp, "lib");
 const DL = path.join(tmp, "dl");
 const BIN = path.join(tmp, "recycle");
-const probe = async () => ({ duration: 1440, container: "matroska", video: { codec: "h264", width: 1920, height: 1080, hdr: false }, audio: [{ lang: "ja", title: null, codec: "aac", channels: 2, default: true, forced: false }], subs: [{ lang: "en", title: null, codec: "ass", default: true, forced: false, partial: false }] }) as never;
+const probe = async () =>
+  ({
+    duration: 1440,
+    container: "matroska",
+    video: { codec: "h264", width: 1920, height: 1080, hdr: false },
+    audio: [{ lang: "ja", title: null, codec: "aac", channels: 2, default: true, forced: false }],
+    subs: [{ lang: "en", title: null, codec: "ass", default: true, forced: false, partial: false }],
+  }) as never;
 const write = (p: string, s = "x") => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, s));
 
 before(() => {
   fs.mkdirSync(path.join(LIB, "Show (2023)"), { recursive: true });
-  cache.prepare("INSERT INTO series (id, tvdb_id, title, year, series_type, path, root_folder, monitored, synced_at) VALUES (10, 424536, 'Show', 2023, 'anime', '/media/AnimeArr/Show (2023)', '/media/AnimeArr', 1, 0)").run();
-  for (const e of [1, 2]) cache.prepare("INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file) VALUES (?, 10, 1, ?, ?, ?, 1, 0)").run(100 + e, e, e, `Ep ${e}`);
+  cache
+    .prepare(
+      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, root_folder, monitored, synced_at) VALUES (10, 424536, 'Show', 2023, 'anime', '/media/AnimeArr/Show (2023)', '/media/AnimeArr', 1, 0)",
+    )
+    .run();
+  for (const e of [1, 2])
+    cache
+      .prepare(
+        "INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file) VALUES (?, 10, 1, ?, ?, ?, 1, 0)",
+      )
+      .run(100 + e, e, e, `Ep ${e}`);
   patchSettings((s) => ({
     ...s,
     allowedRoots: ["/media/AnimeArr"],
-    localPathMappings: [{ from: "/media/AnimeArr", to: LIB }, { from: "/data", to: DL }, { from: "/media/Recycle", to: BIN }],
+    localPathMappings: [
+      { from: "/media/AnimeArr", to: LIB },
+      { from: "/data", to: DL },
+      { from: "/media/Recycle", to: BIN },
+    ],
   }));
 });
 
@@ -50,7 +70,10 @@ test("T9: Minimum Free Space is checked for the batch as a whole; hardlinks on t
   // Room for one file plus half of another above the minimum: each file alone fits, both together don't.
   const minMb = Math.floor((free - 1.5 * S) / (1024 * 1024));
   patchSettings((s) => ({ ...s, media: { ...s.media, skipFreeSpaceCheck: false, minimumFreeSpaceMb: minMb, useHardlinks: false } }));
-  const files = fs.readdirSync(dir).sort().map((f) => path.join(fs.realpathSync(dir), f));
+  const files = fs
+    .readdirSync(dir)
+    .sort()
+    .map((f) => path.join(fs.realpathSync(dir), f));
   const input = { tvdbId: 424536, path: "/data/batch", client: "qbittorrent", assign: { [files[0]]: [101], [files[1]]: [102] } };
   const plan = await planImport(input, { probe, minBytes: 0 });
   assert.equal(plan.items.length, 2);
@@ -61,14 +84,22 @@ test("T9: Minimum Free Space is checked for the batch as a whole; hardlinks on t
   patchSettings((s) => ({ ...s, media: { ...s.media, useHardlinks: true } }));
   const linked = await planImport(input, { probe, minBytes: 0 });
   assert.equal(linked.items[0].action, "hardlink");
-  assert.deepEqual(linked.items.map((i) => i.problem), [null, null]);
+  assert.deepEqual(
+    linked.items.map((i) => i.problem),
+    [null, null],
+  );
   patchSettings((s) => ({ ...s, media: { ...s.media, skipFreeSpaceCheck: true, useHardlinks: false } }));
 });
 
 test("M1: the delete guard refuses a path that CONTAINS a library/allowed root or the config folder", async () => {
   const lib = path.join(DL, "media", "anime", "Show");
   write(path.join(lib, "ep1.mkv"));
-  patchSettings((s) => ({ ...s, allowedRoots: ["/data/media/anime"], importer: { ...s.importer, sourceRoots: ["/data"] }, downloads: { ...s.downloads, allowDelete: true } }));
+  patchSettings((s) => ({
+    ...s,
+    allowedRoots: ["/data/media/anime"],
+    importer: { ...s.importer, sourceRoots: ["/data"] },
+    downloads: { ...s.downloads, allowDelete: true },
+  }));
   try {
     assert.equal(await removeDownloadPath("/data/media/anime/Show"), null, "inside the library: refused");
     assert.equal(await removeDownloadPath("/data/media"), null, "an ancestor of the library: refused");
@@ -80,19 +111,39 @@ test("M1: the delete guard refuses a path that CONTAINS a library/allowed root o
     assert.ok(await removeDownloadPath("/data/done/Some.Release"));
     assert.equal(fs.existsSync(path.join(DL, "done", "Some.Release")), false);
   } finally {
-    patchSettings((s) => ({ ...s, allowedRoots: ["/media/AnimeArr"], importer: { ...s.importer, sourceRoots: ["/data/completed/animearr"] }, downloads: { ...s.downloads, allowDelete: false } }));
+    patchSettings((s) => ({
+      ...s,
+      allowedRoots: ["/media/AnimeArr"],
+      importer: { ...s.importer, sourceRoots: ["/data/completed/animearr"] },
+      downloads: { ...s.downloads, allowDelete: false },
+    }));
   }
 });
 
 test("M4: a replace whose rollback fails says where both files are and pins the old one in the bin", async () => {
-  patchSettings((s) => ({ ...s, importer: { ...s.importer, allowReal: true, realBudget: -1 }, media: { ...s.media, recycleBin: "/media/Recycle/animearr/", recycleBinCleanupDays: 1, skipFreeSpaceCheck: true } }));
+  patchSettings((s) => ({
+    ...s,
+    importer: { ...s.importer, allowReal: true, realBudget: -1 },
+    media: { ...s.media, recycleBin: "/media/Recycle/animearr/", recycleBinCleanupDays: 1, skipFreeSpaceCheck: true },
+  }));
   const old = path.join(LIB, "Show (2023)", "Season 01", "old ep1.mkv");
   write(old, "old");
-  cache.prepare("INSERT INTO files (id, series_id, season, path) VALUES (900, 10, 1, '/media/AnimeArr/Show (2023)/Season 01/old ep1.mkv')").run();
+  cache
+    .prepare("INSERT INTO files (id, series_id, season, path) VALUES (900, 10, 1, '/media/AnimeArr/Show (2023)/Season 01/old ep1.mkv')")
+    .run();
   cache.prepare("UPDATE episodes SET file_id = 900, has_file = 1 WHERE id = 101").run();
   const src = path.join(DL, "usenet", "Show.S01E01.1080p.WEB-DL-GRP.mkv");
   write(src, "new");
-  const plan = await planImport({ tvdbId: 424536, path: "/data/usenet/Show.S01E01.1080p.WEB-DL-GRP.mkv", episodeIds: [101], release: "Show.S01E01.1080p.WEB-DL-GRP", client: "sabnzbd" }, { probe, minBytes: 0 });
+  const plan = await planImport(
+    {
+      tvdbId: 424536,
+      path: "/data/usenet/Show.S01E01.1080p.WEB-DL-GRP.mkv",
+      episodeIds: [101],
+      release: "Show.S01E01.1080p.WEB-DL-GRP",
+      client: "sabnzbd",
+    },
+    { probe, minBytes: 0 },
+  );
   const it = plan.items[0];
   assert.equal(it.problem, null);
   assert.equal(it.action, "move");
@@ -119,7 +170,10 @@ test("M4: a replace whose rollback fails says where both files are and pins the 
   assert.equal(fs.readFileSync(binned, "utf8"), "old");
   assert.equal(fs.readFileSync(src, "utf8"), "new");
   const pins = pinnedInBin();
-  assert.deepEqual(pins.map((p) => path.resolve(p.path)), [path.resolve(binned)]);
+  assert.deepEqual(
+    pins.map((p) => path.resolve(p.path)),
+    [path.resolve(binned)],
+  );
   assert.match(pins[0].why, /couldn't put this file back/);
   assert.equal(binStatus().pinned.length, 1, "shown in Audit → Recycle");
   // Never purged while pinned, not even by "Empty bin now".
@@ -167,7 +221,11 @@ test("S3/S4: Sonarr-API query names in any case; the series editor maps onto Ani
   const put = (payload: object) => app.inject({ method: "PUT", url: "/api/v3/series/editor", payload });
   assert.equal((await put({ seriesIds: [10], deleteFiles: true })).statusCode, 400, "never deletes files");
   assert.equal((await put({ seriesIds: [10], moveFiles: true, rootFolderPath: "/media/Other" })).statusCode, 400, "never moves files");
-  assert.equal((await put({ seriesIds: [10], rootFolderPath: "/media/Other" })).statusCode, 400, "a different root folder would mean moving files");
+  assert.equal(
+    (await put({ seriesIds: [10], rootFolderPath: "/media/Other" })).statusCode,
+    400,
+    "a different root folder would mean moving files",
+  );
   assert.equal((await put({ seriesIds: [] })).statusCode, 400);
   assert.equal((await put({ seriesIds: [10], rootFolderPath: "/media/AnimeArr/" })).statusCode, 202, "the same root folder is fine");
   const tag = (await app.inject({ method: "POST", url: "/api/v3/tag", payload: { label: "phone" } })).json() as { id: number };
@@ -186,17 +244,48 @@ test("S3/S4: Sonarr-API query names in any case; the series editor maps onto Ani
 
 test("M10: outbound addresses refuse link-local and metadata in every spelling; the LAN stays allowed", () => {
   const host = (u: string) => new URL(u).hostname;
-  for (const u of ["http://169.254.169.254/", "http://[::ffff:169.254.169.254]/", "http://[::ffff:a9fe:a9fe]/", "http://[0:0:0:0:0:ffff:a9fe:a9fe]/", "http://[64:ff9b::a9fe:a9fe]/", "http://[fe80::1]/", "http://[febf::1]/", "http://[fd00:ec2::254]/", "http://2852039166/", "http://0xa9.0xfe.0xa9.0xfe/", "http://metadata.google.internal/", "http://0.0.0.0/", "http://[::]/", "http://100.100.100.200/"])
+  for (const u of [
+    "http://169.254.169.254/",
+    "http://[::ffff:169.254.169.254]/",
+    "http://[::ffff:a9fe:a9fe]/",
+    "http://[0:0:0:0:0:ffff:a9fe:a9fe]/",
+    "http://[64:ff9b::a9fe:a9fe]/",
+    "http://[fe80::1]/",
+    "http://[febf::1]/",
+    "http://[fd00:ec2::254]/",
+    "http://2852039166/",
+    "http://0xa9.0xfe.0xa9.0xfe/",
+    "http://metadata.google.internal/",
+    "http://0.0.0.0/",
+    "http://[::]/",
+    "http://100.100.100.200/",
+  ])
     assert.equal(blockedOutboundHost(host(u)), true, u);
-  for (const u of ["http://192.168.1.10:8989/", "http://10.0.0.5/", "http://172.17.0.1/", "http://localhost:8080/", "http://127.0.0.1/", "http://[::1]/", "http://[::ffff:192.168.1.10]/", "http://sonarr.lan/", "https://example.com/", "http://[2001:db8::1]/"])
+  for (const u of [
+    "http://192.168.1.10:8989/",
+    "http://10.0.0.5/",
+    "http://172.17.0.1/",
+    "http://localhost:8080/",
+    "http://127.0.0.1/",
+    "http://[::1]/",
+    "http://[::ffff:192.168.1.10]/",
+    "http://sonarr.lan/",
+    "https://example.com/",
+    "http://[2001:db8::1]/",
+  ])
     assert.equal(blockedOutboundHost(host(u)), false, u);
 });
 
 test("regexes meant as \b word boundaries are real boundaries (they were literal backspace bytes)", async () => {
   const { qualityResource } = await import("../server/sonarrApi.js");
-  assert.deepEqual(qualityResource("[Grp] Show - 05v2 REPACK (1080p)").revision, { version: 1, real: 0, isRepack: true }, "05v2 isn't a lone v2");
+  assert.deepEqual(
+    qualityResource("[Grp] Show - 05v2 REPACK (1080p)").revision,
+    { version: 1, real: 0, isRepack: true },
+    "05v2 isn't a lone v2",
+  );
   assert.deepEqual(qualityResource("Show.S01E05.v2.REPACK.1080p.WEB-DL-Grp").revision, { version: 2, real: 0, isRepack: true });
   assert.equal(qualityResource("Show.S01E05.1080p.WEB-DL-Grp").revision.isRepack, false);
   // No source file carries a control character any more.
-  for (const f of ["sonarrApi.ts", "episodes.ts", "search.ts", "importer.ts"]) assert.ok(!/[\x00-\x08]/.test(fs.readFileSync(new URL(`../server/${f}`, import.meta.url), "utf8")), f);
+  for (const f of ["sonarrApi.ts", "episodes.ts", "search.ts", "importer.ts"])
+    assert.ok(!/[\x00-\x08]/.test(fs.readFileSync(new URL(`../server/${f}`, import.meta.url), "utf8")), f);
 });

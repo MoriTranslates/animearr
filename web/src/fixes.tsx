@@ -7,7 +7,12 @@ import { followAutoJob, outcomeMessage } from "./autojobs";
 import { Chip, Modal, Spinner, useToast } from "./ui";
 
 /** The UI's words for the fix actions (the server's label is the fallback). */
-const FIX_LABEL: Partial<Record<string, I18nKey>> = { regrab: "ep.regrab", tryNext: "fix.tryNext", interactiveSearch: "auto.chooseRelease", retryImport: "managed.retryImport" };
+const FIX_LABEL: Partial<Record<string, I18nKey>> = {
+  regrab: "ep.regrab",
+  tryNext: "fix.tryNext",
+  interactiveSearch: "auto.chooseRelease",
+  retryImport: "managed.retryImport",
+};
 
 /** The fix buttons for a problem (Queue, Activity, the bell, sheets). */
 export function FixButtons({ fixes, small = true }: { fixes?: Fix[] | null; small?: boolean }) {
@@ -23,13 +28,34 @@ export function FixButtons({ fixes, small = true }: { fixes?: Fix[] | null; smal
   );
 }
 
-interface Ep { id: number; season: number; episode: number; title: string | null }
-interface PlanItem { source: string; destArr: string; label: string; action: string; replaces: string | null; problem: string | null; episodeIds?: number[] }
+interface Ep {
+  id: number;
+  season: number;
+  episode: number;
+  title: string | null;
+}
+interface PlanItem {
+  source: string;
+  destArr: string;
+  label: string;
+  action: string;
+  replaces: string | null;
+  problem: string | null;
+  episodeIds?: number[];
+}
 
 /** Carries out fix actions (mounted once, in the app shell): navigation, one-click calls, the import dialog. */
 export function FixHost() {
   const toast = useToast();
-  const [dialog, setDialog] = useState<null | { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null; review?: boolean }>(null);
+  const [dialog, setDialog] = useState<null | {
+    tvdbId?: number;
+    movieId?: number;
+    path?: string | null;
+    episodeIds?: number[];
+    pick?: boolean;
+    grabId?: number | null;
+    review?: boolean;
+  }>(null);
   useEffect(() => {
     const call = async (path: string, body: unknown, ok: string, method = "POST") => {
       try {
@@ -49,14 +75,39 @@ export function FixHost() {
     };
     const on = (e: Event) => {
       const f = (e as CustomEvent<Fix>).detail;
-      const p = (f.params ?? {}) as { tvdbId?: number; movieId?: number; episodeIds?: number[]; path?: string | null; grabId?: number; service?: string; name?: string; review?: boolean };
+      const p = (f.params ?? {}) as {
+        tvdbId?: number;
+        movieId?: number;
+        episodeIds?: number[];
+        path?: string | null;
+        grabId?: number;
+        service?: string;
+        name?: string;
+        review?: boolean;
+      };
       switch (f.action) {
         case "importManual":
-          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: p.review ? undefined : p.episodeIds, grabId: p.grabId ?? null, review: !!p.review });
+          return setDialog({
+            tvdbId: p.tvdbId,
+            movieId: p.movieId,
+            path: p.path ?? null,
+            episodeIds: p.review ? undefined : p.episodeIds,
+            grabId: p.grabId ?? null,
+            review: !!p.review,
+          });
         case "pickEpisode":
-          return setDialog({ tvdbId: p.tvdbId, movieId: p.movieId, path: p.path ?? null, episodeIds: (p.episodeIds?.length ?? 0) > 1 ? undefined : p.episodeIds, pick: true, grabId: p.grabId ?? null });
+          return setDialog({
+            tvdbId: p.tvdbId,
+            movieId: p.movieId,
+            path: p.path ?? null,
+            episodeIds: (p.episodeIds?.length ?? 0) > 1 ? undefined : p.episodeIds,
+            pick: true,
+            grabId: p.grabId ?? null,
+          });
         case "regrab":
-          return p.movieId ? void call(`/movies/${p.movieId}/autosearch`, { replace: false }, t("fix.searching")) : void call("/autosearch", { tvdbId: p.tvdbId, episodeIds: p.episodeIds }, t("fix.searching"));
+          return p.movieId
+            ? void call(`/movies/${p.movieId}/autosearch`, { replace: false }, t("fix.searching"))
+            : void call("/autosearch", { tvdbId: p.tvdbId, episodeIds: p.episodeIds }, t("fix.searching"));
         case "keepAnyway":
           return void call(`/grabs/${p.grabId}/keep`, {}, t("fix.kept"));
         case "tryNext":
@@ -69,7 +120,12 @@ export function FixHost() {
           return void call("/downloads/rules/disable", { name: p.name }, t("fix.ruleOff"));
         case "resumeImports":
           if (!window.confirm(t("fix.importsConfirm"))) return;
-          return void call("/media/importer", { allowReal: true, realBudget: -1, ...((p as { movies?: boolean }).movies ? { movies: true } : {}) }, t("fix.importsOn"), "PUT");
+          return void call(
+            "/media/importer",
+            { allowReal: true, realBudget: -1, ...((p as { movies?: boolean }).movies ? { movies: true } : {}) },
+            t("fix.importsOn"),
+            "PUT",
+          );
         case "interactiveSearch":
           return navigate(p.movieId ? `/movie/${p.movieId}?search=1` : `/search?tvdbId=${p.tvdbId}&eps=${(p.episodeIds ?? []).join(",")}`);
         case "testConnection":
@@ -97,7 +153,27 @@ export function FixHost() {
  * "Import manually…" / "Pick episode…" / the movie page's "Manual import…": browse AnimeArr's download folders (starting
  * in the grab's own download), pick a file or folder, preview, import. The typed path stays as an advanced fallback.
  */
-export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, pick, grabId, review, onClose, onDone }: { tvdbId?: number; movieId?: number; path?: string | null; episodeIds?: number[]; pick?: boolean; grabId?: number | null; review?: boolean; onClose: () => void; onDone?: () => void }) {
+export function ImportDialog({
+  tvdbId,
+  movieId,
+  path: initialPath,
+  episodeIds,
+  pick,
+  grabId,
+  review,
+  onClose,
+  onDone,
+}: {
+  tvdbId?: number;
+  movieId?: number;
+  path?: string | null;
+  episodeIds?: number[];
+  pick?: boolean;
+  grabId?: number | null;
+  review?: boolean;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
   const toast = useToast();
   const [path, setPath] = useState(initialPath ?? "");
   const [eps, setEps] = useState<Ep[] | null>(null);
@@ -110,7 +186,11 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
   const [ticked, setTicked] = useState<Set<string> | null>(null);
   const [assign, setAssign] = useState<Record<string, number[]>>({});
   useEffect(() => {
-    if (tvdbId) void api<{ episodes: Ep[] }>(`/series/${tvdbId}`).then((s) => setEps(s.episodes), () => setEps([]));
+    if (tvdbId)
+      void api<{ episodes: Ep[] }>(`/series/${tvdbId}`).then(
+        (s) => setEps(s.episodes),
+        () => setEps([]),
+      );
   }, [tvdbId]);
   const plan = async (p = path, opts: { ticked?: Set<string> | null; assign?: Record<string, number[]> } = {}) => {
     if (!p.trim()) return;
@@ -119,8 +199,19 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
     const as = opts.assign ?? assign;
     try {
       const r = movieId
-        ? await api<{ items: PlanItem[]; notes?: string[] }>("/import/movie-plan", { body: { movieId, path: p, grabId: grabId ?? undefined } })
-        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", { body: { tvdbId, path: p, episodeIds: chosen.length ? chosen : undefined, grabId: grabId ?? undefined, only: tk ? [...tk] : undefined, assign: as } });
+        ? await api<{ items: PlanItem[]; notes?: string[] }>("/import/movie-plan", {
+            body: { movieId, path: p, grabId: grabId ?? undefined },
+          })
+        : await api<{ items: PlanItem[]; notes?: string[] }>("/import/plan", {
+            body: {
+              tvdbId,
+              path: p,
+              episodeIds: chosen.length ? chosen : undefined,
+              grabId: grabId ?? undefined,
+              only: tk ? [...tk] : undefined,
+              assign: as,
+            },
+          });
       setItems(r.items);
       // First look: every file that can go is ticked; a creditless extra or a clash starts unticked.
       if (!tk) setTicked(new Set(r.items.filter((i) => !i.problem).map((i) => i.source)));
@@ -146,8 +237,20 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
     setBusy(true);
     try {
       const r = movieId
-        ? await api<{ results: { done: boolean; why: string }[] }>("/import/movie-run", { body: { movieId, path, grabId: grabId ?? undefined } })
-        : await api<{ results: { done: boolean; why: string }[] }>("/import/run", { body: { tvdbId, path, episodeIds: chosen.length ? chosen : undefined, dryRun: false, grabId: grabId ?? undefined, only: goes.map((i) => i.source), assign } });
+        ? await api<{ results: { done: boolean; why: string }[] }>("/import/movie-run", {
+            body: { movieId, path, grabId: grabId ?? undefined },
+          })
+        : await api<{ results: { done: boolean; why: string }[] }>("/import/run", {
+            body: {
+              tvdbId,
+              path,
+              episodeIds: chosen.length ? chosen : undefined,
+              dryRun: false,
+              grabId: grabId ?? undefined,
+              only: goes.map((i) => i.source),
+              assign,
+            },
+          });
       const ok = r.results.filter((x) => x.done).length;
       toast(t("import.done", { ok, total: r.results.length }), ok < r.results.length);
       window.dispatchEvent(new Event("animearr:changed"));
@@ -188,12 +291,19 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
           <summary>{t("import.typePath")}</summary>
           <label className="stack small">
             {t("import.path")}
-            <input value={path} onChange={(e) => (setPath(e.target.value), setItems(null))} onKeyDown={(e) => e.key === "Enter" && void plan()} placeholder="/data/…" spellCheck={false} />
+            <input
+              value={path}
+              onChange={(e) => (setPath(e.target.value), setItems(null))}
+              onKeyDown={(e) => e.key === "Enter" && void plan()}
+              placeholder="/data/…"
+              spellCheck={false}
+            />
           </label>
         </details>
         {path && (
           <p className="small import-selected">
-            {t("import.selected")} <strong>{place && path.split("/").pop() === place.split(" › ").pop() ? place : path.split("/").pop()}</strong>
+            {t("import.selected")}{" "}
+            <strong>{place && path.split("/").pop() === place.split(" › ").pop() ? place : path.split("/").pop()}</strong>
           </p>
         )}
         {tvdbId && !many && (
@@ -227,9 +337,20 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
                 {many ? (
                   <span className="row">
                     <label className="check">
-                      <input type="checkbox" checked={!!ticked?.has(i.source)} disabled={busy} onChange={(e) => toggle(i.source, e.target.checked)} /> <b>{i.label}</b>
+                      <input
+                        type="checkbox"
+                        checked={!!ticked?.has(i.source)}
+                        disabled={busy}
+                        onChange={(e) => toggle(i.source, e.target.checked)}
+                      />{" "}
+                      <b>{i.label}</b>
                     </label>
-                    <select aria-label={t("import.episodeFor", { file: fileName(i.source) })} value={i.episodeIds?.[0] ?? ""} disabled={busy || !eps} onChange={(e) => reassign(i.source, e.target.value ? Number(e.target.value) : null)}>
+                    <select
+                      aria-label={t("import.episodeFor", { file: fileName(i.source) })}
+                      value={i.episodeIds?.[0] ?? ""}
+                      disabled={busy || !eps}
+                      onChange={(e) => reassign(i.source, e.target.value ? Number(e.target.value) : null)}
+                    >
                       <option value="">{t("import.notAnEpisode")}</option>
                       {(eps ?? []).map((e) => (
                         <option key={e.id} value={e.id}>
@@ -270,7 +391,13 @@ export function ImportDialog({ tvdbId, movieId, path: initialPath, episodeIds, p
           )}
         </div>
         <p className="small muted import-state" aria-live="polite">
-          {!path.trim() ? t("import.state.pick") : !items ? t("import.state.check") : ready ? t("import.state.ready", { n: ready }) : t("import.state.none")}
+          {!path.trim()
+            ? t("import.state.pick")
+            : !items
+              ? t("import.state.check")
+              : ready
+                ? t("import.state.ready", { n: ready })
+                : t("import.state.none")}
         </p>
       </div>
     </Modal>

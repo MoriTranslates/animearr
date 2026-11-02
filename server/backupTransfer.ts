@@ -27,7 +27,11 @@ export interface BackupManifest {
   createdAt: string;
   files: Record<string, { size: number; sha256: string }>;
 }
-export interface ParsedBackup { manifest: BackupManifest; db: Buffer; key: Buffer }
+export interface ParsedBackup {
+  manifest: BackupManifest;
+  db: Buffer;
+  key: Buffer;
+}
 
 const refuse = (msg: string) => Object.assign(new Error(msg), { statusCode: 400 });
 const gzip = promisify(zlib.gzip);
@@ -45,7 +49,12 @@ export function tarPack(files: { name: string; data: Buffer }[]): Buffer {
     h.write("0000000\0", 108); // uid
     h.write("0000000\0", 116); // gid
     h.write(`${f.data.length.toString(8).padStart(11, "0")}\0`, 124);
-    h.write(`${Math.floor(Date.now() / 1000).toString(8).padStart(11, "0")}\0`, 136);
+    h.write(
+      `${Math.floor(Date.now() / 1000)
+        .toString(8)
+        .padStart(11, "0")}\0`,
+      136,
+    );
     h.write("        ", 148); // checksum placeholder (spaces)
     h.write("0", 156); // regular file
     h.write("ustar\0" + "00", 257);
@@ -61,7 +70,7 @@ export function tarPack(files: { name: string; data: Buffer }[]): Buffer {
 /** Reads the regular files of a tar (names are only ever used as map keys, never as paths). */
 export function tarUnpack(tar: Buffer): Map<string, Buffer> {
   const out = new Map<string, Buffer>();
-  for (let off = 0; off + 512 <= tar.length; ) {
+  for (let off = 0; off + 512 <= tar.length;) {
     const h = tar.subarray(off, off + 512);
     if (h.every((b) => b === 0)) break;
     const name = h.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
@@ -83,7 +92,10 @@ export function tarUnpack(tar: Buffer): Map<string, Buffer> {
 
 /** A fresh backup as bytes: the database via VACUUM INTO (consistent while the app runs), the key, a manifest. */
 export async function createBackup(): Promise<{ name: string; data: Buffer }> {
-  if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check, so it can't be exported. Restore a backup first."), { statusCode: 409 });
+  if (dbState.corrupt)
+    throw Object.assign(new Error("The database failed its integrity check, so it can't be exported. Restore a backup first."), {
+      statusCode: 409,
+    });
   const tmp = path.join(BACKUP_DIR, `.export-${crypto.randomBytes(4).toString("hex")}.tmp`);
   let dbBytes: Buffer;
   try {
@@ -127,13 +139,20 @@ export async function parseBackup(data: Buffer, schemaNow = userSchemaVersion())
   } catch {
     throw refuse("That isn't an AnimeArr backup file (no manifest inside)");
   }
-  if (m?.format !== BACKUP_FORMAT || m.formatVersion !== 1) throw refuse("That isn't an AnimeArr backup file, or it comes from a newer backup format");
+  if (m?.format !== BACKUP_FORMAT || m.formatVersion !== 1)
+    throw refuse("That isn't an AnimeArr backup file, or it comes from a newer backup format");
   if (!Number.isInteger(m.schema) || m.schema < 1) throw refuse("That backup's manifest is damaged");
-  if (m.schema > schemaNow) throw refuse(`That backup is from a newer AnimeArr (database version ${m.schema}, this one understands up to ${schemaNow}). Update AnimeArr first, then restore it.`);
+  if (m.schema > schemaNow)
+    throw refuse(
+      `That backup is from a newer AnimeArr (database version ${m.schema}, this one understands up to ${schemaNow}). Update AnimeArr first, then restore it.`,
+    );
   const dbBytes = files.get(DB_NAME);
   const key = files.get(KEY_NAME);
   if (!dbBytes || !key) throw refuse("That backup is missing its database or its secret key");
-  for (const [name, b] of [[DB_NAME, dbBytes], [KEY_NAME, key]] as const) {
+  for (const [name, b] of [
+    [DB_NAME, dbBytes],
+    [KEY_NAME, key],
+  ] as const) {
     const f = m.files?.[name];
     if (!f || f.size !== b.length || f.sha256 !== sha(b)) throw refuse(`That backup is damaged (${name} doesn't match its checksum)`);
   }
@@ -170,7 +189,10 @@ export async function parseBackup(data: Buffer, schemaNow = userSchemaVersion())
 
 // ---------------------------------------------------------------- upload: apply
 
-export interface ApplyPaths { db: string; key: string }
+export interface ApplyPaths {
+  db: string;
+  key: string;
+}
 export interface ApplyHooks {
   /** Saves the current state first; throwing aborts before anything is touched. */
   safety: () => void;
@@ -193,7 +215,9 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
     if (r !== "ok") throw new Error(`the copy failed its check (${r})`);
   } catch (e) {
     for (const f of [tmpDb, tmpKey]) fs.rmSync(f, { force: true });
-    throw Object.assign(new Error(`Couldn't restore that backup: ${(e as Error).message}; nothing was changed`, { cause: e }), { statusCode: 500 });
+    throw Object.assign(new Error(`Couldn't restore that backup: ${(e as Error).message}; nothing was changed`, { cause: e }), {
+      statusCode: 500,
+    });
   }
   hooks.closeDb();
   // The rename replaces the live file in one step; deleting it first would only open a window with no database.
@@ -207,7 +231,13 @@ export function safetyBackup() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   if (!backupNow("prerestore", "upload")) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
   fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.secret.key`));
-  for (const old of fs.readdirSync(BACKUP_DIR).filter((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f)).sort().reverse().slice(3)) fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
+  for (const old of fs
+    .readdirSync(BACKUP_DIR)
+    .filter((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f))
+    .sort()
+    .reverse()
+    .slice(3))
+    fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
 }
 
 /** Restores an uploaded backup into the live config folder. */

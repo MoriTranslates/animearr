@@ -22,12 +22,34 @@ export const TRIP_AFTER = 3;
 export const RETEST = [6 * HOUR, 12 * HOUR, 24 * HOUR];
 
 export type FailKind = "download" | "search";
-export interface TestRelease { guid: string; title: string; protocol: "usenet" | "torrent"; downloadUrl?: string | null; magnetUrl?: string | null; size?: number }
-interface BreakerRow { indexer_id: number; name: string; dl_streak: number; search_streak: number; state: "on" | "off" | "kept-off"; trip_kind: FailKind | null; off_since: number | null; next_check: number | null; step: number; last_error: string | null; last_kind: FailKind | null; last_at: number | null }
+export interface TestRelease {
+  guid: string;
+  title: string;
+  protocol: "usenet" | "torrent";
+  downloadUrl?: string | null;
+  magnetUrl?: string | null;
+  size?: number;
+}
+interface BreakerRow {
+  indexer_id: number;
+  name: string;
+  dl_streak: number;
+  search_streak: number;
+  state: "on" | "off" | "kept-off";
+  trip_kind: FailKind | null;
+  off_since: number | null;
+  next_check: number | null;
+  step: number;
+  last_error: string | null;
+  last_kind: FailKind | null;
+  last_at: number | null;
+}
 
 const row = (id: number) => db.prepare("SELECT * FROM indexer_breaker WHERE indexer_id = ?").get(id) as BreakerRow | undefined;
 const ensure = (id: number, name: string | null | undefined, now: number) => {
-  db.prepare("INSERT INTO indexer_breaker (indexer_id, name, updated_at) VALUES (?, ?, ?) ON CONFLICT(indexer_id) DO UPDATE SET name = CASE WHEN ? != '' THEN ? ELSE name END").run(id, name ?? "", now, name ?? "", name ?? "");
+  db.prepare(
+    "INSERT INTO indexer_breaker (indexer_id, name, updated_at) VALUES (?, ?, ?) ON CONFLICT(indexer_id) DO UPDATE SET name = CASE WHEN ? != '' THEN ? ELSE name END",
+  ).run(id, name ?? "", now, name ?? "", name ?? "");
   return row(id)!;
 };
 const label = (r: Pick<BreakerRow, "name" | "indexer_id">) => r.name || `Indexer ${r.indexer_id}`;
@@ -58,18 +80,35 @@ const safeHost = (u: string) => {
  * Records a failure for an indexer (a download link, or its search). Downloads and searches keep separate streaks;
  * TRIP_AFTER in a row of either kind trips the breaker, and only a success of that kind (or a re-test) resets it.
  */
-export function recordIndexerFailure(indexerId: number | null | undefined, why: string, now = Date.now(), o: { name?: string | null; kind?: FailKind } = {}) {
+export function recordIndexerFailure(
+  indexerId: number | null | undefined,
+  why: string,
+  now = Date.now(),
+  o: { name?: string | null; kind?: FailKind } = {},
+) {
   if (!indexerId) return;
   const kind = o.kind ?? "download";
-  if (kind === "download") db.prepare("INSERT INTO indexer_failures (indexer_id, at, why) VALUES (?, ?, ?)").run(indexerId, now, why.slice(0, 300));
+  if (kind === "download")
+    db.prepare("INSERT INTO indexer_failures (indexer_id, at, why) VALUES (?, ?, ?)").run(indexerId, now, why.slice(0, 300));
   memo.delete(indexerId);
   db.prepare("DELETE FROM indexer_failures WHERE at < ?").run(now - 30 * 86_400_000);
   const r = ensure(indexerId, o.name, now);
   const streak = r[STREAK[kind]] + 1;
-  db.prepare(`UPDATE indexer_breaker SET ${STREAK[kind]} = ?, last_error = ?, last_kind = ?, last_at = ?, updated_at = ? WHERE indexer_id = ?`).run(streak, why.slice(0, 300), kind, now, now, indexerId);
+  db.prepare(
+    `UPDATE indexer_breaker SET ${STREAK[kind]} = ?, last_error = ?, last_kind = ?, last_at = ?, updated_at = ? WHERE indexer_id = ?`,
+  ).run(streak, why.slice(0, 300), kind, now, now, indexerId);
   if (r.state === "on" && streak >= TRIP_AFTER) {
-    db.prepare("UPDATE indexer_breaker SET state = 'off', trip_kind = ?, off_since = ?, step = 0, next_check = ? WHERE indexer_id = ?").run(kind, now, now + RETEST[0], indexerId);
-    logDecision("fail", { title: label(r), why: `${label(r)} is off for grabbing: ${streak} ${kind === "search" ? "searches" : "downloads"} failed in a row (last error: ${why}). Its results still show in searches but won't be picked. AnimeArr tests it again in 6 hours.`, detail: { indexerId, breaker: "off" } });
+    db.prepare("UPDATE indexer_breaker SET state = 'off', trip_kind = ?, off_since = ?, step = 0, next_check = ? WHERE indexer_id = ?").run(
+      kind,
+      now,
+      now + RETEST[0],
+      indexerId,
+    );
+    logDecision("fail", {
+      title: label(r),
+      why: `${label(r)} is off for grabbing: ${streak} ${kind === "search" ? "searches" : "downloads"} failed in a row (last error: ${why}). Its results still show in searches but won't be picked. AnimeArr tests it again in 6 hours.`,
+      detail: { indexerId, breaker: "off" },
+    });
   }
 }
 
@@ -78,9 +117,12 @@ export function recordIndexerSuccess(indexerId: number | null | undefined, kind:
   if (!indexerId) return;
   const r = row(indexerId);
   if (!r) return;
-  if (r[STREAK[kind]] > 0) db.prepare(`UPDATE indexer_breaker SET ${STREAK[kind]} = 0, updated_at = ? WHERE indexer_id = ?`).run(now, indexerId);
+  if (r[STREAK[kind]] > 0)
+    db.prepare(`UPDATE indexer_breaker SET ${STREAK[kind]} = 0, updated_at = ? WHERE indexer_id = ?`).run(now, indexerId);
   if (r.state !== "off" || r.trip_kind !== kind) return;
-  db.prepare("UPDATE indexer_breaker SET dl_streak = 0, search_streak = 0, state = 'on', trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?").run(now, indexerId);
+  db.prepare(
+    "UPDATE indexer_breaker SET dl_streak = 0, search_streak = 0, state = 'on', trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?",
+  ).run(now, indexerId);
   memo.delete(indexerId);
   logDecision("info", { title: label(r), why: `${label(r)} is working again: back on for grabbing`, detail: { indexerId, breaker: "on" } });
 }
@@ -104,10 +146,22 @@ export function indexerHealth(indexerId: number | null | undefined, now = Date.n
 }
 function computeHealth(indexerId: number, now: number): Known["indexerHealth"] {
   const off = indexerOff(indexerId);
-  const failures = (db.prepare("SELECT COUNT(*) AS n FROM indexer_failures WHERE indexer_id = ? AND at > ?").get(indexerId, now - WINDOW) as { n: number }).n;
+  const failures = (
+    db.prepare("SELECT COUNT(*) AS n FROM indexer_failures WHERE indexer_id = ? AND at > ?").get(indexerId, now - WINDOW) as { n: number }
+  ).n;
   if (!failures && !off) return undefined;
-  const ok = (db.prepare("SELECT COUNT(*) AS n FROM grabs WHERE indexer_id = ? AND at > ? AND client_ref IS NOT NULL").get(indexerId, now - WINDOW) as { n: number }).n;
-  const last = row(indexerId)?.last_error ?? (db.prepare("SELECT why FROM indexer_failures WHERE indexer_id = ? ORDER BY at DESC LIMIT 1").get(indexerId) as { why: string } | undefined)?.why ?? "";
+  const ok = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM grabs WHERE indexer_id = ? AND at > ? AND client_ref IS NOT NULL")
+      .get(indexerId, now - WINDOW) as { n: number }
+  ).n;
+  const last =
+    row(indexerId)?.last_error ??
+    (
+      db.prepare("SELECT why FROM indexer_failures WHERE indexer_id = ? ORDER BY at DESC LIMIT 1").get(indexerId) as
+        { why: string } | undefined
+    )?.why ??
+    "";
   return { failures, ok, lastWhy: last, off };
 }
 
@@ -136,7 +190,12 @@ export async function testIndexer(indexerId: number, deps: { fetch: Fetcher; sea
       why = ok ? "search works" : "search failed";
     } else {
       const t = recent.get(indexerId);
-      if (!t) return { ok: false, why: "nothing to test with yet (no release from this indexer seen since the restart); the next search or the recent-releases poll provides one", state: r.state };
+      if (!t)
+        return {
+          ok: false,
+          why: "nothing to test with yet (no release from this indexer seen since the restart); the next search or the recent-releases poll provides one",
+          state: r.state,
+        };
       await deps.fetch({ ...t, indexerId, indexer: label(r) });
       ok = true;
       why = `fetched ${t.protocol === "usenet" ? "an .nzb" : "a .torrent"} (${t.title})`;
@@ -147,14 +206,27 @@ export async function testIndexer(indexerId: number, deps: { fetch: Fetcher; sea
   if (ok) {
     // A kept-off indexer stays off (the user chose that); the test only tells them it works.
     if (r.state === "kept-off") return { ok, why, state: r.state };
-    db.prepare("UPDATE indexer_breaker SET dl_streak = 0, search_streak = 0, state = 'on', trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?").run(now, indexerId);
+    db.prepare(
+      "UPDATE indexer_breaker SET dl_streak = 0, search_streak = 0, state = 'on', trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?",
+    ).run(now, indexerId);
     memo.delete(indexerId);
-    if (r.state === "off") logDecision("info", { title: label(r), why: `${label(r)} is working again (${why}): back on for grabbing`, detail: { indexerId, breaker: "on" } });
+    if (r.state === "off")
+      logDecision("info", {
+        title: label(r),
+        why: `${label(r)} is working again (${why}): back on for grabbing`,
+        detail: { indexerId, breaker: "on" },
+      });
     return { ok, why, state: "on" as const };
   }
   if (r.state === "off") {
     const step = Math.min(r.step + 1, RETEST.length - 1);
-    db.prepare("UPDATE indexer_breaker SET step = ?, next_check = ?, last_error = ?, updated_at = ? WHERE indexer_id = ?").run(step, now + RETEST[step], why.slice(0, 300), now, indexerId);
+    db.prepare("UPDATE indexer_breaker SET step = ?, next_check = ?, last_error = ?, updated_at = ? WHERE indexer_id = ?").run(
+      step,
+      now + RETEST[step],
+      why.slice(0, 300),
+      now,
+      indexerId,
+    );
   }
   void manual;
   return { ok, why, state: r.state };
@@ -162,7 +234,9 @@ export async function testIndexer(indexerId: number, deps: { fetch: Fetcher; sea
 
 /** Scheduled: re-tests the tripped indexers that are due. */
 export async function breakerTick(deps: { fetch: Fetcher; search?: Searcher }, now = Date.now()) {
-  const due = db.prepare("SELECT indexer_id FROM indexer_breaker WHERE state = 'off' AND next_check <= ?").all(now) as { indexer_id: number }[];
+  const due = db.prepare("SELECT indexer_id FROM indexer_breaker WHERE state = 'off' AND next_check <= ?").all(now) as {
+    indexer_id: number;
+  }[];
   for (const d of due) await testIndexer(d.indexer_id, deps, now);
   return due.length;
 }
@@ -170,10 +244,20 @@ export async function breakerTick(deps: { fetch: Fetcher; search?: Searcher }, n
 /** The user's buttons: turn back on (clears the streak) or keep off (no automatic re-tests turn it on). */
 export function setBreaker(indexerId: number, action: "on" | "keep-off", name?: string, now = Date.now()) {
   const r = ensure(indexerId, name, now);
-  if (action === "on") db.prepare("UPDATE indexer_breaker SET state = 'on', dl_streak = 0, search_streak = 0, trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?").run(now, indexerId);
-  else db.prepare("UPDATE indexer_breaker SET state = 'kept-off', off_since = COALESCE(off_since, ?), next_check = NULL, updated_at = ? WHERE indexer_id = ?").run(now, now, indexerId);
+  if (action === "on")
+    db.prepare(
+      "UPDATE indexer_breaker SET state = 'on', dl_streak = 0, search_streak = 0, trip_kind = NULL, off_since = NULL, next_check = NULL, step = 0, updated_at = ? WHERE indexer_id = ?",
+    ).run(now, indexerId);
+  else
+    db.prepare(
+      "UPDATE indexer_breaker SET state = 'kept-off', off_since = COALESCE(off_since, ?), next_check = NULL, updated_at = ? WHERE indexer_id = ?",
+    ).run(now, now, indexerId);
   memo.delete(indexerId);
-  logDecision("info", { title: label(r), why: action === "on" ? `You turned ${label(r)} back on for grabbing` : `You kept ${label(r)} off for grabbing (no automatic re-tests)`, detail: { indexerId, breaker: action } });
+  logDecision("info", {
+    title: label(r),
+    why: action === "on" ? `You turned ${label(r)} back on for grabbing` : `You kept ${label(r)} off for grabbing (no automatic re-tests)`,
+    detail: { indexerId, breaker: action },
+  });
 }
 
 /** For Settings → Indexers: every indexer with a recorded failure or a breaker state. */

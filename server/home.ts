@@ -17,7 +17,9 @@ const startOfDay = (ms: number) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 
-const seriesInfo = (tvdbId: number) => cache.prepare("SELECT id, tvdb_id, title, poster, anidb_ids FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number; tvdb_id: number; title: string; poster: string | null; anidb_ids: string } | undefined;
+const seriesInfo = (tvdbId: number) =>
+  cache.prepare("SELECT id, tvdb_id, title, poster, anidb_ids FROM series WHERE tvdb_id = ?").get(tvdbId) as
+    { id: number; tvdb_id: number; title: string; poster: string | null; anidb_ids: string } | undefined;
 
 /** AniList's cover colour for a show (the per-show accent), when known. */
 export function colorFor(tvdbId: number): string | null {
@@ -25,7 +27,9 @@ export function colorFor(tvdbId: number): string | null {
   if (!s) return null;
   const aids = (JSON.parse(s.anidb_ids || "[]") as { aid: number }[]).map((a) => a.aid);
   if (!aids.length) return null;
-  const r = cache.prepare(`SELECT color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND color IS NOT NULL LIMIT 1`).get(...aids) as { color: string } | undefined;
+  const r = cache
+    .prepare(`SELECT color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")}) AND color IS NOT NULL LIMIT 1`)
+    .get(...aids) as { color: string } | undefined;
   return r?.color ?? null;
 }
 
@@ -34,8 +38,17 @@ export function artFor(tvdbId: number): { cover: string | null; banner: string |
   const s = seriesInfo(tvdbId);
   if (!s) return { cover: null, banner: null, color: null };
   const aids = (JSON.parse(s.anidb_ids || "[]") as { aid: number }[]).map((a) => a.aid);
-  const rows = aids.length ? (cache.prepare(`SELECT banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")})`).all(...aids) as { banner: string | null; color: string | null }[]) : [];
-  return { cover: coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }), banner: rows.find((r) => r.banner)?.banner ?? null, color: rows.find((r) => r.color)?.color ?? null };
+  const rows = aids.length
+    ? (cache.prepare(`SELECT banner, color FROM covers WHERE anidb_id IN (${aids.map(() => "?").join(",")})`).all(...aids) as {
+        banner: string | null;
+        color: string | null;
+      }[])
+    : [];
+  return {
+    cover: coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }),
+    banner: rows.find((r) => r.banner)?.banner ?? null,
+    color: rows.find((r) => r.color)?.color ?? null,
+  };
 }
 
 const sxe = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`;
@@ -80,14 +93,38 @@ function readyToBingeNow(now = Date.now()) {
        WHERE e.season > 0 GROUP BY e.series_id, e.season
        HAVING n >= 6 AND have = n AND MAX(e.air_utc) < ? AND MAX(e.air_utc) > ? ORDER BY last DESC LIMIT 40`,
     )
-    .all(now, now - 120 * DAY) as { series_id: number; tvdb_id: number; title: string; poster: string | null; season: number; n: number; last: number }[];
-  const out: { tvdbId: number; title: string; season: number; episodes: number; cover: string | null; color: string | null; finishedAt: number }[] = [];
+    .all(now, now - 120 * DAY) as {
+    series_id: number;
+    tvdb_id: number;
+    title: string;
+    poster: string | null;
+    season: number;
+    n: number;
+    last: number;
+  }[];
+  const out: {
+    tvdbId: number;
+    title: string;
+    season: number;
+    episodes: number;
+    cover: string | null;
+    color: string | null;
+    finishedAt: number;
+  }[] = [];
   for (const c of cands) {
     const rows = episodeRows(c.series_id).filter((r) => r.season === c.season);
     // The same per-file verdict as the Show page (burned-in facts, sidecars, untagged tracks, not-yet-scanned).
     const ok = rows.every((r) => r.file?.lang?.state === "ok");
     if (!ok) continue;
-    out.push({ tvdbId: c.tvdb_id, title: c.title, season: c.season, episodes: c.n, cover: coverFor({ tvdb_id: c.tvdb_id, poster: c.poster }), color: colorFor(c.tvdb_id), finishedAt: c.last });
+    out.push({
+      tvdbId: c.tvdb_id,
+      title: c.title,
+      season: c.season,
+      episodes: c.n,
+      cover: coverFor({ tvdb_id: c.tvdb_id, poster: c.poster }),
+      color: colorFor(c.tvdb_id),
+      finishedAt: c.last,
+    });
     if (out.length >= 6) break;
   }
   return out;
@@ -116,32 +153,74 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
   const week = calendar(today + DAY, today + 8 * DAY, managedOnly);
   const thisWeek: typeof week = [];
   for (const e of week) {
-    if (thisWeek.length >= 18 && Math.floor((e.airUtc - today) / DAY) !== Math.floor((thisWeek[thisWeek.length - 1].airUtc - today) / DAY)) break;
+    if (thisWeek.length >= 18 && Math.floor((e.airUtc - today) / DAY) !== Math.floor((thisWeek[thisWeek.length - 1].airUtc - today) / DAY))
+      break;
     thisWeek.push(e);
   }
 
   // Needs you: recent missing (aired in the last 14 days), imports that need a look, files without the language.
   const recentMissing = calendar(today - 14 * DAY, now, false).filter((e) => e.status === "missing" && managed.has(e.tvdbId));
-  const attention = db.prepare("SELECT id, tvdb_id, movie_id, release, error FROM grabs WHERE dry_run = 0 AND state = 'needs-attention' ORDER BY id DESC").all() as { id: number; tvdb_id: number; movie_id: number | null; release: string; error: string | null }[];
+  const attention = db
+    .prepare("SELECT id, tvdb_id, movie_id, release, error FROM grabs WHERE dry_run = 0 AND state = 'needs-attention' ORDER BY id DESC")
+    .all() as { id: number; tvdb_id: number; movie_id: number | null; release: string; error: string | null }[];
   const lang = noLangCount();
 
-  const active = db.prepare("SELECT id, tvdb_id, movie_id, episode_ids, release, protocol, client, state, progress FROM grabs WHERE dry_run = 0 AND state IN ('sending', 'downloading', 'importing') ORDER BY id").all() as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; release: string; protocol: string; client: string | null; state: string; progress: number | null }[];
+  const active = db
+    .prepare(
+      "SELECT id, tvdb_id, movie_id, episode_ids, release, protocol, client, state, progress FROM grabs WHERE dry_run = 0 AND state IN ('sending', 'downloading', 'importing') ORDER BY id",
+    )
+    .all() as {
+    id: number;
+    tvdb_id: number;
+    movie_id: number | null;
+    episode_ids: string;
+    release: string;
+    protocol: string;
+    client: string | null;
+    state: string;
+    progress: number | null;
+  }[];
   const epLabel = (ids: number[]) => {
-    const e = ids.length ? (cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(ids[0]) as { season: number; episode: number } | undefined) : undefined;
-    return e ? `${sxe(e.season, e.episode)}${ids.length > 1 ? `–E${String((cache.prepare("SELECT episode FROM episodes WHERE id = ?").get(ids[ids.length - 1]) as { episode: number } | undefined)?.episode ?? "").padStart(2, "0")}` : ""}` : "";
+    const e = ids.length
+      ? (cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(ids[0]) as { season: number; episode: number } | undefined)
+      : undefined;
+    return e
+      ? `${sxe(e.season, e.episode)}${ids.length > 1 ? `–E${String((cache.prepare("SELECT episode FROM episodes WHERE id = ?").get(ids[ids.length - 1]) as { episode: number } | undefined)?.episode ?? "").padStart(2, "0")}` : ""}`
+      : "";
   };
   const showOf = (tvdbId: number) => {
     const s = seriesInfo(tvdbId);
-    return { title: s?.title ?? String(tvdbId), cover: s ? coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }) : null, color: colorFor(tvdbId) };
+    return {
+      title: s?.title ?? String(tvdbId),
+      cover: s ? coverFor({ tvdb_id: s.tvdb_id, poster: s.poster }) : null,
+      color: colorFor(tvdbId),
+    };
   };
   const movieOf = (id: number) => {
-    const m = cache.prepare("SELECT title, year, poster FROM movies WHERE id = ?").get(id) as { title: string; year: number | null; poster: string | null } | undefined;
+    const m = cache.prepare("SELECT title, year, poster FROM movies WHERE id = ?").get(id) as
+      { title: string; year: number | null; poster: string | null } | undefined;
     return { title: m ? `${m.title}${m.year ? ` (${m.year})` : ""}` : String(id), cover: m?.poster ?? null, color: null };
   };
-  const downloading = active.map((g) => ({ id: g.id, tvdbId: g.tvdb_id, movieId: g.movie_id, ...(g.movie_id ? movieOf(g.movie_id) : showOf(g.tvdb_id)), label: g.movie_id ? "" : epLabel(JSON.parse(g.episode_ids) as number[]), release: g.release, protocol: g.protocol, client: g.client, clientName: clientName(g.client), state: g.state, progress: g.progress ?? 0 }));
+  const downloading = active.map((g) => ({
+    id: g.id,
+    tvdbId: g.tvdb_id,
+    movieId: g.movie_id,
+    ...(g.movie_id ? movieOf(g.movie_id) : showOf(g.tvdb_id)),
+    label: g.movie_id ? "" : epLabel(JSON.parse(g.episode_ids) as number[]),
+    release: g.release,
+    protocol: g.protocol,
+    client: g.client,
+    clientName: clientName(g.client),
+    state: g.state,
+    progress: g.progress ?? 0,
+  }));
 
   // Just arrived: what was imported in the last 7 days, newest first, one card per show+episode.
-  const done = db.prepare("SELECT id, tvdb_id, movie_id, episode_ids, updated_at FROM grabs WHERE dry_run = 0 AND state = 'done' AND movie_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 60").all(now - 7 * DAY) as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; updated_at: number }[];
+  const done = db
+    .prepare(
+      "SELECT id, tvdb_id, movie_id, episode_ids, updated_at FROM grabs WHERE dry_run = 0 AND state = 'done' AND movie_id IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 60",
+    )
+    .all(now - 7 * DAY) as { id: number; tvdb_id: number; movie_id: number | null; episode_ids: string; updated_at: number }[];
   // One poster per show (its episodes of the week together: "S01E03–E04"); shows the user dropped don't appear.
   const byShow = new Map<number, { ids: Set<number>; at: number }>();
   for (const g of done) {
@@ -152,23 +231,46 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
   }
   const justArrived: { tvdbId: number; title: string; cover: string | null; color: string | null; label: string; at: number }[] = [];
   for (const [tvdbId, v] of byShow) {
-    const eps = [...v.ids].map((id) => ({ id, e: cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(id) as { season: number; episode: number } | undefined })).filter((x) => x.e).sort((a, b) => a.e!.season - b.e!.season || a.e!.episode - b.e!.episode);
+    const eps = [...v.ids]
+      .map((id) => ({
+        id,
+        e: cache.prepare("SELECT season, episode FROM episodes WHERE id = ?").get(id) as { season: number; episode: number } | undefined,
+      }))
+      .filter((x) => x.e)
+      .sort((a, b) => a.e!.season - b.e!.season || a.e!.episode - b.e!.episode);
     const seasons = new Set(eps.map((x) => x.e!.season));
-    const label = !eps.length ? "" : eps.length === 1 ? epLabel([eps[0].id]) : seasons.size === 1 ? `${sxe(eps[0].e!.season, eps[0].e!.episode)}–E${String(eps[eps.length - 1].e!.episode).padStart(2, "0")}` : `${epLabel([eps[0].id])} +${eps.length - 1}`;
+    const label = !eps.length
+      ? ""
+      : eps.length === 1
+        ? epLabel([eps[0].id])
+        : seasons.size === 1
+          ? `${sxe(eps[0].e!.season, eps[0].e!.episode)}–E${String(eps[eps.length - 1].e!.episode).padStart(2, "0")}`
+          : `${epLabel([eps[0].id])} +${eps.length - 1}`;
     justArrived.push({ tvdbId, ...showOf(tvdbId), label, at: v.at });
     if (justArrived.length >= 12) break;
   }
-  const importsThisWeek = (db.prepare("SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND state = 'done' AND updated_at > ?").get(now - 7 * DAY) as { n: number }).n;
-
+  const importsThisWeek = (
+    db.prepare("SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND state = 'done' AND updated_at > ?").get(now - 7 * DAY) as {
+      n: number;
+    }
+  ).n;
 
   const airingShows = airingShowCount(now);
   return {
     airingShows,
     airingToday,
     needs: {
-      missing: { n: recentMissing.length, sample: recentMissing.slice(0, 1).map((e) => `${e.series} ${sxe(e.season, e.episode)}`)[0] ?? null },
+      missing: {
+        n: recentMissing.length,
+        sample: recentMissing.slice(0, 1).map((e) => `${e.series} ${sxe(e.season, e.episode)}`)[0] ?? null,
+      },
       // A movie grab has no show: name the movie (never "null").
-      failed: { n: attention.length, sample: attention[0] ? `${attention[0].movie_id ? movieOf(attention[0].movie_id).title : showOf(attention[0].tvdb_id).title}${attention[0].error ? ` · ${attention[0].error}` : ""}` : null },
+      failed: {
+        n: attention.length,
+        sample: attention[0]
+          ? `${attention[0].movie_id ? movieOf(attention[0].movie_id).title : showOf(attention[0].tvdb_id).title}${attention[0].error ? ` · ${attention[0].error}` : ""}`
+          : null,
+      },
       noLang: { n: lang.files, series: lang.series, lang: profileFor(null).subLangs[0] ?? "en" },
     },
     downloading,

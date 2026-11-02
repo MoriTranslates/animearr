@@ -25,13 +25,30 @@ import type { SearchResult } from "./search.js";
 import { scopedEpisodeIds } from "./scope.js";
 import { getSettings } from "./settings.js";
 import {
-  EP_COLS, episodeResources, fail, int, isManaged, iso, languageResource, mustSeries, qualityByName, qualityResource, queueRecords, SERIES_COLS, seriesById, seriesResource, writable,
-  type EpRow, type SeriesRow, type SonarrApiDeps,
+  EP_COLS,
+  episodeResources,
+  fail,
+  int,
+  isManaged,
+  iso,
+  languageResource,
+  mustSeries,
+  qualityByName,
+  qualityResource,
+  queueRecords,
+  SERIES_COLS,
+  seriesById,
+  seriesResource,
+  writable,
+  type EpRow,
+  type SeriesRow,
+  type SonarrApiDeps,
 } from "./sonarrApi.js";
 
 const qs = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : v === undefined ? "" : String(v));
 const flag = (v: unknown, dflt = false) => (v === undefined || v === "" ? dflt : String(v).toLowerCase() === "true");
-const ids = (v: unknown) => (Array.isArray(v) ? v : String(v ?? "").split(",")).filter((x) => x !== "" && x !== undefined).map((x) => int(x));
+const ids = (v: unknown) =>
+  (Array.isArray(v) ? v : String(v ?? "").split(",")).filter((x) => x !== "" && x !== undefined).map((x) => int(x));
 
 /** Sonarr's paging envelope: page and pageSize come from the client (Sonarr's default is 10 records). */
 function paged<T>(q: Record<string, unknown>, all: T[], sortKey: string, sortDirection: string, dflt = 10) {
@@ -39,14 +56,47 @@ function paged<T>(q: Record<string, unknown>, all: T[], sortKey: string, sortDir
   const size = Math.max(1, Math.min(1000, Number(q.pageSize) || dflt));
   return { page, pageSize: size, sortKey, sortDirection, totalRecords: all.length, records: all.slice((page - 1) * size, page * size) };
 }
-const dir = (q: Record<string, unknown>, dflt: "ascending" | "descending") => (/^desc/i.test(qs(q.sortDirection)) ? "descending" : /^asc/i.test(qs(q.sortDirection)) ? "ascending" : dflt);
-const sorted = <T>(rows: T[], key: (r: T) => number | string, direction: string) => [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * (direction === "ascending" ? 1 : -1));
+const dir = (q: Record<string, unknown>, dflt: "ascending" | "descending") =>
+  /^desc/i.test(qs(q.sortDirection)) ? "descending" : /^asc/i.test(qs(q.sortDirection)) ? "ascending" : dflt;
+const sorted = <T>(rows: T[], key: (r: T) => number | string, direction: string) =>
+  [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) * (direction === "ascending" ? 1 : -1));
 
 // ---------------------------------------------------------------- episode files
 
-interface FileRow { id: number; series_id: number; season: number | null; path: string; size: number | null; quality: string | null; release_group: string | null; scene_name: string | null; audio_langs: string; sub_langs: string; run_time: string | null; resolution: string | null; date_added: string | null; revision: string | null }
-const FILE_COLS = "id, series_id, season, path, size, quality, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added, revision";
-const ISO3: Record<string, string> = { en: "eng", ja: "jpn", zh: "chi", es: "spa", pt: "por", fr: "fre", de: "ger", it: "ita", ru: "rus", ar: "ara", ko: "kor", id: "ind", th: "tha", vi: "vie" };
+interface FileRow {
+  id: number;
+  series_id: number;
+  season: number | null;
+  path: string;
+  size: number | null;
+  quality: string | null;
+  release_group: string | null;
+  scene_name: string | null;
+  audio_langs: string;
+  sub_langs: string;
+  run_time: string | null;
+  resolution: string | null;
+  date_added: string | null;
+  revision: string | null;
+}
+const FILE_COLS =
+  "id, series_id, season, path, size, quality, release_group, scene_name, audio_langs, sub_langs, run_time, resolution, date_added, revision";
+const ISO3: Record<string, string> = {
+  en: "eng",
+  ja: "jpn",
+  zh: "chi",
+  es: "spa",
+  pt: "por",
+  fr: "fre",
+  de: "ger",
+  it: "ita",
+  ru: "rus",
+  ar: "ara",
+  ko: "kor",
+  id: "ind",
+  th: "tha",
+  vi: "vie",
+};
 const iso3 = (codes: string[]) => codes.map((c) => ISO3[c] ?? c).join("/");
 
 /** An episode file as a Sonarr resource: AnimeArr's own scan fills the media info, the Sonarr-synced columns fill the rest. */
@@ -101,20 +151,49 @@ export function fileResource(f: FileRow) {
     qualityCutoffNotMet: false,
   };
 }
-const fileRows = (where: string, ...args: unknown[]) => cache.prepare(`SELECT ${FILE_COLS} FROM files WHERE ${where}`).all(...(args as never[])) as unknown as FileRow[];
+const fileRows = (where: string, ...args: unknown[]) =>
+  cache.prepare(`SELECT ${FILE_COLS} FROM files WHERE ${where}`).all(...(args as never[])) as unknown as FileRow[];
 
 // ---------------------------------------------------------------- history
 
-const EVENT_TYPES: Record<string, number> = { grabbed: 1, seriesFolderImported: 2, downloadFolderImported: 3, downloadFailed: 4, episodeFileDeleted: 5, episodeFileRenamed: 6, downloadIgnored: 7 };
-interface HistEvent { id: number; type: string; at: number; seriesId: number; episodeId: number; release: string; downloadId: string | null; data: Record<string, string> }
+const EVENT_TYPES: Record<string, number> = {
+  grabbed: 1,
+  seriesFolderImported: 2,
+  downloadFolderImported: 3,
+  downloadFailed: 4,
+  episodeFileDeleted: 5,
+  episodeFileRenamed: 6,
+  downloadIgnored: 7,
+};
+interface HistEvent {
+  id: number;
+  type: string;
+  at: number;
+  seriesId: number;
+  episodeId: number;
+  release: string;
+  downloadId: string | null;
+  data: Record<string, string>;
+}
 
 /** Sonarr history events from AnimeArr's grabs and deletes, newest first. Ids are stable: grab id x type, or Activity id x episode. */
 function historyEvents(opts: { seriesId?: number; seasonNumber?: number; episodeId?: number; eventType?: number } = {}): HistEvent[] {
   const out: HistEvent[] = [];
-  const grabs = db.prepare("SELECT * FROM grabs WHERE dry_run = 0 AND movie_id IS NULL AND series_id IS NOT NULL ORDER BY id DESC LIMIT 2000").all() as unknown as GrabRow[];
+  const grabs = db
+    .prepare("SELECT * FROM grabs WHERE dry_run = 0 AND movie_id IS NULL AND series_id IS NOT NULL ORDER BY id DESC LIMIT 2000")
+    .all() as unknown as GrabRow[];
   const add = (g: GrabRow, kind: number, type: string, at: number, extra: Record<string, string> = {}) => {
     (JSON.parse(g.episode_ids) as number[]).slice(0, 255).forEach((episodeId, i) => {
-      out.push({ id: (((g.id * 3 + kind) * 2) * 256) + i, type, at, seriesId: g.series_id, episodeId, release: g.release, downloadId: g.client_ref, data: { indexer: g.indexer ?? "", downloadClient: g.client ?? "", ...extra } });
+      out.push({
+        id: (g.id * 3 + kind) * 2 * 256 + i,
+        type,
+        at,
+        seriesId: g.series_id,
+        episodeId,
+        release: g.release,
+        downloadId: g.client_ref,
+        data: { indexer: g.indexer ?? "", downloadClient: g.client ?? "", ...extra },
+      });
     });
   };
   for (const g of grabs) {
@@ -127,13 +206,37 @@ function historyEvents(opts: { seriesId?: number; seasonNumber?: number; episode
     if (det?.kind !== "delete" || !d.tvdbId) continue;
     const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(d.tvdbId) as { id: number } | undefined;
     if (!s) continue;
-    d.episodeIds.slice(0, 255).forEach((episodeId, i) => out.push({ id: (d.id * 2 + 1) * 256 + i, type: "episodeFileDeleted", at: d.at, seriesId: s.id, episodeId, release: d.release ?? path.posix.basename(det.path ?? ""), downloadId: null, data: { reason: "Manual" } }));
+    d.episodeIds.slice(0, 255).forEach((episodeId, i) =>
+      out.push({
+        id: (d.id * 2 + 1) * 256 + i,
+        type: "episodeFileDeleted",
+        at: d.at,
+        seriesId: s.id,
+        episodeId,
+        release: d.release ?? path.posix.basename(det.path ?? ""),
+        downloadId: null,
+        data: { reason: "Manual" },
+      }),
+    );
   }
   const season = opts.seasonNumber;
   const seasonOf = new Map<number, number>();
-  const seasonFor = (e: number) => (seasonOf.has(e) ? seasonOf.get(e)! : (seasonOf.set(e, (cache.prepare("SELECT season FROM episodes WHERE id = ?").get(e) as { season: number } | undefined)?.season ?? -1), seasonOf.get(e)!));
+  const seasonFor = (e: number) =>
+    seasonOf.has(e)
+      ? seasonOf.get(e)!
+      : (seasonOf.set(
+          e,
+          (cache.prepare("SELECT season FROM episodes WHERE id = ?").get(e) as { season: number } | undefined)?.season ?? -1,
+        ),
+        seasonOf.get(e)!);
   return out
-    .filter((e) => (!opts.seriesId || e.seriesId === opts.seriesId) && (!opts.episodeId || e.episodeId === opts.episodeId) && (!opts.eventType || EVENT_TYPES[e.type] === opts.eventType) && (season === undefined || seasonFor(e.episodeId) === season))
+    .filter(
+      (e) =>
+        (!opts.seriesId || e.seriesId === opts.seriesId) &&
+        (!opts.episodeId || e.episodeId === opts.episodeId) &&
+        (!opts.eventType || EVENT_TYPES[e.type] === opts.eventType) &&
+        (season === undefined || seasonFor(e.episodeId) === season),
+    )
     .sort((a, b) => b.at - a.at || b.id - a.id);
 }
 
@@ -141,8 +244,19 @@ function historyRecord(e: HistEvent, inc: { series: boolean; episode: boolean },
   const ep = cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id = ?`).get(e.episodeId) as EpRow | undefined;
   const s = inc.series ? seriesById(e.seriesId) : undefined;
   return {
-    id: e.id, episodeId: e.episodeId, seriesId: e.seriesId, sourceTitle: e.release, languages: [languageResource("ja")], quality: qualityResource(e.release), customFormats: [] as unknown[], customFormatScore: 0,
-    qualityCutoffNotMet: false, date: iso(e.at), downloadId: e.downloadId ?? undefined, eventType: e.type, data: e.data,
+    id: e.id,
+    episodeId: e.episodeId,
+    seriesId: e.seriesId,
+    sourceTitle: e.release,
+    languages: [languageResource("ja")],
+    quality: qualityResource(e.release),
+    customFormats: [] as unknown[],
+    customFormatScore: 0,
+    qualityCutoffNotMet: false,
+    date: iso(e.at),
+    downloadId: e.downloadId ?? undefined,
+    eventType: e.type,
+    data: e.data,
     ...(inc.episode && ep ? { episode: episodeResources([ep], now)[0] } : {}),
     ...(s ? { series: seriesResource(s, now) } : {}),
   };
@@ -155,7 +269,12 @@ function missingRows(monitoredOnly: boolean, now: number): EpRow[] {
   const out: EpRow[] = [];
   for (const s of cache.prepare(`SELECT ${SERIES_COLS} FROM series`).all() as unknown as SeriesRow[]) {
     const scope = monitoredOnly ? (isManaged(s.tvdb_id) ? scopedEpisodeIds(s.tvdb_id, s.id, now) : new Set<number>()) : null;
-    for (const e of cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc <= ? AND season > 0`).all(s.id, now) as unknown as EpRow[]) if (!scope || scope.has(e.id)) out.push(e);
+    for (const e of cache
+      .prepare(
+        `SELECT ${EP_COLS} FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc <= ? AND season > 0`,
+      )
+      .all(s.id, now) as unknown as EpRow[])
+      if (!scope || scope.has(e.id)) out.push(e);
   }
   return out;
 }
@@ -165,15 +284,22 @@ async function cutoffRows(now: number): Promise<EpRow[]> {
   const want = new Set<number>();
   for (const u of await upgradeUnits(now)) for (const f of u.files) if (!f.proper) want.add(f.episodeId);
   if (!want.size) return [];
-  return cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${[...want].map(() => "?").join(",")})`).all(...want) as unknown as EpRow[];
+  return cache
+    .prepare(`SELECT ${EP_COLS} FROM episodes WHERE id IN (${[...want].map(() => "?").join(",")})`)
+    .all(...want) as unknown as EpRow[];
 }
 
 function wantedPage(q: Record<string, unknown>, rows: EpRow[], now: number) {
   const direction = dir(q, "descending");
   const key = qs(q.sortKey) || "episodes.airDateUtc";
   const titleOf = new Map<number, string>();
-  const title = (r: EpRow) => titleOf.get(r.series_id) ?? (titleOf.set(r.series_id, (seriesById(r.series_id)?.sort_title ?? seriesById(r.series_id)?.title ?? "").toLowerCase()), titleOf.get(r.series_id)!);
-  const order = /series/i.test(key) ? sorted(rows, (r) => `${title(r)}${String(r.season).padStart(4, "0")}${String(r.episode).padStart(4, "0")}`, direction) : sorted(rows, (r) => r.air_utc ?? 0, direction);
+  const title = (r: EpRow) =>
+    titleOf.get(r.series_id) ??
+    (titleOf.set(r.series_id, (seriesById(r.series_id)?.sort_title ?? seriesById(r.series_id)?.title ?? "").toLowerCase()),
+    titleOf.get(r.series_id)!);
+  const order = /series/i.test(key)
+    ? sorted(rows, (r) => `${title(r)}${String(r.season).padStart(4, "0")}${String(r.episode).padStart(4, "0")}`, direction)
+    : sorted(rows, (r) => r.air_utc ?? 0, direction);
   const page = paged(q, order, key, direction);
   const withSeries = flag(q.includeSeries);
   const res = episodeResources(page.records, now);
@@ -190,15 +316,30 @@ function wantedPage(q: Record<string, unknown>, rows: EpRow[], now: number) {
 
 // ---------------------------------------------------------------- releases (interactive search)
 
-interface Searched { at: number; tvdbId: number; episodeIds: number[]; results: SearchResult[] }
+interface Searched {
+  at: number;
+  tvdbId: number;
+  episodeIds: number[];
+  results: SearchResult[];
+}
 const searched = new Map<string, Searched>();
 const KEEP_MS = 30 * 60_000;
 
 /** A Deep Search result as Sonarr's release resource. Rejections are AnimeArr's own plain-words reasons. */
 export function releaseResource(r: SearchResult, s: { tvdbId: number; seriesId: number; seriesTitle: string }, now = Date.now()) {
   const approved = r.rank.accept && r.coversTarget;
-  const rejections = [...(r.rank.reject ? [r.rank.reject] : []), ...r.rank.flags.filter((f) => f.tone === "bad").map((f) => f.label), ...(!r.coversTarget ? ["Doesn't cover the episodes asked for"] : [])];
-  const eps = r.episodeIds.map((id) => cache.prepare("SELECT id, season, episode, title, absolute FROM episodes WHERE id = ?").get(id) as { id: number; season: number; episode: number; title: string | null; absolute: number | null } | undefined).filter((e) => !!e);
+  const rejections = [
+    ...(r.rank.reject ? [r.rank.reject] : []),
+    ...r.rank.flags.filter((f) => f.tone === "bad").map((f) => f.label),
+    ...(!r.coversTarget ? ["Doesn't cover the episodes asked for"] : []),
+  ];
+  const eps = r.episodeIds
+    .map(
+      (id) =>
+        cache.prepare("SELECT id, season, episode, title, absolute FROM episodes WHERE id = ?").get(id) as
+          { id: number; season: number; episode: number; title: string | null; absolute: number | null } | undefined,
+    )
+    .filter((e) => !!e);
   const published = r.publishDate ?? iso(now - (r.ageHours ?? 0) * 3_600_000)!;
   const lang = r.rank.lang ? r.rank.lang.toLowerCase() : "ja";
   return {
@@ -269,7 +410,12 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
     const add = (source: string, type: "warning" | "error", message: string) => out.push({ source, type, message, wikiUrl: "" });
     if (dbState.corrupt) add("DatabaseCheck", "error", "The database failed its integrity check, so AnimeArr is read-only");
     if (!getSettings().allowedRoots.length) add("RootFolderCheck", "warning", "No root folders are set up yet");
-    for (const b of breakerList().filter((x) => x.state === "off")) add("IndexerStatusCheck", "warning", `Indexer ${b.name} is switched off after repeated failures${b.lastError ? `: ${b.lastError}` : ""}`);
+    for (const b of breakerList().filter((x) => x.state === "off"))
+      add(
+        "IndexerStatusCheck",
+        "warning",
+        `Indexer ${b.name} is switched off after repeated failures${b.lastError ? `: ${b.lastError}` : ""}`,
+      );
     return out;
   });
 
@@ -283,7 +429,13 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
       seen.add(p);
       try {
         const st = fs.statfsSync(mappedPath(p));
-        out.push({ id: out.length + 1, path: p, label: path.posix.basename(p) || p, freeSpace: st.bavail * st.bsize, totalSpace: st.blocks * st.bsize });
+        out.push({
+          id: out.length + 1,
+          path: p,
+          label: path.posix.basename(p) || p,
+          freeSpace: st.bavail * st.bsize,
+          totalSpace: st.blocks * st.bsize,
+        });
       } catch {
         /* not mounted here: left out */
       }
@@ -298,14 +450,23 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
     const from = Date.parse(qs(q.start)) || new Date(new Date().toDateString()).getTime();
     const to = Date.parse(qs(q.end)) || from + 2 * day;
     if (to - from > 366 * day) throw fail("Pick a shorter range");
-    const rows = cache.prepare(`SELECT ${EP_COLS} FROM episodes WHERE air_utc BETWEEN ? AND ? ORDER BY air_utc, series_id, episode`).all(from, to) as unknown as EpRow[];
+    const rows = cache
+      .prepare(`SELECT ${EP_COLS} FROM episodes WHERE air_utc BETWEEN ? AND ? ORDER BY air_utc, series_id, episode`)
+      .all(from, to) as unknown as EpRow[];
     let res = episodeResources(rows, now);
     if (!flag(q.unmonitored)) res = res.filter((e) => e.monitored);
-    const files = flag(q.includeEpisodeFile) ? new Map(fileRows(`id IN (${rows.map((r) => r.file_id ?? 0).join(",") || "0"})`).map((f) => [f.id, f])) : null;
+    const files = flag(q.includeEpisodeFile)
+      ? new Map(fileRows(`id IN (${rows.map((r) => r.file_id ?? 0).join(",") || "0"})`).map((f) => [f.id, f]))
+      : null;
     const series = new Map<number, ReturnType<typeof seriesResource>>();
     return res.map((e) => ({
       ...e,
-      ...(flag(q.includeSeries) ? { series: series.get(e.seriesId) ?? (series.set(e.seriesId, seriesResource(mustSeries(e.seriesId), now)), series.get(e.seriesId)!) } : {}),
+      ...(flag(q.includeSeries)
+        ? {
+            series:
+              series.get(e.seriesId) ?? (series.set(e.seriesId, seriesResource(mustSeries(e.seriesId), now)), series.get(e.seriesId)!),
+          }
+        : {}),
       ...(files && e.episodeFileId && files.has(e.episodeFileId) ? { episodeFile: fileResource(files.get(e.episodeFileId)!) } : {}),
     }));
   };
@@ -319,28 +480,54 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
   // Queue.
   const queueSort = (rows: Record<string, unknown>[], key: string, direction: string) => {
     const k = key.replace(/^.*\./, "");
-    const val = (r: Record<string, unknown>) => (k === "timeleft" || k === "estimatedCompletionTime" ? String(r[k] ?? "") : typeof r[k] === "number" ? (r[k] as number) : String(r[k] ?? ""));
+    const val = (r: Record<string, unknown>) =>
+      k === "timeleft" || k === "estimatedCompletionTime"
+        ? String(r[k] ?? "")
+        : typeof r[k] === "number"
+          ? (r[k] as number)
+          : String(r[k] ?? "");
     return sorted(rows, val, direction);
   };
   app.get<{ Querystring: Record<string, string> }>(`${V}/queue`, async (req) => {
     const q = req.query;
-    const all = queueSort(await queueRecords(d, { includeEpisode: flag(q.includeEpisode), includeSeries: flag(q.includeSeries) }), qs(q.sortKey) || "timeleft", dir(q, "ascending"));
+    const all = queueSort(
+      await queueRecords(d, { includeEpisode: flag(q.includeEpisode), includeSeries: flag(q.includeSeries) }),
+      qs(q.sortKey) || "timeleft",
+      dir(q, "ascending"),
+    );
     const page = Math.max(1, Number(q.page) || 1);
     // Sonarr's default page is 10 records; AnimeArr returns the whole queue unless a page size is asked for.
     const size = Math.max(1, Number(q.pageSize) || all.length || 1);
-    return { page, pageSize: size, sortKey: qs(q.sortKey) || "timeleft", sortDirection: dir(q, "ascending"), totalRecords: all.length, records: all.slice((page - 1) * size, page * size) };
+    return {
+      page,
+      pageSize: size,
+      sortKey: qs(q.sortKey) || "timeleft",
+      sortDirection: dir(q, "ascending"),
+      totalRecords: all.length,
+      records: all.slice((page - 1) * size, page * size),
+    };
   });
   app.get<{ Querystring: Record<string, string> }>(`${V}/queue/details`, async (req) => {
     const q = req.query;
     const sid = q.seriesId ? int(q.seriesId, "seriesId") : null;
     const eps = q.episodeIds ? new Set(ids(q.episodeIds)) : null;
-    return (await queueRecords(d, { includeEpisode: flag(q.includeEpisode), includeSeries: flag(q.includeSeries) })).filter((r) => (!sid || r.seriesId === sid) && (!eps || eps.has(r.episodeId as number)));
+    return (await queueRecords(d, { includeEpisode: flag(q.includeEpisode), includeSeries: flag(q.includeSeries) })).filter(
+      (r) => (!sid || r.seriesId === sid) && (!eps || eps.has(r.episodeId as number)),
+    );
   });
   app.get(`${V}/queue/status`, async () => {
     const all = await queueRecords(d);
     const warnings = all.filter((r) => r.trackedDownloadStatus === "warning").length;
     const errors = all.filter((r) => r.trackedDownloadStatus === "error").length;
-    return { totalCount: all.length, count: all.length, unknownCount: 0, errors: errors > 0, warnings: warnings > 0, unknownErrors: false, unknownWarnings: false };
+    return {
+      totalCount: all.length,
+      count: all.length,
+      unknownCount: 0,
+      errors: errors > 0,
+      warnings: warnings > 0,
+      unknownErrors: false,
+      unknownWarnings: false,
+    };
   });
   /** Removes a download (a queue record's id is the grab id x 1000 + the episode's position); blocklisting may pick the next release. */
   const removeQueue = async (queueIds: number[], q: Record<string, unknown>) => {
@@ -350,7 +537,10 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
     for (const grabId of new Set(queueIds.map((x) => Math.floor(x / 1000)))) await d.removeGrab(grabId, { blocklist, searchNext });
   };
   app.delete<{ Querystring: Record<string, string> }>(`${V}/queue/bulk`, async (req) => {
-    await removeQueue(((req.body as { ids?: unknown[] } | undefined)?.ids ?? []).map((x) => int(x)), req.query);
+    await removeQueue(
+      ((req.body as { ids?: unknown[] } | undefined)?.ids ?? []).map((x) => int(x)),
+      req.query,
+    );
     return {};
   });
   app.delete<{ Params: { id: string }; Querystring: Record<string, string> }>(`${V}/queue/:id`, async (req) => {
@@ -363,7 +553,10 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
   app.get<{ Querystring: Record<string, string> }>(`${V}/history`, async (req) => {
     const q = req.query;
     const direction = dir(q, "descending");
-    const ev = historyEvents({ eventType: q.eventType ? int(q.eventType, "eventType") : undefined, episodeId: q.episodeId ? int(q.episodeId, "episodeId") : undefined });
+    const ev = historyEvents({
+      eventType: q.eventType ? int(q.eventType, "eventType") : undefined,
+      episodeId: q.episodeId ? int(q.episodeId, "episodeId") : undefined,
+    });
     const want = q.seriesIds ? new Set(ids(q.seriesIds)) : null;
     const rows = (want ? ev.filter((e) => want.has(e.seriesId)) : ev).filter((e) => !q.downloadId || e.downloadId === q.downloadId);
     const page = paged(q, direction === "descending" ? rows : [...rows].reverse(), qs(q.sortKey) || "date", direction);
@@ -373,12 +566,18 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
   app.get<{ Querystring: Record<string, string> }>(`${V}/history/since`, async (req) => {
     const since = Date.parse(qs(req.query.date)) || 0;
     const now = Date.now();
-    return historyEvents({ eventType: req.query.eventType ? int(req.query.eventType, "eventType") : undefined }).filter((e) => e.at > since).map((e) => historyRecord(e, inc(req.query), now));
+    return historyEvents({ eventType: req.query.eventType ? int(req.query.eventType, "eventType") : undefined })
+      .filter((e) => e.at > since)
+      .map((e) => historyRecord(e, inc(req.query), now));
   });
   app.get<{ Querystring: Record<string, string> }>(`${V}/history/series`, async (req) => {
     const q = req.query;
     const now = Date.now();
-    return historyEvents({ seriesId: int(q.seriesId, "seriesId"), seasonNumber: q.seasonNumber !== undefined ? Number(q.seasonNumber) : undefined, eventType: q.eventType ? int(q.eventType, "eventType") : undefined }).map((e) => historyRecord(e, inc(q), now));
+    return historyEvents({
+      seriesId: int(q.seriesId, "seriesId"),
+      seasonNumber: q.seasonNumber !== undefined ? Number(q.seasonNumber) : undefined,
+      eventType: q.eventType ? int(q.eventType, "eventType") : undefined,
+    }).map((e) => historyRecord(e, inc(q), now));
   });
   app.post<{ Params: { id: string } }>(`${V}/history/failed/:id`, async () => {
     throw fail("AnimeArr retries failed downloads on its own (Activity shows the fixes)", 405);
@@ -413,7 +612,10 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
     return fileResource(f);
   });
   const noDelete = async () => {
-    throw fail("AnimeArr doesn't delete files through this API; delete a file from the episode's page in AnimeArr, where it asks first", 405);
+    throw fail(
+      "AnimeArr doesn't delete files through this API; delete a file from the episode's page in AnimeArr, where it asks first",
+      405,
+    );
   };
   app.delete(`${V}/episodefile/:id`, noDelete);
   app.delete(`${V}/episodefile/bulk`, noDelete);
@@ -427,7 +629,15 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
 
   // Quality definitions: the sizes AnimeArr's ranking calls lean, per quality (MB per minute).
   app.get(`${V}/qualitydefinition`, async () =>
-    Object.entries(SIZES).map(([name, v], i) => ({ id: i + 1, quality: qualityByName(name).quality, title: name, weight: i + 1, minSize: v[0], maxSize: v[1], preferredSize: v[2] })),
+    Object.entries(SIZES).map(([name, v], i) => ({
+      id: i + 1,
+      quality: qualityByName(name).quality,
+      title: name,
+      weight: i + 1,
+      minSize: v[0],
+      maxSize: v[1],
+      preferredSize: v[2],
+    })),
   );
 
   // Interactive search.
@@ -436,12 +646,17 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
     let seriesId = q.seriesId ? int(q.seriesId, "seriesId") : 0;
     let episodeIds: number[] = [];
     if (q.episodeId) {
-      const e = cache.prepare("SELECT id, series_id FROM episodes WHERE id = ?").get(int(q.episodeId, "episodeId")) as { id: number; series_id: number } | undefined;
+      const e = cache.prepare("SELECT id, series_id FROM episodes WHERE id = ?").get(int(q.episodeId, "episodeId")) as
+        { id: number; series_id: number } | undefined;
       if (!e) throw fail("Episode not found", 404);
       seriesId = e.series_id;
       episodeIds = [e.id];
     } else if (seriesId && q.seasonNumber !== undefined) {
-      episodeIds = (cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND season = ? ORDER BY episode LIMIT 50").all(seriesId, Number(q.seasonNumber)) as { id: number }[]).map((r) => r.id);
+      episodeIds = (
+        cache
+          .prepare("SELECT id FROM episodes WHERE series_id = ? AND season = ? ORDER BY episode LIMIT 50")
+          .all(seriesId, Number(q.seasonNumber)) as { id: number }[]
+      ).map((r) => r.id);
     }
     if (!seriesId || !episodeIds.length) throw fail("Pass episodeId, or seriesId with seasonNumber");
     const s = mustSeries(seriesId);
@@ -461,7 +676,20 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
       if (pick && (!hit || run.at > hit.run.at)) hit = { run, pick };
     }
     if (!hit) throw fail("Search for releases again first (results are kept for 30 minutes)", 404);
-    const toCand = (r: SearchResult): Candidate => ({ guid: r.guid, title: r.title, indexerId: r.indexerId, indexer: r.indexer, protocol: r.protocol, size: r.size, downloadUrl: r.downloadUrl, magnetUrl: r.magnetUrl, label: r.label, group: r.group, why: r.rank.why, episodeIds: r.episodeIds });
+    const toCand = (r: SearchResult): Candidate => ({
+      guid: r.guid,
+      title: r.title,
+      indexerId: r.indexerId,
+      indexer: r.indexer,
+      protocol: r.protocol,
+      size: r.size,
+      downloadUrl: r.downloadUrl,
+      magnetUrl: r.magnetUrl,
+      label: r.label,
+      group: r.group,
+      why: r.rank.why,
+      episodeIds: r.episodeIds,
+    });
     const { run, pick } = hit;
     const fallbacks = run.results.filter((r) => r !== pick && r.rank.accept && r.coversTarget).map(toCand);
     await d.startGrab({ tvdbId: run.tvdbId, episodeIds: run.episodeIds, candidate: toCand(pick), fallbacks, origin: "manual" });
@@ -472,8 +700,23 @@ export function registerSonarrMore(app: FastifyInstance, d: SonarrApiDeps) {
 
 /** MB per minute (min, max, preferred) per quality, from AnimeArr's lean sizes; max 0 = no limit. */
 const SIZES: Record<string, [number, number, number]> = {
-  "SDTV": [0, 0, 25], "DVD": [0, 0, 25], "WEBDL-480p": [0, 0, 25], "WEBRip-480p": [0, 0, 25], "Bluray-480p": [0, 0, 25],
-  "HDTV-720p": [0, 0, 45], "WEBDL-720p": [0, 0, 45], "WEBRip-720p": [0, 0, 45], "Bluray-720p": [0, 0, 45],
-  "HDTV-1080p": [0, 0, 85], "WEBDL-1080p": [0, 0, 85], "WEBRip-1080p": [0, 0, 85], "Bluray-1080p": [0, 0, 85], "Bluray-1080p Remux": [0, 0, 85],
-  "HDTV-2160p": [0, 0, 170], "WEBDL-2160p": [0, 0, 170], "WEBRip-2160p": [0, 0, 170], "Bluray-2160p": [0, 0, 170], "Bluray-2160p Remux": [0, 0, 170],
+  SDTV: [0, 0, 25],
+  DVD: [0, 0, 25],
+  "WEBDL-480p": [0, 0, 25],
+  "WEBRip-480p": [0, 0, 25],
+  "Bluray-480p": [0, 0, 25],
+  "HDTV-720p": [0, 0, 45],
+  "WEBDL-720p": [0, 0, 45],
+  "WEBRip-720p": [0, 0, 45],
+  "Bluray-720p": [0, 0, 45],
+  "HDTV-1080p": [0, 0, 85],
+  "WEBDL-1080p": [0, 0, 85],
+  "WEBRip-1080p": [0, 0, 85],
+  "Bluray-1080p": [0, 0, 85],
+  "Bluray-1080p Remux": [0, 0, 85],
+  "HDTV-2160p": [0, 0, 170],
+  "WEBDL-2160p": [0, 0, 170],
+  "WEBRip-2160p": [0, 0, 170],
+  "Bluray-2160p": [0, 0, 170],
+  "Bluray-2160p Remux": [0, 0, 170],
 };

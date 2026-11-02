@@ -19,7 +19,8 @@ export interface ProbeResult {
 }
 
 /** A subtitle track that isn't full dialogue: forced flag, or a title like "Signs & Songs", "Forced". */
-export const PARTIAL_TRACK = /^\W*(forced|signs?(\s*[&+/,]\s*songs?)?|songs?(\s*[&+/,]\s*signs?)?|s&s|karaoke|commentary)\W*$|\bforced\b|\(signs?(\s*[&+/]\s*songs?)?\)/i;
+export const PARTIAL_TRACK =
+  /^\W*(forced|signs?(\s*[&+/,]\s*songs?)?|songs?(\s*[&+/,]\s*signs?)?|s&s|karaoke|commentary)\W*$|\bforced\b|\(signs?(\s*[&+/]\s*songs?)?\)/i;
 /** Titles that say the track is full dialogue win over the partial patterns ("English (Full + Songs)"). */
 const FULL_TRACK = /\b(full|dialog(ue)?|complete)\b/i;
 
@@ -38,42 +39,65 @@ const NAME_LANG: [RegExp, string][] = [
 
 export function ffprobe(file: string, bin = process.env.FFPROBE_PATH || "ffprobe"): Promise<ProbeResult> {
   return new Promise((resolve, reject) => {
-    execFile(bin, ["-v", "error", "-show_entries", "stream=codec_type,codec_name:stream_disposition=forced:stream_tags=language,title:format=duration", "-of", "json", file], { timeout: 120_000, maxBuffer: 8 << 20 }, (err, stdout) => {
-      if (err) return reject(new Error(`ffprobe failed: ${err.message.split("\n")[0]}`));
-      try {
-        const j = JSON.parse(stdout) as { streams?: { codec_type: string; disposition?: { forced?: number }; tags?: { language?: string; title?: string } }[]; format?: { duration?: string } };
-        const subs = new Set<string>();
-        const forced = new Set<string>();
-        const audio = new Set<string>();
-        let untagged = 0;
-        for (const s of j.streams ?? []) {
-          let l = toLang(s.tags?.language ?? "");
-          if ((!l || l === "und") && s.tags?.title) l = NAME_LANG.find(([re]) => re.test(s.tags!.title!))?.[1] ?? l;
-          if (s.codec_type === "subtitle") {
-            const title = s.tags?.title ?? "";
-            const partial = s.disposition?.forced === 1 || (PARTIAL_TRACK.test(title) && !FULL_TRACK.test(title));
-            if (!l || l === "und") untagged++;
-            else if (partial) forced.add(l);
-            else subs.add(l);
-          } else if (s.codec_type === "audio" && l && l !== "und") audio.add(l);
-        }
-        const dir = path.dirname(file);
-        const base = path.basename(file).replace(/\.[^.]+$/, "");
-        const sidecars: string[] = [];
+    execFile(
+      bin,
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,codec_name:stream_disposition=forced:stream_tags=language,title:format=duration",
+        "-of",
+        "json",
+        file,
+      ],
+      { timeout: 120_000, maxBuffer: 8 << 20 },
+      (err, stdout) => {
+        if (err) return reject(new Error(`ffprobe failed: ${err.message.split("\n")[0]}`));
         try {
-          for (const f of fs.readdirSync(dir)) {
-            if (!f.startsWith(base)) continue;
-            const sl = sidecarLang(f);
-            if (sl) sidecars.push(sl);
+          const j = JSON.parse(stdout) as {
+            streams?: { codec_type: string; disposition?: { forced?: number }; tags?: { language?: string; title?: string } }[];
+            format?: { duration?: string };
+          };
+          const subs = new Set<string>();
+          const forced = new Set<string>();
+          const audio = new Set<string>();
+          let untagged = 0;
+          for (const s of j.streams ?? []) {
+            let l = toLang(s.tags?.language ?? "");
+            if ((!l || l === "und") && s.tags?.title) l = NAME_LANG.find(([re]) => re.test(s.tags!.title!))?.[1] ?? l;
+            if (s.codec_type === "subtitle") {
+              const title = s.tags?.title ?? "";
+              const partial = s.disposition?.forced === 1 || (PARTIAL_TRACK.test(title) && !FULL_TRACK.test(title));
+              if (!l || l === "und") untagged++;
+              else if (partial) forced.add(l);
+              else subs.add(l);
+            } else if (s.codec_type === "audio" && l && l !== "und") audio.add(l);
           }
-        } catch {
-          /* ignore */
+          const dir = path.dirname(file);
+          const base = path.basename(file).replace(/\.[^.]+$/, "");
+          const sidecars: string[] = [];
+          try {
+            for (const f of fs.readdirSync(dir)) {
+              if (!f.startsWith(base)) continue;
+              const sl = sidecarLang(f);
+              if (sl) sidecars.push(sl);
+            }
+          } catch {
+            /* ignore */
+          }
+          resolve({
+            subs: [...subs],
+            audio: [...audio],
+            durationSec: j.format?.duration ? Number(j.format.duration) : null,
+            sidecars,
+            untagged,
+            forced: [...forced].filter((l) => !subs.has(l)),
+          });
+        } catch (e) {
+          reject(e);
         }
-        resolve({ subs: [...subs], audio: [...audio], durationSec: j.format?.duration ? Number(j.format.duration) : null, sidecars, untagged, forced: [...forced].filter((l) => !subs.has(l)) });
-      } catch (e) {
-        reject(e);
-      }
-    });
+      },
+    );
   });
 }
 
@@ -106,18 +130,32 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
   const dubWanted = (profile.dubLangs ?? []).map(base);
   const original = (profile.originalLangs ?? ["ja"]).map(base);
   const anyOriginal = !original.length; // original language unknown: don't judge the audio
-  const out = (ok: boolean, why: string, code: VerifyVerdict["code"] = ok ? "ok" : undefined): VerifyVerdict => ({ ok, why, subs, audio: p.audio, code });
+  const out = (ok: boolean, why: string, code: VerifyVerdict["code"] = ok ? "ok" : undefined): VerifyVerdict => ({
+    ok,
+    why,
+    subs,
+    audio: p.audio,
+    code,
+  });
   if (p.durationSec !== null && expectedMin) {
     const min = p.durationSec / 60;
-    if (min < expectedMin * 0.6) return out(false, `only ${min.toFixed(1)} min long (expected about ${expectedMin}): a sample or a broken file`, "short");
-  } else if (p.durationSec !== null && p.durationSec < 240) return out(false, `only ${Math.round(p.durationSec)} s long: a sample?`, "short");
+    if (min < expectedMin * 0.6)
+      return out(false, `only ${min.toFixed(1)} min long (expected about ${expectedMin}): a sample or a broken file`, "short");
+  } else if (p.durationSec !== null && p.durationSec < 240)
+    return out(false, `only ${Math.round(p.durationSec)} s long: a sample?`, "short");
   const haveSub = subWanted.find((l) => subs.includes(l));
   const haveDub = dubWanted.find((l) => p.audio.includes(l) && !original.includes(l));
   const knownAudio = p.audio.filter((a) => a !== "und");
   const haveOriginal = anyOriginal || !knownAudio.length || knownAudio.some((a) => original.includes(a));
   const subWhy = haveSub ? `has full ${haveSub} subtitles${p.sidecars.includes(haveSub) ? " (sidecar file)" : ""}` : "";
   const forcedOnly = (p.forced ?? []).filter((l) => subWanted.includes(l));
-  const noSubCode: VerifyVerdict["code"] = forcedOnly.length ? "forced-only" : p.untagged ? "untagged" : subs.length ? "wrong-subs" : "no-subs";
+  const noSubCode: VerifyVerdict["code"] = forcedOnly.length
+    ? "forced-only"
+    : p.untagged
+      ? "untagged"
+      : subs.length
+        ? "wrong-subs"
+        : "no-subs";
   const noSubWhy = forcedOnly.length
     ? `only a forced/signs ${forcedOnly.join("/")} track (not full dialogue subtitles)`
     : p.untagged
@@ -125,7 +163,10 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
       : subs.length
         ? `subtitles ${subs.join("/")} only`
         : "no subtitles at all";
-  if (mode === "dub") return haveDub ? out(true, `has ${haveDub} audio`) : out(false, `no ${dubWanted.join("/")} audio (audio: ${p.audio.join("/") || "unknown"})`, "no-dub");
+  if (mode === "dub")
+    return haveDub
+      ? out(true, `has ${haveDub} audio`)
+      : out(false, `no ${dubWanted.join("/")} audio (audio: ${p.audio.join("/") || "unknown"})`, "no-dub");
   if (mode === "dual") {
     if (haveDub && haveOriginal) return out(true, `dual audio: original + ${haveDub}${haveSub ? `, and ${haveSub} subtitles` : ""}`);
     if (haveSub) return out(true, `${subWhy}; sub only for now (a dual-audio release will replace it)`);
@@ -142,8 +183,10 @@ export function judge(p: ProbeResult, profile: VerifyProfile, expectedMin: numbe
   if (haveSub && haveOriginal) return out(true, subWhy);
   if (haveSub && !haveOriginal) return out(false, `${knownAudio.join("/")} audio only (a dub, without the original audio)`, "dub-only");
   // Burned-in subtitles only help with the original audio (an English dub with burned-in English is still a dub).
-  if (burnedIn && haveOriginal) return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
+  if (burnedIn && haveOriginal)
+    return out(true, `no subtitle track, accepted because you confirmed this season only exists with burned-in ${burnedIn}`);
   // A dub without subtitles: say so (the most common "looks fine but isn't" case).
-  if ((noSubCode === "no-subs" || noSubCode === "wrong-subs") && !haveOriginal) return out(false, `${knownAudio.join("/")} dub only, no ${subWanted.join("/")} subtitles`, "dub-no-subs");
+  if ((noSubCode === "no-subs" || noSubCode === "wrong-subs") && !haveOriginal)
+    return out(false, `${knownAudio.join("/")} dub only, no ${subWanted.join("/")} subtitles`, "dub-no-subs");
   return out(false, noSubWhy, noSubCode);
 }

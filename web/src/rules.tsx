@@ -4,10 +4,32 @@ import { api } from "./api";
 import { t } from "./i18n";
 import { Chip, Confirm, ErrorBox, Modal, Spinner, Toggle, useLoad, useToast } from "./ui";
 
-export interface Tag { id: number; label: string; series: number; movies: number; rules: number }
-export interface PreferredTerm { term: string; score: number }
-export interface ReleaseRule { id: string; name: string; enabled: boolean; must: string[]; mustNot: string[]; preferred: PreferredTerm[]; tags: number[] }
-interface TestResult { rejected: string | null; score: number; why: string[]; matches: { rule: string; blocked: string | null; preferred: PreferredTerm[] }[] }
+export interface Tag {
+  id: number;
+  label: string;
+  series: number;
+  movies: number;
+  rules: number;
+}
+export interface PreferredTerm {
+  term: string;
+  score: number;
+}
+export interface ReleaseRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  must: string[];
+  mustNot: string[];
+  preferred: PreferredTerm[];
+  tags: number[];
+}
+interface TestResult {
+  rejected: string | null;
+  score: number;
+  why: string[];
+  matches: { rule: string; blocked: string | null; preferred: PreferredTerm[] }[];
+}
 
 // ---------------------------------------------------------------- Settings → Tags
 
@@ -43,7 +65,14 @@ export function TagsEditor() {
             void add();
           }}
         >
-          <input className="grow" value={label} maxLength={40} placeholder={t("tags.newPlaceholder")} aria-label={t("tags.add")} onChange={(e) => setLabel(e.target.value)} />
+          <input
+            className="grow"
+            value={label}
+            maxLength={40}
+            placeholder={t("tags.newPlaceholder")}
+            aria-label={t("tags.add")}
+            onChange={(e) => setLabel(e.target.value)}
+          />
           <button className="primary" disabled={!label.trim()}>
             + {t("tags.add")}
           </button>
@@ -66,7 +95,11 @@ export function TagsEditor() {
             }
           }}
         >
-          <p>{del.series + del.movies + del.rules ? t("tags.deleteBody", { series: del.series, movies: del.movies, rules: del.rules }) : t("tags.deleteUnused")}</p>
+          <p>
+            {del.series + del.movies + del.rules
+              ? t("tags.deleteBody", { series: del.series, movies: del.movies, rules: del.rules })
+              : t("tags.deleteUnused")}
+          </p>
         </Confirm>
       )}
     </div>
@@ -89,8 +122,18 @@ function TagRow({ tag, onChanged, onDelete }: { tag: Tag; onChanged: () => void;
   };
   return (
     <div className="row">
-      <input className="grow" value={name} maxLength={40} aria-label={t("tags.rename")} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim().toLowerCase() !== tag.label && void rename()} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
-      <span className="muted small">{used ? t("tags.usage", { series: tag.series, movies: tag.movies, rules: tag.rules }) : t("tags.unused")}</span>
+      <input
+        className="grow"
+        value={name}
+        maxLength={40}
+        aria-label={t("tags.rename")}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => name.trim() && name.trim().toLowerCase() !== tag.label && void rename()}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      />
+      <span className="muted small">
+        {used ? t("tags.usage", { series: tag.series, movies: tag.movies, rules: tag.rules }) : t("tags.unused")}
+      </span>
       <button className="danger small" onClick={onDelete}>
         {t("common.delete")}
       </button>
@@ -131,7 +174,13 @@ export function TagPicker({ endpoint, value, onChanged }: { endpoint: string; va
       <p className="muted small">{t("tags.pickHelp")}</p>
       <div className="row" role="group" aria-label={t("tags.title")}>
         {d.data.tags.map((x) => (
-          <button key={x.id} type="button" className={`chip${value.includes(x.id) ? " on" : ""}`} aria-pressed={value.includes(x.id)} onClick={() => toggle(x.id)}>
+          <button
+            key={x.id}
+            type="button"
+            className={`chip${value.includes(x.id) ? " on" : ""}`}
+            aria-pressed={value.includes(x.id)}
+            onClick={() => toggle(x.id)}
+          >
             {x.label}
           </button>
         ))}
@@ -144,7 +193,14 @@ export function TagPicker({ endpoint, value, onChanged }: { endpoint: string; va
           void create();
         }}
       >
-        <input className="grow" value={label} maxLength={40} placeholder={t("tags.newPlaceholder")} aria-label={t("tags.add")} onChange={(e) => setLabel(e.target.value)} />
+        <input
+          className="grow"
+          value={label}
+          maxLength={40}
+          placeholder={t("tags.newPlaceholder")}
+          aria-label={t("tags.add")}
+          onChange={(e) => setLabel(e.target.value)}
+        />
         <button disabled={!label.trim()}>+ {t("tags.add")}</button>
       </form>
     </div>
@@ -174,7 +230,13 @@ export function BulkTags({ ids, onClose }: { ids: number[]; onClose: () => void 
         {d.data && (
           <div className="row" role="group" aria-label={t("tags.title")}>
             {d.data.tags.map((x) => (
-              <button key={x.id} type="button" className={`chip${picked.includes(x.id) ? " on" : ""}`} aria-pressed={picked.includes(x.id)} onClick={() => setPicked(picked.includes(x.id) ? picked.filter((p) => p !== x.id) : [...picked, x.id])}>
+              <button
+                key={x.id}
+                type="button"
+                className={`chip${picked.includes(x.id) ? " on" : ""}`}
+                aria-pressed={picked.includes(x.id)}
+                onClick={() => setPicked(picked.includes(x.id) ? picked.filter((p) => p !== x.id) : [...picked, x.id])}
+              >
                 {x.label}
               </button>
             ))}
@@ -211,7 +273,12 @@ function TermChips({ value, onChange, label }: { value: string[]; onChange: (v: 
         {value.map((v) => (
           <span key={v} className="chip accent term-chip">
             <code>{v}</code>
-            <button type="button" className="linklike" aria-label={t("rules.removeTerm", { term: v })} onClick={() => onChange(value.filter((x) => x !== v))}>
+            <button
+              type="button"
+              className="linklike"
+              aria-label={t("rules.removeTerm", { term: v })}
+              onClick={() => onChange(value.filter((x) => x !== v))}
+            >
               ×
             </button>
           </span>
@@ -251,15 +318,35 @@ function PreferredEditor({ value, onChange }: { value: PreferredTerm[]; onChange
           <span key={v.term} className={`chip ${v.score < 0 ? "bad" : "good"} term-chip`}>
             <code>{v.term}</code> {v.score > 0 ? "+" : ""}
             {v.score}
-            <button type="button" className="linklike" aria-label={t("rules.removeTerm", { term: v.term })} onClick={() => onChange(value.filter((x) => x.term !== v.term))}>
+            <button
+              type="button"
+              className="linklike"
+              aria-label={t("rules.removeTerm", { term: v.term })}
+              onClick={() => onChange(value.filter((x) => x.term !== v.term))}
+            >
               ×
             </button>
           </span>
         ))}
       </div>
       <div className="row">
-        <input className="grow" value={term} placeholder={t("rules.termPlaceholder")} aria-label={t("rules.preferred")} onChange={(e) => setTerm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
-        <input className="narrow" inputMode="numeric" value={score} placeholder={t("rules.scorePlaceholder")} aria-label={t("rules.score")} onChange={(e) => setScore(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} />
+        <input
+          className="grow"
+          value={term}
+          placeholder={t("rules.termPlaceholder")}
+          aria-label={t("rules.preferred")}
+          onChange={(e) => setTerm(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
+        />
+        <input
+          className="narrow"
+          inputMode="numeric"
+          value={score}
+          placeholder={t("rules.scorePlaceholder")}
+          aria-label={t("rules.score")}
+          onChange={(e) => setScore(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
+        />
         <button type="button" disabled={!term.trim()} onClick={add}>
           {t("rules.addTerm")}
         </button>
@@ -322,7 +409,17 @@ export function RulesEditor() {
   );
 }
 
-function RuleCard({ rule: initial, tags, onSaved, onDelete }: { rule: ReleaseRule; tags: Tag[]; onSaved: () => void; onDelete: () => void }) {
+function RuleCard({
+  rule: initial,
+  tags,
+  onSaved,
+  onDelete,
+}: {
+  rule: ReleaseRule;
+  tags: Tag[];
+  onSaved: () => void;
+  onDelete: () => void;
+}) {
   const toast = useToast();
   const [r, setR] = useState(initial);
   const [dirty, setDirty] = useState(false);
@@ -344,7 +441,13 @@ function RuleCard({ rule: initial, tags, onSaved, onDelete }: { rule: ReleaseRul
   return (
     <div className="card pad stack">
       <div className="row between">
-        <input className="grow profile-name" value={r.name} maxLength={60} onChange={(e) => set({ name: e.target.value })} aria-label={t("rules.name")} />
+        <input
+          className="grow profile-name"
+          value={r.name}
+          maxLength={60}
+          onChange={(e) => set({ name: e.target.value })}
+          aria-label={t("rules.name")}
+        />
         {!r.enabled && <Chip tone="warn">{t("rules.disabledChip")}</Chip>}
       </div>
       <Toggle checked={r.enabled} onChange={(v) => set({ enabled: v })} label={t("rules.enabled")} />
@@ -366,7 +469,13 @@ function RuleCard({ rule: initial, tags, onSaved, onDelete }: { rule: ReleaseRul
         <span className="small">{r.tags.length ? t("rules.tagsOnly") : t("rules.tagsAll")}</span>
         <div className="row" role="group" aria-label={t("rules.tags")}>
           {tags.map((x) => (
-            <button key={x.id} type="button" className={`chip${r.tags.includes(x.id) ? " on" : ""}`} aria-pressed={r.tags.includes(x.id)} onClick={() => set({ tags: r.tags.includes(x.id) ? r.tags.filter((y) => y !== x.id) : [...r.tags, x.id] })}>
+            <button
+              key={x.id}
+              type="button"
+              className={`chip${r.tags.includes(x.id) ? " on" : ""}`}
+              aria-pressed={r.tags.includes(x.id)}
+              onClick={() => set({ tags: r.tags.includes(x.id) ? r.tags.filter((y) => y !== x.id) : [...r.tags, x.id] })}
+            >
               {x.label}
             </button>
           ))}
@@ -413,13 +522,21 @@ function RuleTester() {
           void run();
         }}
       >
-        <input className="grow" value={title} placeholder={t("rules.testPlaceholder")} aria-label={t("rules.test")} onChange={(e) => setTitle(e.target.value)} />
+        <input
+          className="grow"
+          value={title}
+          placeholder={t("rules.testPlaceholder")}
+          aria-label={t("rules.test")}
+          onChange={(e) => setTitle(e.target.value)}
+        />
         <button disabled={!title.trim()}>{t("rules.testRun")}</button>
       </form>
       {res && (
         <div className="stack small" role="status">
           {!res.matches.length && <p className="muted">{t("rules.testNoRules")}</p>}
-          {res.matches.length > 0 && <p>{res.rejected ? <Chip tone="bad">{res.rejected}</Chip> : <Chip tone="good">{t("rules.testOk")}</Chip>}</p>}
+          {res.matches.length > 0 && (
+            <p>{res.rejected ? <Chip tone="bad">{res.rejected}</Chip> : <Chip tone="good">{t("rules.testOk")}</Chip>}</p>
+          )}
           {res.matches.map((m) => (
             <p key={m.rule}>
               <strong>{m.rule}</strong>: {m.blocked ? t("rules.testRuleBlocked", { why: m.blocked }) : t("rules.testRuleOk")}

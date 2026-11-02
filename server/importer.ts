@@ -56,13 +56,23 @@ export interface PlanItem {
   replaces: string | null; // local path of the file it replaces (goes to the recycle bin)
   problem: string | null; // set → this item is skipped
 }
-export interface ImportPlan { tvdbId: number; seriesTitle: string; folder: string; items: PlanItem[]; notes: string[] }
+export interface ImportPlan {
+  tvdbId: number;
+  seriesTitle: string;
+  folder: string;
+  items: PlanItem[];
+  notes: string[];
+}
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 
 export const namingOptions = (): NamingOptions => {
   const m = getSettings().media;
-  return { replaceIllegalCharacters: m.replaceIllegalCharacters, colonReplacement: m.colonReplacement, multiEpisodeStyle: m.multiEpisodeStyle };
+  return {
+    replaceIllegalCharacters: m.replaceIllegalCharacters,
+    colonReplacement: m.colonReplacement,
+    multiEpisodeStyle: m.multiEpisodeStyle,
+  };
 };
 
 /** Sonarr-style quality name from a release name / probe ("WEBDL-1080p", "Bluray-1080p Remux"). */
@@ -78,14 +88,38 @@ const mediaInfoOf = (rec: Probe | null) =>
         audioCodec: rec.audio[0]?.codec ?? null,
         audioChannels: rec.audio[0]?.channels ?? null,
         audioLanguages: [...new Set(rec.audio.map((a) => a.lang).filter((l): l is string => !!l))],
-        subtitleLanguages: [...new Set(rec.subs.filter((s) => !s.partial).map((s) => s.lang).filter((l): l is string => !!l))],
+        subtitleLanguages: [
+          ...new Set(
+            rec.subs
+              .filter((s) => !s.partial)
+              .map((s) => s.lang)
+              .filter((l): l is string => !!l),
+          ),
+        ],
       }
     : undefined;
 
-interface Ep { id: number; season: number; episode: number; absolute: number | null; title: string | null; air_date: string | null; file_id: number | null }
-interface SeriesRow { id: number; title: string; year: number | null; path: string; series_type: string; season_folder: number | null }
+interface Ep {
+  id: number;
+  season: number;
+  episode: number;
+  absolute: number | null;
+  title: string | null;
+  air_date: string | null;
+  file_id: number | null;
+}
+interface SeriesRow {
+  id: number;
+  title: string;
+  year: number | null;
+  path: string;
+  series_type: string;
+  season_folder: number | null;
+}
 
-const seriesRow = (tvdbId: number) => cache.prepare("SELECT id, title, year, path, series_type, season_folder FROM series WHERE tvdb_id = ?").get(tvdbId) as SeriesRow | undefined;
+const seriesRow = (tvdbId: number) =>
+  cache.prepare("SELECT id, title, year, path, series_type, season_folder FROM series WHERE tvdb_id = ?").get(tvdbId) as
+    SeriesRow | undefined;
 
 /** Sonarr's "season folder" flag; before the first sync that has it, inferred from where the show's files are. */
 function usesSeasonFolders(s: SeriesRow) {
@@ -100,7 +134,11 @@ function usesSeasonFolders(s: SeriesRow) {
  * The library path (Sonarr's view) for an episode file, from the naming settings. Throws when the settings render an
  * empty name or folder. Long names are cut in the episode title (like Sonarr) to stay within the file-name limit.
  */
-export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: string; ext: string; probe: Probe | null; quality?: string | null; originalName?: string }) {
+export function episodeDestination(
+  tvdbId: number,
+  eps: Ep[],
+  ctx: { release: string; ext: string; probe: Probe | null; quality?: string | null; originalName?: string },
+) {
   const s = seriesRow(tvdbId);
   if (!s) throw err("Unknown series", 404);
   const m = getSettings().media;
@@ -109,7 +147,9 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
   const season = eps[0].season;
   const fmt = s.series_type === "anime" ? m.animeEpisodeFormat : s.series_type === "daily" ? m.dailyEpisodeFormat : m.standardEpisodeFormat;
   const parsed = parseRelease(ctx.release);
-  const titles = eps.map((e) => (e.title && !/^TBA$/i.test(e.title) ? e.title : (lookup(e.season, e.episode, e.absolute)?.title ?? e.title)));
+  const titles = eps.map((e) =>
+    e.title && !/^TBA$/i.test(e.title) ? e.title : (lookup(e.season, e.episode, e.absolute)?.title ?? e.title),
+  );
   const nameWith = (cut: number | null) =>
     renderEpisode(
       fmt,
@@ -117,7 +157,12 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
         seriesTitle: s.title,
         seriesYear: s.year,
         season,
-        episodes: eps.map((e, i) => ({ episode: e.episode, absolute: e.absolute, title: cut === null || !titles[i] ? titles[i] : titles[i]!.slice(0, cut).trimEnd() + "…", airDate: e.air_date })),
+        episodes: eps.map((e, i) => ({
+          episode: e.episode,
+          absolute: e.absolute,
+          title: cut === null || !titles[i] ? titles[i] : titles[i]!.slice(0, cut).trimEnd() + "…",
+          airDate: e.air_date,
+        })),
         quality: ctx.quality || qualityName(ctx.release, ctx.probe?.video?.height ?? null),
         mediaInfo: mediaInfoOf(ctx.probe),
         releaseGroup: parsed.group,
@@ -147,7 +192,10 @@ export function episodeDestination(tvdbId: number, eps: Ep[], ctx: { release: st
 function sidecarsFor(localVideo: string, listing?: Map<string, string[]>) {
   const dir = path.dirname(localVideo);
   const base = path.basename(localVideo).replace(/\.[^.]+$/, "");
-  const exts = getSettings().media.extraFileExtensions.split(",").map((x) => x.trim().toLowerCase().replace(/^\./, "")).filter(Boolean);
+  const exts = getSettings()
+    .media.extraFileExtensions.split(",")
+    .map((x) => x.trim().toLowerCase().replace(/^\./, ""))
+    .filter(Boolean);
   let names = listing?.get(dir);
   if (!names) {
     try {
@@ -252,7 +300,20 @@ function videosIn(dir: string, minBytes: number) {
  * Plans an import of a folder (or single file) for a show: which file is which episode (explicit ids when given, else
  * identified from the names), where it goes, how, and what it replaces. Nothing is changed.
  */
-export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; only?: string[]; assign?: Record<string, number[]> }, deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile }): Promise<ImportPlan> {
+export async function planImport(
+  input: {
+    tvdbId: number;
+    path: string;
+    episodeIds?: number[];
+    release?: string;
+    client?: string | null;
+    automatic?: boolean;
+    trusted?: string | null;
+    only?: string[];
+    assign?: Record<string, number[]>;
+  },
+  deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile },
+): Promise<ImportPlan> {
   const series = seriesByTvdb(input.tvdbId);
   if (!series) throw err("Unknown series", 404);
   const minBytes = deps.minBytes ?? 30e6;
@@ -269,8 +330,12 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
   } catch {
     throw err(`AnimeArr can't read ${input.path}`);
   }
-  if (forbiddenSource(real)) throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
-  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
+  if (forbiddenSource(real))
+    throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
+  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted))
+    throw err(
+      `${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`,
+    );
   let files: string[];
   if (st.isDirectory()) files = videosIn(real, minBytes);
   else {
@@ -278,7 +343,12 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     if (st.size < minBytes) throw err("That file is too small to be an episode (a sample?)");
     files = [real];
   }
-  const eps = allRows<Ep>(cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.title, e.air_date, e.file_id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?"), input.tvdbId);
+  const eps = allRows<Ep>(
+    cache.prepare(
+      "SELECT e.id, e.season, e.episode, e.absolute, e.title, e.air_date, e.file_id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?",
+    ),
+    input.tvdbId,
+  );
   const byId = new Map(eps.map((e) => [e.id, e]));
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
@@ -292,22 +362,45 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
   for (const f of files) {
     let ids: number[] = [];
     const assigned = input.assign?.[f];
-    if (assigned) ids = assigned; // the user's own choice for this file (the hand import)
+    if (assigned)
+      ids = assigned; // the user's own choice for this file (the hand import)
     else if (files.length === 1 && input.episodeIds?.length) ids = input.episodeIds;
     else {
       const id = identify(path.basename(f), ctx, { tvdbId: input.tvdbId });
       // A file in the download's extras folder ("NCED & NCOP", "Extras", …) is never a regular episode.
-      const extra = st.isDirectory() && inExtrasFolder(path.relative(real, f)) && !!id.resolution?.ok && id.resolution.episodes.some((e) => e.season > 0);
-      if (!extra && id.resolution?.ok && id.resolution.confidence >= minConf) ids = id.resolution.episodes.map((e) => e.id).filter((x) => !input.episodeIds || input.episodeIds.includes(x));
+      const extra =
+        st.isDirectory() &&
+        inExtrasFolder(path.relative(real, f)) &&
+        !!id.resolution?.ok &&
+        id.resolution.episodes.some((e) => e.season > 0);
+      if (!extra && id.resolution?.ok && id.resolution.confidence >= minConf)
+        ids = id.resolution.episodes.map((e) => e.id).filter((x) => !input.episodeIds || input.episodeIds.includes(x));
     }
-    const list = ids.map((i) => byId.get(i)).filter((x): x is Ep => !!x).sort((a, b) => a.season - b.season || a.episode - b.episode);
-    const label = list.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`).join("+") || path.basename(f);
-    const base: PlanItem = { source: f, dest: "", destArr: "", episodeIds: list.map((e) => e.id), label, action: torrent ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
+    const list = ids
+      .map((i) => byId.get(i))
+      .filter((x): x is Ep => !!x)
+      .sort((a, b) => a.season - b.season || a.episode - b.episode);
+    const label =
+      list.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`).join("+") || path.basename(f);
+    const base: PlanItem = {
+      source: f,
+      dest: "",
+      destArr: "",
+      episodeIds: list.map((e) => e.id),
+      label,
+      action: torrent ? (m.useHardlinks ? "hardlink" : "copy") : "move",
+      sidecars: [],
+      replaces: null,
+      problem: null,
+    };
     if (!list.length || list.length !== ids.length) {
       items.push({ ...base, problem: ids.length ? "those episodes aren't in this show" : "couldn't tell which episode this is" });
       continue;
     }
-    if (m.episodeTitleRequired === "always" && list.some((e) => (!e.title || /^TBA$/i.test(e.title)) && !catalogLookup(input.tvdbId)(e.season, e.episode, e.absolute)?.title)) {
+    if (
+      m.episodeTitleRequired === "always" &&
+      list.some((e) => (!e.title || /^TBA$/i.test(e.title)) && !catalogLookup(input.tvdbId)(e.season, e.episode, e.absolute)?.title)
+    ) {
       items.push({ ...base, problem: "the episode title isn't known yet (Episode Title Required: always)" });
       continue;
     }
@@ -319,7 +412,12 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     }
     let destArr: string;
     try {
-      destArr = episodeDestination(input.tvdbId, list, { release: input.release ?? path.basename(f).replace(/\.[^.]+$/, ""), ext: path.extname(f).toLowerCase(), probe, originalName: path.basename(f).replace(/\.[^.]+$/, "") });
+      destArr = episodeDestination(input.tvdbId, list, {
+        release: input.release ?? path.basename(f).replace(/\.[^.]+$/, ""),
+        ext: path.extname(f).toLowerCase(),
+        probe,
+        originalName: path.basename(f).replace(/\.[^.]+$/, ""),
+      });
     } catch (e) {
       items.push({ ...base, problem: (e as Error).message });
       continue;
@@ -327,8 +425,19 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     const dest = mappedPath(destArr);
     // The file this replaces (the episodes' current one), and collisions with anything else.
     const fileIds = [...new Set(list.map((e) => e.file_id).filter((x): x is number => !!x))];
-    const others = fileIds.length ? (cache.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE file_id IN (${fileIds.map(() => "?").join(",")}) AND id NOT IN (${list.map(() => "?").join(",")})`).get(...fileIds, ...list.map((e) => e.id)) as { n: number }).n : 0;
-    const current = fileIds.length === 1 ? (cache.prepare("SELECT path FROM files WHERE id = ?").get(fileIds[0]) as { path: string } | undefined)?.path ?? null : null;
+    const others = fileIds.length
+      ? (
+          cache
+            .prepare(
+              `SELECT COUNT(*) AS n FROM episodes WHERE file_id IN (${fileIds.map(() => "?").join(",")}) AND id NOT IN (${list.map(() => "?").join(",")})`,
+            )
+            .get(...fileIds, ...list.map((e) => e.id)) as { n: number }
+        ).n
+      : 0;
+    const current =
+      fileIds.length === 1
+        ? ((cache.prepare("SELECT path FROM files WHERE id = ?").get(fileIds[0]) as { path: string } | undefined)?.path ?? null)
+        : null;
     const currentLocal = current ? localPath(current) : null;
     const size = fs.statSync(f).size;
     let problem: string | null = null;
@@ -338,8 +447,10 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     else if (current && !currentLocal) problem = "AnimeArr can't reach the episode's current file, so it can't replace it";
     else if (currentLocal && !binSet) problem = "no recycling bin is set, so the current file can't be replaced safely";
     else if (picked(f) && taken.has(dest)) problem = "two files would get the same name";
-    else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
-    else if (!freeSpaceOk(dest, size, { source: f, action: base.action, ledger: picked(f) ? space : undefined })) problem = `not enough free space at the library for this file together with the others in this import (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
+    else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
+      problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
+    else if (!freeSpaceOk(dest, size, { source: f, action: base.action, ledger: picked(f) ? space : undefined }))
+      problem = `not enough free space at the library for this file together with the others in this import (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
     if (picked(f)) taken.add(dest);
     items.push({
       ...base,
@@ -485,17 +596,24 @@ function setPerms(dir: string) {
 export async function executeImport(plan: ImportPlan, opts: { dryRun?: boolean; only?: string[]; grabId?: number } = {}) {
   const series = seriesRow(plan.tvdbId);
   if (!series) throw err("Unknown series", 404);
-  return placeItems(plan.items, {
-    arrRoot: series.path,
-    title: series.title,
-    tvdbId: plan.tvdbId,
-    after: async () => {
-      if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
-      await scanFolder(series.path).catch(() => undefined);
-      if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
-      await afterLibraryChange({ tvdbId: plan.tvdbId, folders: [...new Set(plan.items.filter((i) => !i.problem && i.destArr).map((i) => path.posix.dirname(i.destArr)))] });
+  return placeItems(
+    plan.items,
+    {
+      arrRoot: series.path,
+      title: series.title,
+      tvdbId: plan.tvdbId,
+      after: async () => {
+        if (!isNativeSeriesId(series.id)) await sonarr.rescanSeries(series.id).catch(() => undefined); // Sonarr re-reads the folder while it's still in use
+        await scanFolder(series.path).catch(() => undefined);
+        if (isNativeSeriesId(series.id)) rematerializeSeries(series.id);
+        await afterLibraryChange({
+          tvdbId: plan.tvdbId,
+          folders: [...new Set(plan.items.filter((i) => !i.problem && i.destArr).map((i) => path.posix.dirname(i.destArr)))],
+        });
+      },
     },
-  }, opts);
+    opts,
+  );
 }
 
 /** Which episodes a file AnimeArr imported holds (so a native show never has to guess from the name). */
@@ -527,10 +645,16 @@ export function clearStalePart(tmp: string, source: string) {
  * temporary name → old file (and its sidecars) to the bin → temporary name → final name; if the last step fails the old
  * file comes back.
  */
-async function placeItems(items: PlanItem[], target: { arrRoot: string; title: string; tvdbId?: number; movieId?: number; after: () => Promise<void> }, opts: { dryRun?: boolean; only?: string[]; grabId?: number }) {
+async function placeItems(
+  items: PlanItem[],
+  target: { arrRoot: string; title: string; tvdbId?: number; movieId?: number; after: () => Promise<void> },
+  opts: { dryRun?: boolean; only?: string[]; grabId?: number },
+) {
   const real = !opts.dryRun;
-  if (real && !getSettings().importer.allowReal) throw err("Real imports by AnimeArr's own importer aren't switched on yet (the first plan is being reviewed)", 409);
-  if (real && (getSettings().importer.realBudget ?? 0) === 0) throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
+  if (real && !getSettings().importer.allowReal)
+    throw err("Real imports by AnimeArr's own importer aren't switched on yet (the first plan is being reviewed)", 409);
+  if (real && (getSettings().importer.realBudget ?? 0) === 0)
+    throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
   const rootLocal = mappedPath(target.arrRoot);
   const out: { label: string; done: boolean; why: string }[] = [];
   for (const it of items) {
@@ -540,11 +664,20 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
       continue;
     }
     if (!real) {
-      out.push({ label: it.label, done: false, why: `would ${it.action} ${path.basename(it.source)} → ${it.destArr}${it.replaces ? " (the old file goes to the recycling bin)" : ""}` });
+      out.push({
+        label: it.label,
+        done: false,
+        why: `would ${it.action} ${path.basename(it.source)} → ${it.destArr}${it.replaces ? " (the old file goes to the recycling bin)" : ""}`,
+      });
       continue;
     }
     // Defence in depth: the plan is re-checked here.
-    if (!getSettings().importer.allowReal || (getSettings().importer.realBudget ?? 0) === 0 || !underAllowedRoot(target.arrRoot) || !under(it.dest, rootLocal)) {
+    if (
+      !getSettings().importer.allowReal ||
+      (getSettings().importer.realBudget ?? 0) === 0 ||
+      !underAllowedRoot(target.arrRoot) ||
+      !under(it.dest, rootLocal)
+    ) {
       out.push({ label: it.label, done: false, why: "refused: outside the allowed root folders or real imports are off" });
       continue;
     }
@@ -558,7 +691,8 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
     }
     inFlight.add(tmp);
     try {
-      if (fs.existsSync(it.dest) && path.resolve(it.dest) !== path.resolve(it.replaces ?? "")) throw new Error("a file with that name appeared meanwhile: not overwritten");
+      if (fs.existsSync(it.dest) && path.resolve(it.dest) !== path.resolve(it.replaces ?? ""))
+        throw new Error("a file with that name appeared meanwhile: not overwritten");
       clearStalePart(tmp, it.source);
       did = await placeFile(it.action, it.source, tmp);
       if (it.replaces && fs.existsSync(it.replaces)) binned = await recycle(it.replaces, rootLocal);
@@ -583,18 +717,39 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
         }
       }
       // Placed: the budget counts it whatever happens next; bookkeeping can't turn it into a failure.
-      if ((getSettings().importer.realBudget ?? 0) > 0) patchSettings((x) => ({ ...x, importer: { ...x.importer, realBudget: x.importer.realBudget - 1 } }));
+      if ((getSettings().importer.realBudget ?? 0) > 0)
+        patchSettings((x) => ({ ...x, importer: { ...x.importer, realBudget: x.importer.realBudget - 1 } }));
       const verb = did === "move" ? "moved" : did === "hardlink" ? "hardlinked" : "copied";
-      out.push({ label: it.label, done: true, why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}` });
+      out.push({
+        label: it.label,
+        done: true,
+        why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}`,
+      });
       try {
         setPerms(path.dirname(it.dest));
         if (target.tvdbId && it.episodeIds.length) applyFileDate(it.dest, it.episodeIds); // "Change file date"
-        if (target.tvdbId && binned.length) tidyAfterMove(binned.map((b) => b.from), target.arrRoot); // "Delete empty folders" (the new file is already in place)
-        if (it.episodeIds.length) db.prepare("INSERT OR REPLACE INTO file_links (path, tvdb_id, episode_ids, at) VALUES (?, ?, ?, ?)").run(it.destArr, target.tvdbId ?? null, JSON.stringify(it.episodeIds), Date.now());
+        if (target.tvdbId && binned.length)
+          tidyAfterMove(
+            binned.map((b) => b.from),
+            target.arrRoot,
+          ); // "Delete empty folders" (the new file is already in place)
+        if (it.episodeIds.length)
+          db.prepare("INSERT OR REPLACE INTO file_links (path, tvdb_id, episode_ids, at) VALUES (?, ?, ?, ?)").run(
+            it.destArr,
+            target.tvdbId ?? null,
+            JSON.stringify(it.episodeIds),
+            Date.now(),
+          );
       } catch {
         /* bookkeeping only */
       }
-      logDecision("import", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`, detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) } }); // a grab's import notifies once, at the end
+      logDecision("import", {
+        tvdbId: target.tvdbId ?? null,
+        title: target.title,
+        episodeIds: it.episodeIds,
+        why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`,
+        detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
+      }); // a grab's import notifies once, at the end
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).
       if (did && fs.existsSync(tmp)) {
@@ -614,12 +769,21 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
         why = `${why}. The old file couldn't be put back (${stranded[0].why}): it is kept in the recycling bin at ${olds} (pinned, never purged), and the new file is ${newAt ? `at ${newAt}` : "not in place"}. Move the old file back to ${stranded[0].from} by hand, or import the new one again`;
         for (const b of stranded) {
           try {
-            pinBinned(b.to, `An import of ${it.label} couldn't put this file back to ${b.from}${newAt ? `; the new file is at ${newAt}` : ""}`);
+            pinBinned(
+              b.to,
+              `An import of ${it.label} couldn't put this file back to ${b.from}${newAt ? `; the new file is at ${newAt}` : ""}`,
+            );
           } catch {
             /* the message above still says where it is */
           }
         }
-        logDecision("fail", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Import of ${it.label} failed and ${why}`, detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) } });
+        logDecision("fail", {
+          tvdbId: target.tvdbId ?? null,
+          title: target.title,
+          episodeIds: it.episodeIds,
+          why: `Import of ${it.label} failed and ${why}`,
+          detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
+        });
       }
       out.push({ label: it.label, done: false, why });
     } finally {
@@ -632,11 +796,42 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
 
 // ---------------------------------------------------------------- movies
 
-export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; notes: string[] }
+export interface MoviePlan {
+  movieId: number;
+  title: string;
+  items: PlanItem[];
+  notes: string[];
+}
 
 /** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
-export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null }; part?: number }, deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile }): Promise<MoviePlan> {
-  const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, original_title, alt_titles, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; original_title: string | null; alt_titles: string | null; year: number | null; path: string; file: string | null } | undefined;
+export async function planMovieImport(
+  input: {
+    movieId: number;
+    path: string;
+    release?: string;
+    client?: string | null;
+    automatic?: boolean;
+    trusted?: string | null;
+    live?: { path: string; currentFile: string | null };
+    part?: number;
+  },
+  deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile },
+): Promise<MoviePlan> {
+  const mv = cache
+    .prepare("SELECT id, tmdb_id, imdb_id, title, original_title, alt_titles, year, path, file FROM movies WHERE id = ?")
+    .get(input.movieId) as
+    | {
+        id: number;
+        tmdb_id: number | null;
+        imdb_id: string | null;
+        title: string;
+        original_title: string | null;
+        alt_titles: string | null;
+        year: number | null;
+        path: string;
+        file: string | null;
+      }
+    | undefined;
   if (!mv) throw err("Unknown movie", 404);
   const m = getSettings().media;
   const notes: string[] = [];
@@ -650,8 +845,12 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   } catch {
     throw err(`AnimeArr can't read ${input.path}`);
   }
-  if (forbiddenSource(real)) throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
-  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted)) throw err(`${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`);
+  if (forbiddenSource(real))
+    throw err("Imports come from download folders, not from the library, the recycling bin or AnimeArr's own folder");
+  if (input.automatic && !inSourceRoots(real) && !trustedSource(real, input.trusted))
+    throw err(
+      `${input.path} isn't in AnimeArr's own download folders (${getSettings().importer.sourceRoots.join(", ")}); only a manual import can take it`,
+    );
   const minBytes = deps.minBytes ?? 100e6;
   const files = st.isDirectory() ? videosIn(real, minBytes) : VIDEO.test(real) && st.size >= minBytes ? [real] : [];
   const label = mv.year ? `${mv.title} (${mv.year})` : mv.title;
@@ -664,11 +863,47 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   } catch {
     alt = [];
   }
-  const named = bySize.length > 1 ? fileForMovie(bySize, movieSubtitles([mv.title, mv.original_title ?? "", ...alt], seriesForMovie(mv.id).map((x) => x.title))) : null;
-  if (named) notes.push(`picked ${path.basename(named.f)} (its name matches the movie); the other ${bySize.length - 1} video file${bySize.length - 1 === 1 ? "" : "s"} are left alone`);
+  const named =
+    bySize.length > 1
+      ? fileForMovie(
+          bySize,
+          movieSubtitles(
+            [mv.title, mv.original_title ?? "", ...alt],
+            seriesForMovie(mv.id).map((x) => x.title),
+          ),
+        )
+      : null;
+  if (named)
+    notes.push(
+      `picked ${path.basename(named.f)} (its name matches the movie); the other ${bySize.length - 1} video file${bySize.length - 1 === 1 ? "" : "s"} are left alone`,
+    );
   const main = named ?? bySize[0];
-  const base: PlanItem = { source: main.f, dest: "", destArr: "", episodeIds: [], label, action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move", sidecars: [], replaces: null, problem: null };
-  if (!named && bySize[1] && bySize[1].size > main.size * 0.4) return { movieId: mv.id, title: label, items: [{ ...base, problem: `several large video files (${bySize.slice(0, 3).map((x) => path.basename(x.f)).join(", ")}): import the right one by hand, or as parts` }], notes };
+  const base: PlanItem = {
+    source: main.f,
+    dest: "",
+    destArr: "",
+    episodeIds: [],
+    label,
+    action: isTorrentClient(input.client) ? (m.useHardlinks ? "hardlink" : "copy") : "move",
+    sidecars: [],
+    replaces: null,
+    problem: null,
+  };
+  if (!named && bySize[1] && bySize[1].size > main.size * 0.4)
+    return {
+      movieId: mv.id,
+      title: label,
+      items: [
+        {
+          ...base,
+          problem: `several large video files (${bySize
+            .slice(0, 3)
+            .map((x) => path.basename(x.f))
+            .join(", ")}): import the right one by hand, or as parts`,
+        },
+      ],
+      notes,
+    };
   let probe: Probe | null = null;
   try {
     probe = await deps.probe(main.f);
@@ -679,7 +914,20 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   const ext = path.extname(main.f).toLowerCase();
   const opts = namingOptions();
   const name0 = m.renameMovies
-    ? renderMovie(m.movieFormat, { movieTitle: mv.title, year: mv.year, quality: qualityName(release, probe?.video?.height ?? null), mediaInfo: mediaInfoOf(probe), releaseGroup: parseRelease(release).group, imdbId: mv.imdb_id, tmdbId: mv.tmdb_id, originalTitle: release }, { ...opts, colonReplacement: m.movieColonReplacement ?? opts.colonReplacement })
+    ? renderMovie(
+        m.movieFormat,
+        {
+          movieTitle: mv.title,
+          year: mv.year,
+          quality: qualityName(release, probe?.video?.height ?? null),
+          mediaInfo: mediaInfoOf(probe),
+          releaseGroup: parseRelease(release).group,
+          imdbId: mv.imdb_id,
+          tmdbId: mv.tmdb_id,
+          originalTitle: release,
+        },
+        { ...opts, colonReplacement: m.movieColonReplacement ?? opts.colonReplacement },
+      )
     : path.basename(main.f).replace(/\.[^.]+$/, "");
   // One part of a multi-part movie: Plex's stacking names ("<Movie> (Year) - pt1.mkv", "- pt2.mkv").
   const name = input.part ? `${name0} - pt${input.part}` : name0;
@@ -701,36 +949,62 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   else if (currentArr && !currentLocal) problem = "AnimeArr can't reach the movie's current file, so it can't replace it";
   else if (currentLocal && input.part) problem = "the movie already has a file: replacing it with a multi-part release is done by hand";
   else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
-  else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
-  else if (!freeSpaceOk(dest, main.size, { source: main.f, action: base.action, ledger: deps.space })) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
+  else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
+    problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
+  else if (!freeSpaceOk(dest, main.size, { source: main.f, action: base.action, ledger: deps.space }))
+    problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
   return {
     movieId: mv.id,
     title: label,
-    items: [{ ...base, dest, destArr, sidecars: m.importExtraFiles ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix })) : [], replaces: currentLocal, problem }],
+    items: [
+      {
+        ...base,
+        dest,
+        destArr,
+        sidecars: m.importExtraFiles
+          ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix }))
+          : [],
+        replaces: currentLocal,
+        problem,
+      },
+    ],
     notes,
   };
 }
 
 export async function executeMovieImport(plan: MoviePlan, opts: { dryRun?: boolean; grabId?: number } = {}) {
-  if (!opts.dryRun && !getSettings().importer.movies) throw err("Movie imports by AnimeArr's own importer aren't switched on yet (the first movie plan is being reviewed)", 409);
-  const mv = cache.prepare("SELECT id, path, title FROM movies WHERE id = ?").get(plan.movieId) as { id: number; path: string; title: string } | undefined;
+  if (!opts.dryRun && !getSettings().importer.movies)
+    throw err("Movie imports by AnimeArr's own importer aren't switched on yet (the first movie plan is being reviewed)", 409);
+  const mv = cache.prepare("SELECT id, path, title FROM movies WHERE id = ?").get(plan.movieId) as
+    { id: number; path: string; title: string } | undefined;
   if (!mv) throw err("Unknown movie", 404);
-  return placeItems(plan.items, {
-    arrRoot: mv.path,
-    title: plan.title,
-    movieId: mv.id,
-    after: async () => {
-      if (!isNativeMovieId(mv.id)) await radarr.rescanMovie(mv.id).catch(() => undefined);
-      await scanFolder(mv.path).catch(() => undefined);
-      if (isNativeMovieId(mv.id)) rematerializeMovie(mv.id);
-      await afterLibraryChange({ folders: [mv.path] });
+  return placeItems(
+    plan.items,
+    {
+      arrRoot: mv.path,
+      title: plan.title,
+      movieId: mv.id,
+      after: async () => {
+        if (!isNativeMovieId(mv.id)) await radarr.rescanMovie(mv.id).catch(() => undefined);
+        await scanFolder(mv.path).catch(() => undefined);
+        if (isNativeMovieId(mv.id)) rematerializeMovie(mv.id);
+        await afterLibraryChange({ folders: [mv.path] });
+      },
     },
-  }, opts);
+    opts,
+  );
 }
 
 // ---------------------------------------------------------------- rename existing files
 
-export interface RenameItem { fileId: number; from: string; to: string; episodes: string; problem: string | null; sidecars: { from: string; to: string }[] }
+export interface RenameItem {
+  fileId: number;
+  from: string;
+  to: string;
+  episodes: string;
+  problem: string | null;
+  sidecars: { from: string; to: string }[];
+}
 
 /** Sonarr's {Quality Full}: the name, then v2 (anime) / Proper / Repack, then REAL. */
 export function qualityFull(name: string, rev: { version?: number; real?: number; isRepack?: boolean }, seriesType: string) {
@@ -748,11 +1022,19 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
   const m = getSettings().media;
   if (!m.renameEpisodes) return { items: [] };
   const fmt = s.series_type === "anime" ? m.animeEpisodeFormat : s.series_type === "daily" ? m.dailyEpisodeFormat : m.standardEpisodeFormat;
-  const files = cache.prepare("SELECT id, path, scene_name, quality, revision FROM files WHERE series_id = ?").all(s.id) as { id: number; path: string; scene_name: string | null; quality: string | null; revision: string | null }[];
+  const files = cache.prepare("SELECT id, path, scene_name, quality, revision FROM files WHERE series_id = ?").all(s.id) as {
+    id: number;
+    path: string;
+    scene_name: string | null;
+    quality: string | null;
+    revision: string | null;
+  }[];
   const items: RenameItem[] = [];
   const taken = new Set<string>();
   const listing = new Map<string, string[]>();
-  const epsOf = cache.prepare("SELECT id, season, episode, absolute, title, air_date, file_id FROM episodes WHERE file_id = ? ORDER BY season, episode");
+  const epsOf = cache.prepare(
+    "SELECT id, season, episode, absolute, title, air_date, file_id FROM episodes WHERE file_id = ? ORDER BY season, episode",
+  );
   const recOf = db.prepare("SELECT video, audio, subs FROM media_files WHERE path = ?");
   for (const f of files) {
     const eps = allRows<Ep>(epsOf, f.id);
@@ -762,7 +1044,12 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
     let to: string;
     try {
       if (!f.revision || !f.quality) throw new Error("waiting for the show's next sync from Sonarr (quality details)");
-      to = episodeDestination(tvdbId, eps, { release: f.scene_name ?? path.posix.basename(f.path).replace(/\.[^.]+$/, ""), ext: path.posix.extname(f.path), probe, quality: qualityFull(f.quality, JSON.parse(f.revision), s.series_type) });
+      to = episodeDestination(tvdbId, eps, {
+        release: f.scene_name ?? path.posix.basename(f.path).replace(/\.[^.]+$/, ""),
+        ext: path.posix.extname(f.path),
+        probe,
+        quality: qualityFull(f.quality, JSON.parse(f.revision), s.series_type),
+      });
     } catch (e) {
       items.push({ fileId: f.id, from: f.path, to: f.path, episodes: "", problem: (e as Error).message, sidecars: [] });
       continue;
@@ -773,12 +1060,20 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
     let problem: string | null = null;
     if (!underAllowedRoot(s.path)) problem = "outside the allowed root folders";
     else if (!local) problem = "AnimeArr can't reach this file";
-    else if (!probe || (BIT_DEPTH.test(fmt) && !probe.video?.bitDepth)) problem = "the file's details aren't scanned yet (Refresh & scan first)";
+    else if (!probe || (BIT_DEPTH.test(fmt) && !probe.video?.bitDepth))
+      problem = "the file's details aren't scanned yet (Refresh & scan first)";
     else if (taken.has(to)) problem = "two files would get the same name";
     else if (fs.existsSync(toLocal)) problem = "a file with the new name already exists: never overwritten";
     taken.add(to);
     const side = local ? sidecarsFor(local, listing).map((x) => ({ from: x.file, to: toLocal.replace(/\.[^.]+$/, "") + x.suffix })) : [];
-    items.push({ fileId: f.id, from: f.path, to, episodes: eps.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`).join("+"), problem, sidecars: side });
+    items.push({
+      fileId: f.id,
+      from: f.path,
+      to,
+      episodes: eps.map((e) => `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`).join("+"),
+      problem,
+      sidecars: side,
+    });
   }
   return { items };
 }
@@ -795,7 +1090,10 @@ export function renameRoute(tvdbId: number, deps = { sonarrOn: sonarr.sonarrConf
 }
 
 /** The rename preview by route: Sonarr's own preview, or AnimeArr's plan. */
-export async function renamePlan(tvdbId: number, deps = { sonarrOn: sonarr.sonarrConfigured, preview: sonarr.renamePreview }): Promise<{ route: RenameRoute; items: RenameItem[] }> {
+export async function renamePlan(
+  tvdbId: number,
+  deps = { sonarrOn: sonarr.sonarrConfigured, preview: sonarr.renamePreview },
+): Promise<{ route: RenameRoute; items: RenameItem[] }> {
   const route = renameRoute(tvdbId, deps);
   if (route === "animearr") return { route, items: planRename(tvdbId).items };
   const s = seriesRow(tvdbId)!;
@@ -813,7 +1111,17 @@ export async function renamePlan(tvdbId: number, deps = { sonarrOn: sonarr.sonar
 }
 
 /** Renames the chosen files by route. Through Sonarr: its RenameFiles command (no undo; Sonarr keeps its records). */
-export async function applyRenameRouted(tvdbId: number, fileIds: number[], deps = { sonarrOn: sonarr.sonarrConfigured, preview: sonarr.renamePreview, renameFiles: sonarr.renameFiles, getCommand: sonarr.getCommand, sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)) }) {
+export async function applyRenameRouted(
+  tvdbId: number,
+  fileIds: number[],
+  deps = {
+    sonarrOn: sonarr.sonarrConfigured,
+    preview: sonarr.renamePreview,
+    renameFiles: sonarr.renameFiles,
+    getCommand: sonarr.getCommand,
+    sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+  },
+) {
   const route = renameRoute(tvdbId, deps);
   if (route === "animearr") return { route, results: await applyRename(tvdbId, fileIds) };
   if (!getSettings().importer.allowRename) throw err("Renaming isn't switched on (Settings → Media management → Importer)", 409);
@@ -821,16 +1129,33 @@ export async function applyRenameRouted(tvdbId: number, fileIds: number[], deps 
   if (!underAllowedRoot(s.path)) throw err("This show is outside the allowed root folders");
   const before = (await renamePlan(tvdbId, deps)).items.filter((i) => fileIds.includes(i.fileId));
   if (!before.length) return { route, results: [] };
-  const cmd = await deps.renameFiles(s.id, before.map((i) => i.fileId));
+  const cmd = await deps.renameFiles(
+    s.id,
+    before.map((i) => i.fileId),
+  );
   let status = "queued";
   for (let i = 0; i < 60 && !["completed", "failed", "aborted"].includes(status); i++) {
     await deps.sleep(2000);
     status = (await deps.getCommand(cmd.id)).status;
   }
   const still = new Set((await renamePlan(tvdbId, deps)).items.map((i) => i.fileId));
-  const results = before.map((i) => ({ from: i.from, to: i.to, done: status === "completed" && !still.has(i.fileId), why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}` }));
+  const results = before.map((i) => ({
+    from: i.from,
+    to: i.to,
+    done: status === "completed" && !still.has(i.fileId),
+    why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}`,
+  }));
   const n = results.filter((r) => r.done).length;
-  if (n) logDecision("info", { tvdbId, title: s.title, why: `Sonarr renamed ${n} file${n === 1 ? "" : "s"} of ${s.title} (asked by AnimeArr; Sonarr keeps its file records). ${results.filter((r) => r.done).slice(0, 3).map((r) => path.posix.basename(r.to)).join(", ")}${n > 3 ? "…" : ""}` });
+  if (n)
+    logDecision("info", {
+      tvdbId,
+      title: s.title,
+      why: `Sonarr renamed ${n} file${n === 1 ? "" : "s"} of ${s.title} (asked by AnimeArr; Sonarr keeps its file records). ${results
+        .filter((r) => r.done)
+        .slice(0, 3)
+        .map((r) => path.posix.basename(r.to))
+        .join(", ")}${n > 3 ? "…" : ""}`,
+    });
   void scanFolder(s.path).catch(() => undefined);
   return { route, results };
 }
@@ -854,7 +1179,10 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
       const b = mappedPath(it.to);
       if (!under(a, seriesLocal) || !under(b, seriesLocal)) throw new Error("outside the show's folder");
       await moveNoClobber(a, b);
-      applyFileDate(b, (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id)); // "Change file date"
+      applyFileDate(
+        b,
+        (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id),
+      ); // "Change file date"
       const st = fs.statSync(b);
       const sides: { from: string; to: string }[] = [];
       for (const x of it.sidecars) {
@@ -866,8 +1194,18 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
         }
       }
       tidyAfterMove([a], s.path); // "Delete empty folders": the old season folder, when the new name put the file elsewhere
-      out.push({ from: it.from, to: it.to, done: true, why: sides.length < it.sidecars.length ? "renamed (some subtitle files kept their names)" : "renamed" });
-      logDecision("info", { tvdbId, title: s.title, why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`, undo: { action: "rename-back", args: { tvdbId, from: b, to: a, size: st.size, mtime: st.mtimeMs, sidecars: sides } } });
+      out.push({
+        from: it.from,
+        to: it.to,
+        done: true,
+        why: sides.length < it.sidecars.length ? "renamed (some subtitle files kept their names)" : "renamed",
+      });
+      logDecision("info", {
+        tvdbId,
+        title: s.title,
+        why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`,
+        undo: { action: "rename-back", args: { tvdbId, from: b, to: a, size: st.size, mtime: st.mtimeMs, sidecars: sides } },
+      });
     } catch (e) {
       out.push({ from: it.from, to: it.to, done: false, why: (e as Error).message });
     }
@@ -882,7 +1220,14 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
 }
 
 /** Undo of a rename (from the activity log): only inside the show's folder, only if it's still the same file. */
-export async function renameBack(args: { tvdbId?: number; from: string; to: string; size?: number; mtime?: number; sidecars?: { from: string; to: string }[] }) {
+export async function renameBack(args: {
+  tvdbId?: number;
+  from: string;
+  to: string;
+  size?: number;
+  mtime?: number;
+  sidecars?: { from: string; to: string }[];
+}) {
   const s = args.tvdbId ? seriesRow(args.tvdbId) : undefined;
   if (!s || !underAllowedRoot(s.path)) throw new Error("this show is no longer in an allowed root folder");
   const root = mappedPath(s.path);
@@ -906,8 +1251,23 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
 
 // ---------------------------------------------------------------- manual import: browse the download folders
 
-export interface BrowseEntry { name: string; path: string; dir: boolean; size: number; mtime: number; video: boolean; videos: number }
-export interface BrowseResult { roots: { path: string; label: string }[]; path: string | null; parent: string | null; entries: BrowseEntry[]; truncated: boolean; capped?: true }
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  dir: boolean;
+  size: number;
+  mtime: number;
+  video: boolean;
+  videos: number;
+}
+export interface BrowseResult {
+  roots: { path: string; label: string }[];
+  path: string | null;
+  parent: string | null;
+  entries: BrowseEntry[];
+  truncated: boolean;
+  capped?: true;
+}
 
 /** Where a manual import may browse: the importer's source roots, plus a grab's own download folder (resolved by the server). */
 export function browseRoots(extra: (string | null | undefined)[] = []) {
@@ -990,12 +1350,14 @@ async function folderStats(dir: string, budget: Budget) {
 async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
   return out;
 }
 
@@ -1004,7 +1366,11 @@ async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): 
  * never the library/bin/config); newest first; video files flagged. No path = the roots themselves. Asynchronous and
  * capped at BROWSE_BUDGET file-system calls (folder sizes are then partial: `capped`).
  */
-export async function browseImport(input: { path?: string | null; extra?: (string | null | undefined)[]; budget?: number }): Promise<BrowseResult> {
+export async function browseImport(input: {
+  path?: string | null;
+  extra?: (string | null | undefined)[];
+  budget?: number;
+}): Promise<BrowseResult> {
   const roots = browseRoots(input.extra);
   const rootsOut = roots.map((r) => ({ path: r.path, label: r.label }));
   const budget: Budget = { left: input.budget ?? BROWSE_BUDGET };

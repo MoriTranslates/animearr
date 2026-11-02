@@ -5,12 +5,26 @@ import { compareQuality, height, libraryQuality, ranges, splitPacks, step } from
 
 const targets = Array.from({ length: 12 }, (_, i) => ({ id: 100 + i + 1, episode: i + 1 }));
 const ids = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => 100 + from + i);
-const r = (guid: string, episodeIds: number[], source: string | null = "web", resolution: number | null = 1080, remux = false) => ({ guid, episodeIds, quality: { source, resolution, remux } });
+const r = (guid: string, episodeIds: number[], source: string | null = "web", resolution: number | null = 1080, remux = false) => ({
+  guid,
+  episodeIds,
+  quality: { source, resolution, remux },
+});
 
 test("singles go to their own list; packs need 2+ of the picked episodes", () => {
-  const { packs, singles } = splitPacks([r("e1", [101]), r("whole", ids(1, 12)), r("e2", [102]), r("half", ids(1, 6)), r("other", [101, 999])], targets);
-  assert.deepEqual(singles.map((x) => x.guid), ["e1", "e2", "other"], "a release with one of the picked episodes is a single");
-  assert.deepEqual(packs.map((x) => x.r.guid), ["whole", "half"]);
+  const { packs, singles } = splitPacks(
+    [r("e1", [101]), r("whole", ids(1, 12)), r("e2", [102]), r("half", ids(1, 6)), r("other", [101, 999])],
+    targets,
+  );
+  assert.deepEqual(
+    singles.map((x) => x.guid),
+    ["e1", "e2", "other"],
+    "a release with one of the picked episodes is a single",
+  );
+  assert.deepEqual(
+    packs.map((x) => x.r.guid),
+    ["whole", "half"],
+  );
   assert.equal(packs[0].whole, true);
   assert.equal(packs[0].covered, 12);
   assert.equal(packs[1].whole, false);
@@ -19,10 +33,23 @@ test("singles go to their own list; packs need 2+ of the picked episodes", () =>
 
 test("whole season first, then upgrades before same before lower, then the server's order", () => {
   const have = { source: "web", resolution: 1080 };
-  const list = [r("half-bd", ids(1, 6), "bluray"), r("whole-tv", ids(1, 12), "hdtv"), r("whole-web", ids(1, 12)), r("whole-bd", ids(1, 12), "bluray"), r("whole-unknown", ids(1, 12), null), r("whole-bd-2", ids(1, 12), "bluray")];
-  assert.deepEqual(splitPacks(list, targets, have).packs.map((x) => x.r.guid), ["whole-bd", "whole-bd-2", "whole-web", "whole-unknown", "whole-tv", "half-bd"]);
+  const list = [
+    r("half-bd", ids(1, 6), "bluray"),
+    r("whole-tv", ids(1, 12), "hdtv"),
+    r("whole-web", ids(1, 12)),
+    r("whole-bd", ids(1, 12), "bluray"),
+    r("whole-unknown", ids(1, 12), null),
+    r("whole-bd-2", ids(1, 12), "bluray"),
+  ];
+  assert.deepEqual(
+    splitPacks(list, targets, have).packs.map((x) => x.r.guid),
+    ["whole-bd", "whole-bd-2", "whole-web", "whole-unknown", "whole-tv", "half-bd"],
+  );
   // No library quality known: coverage, then the server's order.
-  assert.deepEqual(splitPacks(list, targets).packs.map((x) => x.r.guid), ["whole-tv", "whole-web", "whole-bd", "whole-unknown", "whole-bd-2", "half-bd"]);
+  assert.deepEqual(
+    splitPacks(list, targets).packs.map((x) => x.r.guid),
+    ["whole-tv", "whole-web", "whole-bd", "whole-unknown", "whole-bd-2", "half-bd"],
+  );
 });
 
 test("a one-episode search counts any multi-episode release as a pack", () => {
@@ -51,7 +78,11 @@ test("compare: upgrade, same and lower quality, named plainly", () => {
   assert.deepEqual(compareQuality({ source: "bluray", resolution: 1080 }, web), { verdict: "up", from: "WEB-DL", to: "Blu-ray" });
   assert.deepEqual(compareQuality({ source: "web", resolution: 1080 }, web), { verdict: "same", from: "WEB-DL 1080p", to: "WEB-DL 1080p" });
   assert.deepEqual(compareQuality({ source: "web", resolution: 720 }, web), { verdict: "down", from: "WEB-DL 1080p", to: "WEB-DL 720p" });
-  assert.deepEqual(compareQuality({ source: "hdtv", resolution: 1080 }, { source: "BluRay", resolution: 1080 }), { verdict: "down", from: "Blu-ray", to: "TV" });
+  assert.deepEqual(compareQuality({ source: "hdtv", resolution: 1080 }, { source: "BluRay", resolution: 1080 }), {
+    verdict: "down",
+    from: "Blu-ray",
+    to: "TV",
+  });
   assert.equal(compareQuality({ source: null, resolution: 1080 }, web).verdict, "unknown");
   assert.equal(compareQuality({ source: "web", resolution: 1080 }, null).verdict, "unknown");
 });
@@ -67,6 +98,9 @@ test("library quality: the most common source × resolution, with the per-source
   assert.equal(step(h.main), 2);
   assert.equal(height(h.main.resolution), 1080);
   assert.equal(h.files, 12);
-  assert.deepEqual(h.bySource, [{ name: "WEB-DL", n: 10 }, { name: "TV", n: 2 }]);
+  assert.deepEqual(h.bySource, [
+    { name: "WEB-DL", n: 10 },
+    { name: "TV", n: 2 },
+  ]);
   assert.equal(libraryQuality([{ source: null, resolution: null, n: 5 }]), null);
 });

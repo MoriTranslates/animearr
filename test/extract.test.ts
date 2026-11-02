@@ -17,7 +17,18 @@ async function settle(dir: string, key: string, opts: Parameters<typeof extractI
 
 test("first volumes only", () => {
   assert.deepEqual(
-    firstVolumes(["a/x.part01.rar", "a/x.part02.rar", "a/x.r00", "b/y.rar", "c/z.7z.001", "c/z.7z.002", "d/w.zip", "e/v.7z", "sample/s.rar", `${UNPACK_DIR}/1/q.zip`]),
+    firstVolumes([
+      "a/x.part01.rar",
+      "a/x.part02.rar",
+      "a/x.r00",
+      "b/y.rar",
+      "c/z.7z.001",
+      "c/z.7z.002",
+      "d/w.zip",
+      "e/v.7z",
+      "sample/s.rar",
+      `${UNPACK_DIR}/1/q.zip`,
+    ]),
     ["a/x.part01.rar", "b/y.rar", "c/z.7z.001", "d/w.zip", "e/v.7z"],
   );
 });

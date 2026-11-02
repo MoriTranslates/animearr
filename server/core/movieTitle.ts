@@ -67,7 +67,15 @@ export function namesSubtitle(name: string, subtitles: string[]) {
  */
 export function fileForMovie<T extends { path: string }>(files: T[], subtitles: string[]): T | null {
   if (!subtitles.length) return null;
-  const hits = files.filter((f) => namesSubtitle(f.path.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ""), subtitles));
+  const hits = files.filter((f) =>
+    namesSubtitle(
+      f.path
+        .split(/[\\/]/)
+        .pop()!
+        .replace(/\.[^.]+$/, ""),
+      subtitles,
+    ),
+  );
   return hits.length === 1 ? hits[0] : null;
 }
 

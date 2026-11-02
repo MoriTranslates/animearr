@@ -25,7 +25,11 @@ export function Leaves({ season }: { season: SeasonKey }) {
   return (
     <span className="leaves" aria-hidden="true">
       {SPOTS.map((p, i) => (
-        <svg key={i} viewBox="0 0 24 24" style={{ left: p.left, top: p.top, width: p.size, height: p.size, transform: `rotate(${p.rot}deg)`, opacity: p.o }}>
+        <svg
+          key={i}
+          viewBox="0 0 24 24"
+          style={{ left: p.left, top: p.top, width: p.size, height: p.size, transform: `rotate(${p.rot}deg)`, opacity: p.o }}
+        >
           <path d={SHAPES[season]} />
         </svg>
       ))}
@@ -34,7 +38,21 @@ export function Leaves({ season }: { season: SeasonKey }) {
 }
 
 /** The seasonal page header: 秋 + "Fall 2026 season", a line of context, and pills or controls on the right. */
-export function SeasonHeader({ title, eyebrow, sub, right, children, compact = false }: { title?: ReactNode; eyebrow?: ReactNode; sub?: ReactNode; right?: ReactNode; children?: ReactNode; compact?: boolean }) {
+export function SeasonHeader({
+  title,
+  eyebrow,
+  sub,
+  right,
+  children,
+  compact = false,
+}: {
+  title?: ReactNode;
+  eyebrow?: ReactNode;
+  sub?: ReactNode;
+  right?: ReactNode;
+  children?: ReactNode;
+  compact?: boolean;
+}) {
   const s = seasonOf();
   const now = new Date();
   return (
@@ -44,7 +62,9 @@ export function SeasonHeader({ title, eyebrow, sub, right, children, compact = f
         {s.kanji}
       </span>
       <div className="season-hd-text">
-        <span className="eyebrow accent">{eyebrow ?? now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span>
+        <span className="eyebrow accent">
+          {eyebrow ?? now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+        </span>
         <h1 className="season-ttl">{title ?? t("season.title", { season: t(`season.${s.key}` as I18nKey), year: s.year })}</h1>
         {sub && <p className="muted season-sub">{sub}</p>}
         {children}

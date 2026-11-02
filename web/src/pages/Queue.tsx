@@ -4,7 +4,22 @@ import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, usePoll, useToast, Why, ReleaseName } from "../ui";
+import {
+  Chip,
+  Confirm,
+  dateTime,
+  Empty,
+  ErrorBox,
+  Menu,
+  Spinner,
+  thumbUrl,
+  useLoad,
+  usePageTitle,
+  usePoll,
+  useToast,
+  Why,
+  ReleaseName,
+} from "../ui";
 import { SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
 import { FileX } from "lucide-react";
@@ -22,7 +37,8 @@ interface Item {
   state: string;
   dryRun: boolean;
   why: string;
-  error: string | null; fixes?: import("../api").Fix[];
+  error: string | null;
+  fixes?: import("../api").Fix[];
   /** The problem in one plain line ("Failed: a download source is offline."). */
   summary?: string | null;
   cover?: string | null;
@@ -38,13 +54,39 @@ interface Item {
   ahead?: number | null;
   /** Smart batch: "Downloading 4 of 26 episodes (you have the rest)". */
   batch?: string | null;
-  live?: { state: string; progress: number; etaSec?: number | null; speed?: number | null; sizeBytes?: number | null; clientStatus?: string; seeders?: number | null; message?: string } | null;
+  live?: {
+    state: string;
+    progress: number;
+    etaSec?: number | null;
+    speed?: number | null;
+    sizeBytes?: number | null;
+    clientStatus?: string;
+    seeders?: number | null;
+    message?: string;
+  } | null;
 }
 
-const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = { done: "good", failed: "bad", "needs-attention": "warn", downloading: "accent", importing: "accent", sending: "info", "dry-run": "info" };
-const ICON: Record<string, string> = { done: "✓", failed: "✕", "needs-attention": "⚠", downloading: "↓", importing: "⇢", sending: "…", "dry-run": "◌" };
+const STATE_TONE: Record<string, "good" | "bad" | "warn" | "info" | "accent"> = {
+  done: "good",
+  failed: "bad",
+  "needs-attention": "warn",
+  downloading: "accent",
+  importing: "accent",
+  sending: "info",
+  "dry-run": "info",
+};
+const ICON: Record<string, string> = {
+  done: "✓",
+  failed: "✕",
+  "needs-attention": "⚠",
+  downloading: "↓",
+  importing: "⇢",
+  sending: "…",
+  "dry-run": "◌",
+};
 
-const eta = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`);
+const eta = (s: number) =>
+  s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`;
 
 export function StateChip({ state }: { state: string }) {
   return (
@@ -61,10 +103,20 @@ export function Queue() {
   const [tab, setTab] = useState<"queue" | "history">(query().get("tab") === "history" ? "history" : "queue");
   return (
     <section>
-      <SeasonHeader compact eyebrow={`${seasonOf().kanji} ${t(`season.${seasonOf().key}` as I18nKey)} ${seasonOf().year}`} title={t("queue.title")}>
+      <SeasonHeader
+        compact
+        eyebrow={`${seasonOf().kanji} ${t(`season.${seasonOf().key}` as I18nKey)} ${seasonOf().year}`}
+        title={t("queue.title")}
+      >
         <div className="seg seg-accent queue-seg" role="tablist">
           {(["queue", "history"] as const).map((x) => (
-            <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => (setTab(x), history.replaceState(null, "", `/queue?tab=${x}`))}>
+            <button
+              key={x}
+              role="tab"
+              aria-selected={tab === x}
+              className={tab === x ? "on" : ""}
+              onClick={() => (setTab(x), history.replaceState(null, "", `/queue?tab=${x}`))}
+            >
               {t(`queue.tab.${x}`)}
             </button>
           ))}
@@ -92,13 +144,21 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
     <div className="list">
-      {!d.data.items.length && <Empty icon="↓" title={t("queue.quiet")} action={{ label: t("queue.tab.history"), run: onHistory }}>{t("queue.empty")}</Empty>}
+      {!d.data.items.length && (
+        <Empty icon="↓" title={t("queue.quiet")} action={{ label: t("queue.tab.history"), run: onHistory }}>
+          {t("queue.empty")}
+        </Empty>
+      )}
       {d.data.items.map((g) => {
         const pct = Math.round((g.live?.progress ?? g.progress ?? 0) * 100);
         return (
           <article key={g.id} className={`card qcard${g.state === "needs-attention" ? " attention" : ""}`} style={showVars(g.color)}>
             <div className="qhead">
-              {g.cover ? <img className="qposter" src={thumbUrl(g.cover, "sm")} alt="" width={44} height={64} /> : <span className="qposter" />}
+              {g.cover ? (
+                <img className="qposter" src={thumbUrl(g.cover, "sm")} alt="" width={44} height={64} />
+              ) : (
+                <span className="qposter" />
+              )}
               <ShowLink tvdbId={g.tvdbId} title={g.series} to={g.movieId ? `/movie/${g.movieId}` : undefined} className="qtitle">
                 <span className="stack">
                   <span className="strong clamp2">{g.series}</span>
@@ -115,7 +175,13 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
             )}
             <div className="row between qmeta">
               <span className="muted small">
-                {g.state === "downloading" && g.stage === "waiting" ? `⇢ ${g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}` : g.live?.etaSec ? t("queue.speedEta", { speed: fmtSize(g.live.speed ?? 0), eta: eta(g.live.etaSec) }) : g.state === "downloading" ? statusLine(g) : ""}
+                {g.state === "downloading" && g.stage === "waiting"
+                  ? `⇢ ${g.ahead ? t("ep.waitingImportAhead", { n: g.ahead }) : t("ep.waitingImport")}`
+                  : g.live?.etaSec
+                    ? t("queue.speedEta", { speed: fmtSize(g.live.speed ?? 0), eta: eta(g.live.etaSec) })
+                    : g.state === "downloading"
+                      ? statusLine(g)
+                      : ""}
               </span>
               <span className="row qclient">
                 <span className="muted small">
@@ -123,7 +189,17 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
                   {g.live?.sizeBytes ? ` · ${fmtSize(g.live.sizeBytes)}` : ""}
                   {g.attempt > 1 ? ` · #${g.attempt}` : ""}
                 </span>
-                <Menu label={`${g.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => setRemove(g), hidden: !(g.state === "downloading" || g.state === "needs-attention") }]} />
+                <Menu
+                  label={`${g.series}: ${t("common.moreActions")}`}
+                  items={[
+                    {
+                      label: t("queue.remove"),
+                      danger: true,
+                      onSelect: () => setRemove(g),
+                      hidden: !(g.state === "downloading" || g.state === "needs-attention"),
+                    },
+                  ]}
+                />
               </span>
             </div>
             <ReleaseLine release={g.release} />
@@ -141,7 +217,10 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
               </p>
             )}
             {g.state === "needs-attention" && <p className="muted small">{t("queue.attentionActions")}</p>}
-            <Why summary={t("activity.detailsShort")} lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]} />
+            <Why
+              summary={t("activity.detailsShort")}
+              lines={[...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : []), ...(g.live?.message ? [g.live.message] : [])]}
+            />
             <div className="row">
               <FixButtons fixes={g.fixes} />
               {g.state === "needs-attention" && !g.fixes?.some((f) => f.action === "retryImport") && (
@@ -183,10 +262,12 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
         >
           <p>{t("queue.removeBody", { release: remove.release, client: remove.clientName || remove.client || "" })}</p>
           <label className="check">
-            <input type="checkbox" checked={opts.blocklist} onChange={(e) => setOpts({ ...opts, blocklist: e.target.checked })} /> {t("queue.blocklist")}
+            <input type="checkbox" checked={opts.blocklist} onChange={(e) => setOpts({ ...opts, blocklist: e.target.checked })} />{" "}
+            {t("queue.blocklist")}
           </label>
           <label className="check">
-            <input type="checkbox" checked={opts.searchNext} onChange={(e) => setOpts({ ...opts, searchNext: e.target.checked })} /> {t("queue.searchNext")}
+            <input type="checkbox" checked={opts.searchNext} onChange={(e) => setOpts({ ...opts, searchNext: e.target.checked })} />{" "}
+            {t("queue.searchNext")}
           </label>
         </Confirm>
       )}
@@ -236,7 +317,10 @@ function History() {
             {/* The plain reason leads; the release name and the raw messages are the details. */}
             {g.summary && <p className={`small ${g.state === "failed" ? "warn-text" : "muted"}`}>{g.summary}</p>}
             {g.state === "failed" && g.error && !g.summary && <p className="small warn-text clamp2">{g.error}</p>}
-            <Why summary={t("activity.detailsShort")} lines={[g.release, ...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : [])]} />
+            <Why
+              summary={t("activity.detailsShort")}
+              lines={[g.release, ...(g.batch ? [g.batch] : []), g.why, ...(g.error ? [g.error] : [])]}
+            />
             <FixButtons fixes={g.fixes} />
           </article>
         ))}
@@ -255,8 +339,26 @@ function History() {
   );
 }
 
-interface Problem { id: number; downloadId: string | null; series: string; tvdbId: number | null; episodes: string[]; release: string; client: string | null; protocol: string | null; problem: string; messages: string[]; added: string | null }
-const PROBLEM_TONE: Record<string, "bad" | "warn" | "info"> = { failed: "bad", "sonarr-handling": "info", "import-blocked": "warn", warning: "warn", stalled: "info" };
+interface Problem {
+  id: number;
+  downloadId: string | null;
+  series: string;
+  tvdbId: number | null;
+  episodes: string[];
+  release: string;
+  client: string | null;
+  protocol: string | null;
+  problem: string;
+  messages: string[];
+  added: string | null;
+}
+const PROBLEM_TONE: Record<string, "bad" | "warn" | "info"> = {
+  failed: "bad",
+  "sonarr-handling": "info",
+  "import-blocked": "warn",
+  warning: "warn",
+  stalled: "info",
+};
 
 /** Sonarr's own queue: only the items that need a look (report; removal only when you ask). */
 function SonarrProblems() {
@@ -288,7 +390,10 @@ function SonarrProblems() {
             {!!p.messages.length && <Why lines={p.messages} />}
             {p.problem !== "sonarr-handling" && (
               <div className="row end">
-                <Menu label={`${p.series}: ${t("common.moreActions")}`} items={[{ label: t("queue.remove"), danger: true, onSelect: () => (setBlocklist(true), setRemove(p)) }]} />
+                <Menu
+                  label={`${p.series}: ${t("common.moreActions")}`}
+                  items={[{ label: t("queue.remove"), danger: true, onSelect: () => (setBlocklist(true), setRemove(p)) }]}
+                />
               </div>
             )}
           </article>
@@ -325,18 +430,35 @@ function SonarrProblems() {
 export function ReleaseLine({ release }: { release: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <button className={`release-line small muted${open ? "" : " clamp1"}`} title={release} aria-expanded={open} onClick={() => setOpen(!open)}>
+    <button
+      className={`release-line small muted${open ? "" : " clamp1"}`}
+      title={release}
+      aria-expanded={open}
+      onClick={() => setOpen(!open)}
+    >
       <ReleaseName name={release} />
     </button>
   );
 }
 
 /** What a download is doing when there's no ETA: "Queued in qBittorrent · 1 seeder", "Stalled · 0 seeders". */
-function statusLine(g: { live?: { state: string; clientStatus?: string; seeders?: number | null; message?: string } | null; clientName?: string | null; protocol: string }) {
+function statusLine(g: {
+  live?: { state: string; clientStatus?: string; seeders?: number | null; message?: string } | null;
+  clientName?: string | null;
+  protocol: string;
+}) {
   const l = g.live;
   if (!l) return t("queue.waitingClient");
   if (l.state === "unknown") return l.message ?? t("queue.waitingClient");
   const raw = l.clientStatus ?? l.state;
-  const what = /stalled/i.test(raw) ? t("queue.st.stalled") : /queued|paused|stopped/i.test(raw) ? t("queue.st.queued", { client: g.clientName || g.protocol }) : /meta/i.test(raw) ? t("queue.st.meta") : /check/i.test(raw) ? t("queue.st.checking") : t("queue.st.downloading");
+  const what = /stalled/i.test(raw)
+    ? t("queue.st.stalled")
+    : /queued|paused|stopped/i.test(raw)
+      ? t("queue.st.queued", { client: g.clientName || g.protocol })
+      : /meta/i.test(raw)
+        ? t("queue.st.meta")
+        : /check/i.test(raw)
+          ? t("queue.st.checking")
+          : t("queue.st.downloading");
   return l.seeders !== null && l.seeders !== undefined ? `${what} · ${t("queue.seeders", { n: l.seeders })}` : what;
 }

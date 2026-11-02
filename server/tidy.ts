@@ -12,9 +12,15 @@ import { mappedPath } from "./paths.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
 /** The mtime a file should get for these episodes, or null (setting off, no air date, a future or pre-1970 date). */
-export function airDateMtime(episodeIds: number[], mode: "none" | "localAirDate" | "utcAirDate" = getSettings().media.fileDate, now = Date.now()): Date | null {
+export function airDateMtime(
+  episodeIds: number[],
+  mode: "none" | "localAirDate" | "utcAirDate" = getSettings().media.fileDate,
+  now = Date.now(),
+): Date | null {
   if (mode === "none" || !episodeIds.length) return null;
-  const rows = cache.prepare(`SELECT air_utc FROM episodes WHERE id IN (${episodeIds.map(() => "?").join(",")}) AND air_utc IS NOT NULL`).all(...episodeIds) as { air_utc: number }[];
+  const rows = cache
+    .prepare(`SELECT air_utc FROM episodes WHERE id IN (${episodeIds.map(() => "?").join(",")}) AND air_utc IS NOT NULL`)
+    .all(...episodeIds) as { air_utc: number }[];
   if (!rows.length) return null;
   const first = new Date(Math.min(...rows.map((r) => r.air_utc))); // a multi-episode file takes its first episode's date
   // UTC: the exact air time. Local: that day's date at midnight in the server's time zone.
@@ -68,5 +74,8 @@ export function pruneEmptyFolders(dirs: string[], showFolder: string, enabled = 
 /** For the importer: prune after a series' file moved away, only for shows inside the allowed roots. */
 export function tidyAfterMove(oldFiles: string[], seriesPath: string): string[] {
   if (!getSettings().media.deleteEmptyFolders || !underAllowedRoot(seriesPath)) return [];
-  return pruneEmptyFolders(oldFiles.map((f) => path.dirname(f)), mappedPath(seriesPath));
+  return pruneEmptyFolders(
+    oldFiles.map((f) => path.dirname(f)),
+    mappedPath(seriesPath),
+  );
 }
