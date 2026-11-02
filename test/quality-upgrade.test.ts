@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { getSettings, patchSettings } = await import("../server/system/settings.js");
-const { profileFor, saveProfile, defaultProfile } = await import("../server/profiles.js");
+const { profileFor, saveProfile, defaultProfile } = await import("../server/library/profiles.js");
 const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/search/qualityLocks.js");
 const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");

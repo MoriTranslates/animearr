@@ -36,12 +36,12 @@ import {
 } from "../core/quality.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
-import { ownedElsewhere } from "../duplicates.js";
+import { ownedElsewhere } from "../library/duplicates.js";
 import { searchConfigured } from "./indexers.js";
-import { listManaged } from "../managedList.js";
+import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
-import { profileFor } from "../profiles.js";
+import { profileFor } from "../library/profiles.js";
 import { fileRevision, properMode } from "./propers.js";
 import { isLocked } from "./qualityLocks.js";
 import { animeTiers, seadexForSeason } from "../metadata/seadex.js";

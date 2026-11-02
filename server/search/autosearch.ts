@@ -16,20 +16,20 @@
  */
 import { logDecision } from "../system/activity.js";
 import { cache, db } from "../system/db.js";
-import { radarrMovieSpecials } from "../franchise.js";
-import { automaticPicks } from "../managed.js";
+import { radarrMovieSpecials } from "../library/franchise.js";
+import { automaticPicks } from "../library/managed.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
-import { searchMovie, startMovieGrab } from "../movies.js";
+import { searchMovie, startMovieGrab } from "../library/movies.js";
 import type { Candidate } from "../grabs/pipelineState.js";
 import { batchPrefersSingles } from "../grabs/batch.js";
-import { addToQueue } from "../fillin.js";
-import { searchAgainSoon, wrongLanguageEpisodes } from "../episodes.js";
-import { listManaged } from "../managedList.js";
-import { scopedEpisodeIds } from "../scope.js";
-import { ownedElsewhere, ownedWhy } from "../duplicates.js";
+import { addToQueue } from "../library/fillin.js";
+import { searchAgainSoon, wrongLanguageEpisodes } from "../library/episodes.js";
+import { listManaged } from "../library/managedList.js";
+import { scopedEpisodeIds } from "../library/scope.js";
+import { ownedElsewhere, ownedWhy } from "../library/duplicates.js";
 import { properMode } from "./propers.js";
 import { inLane } from "./searchQueue.js";
 import crypto from "node:crypto";

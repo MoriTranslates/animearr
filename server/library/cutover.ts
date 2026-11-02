@@ -12,17 +12,17 @@
  *    AnimeArr state from Sonarr's/Radarr's ids to AnimeArr's (schedule, upgrades, grabs history, activity, movie
  *    settings, franchise links) and builds AnimeArr's copy at once.
  */
-import { logDecision } from "./system/activity.js";
-import * as radarr from "./arr/radarr.js";
-import * as sonarr from "./arr/sonarr.js";
-import { mediaByIds, searchMedia, type AniMedia } from "./metadata/anilist.js";
-import { applyOverrides, remapNow, upsertMedia } from "./metadata/catalog.js";
-import { compactKey } from "./core/normalize.js";
-import { fribb } from "./metadata/covers.js";
-import { allRows, cache, db, dbState, setJob, tx } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import * as radarr from "../arr/radarr.js";
+import * as sonarr from "../arr/sonarr.js";
+import { mediaByIds, searchMedia, type AniMedia } from "../metadata/anilist.js";
+import { applyOverrides, remapNow, upsertMedia } from "../metadata/catalog.js";
+import { compactKey } from "../core/normalize.js";
+import { fribb } from "../metadata/covers.js";
+import { allRows, cache, db, dbState, setJob, tx } from "../system/db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
-import { ACTIVE } from "./grabs/pipelineState.js";
-import { getSettings, patchSettings } from "./system/settings.js";
+import { ACTIVE } from "../grabs/pipelineState.js";
+import { getSettings, patchSettings } from "../system/settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 const label = (s: number, e: number) => `S${String(s).padStart(2, "0")}E${String(e).padStart(2, "0")}`;

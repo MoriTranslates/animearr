@@ -19,7 +19,7 @@ beforeEach(() => {
   for (const r of cache.prepare("SELECT id, monitored FROM movies").all() as { id: number; monitored: number }[])
     db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
 });
-const { setSeriesPrefs } = await import("../server/profiles.js");
+const { setSeriesPrefs } = await import("../server/library/profiles.js");
 const { placeholders, qualifies, upgradePass } = await import("../server/search/upgrade.js");
 const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
 type Deps = import("../server/search/upgrade.js").UpgradeDeps;

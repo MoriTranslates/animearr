@@ -17,19 +17,19 @@ import { autoSearchEpisodes, searchMissingNow } from "../search/autosearch.js";
 import { deepSearch } from "../search/search.js";
 import { removeGrab, startGrab } from "../grabs/pipeline.js";
 import { backupNow } from "../system/db.js";
-import { rssTick } from "../managed.js";
+import { rssTick } from "../library/managed.js";
 import { scanFolder } from "../import/mediafiles.js";
 import { compactKey } from "../core/normalize.js";
 import { fribb } from "../metadata/covers.js";
 import { allRows, cache, db, dbState } from "../system/db.js";
 import { mediaByIds } from "../metadata/anilist.js";
 import { animeListEntries } from "../metadata/metadata.js";
-import { NATIVE_BASE, searchAdd } from "../native.js";
-import { profileFor } from "../profiles.js";
+import { NATIVE_BASE, searchAdd } from "../library/native.js";
+import { profileFor } from "../library/profiles.js";
 import { queueView } from "../grabs/queue.js";
-import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "../scope.js";
+import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "../library/scope.js";
 import { getSettings, type LanguageProfile } from "../system/settings.js";
-import { setTags, tagsOf } from "../tags.js";
+import { setTags, tagsOf } from "../library/tags.js";
 
 /** What the API reaches outside the database (tests swap these). */
 export interface SonarrApiDeps {

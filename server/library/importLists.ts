@@ -9,18 +9,18 @@
  * MyAnimeList: the official API v2 with a client ID the user makes for free at myanimelist.net/apiconfig (kept encrypted
  * in the settings). Jikan (a third-party scraper) needs no key, but it's unofficial and often down, so it isn't used.
  */
-import { logDecision } from "./system/activity.js";
-import { anilistQuery, mediaByIds, type AniMedia } from "./metadata/anilist.js";
-import { fribb } from "./metadata/covers.js";
-import { cache, db } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { anilistQuery, mediaByIds, type AniMedia } from "../metadata/anilist.js";
+import { fribb } from "../metadata/covers.js";
+import { cache, db } from "../system/db.js";
 import { droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
-import { animeListEntries, USER_AGENT } from "./metadata/metadata.js";
+import { animeListEntries, USER_AGENT } from "../metadata/metadata.js";
 import { addMovie, addShow, isNativeTvdb, NATIVE_BASE } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 import { setTags, tagRows } from "./tags.js";
 
 export type ListSource = "anilist" | "mal";

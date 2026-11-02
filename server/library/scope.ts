@@ -7,11 +7,11 @@
  * Defaults: ended shows "Missing only" (all seasons); continuing shows "Future + missing of the latest season".
  * (Long-runners: seasons are TVDB seasons for now; AniDB entries/cours come with the own metadata, step 4.)
  */
-import { isCreditlessTitle } from "./core/resolver.js";
-import { anidbSpecialKind } from "./metadata/anidb.js";
-import { cache, db } from "./system/db.js";
+import { isCreditlessTitle } from "../core/resolver.js";
+import { anidbSpecialKind } from "../metadata/anidb.js";
+import { cache, db } from "../system/db.js";
 import { ownedElsewhere } from "./duplicates.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";

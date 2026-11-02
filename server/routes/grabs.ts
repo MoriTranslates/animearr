@@ -1,14 +1,14 @@
 /** Routes: Identify, Deep Search and grabbing, quality goals and upgrades, download-folder rules and clean-up. */
-import { replaceSeasonPreview } from "../episodes.js";
+import { replaceSeasonPreview } from "../library/episodes.js";
 import crypto from "node:crypto";
 import { searchConfigured } from "../search/indexers.js";
 import { cleanupPlan, downloadsStatus, measure, PRESETS, runCleanup } from "../grabs/downloads.js";
 import { cache } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
-import { profileFor, saveProfile } from "../profiles.js";
+import { profileFor, saveProfile } from "../library/profiles.js";
 import { identify } from "../core/identify.js";
-import { backlogSummary } from "../managed.js";
-import { listManaged } from "../managedList.js";
+import { backlogSummary } from "../library/managed.js";
+import { listManaged } from "../library/managedList.js";
 import { listGrabs, startGrab } from "../grabs/pipeline.js";
 import { type Candidate } from "../grabs/pipelineState.js";
 import { upgradeList } from "../search/upgrade.js";
@@ -20,7 +20,7 @@ import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason } from "../met
 import { catalogStatus, entriesForSeries } from "../metadata/catalog.js";
 
 import { renamePlan } from "../import/importer.js";
-import { ownedElsewhere, ownedWhy } from "../duplicates.js";
+import { ownedElsewhere, ownedWhy } from "../library/duplicates.js";
 import { deepSearch, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "../search/search.js";
 import { getSettings, patchSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";

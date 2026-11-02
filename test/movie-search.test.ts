@@ -17,9 +17,9 @@ beforeEach(() => {
     db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
 });
 const { moviePass, planMovies } = await import("../server/search/movieSearch.js");
-const { setMoviePrefs } = await import("../server/profiles.js");
+const { setMoviePrefs } = await import("../server/library/profiles.js");
 const { upgradePass, moviePlaceholders } = await import("../server/search/upgrade.js");
-type SR = Awaited<ReturnType<typeof import("../server/movies.js").searchMovie>>["results"][number];
+type SR = Awaited<ReturnType<typeof import("../server/library/movies.js").searchMovie>>["results"][number];
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

@@ -10,12 +10,12 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { db, cache } = await import("../server/system/db.js");
 const { parseRelease } = await import("../server/core/parser.js");
-const { matchMovie, liveAction } = await import("../server/movies.js");
+const { matchMovie, liveAction } = await import("../server/library/movies.js");
 const health = await import("../server/search/health.js");
 const { remainingFallbacks, FetchFailedError, fetchOrNote } = await import("../server/grabs/pipelineState.js");
-const { dropShow, isDropped, undropShow, refuseDropped } = await import("../server/dropped.js");
-const { setManaged } = await import("../server/managed.js");
-const { addToQueue } = await import("../server/fillin.js");
+const { dropShow, isDropped, undropShow, refuseDropped } = await import("../server/library/dropped.js");
+const { setManaged } = await import("../server/library/managed.js");
+const { addToQueue } = await import("../server/library/fillin.js");
 
 const QQ_MOVIE = {
   title: "The Quintessential Quintuplets Movie",
@@ -209,7 +209,7 @@ test("a movie download with several large files offers Import manually…", asyn
 });
 
 test("multi-part movies: numbered parts of similar size are imported as pt1/pt2 in order", async () => {
-  const { multiPart } = await import("../server/movies.js");
+  const { multiPart } = await import("../server/library/movies.js");
   const GB = 1e9;
   const qq = [
     { path: "/d/x/[Itsuki Gang] The Quintessential Quintuplets~ Specials - S00E03 [BD 1080p x265 Opus].mkv", size: 1.1 * GB },

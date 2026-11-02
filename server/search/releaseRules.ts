@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import { logDecision } from "../system/activity.js";
 import { applyRules, cleanTerms, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
 import { db, dbState, tx } from "../system/db.js";
-import { tagRows, tagsOf, type TagKind } from "../tags.js";
+import { tagRows, tagsOf, type TagKind } from "../library/tags.js";
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 

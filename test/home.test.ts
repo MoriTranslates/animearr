@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-home-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
-const { homeSummary, airingShowCount } = await import("../server/home.js");
+const { homeSummary, airingShowCount } = await import("../server/library/home.js");
 
 test("empty library", () => {
   const h = homeSummary();

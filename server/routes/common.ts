@@ -13,7 +13,7 @@ import { dbState, setJob } from "../system/db.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrSearch } from "../arr/prowlarr.js";
 import { refreshCatalog, tmdbEpisodes } from "../metadata/catalog.js";
 
-import { materializeAll } from "../native.js";
+import { materializeAll } from "../library/native.js";
 import { getSettings, isMasked } from "../system/settings.js";
 import { ROOT_DIR } from "../system/version.js";
 

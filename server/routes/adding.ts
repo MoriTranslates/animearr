@@ -1,5 +1,5 @@
 /** Routes: Adding shows: the Sonarr/Radarr cutover, native Add, importing existing folders, import lists. */
-import { refuseDropped } from "../dropped.js";
+import { refuseDropped } from "../library/dropped.js";
 import {
   ackSpecials,
   adoptMovies,
@@ -12,10 +12,10 @@ import {
   setArrWrites,
   switchToAnimeArr,
   unmatch,
-} from "../cutover.js";
+} from "../library/cutover.js";
 import { cache, db } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
-import { setSeriesPrefs, setMoviePrefs } from "../profiles.js";
+import { setSeriesPrefs, setMoviePrefs } from "../library/profiles.js";
 import {
   addExclusion,
   cleanList,
@@ -29,15 +29,15 @@ import {
   removeExclusion,
   saveList,
   syncList,
-} from "../importLists.js";
-import { setManaged } from "../managed.js";
+} from "../library/importLists.js";
+import { setManaged } from "../library/managed.js";
 import { invalidateIndex } from "../metadata/metadata.js";
 import { autoSearchMovie, searchMissingNow } from "../search/autosearch.js";
-import { setScope, validateScope, type Scope } from "../scope.js";
-import { addToQueue } from "../fillin.js";
+import { setScope, validateScope, type Scope } from "../library/scope.js";
+import { addToQueue } from "../library/fillin.js";
 
-import { adoptFolder, matchFolder, scanRoot } from "../folderImport.js";
-import { addMovie, addShow, materializeAll, removeMovie, removeShow, searchAdd, seasonPicks } from "../native.js";
+import { adoptFolder, matchFolder, scanRoot } from "../library/folderImport.js";
+import { addMovie, addShow, materializeAll, removeMovie, removeShow, searchAdd, seasonPicks } from "../library/native.js";
 import { getSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";

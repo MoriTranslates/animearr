@@ -10,8 +10,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { calendar, deleteEpisodeFiles, episodeRows, regrabEpisodes, seriesHeader } = await import("../server/episodes.js");
-type Deps = import("../server/episodes.js").EpisodeDeps;
+const { calendar, deleteEpisodeFiles, episodeRows, regrabEpisodes, seriesHeader } = await import("../server/library/episodes.js");
+type Deps = import("../server/library/episodes.js").EpisodeDeps;
 
 const TVDB = 600001;
 const H = 3_600_000;

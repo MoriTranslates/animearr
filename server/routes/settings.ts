@@ -1,13 +1,13 @@
 /** Routes: Settings, connection tests, indexers and download clients, media-server files, dropped shows, the indexer circuit breaker, phone addresses and single-file tools. */
 import os from "node:os";
 import { setIndexerUse } from "../search/indexerPick.js";
-import { droppedList, dropShow, undropShow } from "../dropped.js";
+import { droppedList, dropShow, undropShow } from "../library/dropped.js";
 import { breakerList, setBreaker, testIndexer as retestIndexer } from "../search/health.js";
 import { watchLinks } from "../media/watchIn.js";
 import { indexerNumId } from "../search/indexers.js";
 import { fileDetail, peekFrames, rescanOne, setTrackLanguage, useSidecar } from "../import/detection.js";
 import { indexerCatalog } from "../search/indexerCatalog.js";
-import { homeSummary } from "../home.js";
+import { homeSummary } from "../library/home.js";
 import { thumb, type ThumbSize } from "../metadata/img.js";
 import { invalidateConnections } from "../system/connections.js";
 import { testTmdb } from "../metadata/catalog.js";
@@ -18,8 +18,8 @@ import path from "node:path";
 import { authState } from "../system/auth.js";
 import { logDecision } from "../system/activity.js";
 import { prowlarrConfigured, prowlarrIndexers } from "../arr/prowlarr.js";
-import { releaseDryRunDecisions } from "../managed.js";
-import { listManaged } from "../managedList.js";
+import { releaseDryRunDecisions } from "../library/managed.js";
+import { listManaged } from "../library/managedList.js";
 import { invalidateIndex } from "../metadata/metadata.js";
 import { libraryRoots } from "../import/mediafiles.js";
 

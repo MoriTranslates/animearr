@@ -4,10 +4,10 @@
  * the series (Japanese, Chinese for donghua, Korean...), so dub detection never mistakes original audio for a dub.
  */
 import crypto from "node:crypto";
-import { logDecision } from "./system/activity.js";
-import { toLang } from "./core/langs.js";
-import { isGoal } from "./core/quality.js";
-import { cache, db, dbState } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { toLang } from "../core/langs.js";
+import { isGoal } from "../core/quality.js";
+import { cache, db, dbState } from "../system/db.js";
 import {
   getSettings,
   patchSettings,
@@ -16,7 +16,7 @@ import {
   type LanguageProfile,
   type SizePreset,
   type WatchMode,
-} from "./system/settings.js";
+} from "../system/settings.js";
 
 export interface EffectiveProfile extends LanguageProfile {
   /** Original audio language(s) of the show (e.g. ["ja"], ["zh"] for donghua). */

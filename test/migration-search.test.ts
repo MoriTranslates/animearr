@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-migsearch-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { searchAdd, splitYear } = await import("../server/native.js");
+const { searchAdd, splitYear } = await import("../server/library/native.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number, title: string, year: number): AniMedia =>

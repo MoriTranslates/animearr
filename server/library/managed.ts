@@ -9,27 +9,27 @@
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
 import { isDropped } from "./dropped.js";
-import { parseRelease } from "./core/parser.js";
+import { parseRelease } from "../core/parser.js";
 import { matchMovie } from "./movies.js";
-import { episodesAreNew, grabGate, GrabsPausedError } from "./grabs/downloads.js";
+import { episodesAreNew, grabGate, GrabsPausedError } from "../grabs/downloads.js";
 import { NATIVE_BASE } from "./nativeIds.js";
 import { listManaged, type ManagedRow } from "./managedList.js";
-import { logDecision } from "./system/activity.js";
-import { searchConfigured } from "./search/indexers.js";
-import { searchAll } from "./search/indexers.js";
-import { setSeriesMonitored } from "./arr/sonarr.js";
-import { identify } from "./core/identify.js";
-import { cache, db, dbState, setJob, tx } from "./system/db.js";
-import { startGrab } from "./grabs/pipeline.js";
-import { toCandidate } from "./grabs/pipelineState.js";
-import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type SearchResult } from "./search/search.js";
-import { getSettings, isDryRun, underAllowedRoot } from "./system/settings.js";
+import { logDecision } from "../system/activity.js";
+import { searchConfigured } from "../search/indexers.js";
+import { searchAll } from "../search/indexers.js";
+import { setSeriesMonitored } from "../arr/sonarr.js";
+import { identify } from "../core/identify.js";
+import { cache, db, dbState, setJob, tx } from "../system/db.js";
+import { startGrab } from "../grabs/pipeline.js";
+import { toCandidate } from "../grabs/pipelineState.js";
+import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type SearchResult } from "../search/search.js";
+import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { burnedInFact } from "./audit.js";
-import { coverFor } from "./metadata/covers.js";
+import { coverFor } from "../metadata/covers.js";
 import { profileFor } from "./profiles.js";
-import { newerVersionOf } from "./search/propers.js";
-import { CATEGORY_NAME, ladderRank, qualityScore } from "./core/quality.js";
-import { hintProper, recheckSoon, upgradeUnits, type Unit } from "./search/qualityUpgrade.js";
+import { newerVersionOf } from "../search/propers.js";
+import { CATEGORY_NAME, ladderRank, qualityScore } from "../core/quality.js";
+import { hintProper, recheckSoon, upgradeUnits, type Unit } from "../search/qualityUpgrade.js";
 import { missingScoped, scopedEpisodeIds } from "./scope.js";
 import { planWrongLanguage } from "./episodes.js";
 

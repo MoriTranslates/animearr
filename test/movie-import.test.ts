@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, getSettings } = await import("../server/system/settings.js");
-const { addMovie, NATIVE_BASE, removeMovie } = await import("../server/native.js");
+const { addMovie, NATIVE_BASE, removeMovie } = await import("../server/library/native.js");
 const { planMovieImport, executeMovieImport, fileLink } = await import("../server/import/importer.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
@@ -133,7 +133,7 @@ test("two big files: import by hand; removing the movie keeps its files", async 
 });
 
 test("automatic movie imports only from AnimeArr's own category folders", async () => {
-  const { addMovie: add } = await import("../server/native.js");
+  const { addMovie: add } = await import("../server/library/native.js");
   const r = await add(
     { anilistId: 142771, rootFolder: "/media/Movies/Anime" },
     { media: async (ids) => ids.map((i) => ({ ...media(i), title: { romaji: "Other", english: "Other Movie", native: null } })), fribb },

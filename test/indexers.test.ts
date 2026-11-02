@@ -12,7 +12,7 @@ const { searchIndexer, searchAll, parseSize, indexerNumId, seedLimitsFor } = awa
 const { saveIndexer, listIndexers, indexerDuplicates, saveClient } = await import("../server/system/connectionsAdmin.js");
 const { indexerCatalog } = await import("../server/search/indexerCatalog.js");
 const { clientsFor, realClients } = await import("../server/arr/clients.js");
-const { delayLeftMin } = await import("../server/managed.js");
+const { delayLeftMin } = await import("../server/library/managed.js");
 
 const realFetch = globalThis.fetch;
 after(() => void (globalThis.fetch = realFetch));

@@ -5,20 +5,20 @@
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
-import { burnedInFile } from "./import/fileMarks.js";
-import { isCreditlessTitle } from "./core/resolver.js";
+import { burnedInFile } from "../import/fileMarks.js";
+import { isCreditlessTitle } from "../core/resolver.js";
 import { movieSpecials } from "./franchise.js";
-import { ownFile, probeOf } from "./import/mediafiles.js";
+import { ownFile, probeOf } from "../import/mediafiles.js";
 import fs from "node:fs";
 import path from "node:path";
-import { db, cache } from "./system/db.js";
-import { compactKey } from "./core/normalize.js";
-import { sidecarLang } from "./core/langs.js";
-import { animeListEntries } from "./metadata/metadata.js";
-import { coverFor } from "./metadata/covers.js";
+import { db, cache } from "../system/db.js";
+import { compactKey } from "../core/normalize.js";
+import { sidecarLang } from "../core/langs.js";
+import { animeListEntries } from "../metadata/metadata.js";
+import { coverFor } from "../metadata/covers.js";
 import { profileFor } from "./profiles.js";
-import { judge } from "./grabs/verify.js";
-import { localPath } from "./system/paths.js";
+import { judge } from "../grabs/verify.js";
+import { localPath } from "../system/paths.js";
 import { isMissing } from "./scope.js";
 
 interface SeriesRow {

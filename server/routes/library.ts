@@ -1,27 +1,35 @@
 /** Routes: Library sync, managed shows, language profiles, tags and release rules, episodes, audits, facts/aliases/numbering rules. */
 import { cache, db } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
-import { gaps, listFacts, missingLanguage, specials } from "../audit.js";
+import { gaps, listFacts, missingLanguage, specials } from "../library/audit.js";
 import { coverFor } from "../metadata/covers.js";
 import { deleteRule, listRules, saveRule, testRules } from "../search/releaseRules.js";
-import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "../tags.js";
-import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs } from "../profiles.js";
+import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "../library/tags.js";
+import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs } from "../library/profiles.js";
 import { registerIcal } from "../api/ical.js";
-import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "../episodes.js";
+import {
+  calendar,
+  deleteEpisodeFiles,
+  episodeDetail,
+  episodeRows,
+  regrabEpisodes,
+  searchAgainSoon,
+  seriesHeader,
+} from "../library/episodes.js";
 import { compactKey } from "../core/normalize.js";
 import { refreshCovers } from "../metadata/covers.js";
-import { syncLibrary } from "../library.js";
-import { candidates, managePreview, managedTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "../managed.js";
-import { listManaged } from "../managedList.js";
+import { syncLibrary } from "../library/library.js";
+import { candidates, managePreview, managedTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "../library/managed.js";
+import { listManaged } from "../library/managedList.js";
 import { aliasIndex, invalidateIndex } from "../metadata/metadata.js";
 import { listGrabs } from "../grabs/pipeline.js";
-import { moviesForSeries, setLink } from "../franchise.js";
+import { moviesForSeries, setLink } from "../library/franchise.js";
 import { lastFolderScan, scanFolder } from "../import/mediafiles.js";
-import { missingScoped } from "../scope.js";
+import { missingScoped } from "../library/scope.js";
 
-import { movieCalendar, movieDetail } from "../movies.js";
-import { isNativeSeriesId, rematerializeSeries } from "../native.js";
-import { duplicateListings } from "../duplicates.js";
+import { movieCalendar, movieDetail } from "../library/movies.js";
+import { isNativeSeriesId, rematerializeSeries } from "../library/native.js";
+import { duplicateListings } from "../library/duplicates.js";
 import { episodesFor, seriesByTvdb } from "../search/search.js";
 import { getSettings, type LanguageProfile } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";

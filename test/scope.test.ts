@@ -10,8 +10,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { inScope, scopeFor, scopePreview, setScope, validateScope } = await import("../server/scope.js");
-const { addToQueue, fillInTick, fillInView, editQueue } = await import("../server/fillin.js");
+const { inScope, scopeFor, scopePreview, setScope, validateScope } = await import("../server/library/scope.js");
+const { addToQueue, fillInTick, fillInView, editQueue } = await import("../server/library/fillin.js");
 
 const DAY = 86_400_000;
 const now = Date.now();

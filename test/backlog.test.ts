@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { planBacklog, backlogPass, backlogSummary, releaseDryRunDecisions } = await import("../server/managed.js");
+const { planBacklog, backlogPass, backlogSummary, releaseDryRunDecisions } = await import("../server/library/managed.js");
 
 const DAY = 86_400_000;
 const now = Date.now();

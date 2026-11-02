@@ -5,7 +5,7 @@
  * works for anyone who reads the folder. The user's own "[Remaster]" files count the same.
  */
 import { cache, db } from "../system/db.js";
-import { profileFor } from "../profiles.js";
+import { profileFor } from "../library/profiles.js";
 
 export const KEEP_TAG = "[Keep]";
 const WHOLE_SHOW = -1;

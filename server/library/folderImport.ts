@@ -7,18 +7,18 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { mediaByIds } from "./metadata/anilist.js";
-import { fribb } from "./metadata/covers.js";
-import { identify } from "./core/identify.js";
-import { compactKey, splitSeason } from "./core/normalize.js";
-import { cache, db } from "./system/db.js";
+import { mediaByIds } from "../metadata/anilist.js";
+import { fribb } from "../metadata/covers.js";
+import { identify } from "../core/identify.js";
+import { compactKey, splitSeason } from "../core/normalize.js";
+import { cache, db } from "../system/db.js";
 import { addShow, NATIVE_BASE, rematerializeSeries, searchAdd, type AddResult } from "./native.js";
-import { aliasIndex, animeListEntries } from "./metadata/metadata.js";
-import { localPath } from "./system/paths.js";
-import { VIDEO, scanFolder } from "./import/mediafiles.js";
-import { hiddenInBrowser } from "./system/roots.js";
-import { identifyContext } from "./search/search.js";
-import { getSettings } from "./system/settings.js";
+import { aliasIndex, animeListEntries } from "../metadata/metadata.js";
+import { localPath } from "../system/paths.js";
+import { VIDEO, scanFolder } from "../import/mediafiles.js";
+import { hiddenInBrowser } from "../system/roots.js";
+import { identifyContext } from "../search/search.js";
+import { getSettings } from "../system/settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 const slash = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");

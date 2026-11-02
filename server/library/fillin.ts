@@ -5,12 +5,12 @@
  * the missing-episode search (and its hourly limit) does the actual searching.
  */
 import { isDropped } from "./dropped.js";
-import { logDecision } from "./system/activity.js";
-import { cache, db, dbState, setJob } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db, dbState, setJob } from "../system/db.js";
 import { listManaged } from "./managedList.js";
 import { setManaged } from "./managed.js";
 import { missingScoped, scopeFor, setScope } from "./scope.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 const DAY = 86_400_000;
 

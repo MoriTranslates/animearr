@@ -10,9 +10,9 @@
  *
  * The S0 episodes that are really movies are flagged so they are never grabbed as episodes (Radarr handles them).
  */
-import { animeListEntries } from "./metadata/metadata.js";
-import { coverFor } from "./metadata/covers.js";
-import { cache, db } from "./system/db.js";
+import { animeListEntries } from "../metadata/metadata.js";
+import { coverFor } from "../metadata/covers.js";
+import { cache, db } from "../system/db.js";
 
 export interface MovieLink {
   tvdbId: number;

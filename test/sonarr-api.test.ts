@@ -20,9 +20,9 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { guard } = await import("../server/system/auth.js");
 const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
-const { NATIVE_BASE } = await import("../server/native.js");
-const { scopeFor } = await import("../server/scope.js");
-const { saveProfile } = await import("../server/profiles.js");
+const { NATIVE_BASE } = await import("../server/library/native.js");
+const { scopeFor } = await import("../server/library/scope.js");
+const { saveProfile } = await import("../server/library/profiles.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({

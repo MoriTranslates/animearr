@@ -13,7 +13,7 @@ import { keyOf, localPath } from "../system/paths.js";
 import { probeFile, recordFor } from "./mediafiles.js";
 import { invalidateOverrides, overridesFor } from "./trackOverrides.js";
 import { logDecision } from "../system/activity.js";
-import { learnFromVerify } from "../library.js";
+import { learnFromVerify } from "../library/library.js";
 
 const bad = (m: string, code = 400) => Object.assign(new Error(m), { statusCode: code });
 

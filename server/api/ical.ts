@@ -5,9 +5,9 @@
 import type { FastifyInstance } from "fastify";
 import { authState } from "../system/auth.js";
 import { cache, db } from "../system/db.js";
-import { calendar } from "../episodes.js";
-import { movieCalendar } from "../movies.js";
-import { tagRows } from "../tags.js";
+import { calendar } from "../library/episodes.js";
+import { movieCalendar } from "../library/movies.js";
+import { tagRows } from "../library/tags.js";
 
 const DAY = 86_400_000;
 

@@ -11,8 +11,8 @@ const { cache } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { parseRelease } = await import("../server/core/parser.js");
 const { resolveRelease, isCreditlessTitle } = await import("../server/core/resolver.js");
-const { classifySpecial, specialType } = await import("../server/audit.js");
-const { inScope } = await import("../server/scope.js");
+const { classifySpecial, specialType } = await import("../server/library/audit.js");
+const { inScope } = await import("../server/library/scope.js");
 const { episodeDestination } = await import("../server/import/importer.js");
 
 test("parser: NCOP/NCED, creditless/clean/non-credit OP/ED, with or without a number", () => {

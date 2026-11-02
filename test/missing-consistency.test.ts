@@ -13,11 +13,11 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { materialize } = await import("../server/native.js");
-const { gaps } = await import("../server/audit.js");
-const { missingInScope } = await import("../server/fillin.js");
-const { backlogSummary } = await import("../server/managed.js");
-const { setScope, missingScoped } = await import("../server/scope.js");
+const { materialize } = await import("../server/library/native.js");
+const { gaps } = await import("../server/library/audit.js");
+const { missingInScope } = await import("../server/library/fillin.js");
+const { backlogSummary } = await import("../server/library/managed.js");
+const { setScope, missingScoped } = await import("../server/library/scope.js");
 
 const DAY = 86_400_000;
 const PREMIERE = Date.parse("2023-09-29");

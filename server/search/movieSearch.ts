@@ -10,12 +10,12 @@
  *   torrents with seeders. Off by default (it grabs for real).
  */
 import { grabGate } from "../grabs/downloads.js";
-import { isNativeMovieId, nativeMovies } from "../native.js";
+import { isNativeMovieId, nativeMovies } from "../library/native.js";
 import { logDecision } from "../system/activity.js";
 import { searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "../arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
-import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "../movies.js";
+import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "../library/movies.js";
 import { FETCH_PREFIX, type Candidate } from "../grabs/pipelineState.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
 

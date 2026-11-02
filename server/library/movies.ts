@@ -7,20 +7,20 @@
  * manual grabs need a confirmation and honour the global dry-run; never two downloads for one movie at once;
  * a pack or a series release is never taken for the movie.
  */
-import { animeTiers } from "./metadata/seadex.js";
-import { seedLimitsFor } from "./search/indexers.js";
-import { grabGate, GrabsPausedError } from "./grabs/downloads.js";
-import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./import/importer.js";
+import { animeTiers } from "../metadata/seadex.js";
+import { seedLimitsFor } from "../search/indexers.js";
+import { grabGate, GrabsPausedError } from "../grabs/downloads.js";
+import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "../import/importer.js";
 import { isNativeMovieId } from "./nativeIds.js";
 import fs from "node:fs";
 import path from "node:path";
-import { logDecision } from "./system/activity.js";
-import { type ProwlarrRelease } from "./arr/prowlarr.js";
-import { searchAll } from "./search/indexers.js";
-import { langList } from "./core/langs.js";
-import { parseRelease, type ParsedRelease } from "./core/parser.js";
-import { compareRanked, rankRelease } from "./core/rank.js";
-import { allRows, cache, db, dbState } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { type ProwlarrRelease } from "../arr/prowlarr.js";
+import { searchAll } from "../search/indexers.js";
+import { langList } from "../core/langs.js";
+import { parseRelease, type ParsedRelease } from "../core/parser.js";
+import { compareRanked, rankRelease } from "../core/rank.js";
+import { allRows, cache, db, dbState } from "../system/db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
 import {
   ACTIVE,
@@ -37,22 +37,22 @@ import {
   type Candidate,
   type GrabRow,
   type PipelineDeps,
-} from "./grabs/pipelineState.js";
-import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "./grabs/grabSteps.js";
-import type { BatchInfo, FileMapOpts } from "./grabs/batch.js";
-import { clientName } from "./arr/clients.js";
-import type { RadarrMovie } from "./arr/radarr.js";
-import { clientToSonarr } from "./system/paths.js";
+} from "../grabs/pipelineState.js";
+import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "../grabs/grabSteps.js";
+import type { BatchInfo, FileMapOpts } from "../grabs/batch.js";
+import { clientName } from "../arr/clients.js";
+import type { RadarrMovie } from "../arr/radarr.js";
+import { clientToSonarr } from "../system/paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
-import { releaseRulesFor } from "./search/releaseRules.js";
+import { releaseRulesFor } from "../search/releaseRules.js";
 import { tagsOf } from "./tags.js";
 import { seriesForMovie } from "./franchise.js";
-import type { SearchResult } from "./search/search.js";
-import { getSettings, underAllowedRoot } from "./system/settings.js";
-import { judge } from "./grabs/verify.js";
-import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
-import { indexerHealth } from "./search/health.js";
-import { ownFile, probeFile, probeOf } from "./import/mediafiles.js";
+import type { SearchResult } from "../search/search.js";
+import { getSettings, underAllowedRoot } from "../system/settings.js";
+import { judge } from "../grabs/verify.js";
+import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "../core/movieTitle.js";
+import { indexerHealth } from "../search/health.js";
+import { ownFile, probeFile, probeOf } from "../import/mediafiles.js";
 
 export interface MovieRow {
   id: number;

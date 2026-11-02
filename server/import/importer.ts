@@ -32,14 +32,14 @@ import { allRows, cache, CONFIG_DIR, db } from "../system/db.js";
 import { catalogLookup } from "../metadata/catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
-import { rematerializeMovie, rematerializeSeries } from "../native.js";
-import { isNativeMovieId, isNativeSeriesId } from "../nativeIds.js";
+import { rematerializeMovie, rematerializeSeries } from "../library/native.js";
+import { isNativeMovieId, isNativeSeriesId } from "../library/nativeIds.js";
 import { localPath, mappedPath } from "../system/paths.js";
 import { afterLibraryChange } from "../media/mediaout.js";
 import { identifyContext, seriesByTvdb } from "../search/search.js";
 import { getSettings, patchSettings, underAllowedRoot } from "../system/settings.js";
 import { fileForMovie, movieSubtitles } from "../core/movieTitle.js";
-import { seriesForMovie } from "../franchise.js";
+import { seriesForMovie } from "../library/franchise.js";
 import { applyFileDate, tidyAfterMove } from "./tidy.js";
 
 const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm)$/i;

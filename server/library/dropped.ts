@@ -2,11 +2,11 @@
  * Shows the user dropped on purpose. A dropped show is never managed, grabbed (not even by a manual or scripted grab),
  * put in the fill-in queue or re-added, until the user un-drops it. Dropping keeps the files.
  */
-import { cache, db } from "./system/db.js";
-import { logDecision } from "./system/activity.js";
-import { setSeriesMonitored } from "./arr/sonarr.js";
+import { cache, db } from "../system/db.js";
+import { logDecision } from "../system/activity.js";
+import { setSeriesMonitored } from "../arr/sonarr.js";
 import { NATIVE_BASE } from "./nativeIds.js";
-import { underAllowedRoot } from "./system/settings.js";
+import { underAllowedRoot } from "../system/settings.js";
 
 export const isDropped = (tvdbId: number | null | undefined) =>
   !!tvdbId && !!db.prepare("SELECT 1 FROM dropped WHERE tvdb_id = ?").get(tvdbId);

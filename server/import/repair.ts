@@ -20,16 +20,16 @@
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
-import { burnedInFact } from "../audit.js";
+import { burnedInFact } from "../library/audit.js";
 import { langList } from "../core/langs.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
-import { searchAgainSoon } from "../episodes.js";
-import { radarrMovieSpecials } from "../franchise.js";
-import { learnFromVerify, sourceKey } from "../library.js";
-import { listManaged } from "../managedList.js";
+import { searchAgainSoon } from "../library/episodes.js";
+import { radarrMovieSpecials } from "../library/franchise.js";
+import { learnFromVerify, sourceKey } from "../library/library.js";
+import { listManaged } from "../library/managedList.js";
 import { localPath } from "../system/paths.js";
-import { profileFor } from "../profiles.js";
+import { profileFor } from "../library/profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { ffprobe, judge, type ProbeResult, type VerifyVerdict } from "../grabs/verify.js";
 

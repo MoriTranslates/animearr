@@ -10,8 +10,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { cutoverPlan, adoptShows, switchToAnimeArr } = await import("../server/cutover.js");
-const { materializeAll, NATIVE_BASE } = await import("../server/native.js");
+const { cutoverPlan, adoptShows, switchToAnimeArr } = await import("../server/library/cutover.js");
+const { materializeAll, NATIVE_BASE } = await import("../server/library/native.js");
 
 const fribb = async () => ({
   mtime: 0,
@@ -126,7 +126,7 @@ test("the switch: gated; refused while downloading; moves state to AnimeArr's id
 });
 
 test("resolving: a user's AniList pick unblocks a show; specials can be confirmed", async () => {
-  const { matchShow, ackSpecials, showCut } = await import("../server/cutover.js");
+  const { matchShow, ackSpecials, showCut } = await import("../server/library/cutover.js");
   cache
     .prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, file_id) VALUES (801, 8, 1, 1, 1, 0, NULL)")
     .run();
@@ -149,7 +149,7 @@ test("resolving: a user's AniList pick unblocks a show; specials can be confirme
 });
 
 test("cutover journal: Sonarr removed the show but its answer was lost → the switch is finished later, once", async () => {
-  const { resumeCutovers } = await import("../server/cutover.js");
+  const { resumeCutovers } = await import("../server/library/cutover.js");
   assert.equal(adoptShows([666])[0].ok, true);
   db.prepare("INSERT INTO search_state (episode_id, tvdb_id, next_at, state, attempts) VALUES (801, 666, 1, 'retry', 2)").run();
   const lost = {

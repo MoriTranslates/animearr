@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { compileTiers, seadexSource, type CompiledTiers, type SeadexEntry, type SeadexTorrent, type TierTable } from "../core/quality.js";
 import { cache, db, setJob } from "../system/db.js";
-import { listManaged } from "../managedList.js";
+import { listManaged } from "../library/managedList.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;

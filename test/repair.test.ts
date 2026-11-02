@@ -11,7 +11,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { checkNewImports } = await import("../server/import/repair.js");
-const { planSchedule } = await import("../server/managed.js");
+const { planSchedule } = await import("../server/library/managed.js");
 type Deps = import("../server/import/repair.js").RepairDeps;
 type Probe = import("../server/grabs/verify.js").ProbeResult;
 

@@ -10,9 +10,9 @@
  * owned elsewhere. Automatic grabs and searches skip those episodes (`scope.ts`, `pipeline.ts`); a hand-picked
  * release is still allowed, with a warning.
  */
-import { cache, db } from "./system/db.js";
-import { aliasIndex } from "./metadata/metadata.js";
-import { getSettings } from "./system/settings.js";
+import { cache, db } from "../system/db.js";
+import { aliasIndex } from "../metadata/metadata.js";
+import { getSettings } from "../system/settings.js";
 
 /** AnimeArr's own shows have ids from here up (native.ts NATIVE_BASE; not imported to keep scope.ts free of import cycles). */
 const NATIVE_SERIES_BASE = 900_000_000;

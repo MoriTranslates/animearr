@@ -121,7 +121,7 @@ test("profiles: the old single profile migrates to the seeded default; per-show 
   assert.equal(s.profiles[0].name, "English subs (default)");
   assert.equal(s.profiles[0].watchMode, "sub");
   assert.equal(s.defaultProfileId, "default");
-  const { profileFor, setSeriesPrefs, saveProfile, deleteProfile } = await import("../server/profiles.js");
+  const { profileFor, setSeriesPrefs, saveProfile, deleteProfile } = await import("../server/library/profiles.js");
   cache
     .prepare(
       "INSERT INTO series (id, tvdb_id, title, path, monitored, original_language, synced_at) VALUES (1, 700001, 'Donghua', '/media/AnimeArr/Donghua', 0, 'Chinese', 0)",

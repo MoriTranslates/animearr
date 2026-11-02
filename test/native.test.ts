@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { addShow, searchAdd, NATIVE_BASE, rematerializeSeries } = await import("../server/native.js");
+const { addShow, searchAdd, NATIVE_BASE, rematerializeSeries } = await import("../server/library/native.js");
 const { renameRoute } = await import("../server/import/importer.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
@@ -127,14 +127,14 @@ test("movies and roots outside the allowed ones are refused", async () => {
 });
 
 test("removing a native show drops its rows, never files", async () => {
-  const { removeShow } = await import("../server/native.js");
+  const { removeShow } = await import("../server/library/native.js");
   removeShow(NATIVE_BASE + 101);
   assert.equal(cache.prepare("SELECT COUNT(*) AS n FROM series WHERE tvdb_id = ?").get(NATIVE_BASE + 101)!.n, 0);
   assert.throws(() => removeShow(NATIVE_BASE + 101), /wasn't added/);
 });
 
 test("a TVDB-mapped show: entries on their seasons, overlaps de-duplicated, absolute in order; Sonarr's copy wins", async () => {
-  const { materialize } = await import("../server/native.js");
+  const { materialize } = await import("../server/library/native.js");
   const ins = db.prepare(
     "INSERT INTO entries (anilist_id, tvdb_id, tvdb_season, tvdb_offset, kind, title_english, synonyms, status, start_date, episodes, fetched_at) VALUES (?, 555, ?, ?, 'TV', ?, '[]', 'FINISHED', ?, ?, 1)",
   );

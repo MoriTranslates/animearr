@@ -16,7 +16,7 @@ import { tmdbFetch } from "./catalog.js";
 import { cache, db } from "../system/db.js";
 import { getSettings } from "../system/settings.js";
 import * as sonarr from "../arr/sonarr.js";
-import { NATIVE_BASE } from "../nativeIds.js";
+import { NATIVE_BASE } from "../library/nativeIds.js";
 import { metaOverrides, tmdbTarget, type MapRow } from "./metaoverride.js";
 import type { EpisodeMeta } from "../media/mediaout.js";
 

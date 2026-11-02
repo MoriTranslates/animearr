@@ -8,7 +8,7 @@ import { LOCK_TAG } from "../core/quality.js";
 import { parseRelease } from "../core/parser.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode, type Revision } from "../core/propers.js";
 import { cache, db } from "../system/db.js";
-import { profileFor } from "../profiles.js";
+import { profileFor } from "../library/profiles.js";
 import { isLocked } from "./qualityLocks.js";
 import { getSettings } from "../system/settings.js";
 

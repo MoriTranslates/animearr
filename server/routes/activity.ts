@@ -1,10 +1,10 @@
 /** Routes: The activity log and undo. */
-import { undropShow } from "../dropped.js";
+import { undropShow } from "../library/dropped.js";
 import { deleteOverrides, renameSidecarBack } from "../import/detection.js";
 import { cache, db } from "../system/db.js";
 import { getDecision, listDecisions, logDecision, markUndone } from "../system/activity.js";
 import { coverFor } from "../metadata/covers.js";
-import { setManaged, unmonitorInSonarr } from "../managed.js";
+import { setManaged, unmonitorInSonarr } from "../library/managed.js";
 import { invalidateIndex } from "../metadata/metadata.js";
 import { summarize } from "../system/summary.js";
 import { registerBlocklistApi } from "../grabs/blocklist.js";

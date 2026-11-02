@@ -11,13 +11,13 @@
  * - On a failed download/verification the release is blocklisted and the next candidate is tried (3 attempts in all).
  *   Problems that aren't the release's fault (import errors, unmappable files) go to "needs attention" instead.
  */
-import { refuseDropped } from "../dropped.js";
-import { ownedElsewhere, ownedWhy, type Overlap } from "../duplicates.js";
+import { refuseDropped } from "../library/dropped.js";
+import { ownedElsewhere, ownedWhy, type Overlap } from "../library/duplicates.js";
 import { seedLimitsFor } from "../search/indexers.js";
 import { supersededBy } from "../system/fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "../import/importer.js";
-import { isNativeSeriesId } from "../nativeIds.js";
+import { isNativeSeriesId } from "../library/nativeIds.js";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "../arr/clients.js";
@@ -27,18 +27,18 @@ import { inExtrasFolder } from "../core/resolver.js";
 import { langList } from "../core/langs.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState } from "../system/db.js";
-import { burnedInFact } from "../audit.js";
-import { learnFromVerify, sourceKey } from "../library.js";
+import { burnedInFact } from "../library/audit.js";
+import { learnFromVerify, sourceKey } from "../library/library.js";
 import { clientToSonarr } from "../system/paths.js";
 import { episodesFor, identifyContext, seriesByTvdb } from "../search/search.js";
-import { profileFor } from "../profiles.js";
+import { profileFor } from "../library/profiles.js";
 import { properMode } from "../search/propers.js";
 import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
-import { importMovie, movieFileOpts, movieNextForRow } from "../movies.js";
+import { importMovie, movieFileOpts, movieNextForRow } from "../library/movies.js";
 import { scanFolder } from "../import/mediafiles.js";
-import { radarrMovieSpecials, refuseMovieSpecials } from "../franchise.js";
+import { radarrMovieSpecials, refuseMovieSpecials } from "../library/franchise.js";
 import { inspectFiles } from "./safety.js";
 import {
   ACTIVE,

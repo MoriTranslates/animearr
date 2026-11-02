@@ -11,7 +11,7 @@ import { applyRules, compileTerm, PREFERRED_CAP, type ReleaseRule } from "../ser
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rules-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 const { db } = await import("../server/system/db.js");
-const { createTag, setTags, deleteTag } = await import("../server/tags.js");
+const { createTag, setTags, deleteTag } = await import("../server/library/tags.js");
 const { deleteRule, listRules, releaseRulesFor, saveRule, testRules } = await import("../server/search/releaseRules.js");
 
 const rule = (p: Partial<ReleaseRule>): ReleaseRule => ({

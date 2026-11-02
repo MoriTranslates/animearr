@@ -20,7 +20,7 @@ beforeEach(() => {
     db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (?, ?, 0)").run(r.id, r.monitored);
 });
 const { parseRelease } = await import("../server/core/parser.js");
-const { matchMovie, movieQueries, searchMovie, startMovieGrab, listMovies } = await import("../server/movies.js");
+const { matchMovie, movieQueries, searchMovie, startMovieGrab, listMovies } = await import("../server/library/movies.js");
 const { pipelineTick } = await import("../server/grabs/pipeline.js");
 type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
@@ -235,7 +235,7 @@ test("a movie that has a file is only grabbed when replacing was confirmed", asy
 });
 
 test("a release that fits another library movie better isn't grabbed for this one", async () => {
-  const { searchMovie } = await import("../server/movies.js");
+  const { searchMovie } = await import("../server/library/movies.js");
   cache
     .prepare(
       "INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, alt_titles, is_anime, synced_at) VALUES (9101, 9101, 'The Quintessential Quintuplets Movie', 2022, '/media/Movies/Anime/Q1', 1, 0, '[]', 1, 0)",

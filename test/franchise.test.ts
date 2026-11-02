@@ -22,8 +22,8 @@ fs.writeFileSync(
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { moviesForSeries, seriesForMovie, movieSpecials, setLink, refuseMovieSpecials } = await import("../server/franchise.js");
-const { episodeRows } = await import("../server/episodes.js");
+const { moviesForSeries, seriesForMovie, movieSpecials, setLink, refuseMovieSpecials } = await import("../server/library/franchise.js");
+const { episodeRows } = await import("../server/library/episodes.js");
 
 before(() => {
   cache

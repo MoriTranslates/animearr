@@ -13,11 +13,11 @@ import { applySelection, writeBatch, type BatchInfo, type FileMapOpts } from "./
 import { identify } from "../core/identify.js";
 import { cache } from "../system/db.js";
 import { extractIfNeeded, UNPACK_DIR } from "./extract.js";
-import { refreshSeriesEpisodes } from "../library.js";
+import { refreshSeriesEpisodes } from "../library/library.js";
 import { localPath as realLocalPath } from "../system/paths.js";
 import { blocklist, setState, type GrabRow, type PipelineDeps } from "./pipelineState.js";
 import { inspectFiles, walkFiles } from "./safety.js";
-import { scopeFor } from "../scope.js";
+import { scopeFor } from "../library/scope.js";
 import { episodesFor, identifyContext, seriesByTvdb } from "../search/search.js";
 import { getSettings } from "../system/settings.js";
 import { ffprobe } from "./verify.js";

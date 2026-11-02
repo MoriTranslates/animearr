@@ -20,7 +20,7 @@ fs.writeFileSync(
 
 const { cache, db } = await import("../server/system/db.js");
 const { refreshCatalog, entriesForSeries, catalogEpisode, parseStreamingTitle } = await import("../server/metadata/catalog.js");
-const { episodeRows } = await import("../server/episodes.js");
+const { episodeRows } = await import("../server/library/episodes.js");
 type M = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number, title: string, format: string, rel: [number, string][], extra: Partial<M> = {}): M => ({

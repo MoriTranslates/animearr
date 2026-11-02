@@ -21,11 +21,11 @@ fs.writeFileSync(
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, getSettings } = await import("../server/system/settings.js");
-const { createTag, tagsOf } = await import("../server/tags.js");
+const { createTag, tagsOf } = await import("../server/library/tags.js");
 const { listActivity } = await import("../server/system/activity.js").then((_m) => ({
   listActivity: () => db.prepare("SELECT kind, why FROM decisions ORDER BY id").all() as { kind: string; why: string }[],
 }));
-const L = await import("../server/importLists.js");
+const L = await import("../server/library/importLists.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({
@@ -392,7 +392,7 @@ test("excluding a removed show also covers the other seasons of it", async () =>
   account = [{ id: 605, status: "CURRENT" }];
   await L.syncList(l.id, { confirm: true, deps: deps() });
   assert.equal(seriesCount(), 1);
-  const { removeShow } = await import("../server/native.js");
+  const { removeShow } = await import("../server/library/native.js");
   const title = "Show 605";
   removeShow(781);
   assert.ok(L.excludeShow(781, title) >= 1);

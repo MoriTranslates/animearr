@@ -4,7 +4,7 @@ import { searchConfigured } from "../search/indexers.js";
 import { reevaluate } from "../grabs/downloads.js";
 import { cache, db } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
-import { setMoviePrefs } from "../profiles.js";
+import { setMoviePrefs } from "../library/profiles.js";
 import { finishGrabByHand, grabDownloadPath, keepGrab, nextForGrab, removeGrab } from "../grabs/pipeline.js";
 import { retryImport, type Candidate } from "../grabs/pipelineState.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "../grabs/queue.js";
@@ -13,10 +13,10 @@ import { recycleSetting, recycleStatus } from "../import/recycle.js";
 import { movieSearchSummary, planMovies } from "../search/movieSearch.js";
 import { fileSummary, scanFolder, scanLibrary, scanRunning } from "../import/mediafiles.js";
 import { autoJobs, queueAutoSearch, queueAutoSearchMovie } from "../search/autosearch.js";
-import { scopeFor, scopePreview, setScope, validateScope } from "../scope.js";
-import { addToQueue, editQueue, fillInView } from "../fillin.js";
+import { scopeFor, scopePreview, setScope, validateScope } from "../library/scope.js";
+import { addToQueue, editQueue, fillInView } from "../library/fillin.js";
 
-import { listMovies, movieDetail, searchMovie, setWanted, startMovieGrab } from "../movies.js";
+import { listMovies, movieDetail, searchMovie, setWanted, startMovieGrab } from "../library/movies.js";
 import {
   applyRenameRouted,
   browseImport,
@@ -28,7 +28,7 @@ import {
   renamePlan,
 } from "../import/importer.js";
 import { importMediaDefaults, previewNaming } from "../import/mediadefaults.js";
-import { isNativeSeriesId, rematerializeSeries } from "../native.js";
+import { isNativeSeriesId, rematerializeSeries } from "../library/native.js";
 import { seriesByTvdb } from "../search/search.js";
 import { getSettings, patchSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";

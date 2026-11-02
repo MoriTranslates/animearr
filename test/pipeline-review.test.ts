@@ -19,7 +19,7 @@ patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" }, que
 const { startGrab, pipelineTick, recoverGrabs, removeGrab } = await import("../server/grabs/pipeline.js");
 const { STALL_MS } = await import("../server/grabs/pipelineState.js");
 const { queueView, grabHistory } = await import("../server/grabs/queue.js");
-const { releaseDryRunDecisions } = await import("../server/managed.js");
+const { releaseDryRunDecisions } = await import("../server/library/managed.js");
 type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
 
 const TVDB = 500001;
