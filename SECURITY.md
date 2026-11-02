@@ -22,8 +22,9 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   "The default password only works from your home network. Log in from home and change it first." Home network means
   the same addresses as "No password on my local network": 10.x, 192.168.x and IPv6 private/link-local addresses by
   default, or exactly the ranges in `ANIMEARR_LOCAL_NETWORKS`. Docker's 172.16/12 and loopback don't count unless you
-  list them (a reverse proxy or tunnel would make everyone look local), requests that came through an untrusted proxy
-  never count, and the browser must address AnimeArr by IP or a LAN name. Tailscale addresses (IPv6
+  list them (a reverse proxy or tunnel would make everyone look local), requests that came through any proxy (one
+  listed in `TRUST_PROXY`, or any request carrying `X-Forwarded-For` or similar headers) never count, a hop-count
+  `TRUST_PROXY` turns the check off, and the browser must address AnimeArr by IP or a LAN name. Tailscale addresses (IPv6
   `fd7a:115c:a1e0::/48`) are private IPv6 addresses, so devices on your tailnet, **including nodes shared with you or
   by you**, count as home network too.
 - **The limit of this check.** "Home network" is decided by the address the connection comes from (10.x, 192.168.x,

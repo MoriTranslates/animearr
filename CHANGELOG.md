@@ -30,6 +30,9 @@ All notable changes, newest first. The commit history has the crew's version of 
   or the setup wizard, deleting episode or season files and emptying the recycling bin now need a signed-in browser.
 - **Notification secrets don't follow a new address.** Pointing a webhook at a new URL, or an email channel at a new
   server, port or security setting, drops the saved header values or SMTP password unless you type them again.
+- **"No password on my local network" ignores forwarded traffic with a `TRUST_PROXY` list too.** Before, setting
+  `TRUST_PROXY` to your proxy's address let any LAN device that sent `X-Forwarded-For` (a second tunnel or proxy, such
+  as cloudflared) in without a password.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers

@@ -31,7 +31,6 @@ export function trustProxyOption(): number | string[] | false {
     .map((x) => x.trim())
     .filter(Boolean);
 }
-export const PROXY_TRUSTED = trustProxyOption() !== false;
 
 const hmac = (data: string) => crypto.createHmac("sha256", getSettings().secret).update(data).digest("base64url");
 
@@ -83,14 +82,18 @@ const FORWARD_HEADERS = [
 ];
 
 /**
- * "Disabled for local addresses": the request must come from a private IP, and must not have passed through
- * an untrusted proxy (a reverse proxy or tunnel would otherwise make the whole internet look local).
+ * "Disabled for local addresses": judged on the real socket peer, never on a header. The peer must be on the home
+ * network, must not be a proxy (loopback or a TRUST_PROXY entry), and the request must carry no forwarded headers at
+ * all: a LAN peer sending them is a proxy or tunnel we weren't told about (cloudflared, a second reverse proxy), which
+ * would otherwise make the whole internet look local. This holds with a TRUST_PROXY list too (review M1); requests
+ * through a listed proxy use its headers for the client IP in logs, but never get the bypass.
  */
 export function isLocalRequest(req: FastifyRequest) {
-  if (!PROXY_TRUSTED && FORWARD_HEADERS.some((h) => req.headers[h])) return false;
+  if (FORWARD_HEADERS.some((h) => req.headers[h])) return false;
   // A hop-count TRUST_PROXY trusts whatever is in front blindly: no "local" bypass with it.
   if (typeof trustProxyOption() === "number") return false;
-  return isHomeNetwork(req.ip) && !isProxyPeer(req.socket?.remoteAddress ?? "");
+  const peer = req.socket?.remoteAddress ?? "";
+  return isHomeNetwork(peer) && !isProxyPeer(peer);
 }
 
 const v4 = (ip: string) => (ip.startsWith("::ffff:") ? ip.slice(7) : ip);
