@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { parseRelease } from "../server/core/parser.js";
 import { AliasIndex } from "../server/core/aliases.js";
 import { identify } from "../server/core/identify.js";
+import { splitSeason } from "../server/core/normalize.js";
 
 interface Row {
   name: string;
@@ -351,6 +352,63 @@ test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
   assert.deepEqual(at("[Group] Some Show S01E13 [1080p]"), { label: "S2E1", conf: 96 });
   // Unchanged: season 1, both readings agree.
   assert.deepEqual(at("[Group] Some Show - S01E05 - 005 [1080p]"), { label: "S1E5", conf: 96 });
+});
+
+test("a trailing Roman numeral is a season, but a lone 'X' is part of the title (Gundam X)", () => {
+  const split = (t: string) => {
+    const s = splitSeason(t);
+    return [s.base, s.season];
+  };
+  // Must not change.
+  assert.deepEqual(split("Mob Psycho 100 III"), ["mob psycho 100", 3]);
+  assert.deepEqual(split("Overlord IV"), ["overlord", 4]);
+  assert.deepEqual(split("Show II"), ["show", 2]);
+  assert.deepEqual(split("Quanzhi Fashi VII"), ["quanzhi fashi", 7]);
+  assert.deepEqual(split("Quanzhi Fashi V"), ["quanzhi fashi", 5]);
+  assert.deepEqual(split("Spy x Family"), ["spy x family", null]);
+  assert.deepEqual(split("Hunter x Hunter"), ["hunter x hunter", null]);
+  // Was season 10.
+  assert.deepEqual(split("Gundam X"), ["gundam x", null]);
+  assert.deepEqual(split("Mobile Suit Gundam X"), ["mobile suit gundam x", null]);
+  assert.deepEqual(split("After War Gundam X"), ["after war gundam x", null]);
+  check([
+    { name: "[Group] After War Gundam X - 05 [DVD]", title: "After War Gundam X", group: "Group", absolute: [5] },
+    { name: "[Group] Mob Psycho 100 III - 05 [1080p]", title: "Mob Psycho 100 III", group: "Group", absolute: [5] },
+  ]);
+});
+
+test("a 1979 Gundam release never lands on Gundam X", () => {
+  const lib = (tvdbId: number, title: string, alts: string[] = []) => ({
+    seriesId: tvdbId,
+    tvdbId,
+    title,
+    path: `/a/${tvdbId}`,
+    altTitles: alts.map((a) => ({ title: a, sceneSeason: null })),
+  });
+  const eps = (t: number) =>
+    Array.from({ length: 43 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: 1,
+      episode: i + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const ctxOf = (library: ReturnType<typeof lib>[]) => ({
+    index: new AliasIndex({ library }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+  });
+  const gundamX = lib(2, "After War Gundam X", ["Mobile Suit Gundam X", "Kidou Shin Seiki Gundam X"]);
+  const both = ctxOf([gundamX, lib(1, "Mobile Suit Gundam")]);
+  assert.equal(identify("[Group] Mobile Suit Gundam - 05 [DVD]", both).candidate?.tvdbId, 1);
+  assert.equal(identify("[Group] After War Gundam X - 05 [DVD]", both).candidate?.tvdbId, 2);
+  assert.equal(identify("[Group] Mobile Suit Gundam X - 05 [DVD]", both).candidate?.tvdbId, 2);
+  // Only Gundam X in the library: the 1979 show is not a known title (was Gundam X "season 10" at 77%).
+  const onlyX = identify("[Group] Mobile Suit Gundam - 05 [DVD]", ctxOf([gundamX]));
+  assert.equal(onlyX.candidate, null, onlyX.summary);
 });
 
 test("real paths still reduce to the file name (unchanged)", () => {

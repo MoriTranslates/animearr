@@ -55,8 +55,9 @@ export function splitSeason(title: string): SeasonSplit {
   m = n.match(/^(.*\S)\s+(?:part|cour)\s+(\d{1,2}|ii|iii|iv)$/);
   if (m) return { base: m[1], season: /^\d+$/.test(m[2]) ? Number(m[2]) : ROMAN[m[2]], kind: "part" };
   m = n.match(/^(.*\S)\s+(ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii)$/);
-  // Single-letter "v"/"x" endings are usually words or titles ("Dragon Ball X"?) only when the base is long enough.
-  if (m && (m[2].length > 1 || m[1].length >= 6)) return { base: m[1], season: ROMAN[m[2]], kind: "season" };
+  // A single-letter "v" counts only after a long enough base ("Quanzhi Fashi V"). A lone "x" never does: it is part of
+  // the title ("Gundam X", "Dragon Ball X"), and a tenth season written "X" is too rare to risk a wrong-show match.
+  if (m && m[2] !== "x" && (m[2].length > 1 || m[1].length >= 6)) return { base: m[1], season: ROMAN[m[2]], kind: "season" };
   m = n.match(/^(.*\S)\s+(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+season$/);
   if (m)
     return {
