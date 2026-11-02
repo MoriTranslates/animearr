@@ -46,9 +46,11 @@ All notable changes, newest first. The commit history has the crew's version of 
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`. Plain IPv4 home networks and IPv6
   link-local are unchanged.
 - **A fresh install behind a reverse proxy set up with a hop count (`TRUST_PROXY=1`) can log in.** The default login
-  was refused everywhere, so the password could never be changed. It now works from home through your proxy (when the
-  proxy has a private or loopback address and you open AnimeArr by IP, a LAN name or a name in
-  `ANIMEARR_ALLOWED_HOSTS`); it is still refused for clients outside your home network.
+  was refused everywhere, so the password could never be changed. It now works from home through your proxy when the
+  proxy runs on another machine in your home network (10.x or 192.168.x; a proxy on a Docker network or on the same
+  host only once you list its range in `ANIMEARR_LOCAL_NETWORKS`) and you open AnimeArr by IP, a LAN name or a name in
+  `ANIMEARR_ALLOWED_HOSTS`. It is still refused for clients outside your home network, including forged
+  `X-Forwarded-For` headers that arrive through Docker's gateway.
 - **Logging out really ends the session.** Before, the session stayed valid for 30 days after "Log out" (only the
   browser forgot it), so a copied session cookie kept working. Logging out now signs out **every** browser, like a
   password change does; log in again on your other devices.

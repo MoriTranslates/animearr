@@ -1,8 +1,9 @@
 /**
- * A fresh install behind a reverse proxy configured with a hop count (TRUST_PROXY=1), over HTTP (review L2).
- * Before, the default login was refused everywhere (the hop count switches the local-network check off), so the
- * password could never be changed. Now the default login judges the client the trusted proxy reports, as long as the
- * proxy itself is a nearby (private or loopback) peer; the no-password bypass stays off.
+ * A fresh install behind a reverse proxy configured with a hop count (TRUST_PROXY=1), over HTTP (review L2, then A1 of
+ * the blind review of the auth branch). The default login judges the client the proxy reports, but only when the proxy
+ * itself (the socket peer) is on the home network: Docker's 172.16/12, ULA and loopback are where internet traffic
+ * arrives through Docker's gateway or docker-proxy, so they never vouch for an X-Forwarded-For. Only the last entry
+ * (the one that proxy added) counts, whatever the hop count. The no-password bypass stays off.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +23,7 @@ const { ensureDefaultAccount, patchSettings, setAccount } = await import("../ser
 await ensureDefaultAccount();
 const { app } = await import("../server/index.js");
 
-const PROXY = "172.18.0.5"; // the reverse proxy on its Docker network
+const PROXY = "192.168.1.2"; // the reverse proxy on another machine in the home network
 const login = (peer: string, headers: Record<string, string>, password = "morebooty") =>
   app.inject({
     method: "POST",
@@ -32,11 +33,38 @@ const login = (peer: string, headers: Record<string, string>, password = "morebo
     payload: { username: "captain", password },
   });
 
-test("the default login works from home through the proxy", async () => {
+test("the default login works from home through a proxy on the home network", async () => {
   const r = await login(PROXY, { "x-forwarded-for": "192.168.1.20" });
   assert.equal(r.statusCode, 200, r.body);
-  const loopbackProxy = await login("127.0.0.1", { "x-forwarded-for": "192.168.1.21" });
-  assert.equal(loopbackProxy.statusCode, 200, "a proxy on the same host");
+});
+
+test("review A1: a forged X-Forwarded-For through Docker's gateway gets no default login", async () => {
+  // The reviewer's repro: an internet attacker reaches the published port directly; the peer shows as the gateway.
+  const r = await login("172.17.0.1", { "x-forwarded-for": "192.168.1.20", host: "203.0.113.50" });
+  assert.equal(r.statusCode, 403, r.body);
+  for (const peer of ["172.18.0.5", "fd00:dead:beef::1", "127.0.0.1", "::1", "::ffff:172.17.0.1"])
+    assert.equal((await login(peer, { "x-forwarded-for": "192.168.1.20" })).statusCode, 403, `${peer} can't vouch for a client`);
+});
+
+test("review A1: a hop count above the real number of proxies doesn't let the client pick its address", async () => {
+  process.env.TRUST_PROXY = "2";
+  try {
+    // One real proxy: it appended the attacker's real address; the attacker supplied the entry before it.
+    const r = await login(PROXY, { "x-forwarded-for": "192.168.1.20, 203.0.113.9" });
+    assert.equal(r.statusCode, 403, r.body);
+  } finally {
+    process.env.TRUST_PROXY = "1";
+  }
+});
+
+test("a proxy on a Docker network counts once its range is listed as home", async () => {
+  process.env.ANIMEARR_LOCAL_NETWORKS = "192.168.0.0/16,172.18.0.0/16";
+  try {
+    assert.equal((await login("172.18.0.5", { "x-forwarded-for": "192.168.1.20" })).statusCode, 200);
+    assert.equal((await login("172.17.0.1", { "x-forwarded-for": "192.168.1.20" })).statusCode, 403, "other Docker ranges still don't");
+  } finally {
+    delete process.env.ANIMEARR_LOCAL_NETWORKS;
+  }
 });
 
 test("the default login stays refused for clients outside the home network", async () => {

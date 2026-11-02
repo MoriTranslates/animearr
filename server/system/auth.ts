@@ -376,34 +376,31 @@ export const DEFAULT_REMOTE_REFUSED = "The default password only works from your
 
 const HOST_HINT = " Behind a reverse proxy: open AnimeArr by its IP or LAN name, or add the address you use to ANIMEARR_ALLOWED_HOSTS.";
 
-/** A peer that can be the user's own reverse proxy: loopback or a private address (Docker networks included). */
-function nearPeer(peer: string) {
-  return ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fc00::/7", "fe80::/10"].some((c) => inCidr(peer, c));
-}
-
 /**
  * The safety rule for the default login (captain/morebooty): while the password is still the default, a login is only
  * accepted from the home network (the same check as "No password on my local network": ANIMEARR_LOCAL_NETWORKS or
  * 10/8 + 192.168/16 + IPv6 link-local, never through an untrusted proxy, addressed by IP or a LAN name).
  * With a hop-count TRUST_PROXY that check is always off, which made the default login impossible everywhere and the
- * password unchangeable (review L2). There the client is the one the trusted proxy reports in X-Forwarded-For,
- * accepted when it is on the home network and the proxy itself is a nearby peer: a direct internet peer can't claim a
- * LAN address, and a proxy reports the real client. The no-password bypass stays off with a hop count.
- * Returns the refusal message, or null when the login may go ahead.
+ * password unchangeable (review L2). There the client is the one the proxy reports in X-Forwarded-For, but only when
+ * the proxy (the socket peer) is itself on the home network by the same rule: Docker's 172.16/12, ULA and loopback
+ * are where internet traffic arrives through Docker's gateway or docker-proxy, so they can't vouch for a header
+ * (blind review A1). Only the last entry counts, the one that proxy added: a hop count larger than the real number of
+ * proxies would otherwise let the client pick an earlier entry; chained proxies therefore fail closed.
+ * The no-password bypass stays off with a hop count. Returns the refusal message, or null when the login may go ahead.
  */
 export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) {
   if (!usingDefault) return null;
   if (isLocalRequest(req)) return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
   const hops = trustProxyOption();
   if (typeof hops !== "number" || hops < 1) return DEFAULT_REMOTE_REFUSED;
-  // Fastify ignores a hop count (it can't verify the peer), so req.ip is the proxy: read the client the way the hop
-  // count describes it, the hops-th address from the right of X-Forwarded-For, and only from a nearby peer.
+  // Fastify ignores a hop count (it can't verify the peer), so req.ip is the proxy itself.
+  const peer = req.socket?.remoteAddress ?? "";
+  if (!isHomeNetwork(peer)) return DEFAULT_REMOTE_REFUSED;
   const xff = String(req.headers["x-forwarded-for"] ?? "")
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-  const client = xff.length >= hops ? xff[xff.length - hops] : "";
-  if (!nearPeer(req.socket?.remoteAddress ?? "") || !net.isIP(client.replace(/%.*$/, "")) || !isHomeNetwork(client))
-    return DEFAULT_REMOTE_REFUSED;
+  const client = xff.at(-1) ?? "";
+  if (!net.isIP(client.replace(/%.*$/, "")) || !isHomeNetwork(client)) return DEFAULT_REMOTE_REFUSED;
   return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED + HOST_HINT;
 }
