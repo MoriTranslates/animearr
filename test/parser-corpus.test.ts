@@ -411,6 +411,58 @@ test("a 1979 Gundam release never lands on Gundam X", () => {
   assert.equal(onlyX.candidate, null, onlyX.summary);
 });
 
+test("a bracketed title right after the group is the title ([Oshi no Ko])", () => {
+  check([
+    { name: "[Group] [Oshi no Ko] - 05", title: "Oshi no Ko", group: "Group", absolute: [5] },
+    { name: "[SubsPlease] [Oshi no Ko] - 05 (1080p) [ABCD1234].mkv", title: "Oshi no Ko", group: "SubsPlease", absolute: [5] },
+    { name: "[Erai-raws] [Oshi no Ko] 2nd Season - 05 [1080p]", title: "Oshi no Ko", group: "Erai-raws", season: 2, absolute: [5] },
+    { name: "[Group][Oshi no Ko] - 05", title: "Oshi no Ko", group: "Group", absolute: [5] },
+    { name: "[Group] [Oshi no Ko] S02E05 [1080p]", title: "Oshi no Ko", group: "Group", season: 2, episodes: [5] },
+    { name: "[Group][Show] - 05", title: "Show", group: "Group", absolute: [5] },
+  ]);
+});
+
+test("group, second group and metadata brackets: rows that must not change", () => {
+  check([
+    { name: "[Group] Show - 05 [1080p]", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] [1080p] Show - 05", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] [BD] Show - 05", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] Show - 05 [ABCD1234]", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] Show - 05 (1080p) [ABCD1234].mkv", title: "Show", group: "Group", absolute: [5] },
+    { name: "[WtF-aNiMe][SCY] Show - 05", title: "Show", group: "WtF-aNiMe", absolute: [5] },
+    { name: "[F-B] [SCY] Show - 05", title: "Show", group: "F-B", absolute: [5] },
+    { name: "[Group] [F-B] Show - 05", title: "Show", group: "Group", absolute: [5] },
+  ]);
+});
+
+test("[Oshi no Ko] goes to its own show, not a show named after what follows the brackets", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const eps = (t: number) =>
+    Array.from({ length: 22 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: i < 11 ? 1 : 2,
+      episode: (i % 11) + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const ctx = {
+    index: new AliasIndex({ library: [lib(2, "05"), lib(1, "[Oshi no Ko]"), lib(3, "Oshi no Ko Movie")] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+  };
+  const r = identify("[SubsPlease] [Oshi no Ko] - 05 (1080p) [ABCD1234].mkv", ctx);
+  assert.equal(r.candidate?.tvdbId, 1, r.summary);
+  const s2 = identify("[Erai-raws] [Oshi no Ko] 2nd Season - 05 [1080p]", ctx);
+  assert.equal(s2.candidate?.tvdbId, 1, s2.summary);
+  assert.deepEqual(
+    s2.resolution?.episodes.map((e) => [e.season, e.episode]),
+    [[2, 5]],
+  );
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },

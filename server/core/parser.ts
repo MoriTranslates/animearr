@@ -390,9 +390,14 @@ export function parseRelease(input: string): ParsedRelease {
   if (lead && !/^\d+$/.test(lead[1]) && !RES_RE.test(lead[1])) {
     group = lead[1].trim();
     s = s.slice(lead[0].length);
-    // A second leading bracket that looks like a group tag ([F-B], [SCY]).
+    // A second leading bracket that looks like a group tag ([F-B], [SCY]). When no title follows it (only an episode
+    // or season marker: "[Oshi no Ko] - 05", "[Oshi no Ko] 2nd Season - 05"), it is the title itself: unwrap it.
     const lead2 = s.match(/^\s*\[([A-Za-z][\w.& -]{0,20})\]\s*[._ ]?/);
-    if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) s = s.slice(lead2[0].length);
+    if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
+      const rest = s.slice(lead2[0].length);
+      const noTitle = /^\s*(?:-|\d|S\d|E\d|Season\b|$)/i.test(rest);
+      s = noTitle ? `${lead2[1]} ${rest}` : rest;
+    }
   }
   s = s.replace(/^[._\s-]+/, "");
 
