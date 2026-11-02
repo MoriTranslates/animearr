@@ -10,8 +10,20 @@ import path from "node:path";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
-import { BACKUP_DIR, backupNow, db, dbState, quickCheck, USER_DB, userSchemaVersion } from "./db.js";
-import { KEY_FILE, open } from "./secretbox.js";
+import {
+  BACKUP_DIR,
+  backupNow,
+  db,
+  dbState,
+  keepDamaged,
+  listBackups,
+  needsRestart,
+  quickCheck,
+  restoreBackup,
+  USER_DB,
+  userSchemaVersion,
+} from "./db.js";
+import { isSealed, KEY_FILE, open } from "./secretbox.js";
 import { VERSION } from "./version.js";
 
 export const BACKUP_FORMAT = "animearr-backup";
@@ -220,24 +232,94 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
     });
   }
   hooks.closeDb();
-  // The rename replaces the live file in one step; deleting it first would only open a window with no database.
-  for (const f of [`${paths.db}-wal`, `${paths.db}-shm`]) fs.rmSync(f, { force: true });
-  fs.renameSync(tmpDb, paths.db);
-  fs.renameSync(tmpKey, paths.key);
+  try {
+    // The rename replaces the live file in one step; deleting it first would only open a window with no database.
+    for (const f of [`${paths.db}-wal`, `${paths.db}-shm`]) fs.rmSync(f, { force: true });
+    fs.renameSync(tmpDb, paths.db);
+    // Stopped between these two renames, the next start finishes it (secretbox: the waiting key that opens the settings).
+    fs.renameSync(tmpKey, paths.key);
+  } catch (e) {
+    throw needsRestart(
+      `The restore stopped part-way (${(e as Error).message}). Restart AnimeArr: it starts with the database and key that belong together`,
+      e,
+    );
+  }
 }
 
-/** The safety copy before a restore: the database (VACUUM INTO) plus the current key, which that copy can't be opened without. */
-export function safetyBackup() {
+const SAVED_KEY = /^animearr-prerestore-.*\.secret\.key$/;
+
+/** Keeps a copy of the live key: the safety copies made before a restore can't be opened without it. */
+function saveKeyCopy() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  if (!backupNow("prerestore", "upload")) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
   fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.secret.key`));
   for (const old of fs
     .readdirSync(BACKUP_DIR)
-    .filter((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f))
+    .filter((f) => SAVED_KEY.test(f))
     .sort()
     .reverse()
     .slice(3))
     fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
+}
+
+/**
+ * The safety copy before a restore: the database (VACUUM INTO, or the file itself when it's the damaged one) plus the
+ * current key, which that copy can't be opened without.
+ */
+export function safetyBackup() {
+  if (dbState.corrupt) {
+    try {
+      keepDamaged();
+    } catch (e) {
+      throw new Error(`Couldn't save a copy of the damaged database (${(e as Error).message}), so nothing was changed`, { cause: e });
+    }
+  } else if (!backupNow("prerestore", "upload")) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
+  saveKeyCopy();
+}
+
+/**
+ * Restores one of the backups in the backups folder. Its settings must open with the live key, or with a key copy
+ * saved before an uploaded backup was restored (that key then comes back with it); otherwise the app couldn't start
+ * on it, so the restore is refused before anything changes.
+ */
+export function restoreSaved(name: string) {
+  const b = listBackups().find((x) => x.name === name);
+  if (!b) throw refuse("Unknown backup");
+  let sealed: string | undefined;
+  try {
+    const d = new DatabaseSync(path.join(BACKUP_DIR, b.name), { readOnly: true });
+    try {
+      sealed = (d.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined)?.value;
+    } finally {
+      d.close();
+    }
+  } catch {
+    sealed = undefined; // an unreadable backup is refused by restoreBackup's own check, before anything changes
+  }
+  const opens = (hex: string) => {
+    try {
+      open(sealed!, Buffer.from(hex, "hex"));
+      return true;
+    } catch {
+      return false; // not this key
+    }
+  };
+  if (!sealed || !isSealed(sealed) || opens(fs.readFileSync(KEY_FILE, "utf8").trim())) return restoreBackup(name);
+  const key = fs
+    .readdirSync(BACKUP_DIR)
+    .filter((f) => SAVED_KEY.test(f))
+    .sort()
+    .reverse()
+    .map((f) => fs.readFileSync(path.join(BACKUP_DIR, f), "utf8").trim())
+    .find((k) => /^[0-9a-f]{64}$/i.test(k) && opens(k));
+  if (!key)
+    throw Object.assign(
+      new Error(
+        "That backup was made with a different secret key (from before an uploaded backup was restored), and AnimeArr no longer has that key: restoring it would leave AnimeArr unable to start. Nothing was changed.",
+      ),
+      { statusCode: 409 },
+    );
+  saveKeyCopy(); // the live key: the safety copy restoreBackup makes next is sealed with it
+  restoreBackup(name, { key });
 }
 
 /** Restores an uploaded backup into the live config folder. */

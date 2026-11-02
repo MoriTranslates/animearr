@@ -19,6 +19,8 @@ export const CONFIG_DIR = path.resolve(process.env.ANIMEARR_CONFIG ?? (isProd ? 
 export const BACKUP_DIR = path.join(CONFIG_DIR, "backups");
 export const CACHE_DIR = path.join(CONFIG_DIR, "cache");
 export const USER_DB = path.join(CONFIG_DIR, "animearr.db");
+/** The key that seals the settings (secretbox.ts). Here so a restore can swap it together with the database. */
+export const KEY_FILE = path.join(CONFIG_DIR, "secret.key");
 const CACHE_DB = path.join(CONFIG_DIR, "cache.db");
 const LOCK = path.join(CONFIG_DIR, "animearr.lock");
 
@@ -204,26 +206,49 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
   return name;
 }
 
-/** Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). */
-export function restoreBackup(name: string) {
+/**
+ * A damaged animearr.db can't be copied with VACUUM INTO: before a restore replaces it, the file itself (and its WAL)
+ * is copied as it is, so nothing is lost for good. Throws when it can't be saved (the restore then doesn't happen).
+ */
+export function keepDamaged(): string | null {
+  if (!fs.existsSync(USER_DB)) return null;
+  const name = `animearr-damaged-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23)}.db`;
+  fs.copyFileSync(USER_DB, path.join(BACKUP_DIR, name), fs.constants.COPYFILE_EXCL);
+  if (fs.existsSync(`${USER_DB}-wal`)) fs.copyFileSync(`${USER_DB}-wal`, path.join(BACKUP_DIR, `${name}-wal`), fs.constants.COPYFILE_EXCL);
+  return name;
+}
+
+/** An error after the live database was closed: the process can't go on, the caller must restart it. */
+export const needsRestart = (msg: string, cause: unknown) => Object.assign(new Error(msg, { cause }), { restart: true, statusCode: 500 });
+
+/**
+ * Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). `key`: the secret.key
+ * (hex) the backup's settings are sealed with, when it isn't the live one; it is swapped in together with the database.
+ */
+export function restoreBackup(name: string, opts: { key?: string } = {}) {
   const b = listBackups().find((x) => x.name === name);
   if (!b) throw new Error("Unknown backup");
   const src = path.join(BACKUP_DIR, b.name);
   const check = new DatabaseSync(src, { readOnly: true });
   const r = quickCheck(check);
+  const version = r === "ok" ? (check.prepare("PRAGMA user_version").get() as { user_version: number }).user_version : 0;
   check.close();
   if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
-  // The current database is kept first; without that copy nothing is replaced (unless it's the damaged one).
-  if (!dbState.corrupt) {
-    try {
-      backupNow("prerestore");
-    } catch (e) {
-      throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
-    }
+  if (version > userSchemaVersion())
+    throw new Error(
+      `That backup is from a newer AnimeArr (database version ${version}, this one understands up to ${userSchemaVersion()}). Update AnimeArr first; nothing was changed`,
+    );
+  // The current database is kept first (as a raw copy when it's the damaged one); without that copy nothing is replaced.
+  try {
+    if (dbState.corrupt) keepDamaged();
+    else backupNow("prerestore");
+  } catch (e) {
+    throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
   }
   // Copied next to the live file and checked there, then renamed over it in one step: a crash or a full disk mid-copy
   // leaves the old database as it was, never a half-written or missing one.
   const tmp = `${USER_DB}.restore-tmp`;
+  const tmpKey = `${KEY_FILE}.restore-tmp`;
   fs.rmSync(tmp, { force: true });
   try {
     fs.copyFileSync(src, tmp);
@@ -231,13 +256,23 @@ export function restoreBackup(name: string) {
     const tr = quickCheck(t);
     t.close();
     if (tr !== "ok") throw new Error(`the copy failed its check (${tr})`);
+    if (opts.key) fs.writeFileSync(tmpKey, opts.key, { mode: 0o600 });
   } catch (e) {
-    fs.rmSync(tmp, { force: true });
+    for (const f of [tmp, tmpKey]) fs.rmSync(f, { force: true });
     throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
   }
   db.close();
-  for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
-  fs.renameSync(tmp, USER_DB);
+  try {
+    for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
+    fs.renameSync(tmp, USER_DB);
+    // Stopped between these two renames, the next start finishes it: the waiting key is used if it opens the settings.
+    if (opts.key) fs.renameSync(tmpKey, KEY_FILE);
+  } catch (e) {
+    throw needsRestart(
+      `The restore of ${name} stopped part-way (${(e as Error).message}). Restart AnimeArr: it starts with the database and key that belong together`,
+      e,
+    );
+  }
 }
 
 // ---------------------------------------------------------------- migrations (transactional; backup first)

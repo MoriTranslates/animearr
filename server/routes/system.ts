@@ -1,11 +1,19 @@
 /** Routes: System: jobs, metadata, logs, update check, backups. */
 import { humanizeError } from "../system/errors.js";
 import { checkForUpdates } from "../system/releases.js";
-import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "../system/backupTransfer.js";
+import {
+  createBackup,
+  MAX_BACKUP_BYTES,
+  parseBackup,
+  restoreSaved,
+  restoreUploaded,
+  stageBackup,
+  takeStaged,
+} from "../system/backupTransfer.js";
 import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply } from "fastify";
 import { authState, loginAllowed } from "../system/auth.js";
-import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
+import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache } from "../system/db.js";
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
 
@@ -13,6 +21,16 @@ import { checkPassword, getSettings } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
 import { STARTED, fail, writable } from "./common.js";
+
+/** Runs a restore. One that failed after the live database was closed restarts the app, which starts on a whole pair. */
+function restoreOrRestart(run: () => void) {
+  try {
+    run();
+  } catch (e) {
+    if ((e as { restart?: boolean }).restart) setTimeout(() => process.exit(0), 500);
+    throw e;
+  }
+}
 
 export function registerSystemRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- system: jobs, metadata, backups
@@ -55,7 +73,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    restoreBackup(String(req.body?.name ?? ""));
+    restoreOrRestart(() => restoreSaved(String(req.body?.name ?? "")));
     app.log.warn("Backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {
@@ -101,7 +119,8 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    restoreUploaded(takeStaged(String(req.body?.token ?? "")));
+    const staged = takeStaged(String(req.body?.token ?? ""));
+    restoreOrRestart(() => restoreUploaded(staged));
     app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {

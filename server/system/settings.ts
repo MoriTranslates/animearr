@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import { CONFIG_DIR, db, dbState } from "./db.js";
+import { BACKUP_DIR, CONFIG_DIR, db, dbState, listBackups, quickCheck } from "./db.js";
 import { rootRefusal } from "./roots.js";
 import type { GoalId } from "../core/quality.js";
 import { open, seal } from "./secretbox.js";
@@ -798,6 +800,32 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
 
 let cache: Settings | null = null;
 
+/**
+ * The settings of the newest backup the live key opens. Only used while animearr.db is damaged and its own settings
+ * can't be read: without them there is no account, so nobody could log in to restore a backup (and a new account
+ * can't be saved to a damaged database).
+ */
+function settingsFromBackup(): Record<string, unknown> | null {
+  for (const b of listBackups()) {
+    try {
+      const d = new DatabaseSync(path.join(BACKUP_DIR, b.name), { readOnly: true });
+      try {
+        if (quickCheck(d) !== "ok") continue;
+        const row = d.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined;
+        if (!row) continue;
+        const stored = JSON.parse(open(row.value)) as Record<string, unknown>;
+        console.warn(`animearr.db is damaged and its settings can't be read: using the settings of ${b.name} until a backup is restored.`);
+        return stored;
+      } finally {
+        d.close();
+      }
+    } catch {
+      /* this backup can't stand in (damaged, or sealed with another key): try the next one */
+    }
+  }
+  return null;
+}
+
 export function getSettings(): Settings {
   if (cache) return cache;
   let stored: Record<string, unknown> = {};
@@ -809,6 +837,8 @@ export function getSettings(): Settings {
       throw new Error(
         `Can't read settings (${(e as Error).message}). Was secret.key replaced? Put the original back, or restore a backup together with its key.`,
       );
+    // Damaged database: the newest backup's settings stand in (read-only), so the account still works to restore one.
+    stored = settingsFromBackup() ?? {};
   }
   let s = merge(DEFAULTS, stored);
   // Migration: the single 0.1 "profile" becomes the seeded default profile.
