@@ -23,7 +23,7 @@ import { parseRelease } from "./core/parser.js";
 import { fribb } from "./metadata/covers.js";
 import { cache, db, dbState, tx } from "./system/db.js";
 import { animeListEntries, invalidateIndex } from "./metadata/metadata.js";
-import { renderMovie, renderSeriesFolder } from "./naming.js";
+import { renderMovie, renderSeriesFolder } from "./import/naming.js";
 import { localPath, mappedPath } from "./system/paths.js";
 import { getSettings, underAllowedRoot } from "./system/settings.js";
 

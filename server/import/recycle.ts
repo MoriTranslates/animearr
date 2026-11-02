@@ -9,10 +9,10 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import * as sonarr from "./arr/sonarr.js";
-import { cache } from "./system/db.js";
-import { localPath } from "./system/paths.js";
-import { underAllowedRoot } from "./system/settings.js";
+import * as sonarr from "../arr/sonarr.js";
+import { cache } from "../system/db.js";
+import { localPath } from "../system/paths.js";
+import { underAllowedRoot } from "../system/settings.js";
 
 export interface RecycleItem {
   path: string;

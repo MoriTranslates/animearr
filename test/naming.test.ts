@@ -1,7 +1,7 @@
 /** Sonarr/Radarr-compatible naming: tokens, modifiers, multi-episode styles, illegal characters, colons. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderEpisode, renderMovie, renderSeasonFolder, renderSeriesFolder, cleanName } from "../server/naming.js";
+import { renderEpisode, renderMovie, renderSeasonFolder, renderSeriesFolder, cleanName } from "../server/import/naming.js";
 
 const opts = { replaceIllegalCharacters: true, colonReplacement: "smart" as const, multiEpisodeStyle: "prefixedRange" as const };
 const SONARR_ANIME =

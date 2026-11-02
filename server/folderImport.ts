@@ -15,7 +15,7 @@ import { cache, db } from "./system/db.js";
 import { addShow, NATIVE_BASE, rematerializeSeries, searchAdd, type AddResult } from "./native.js";
 import { aliasIndex, animeListEntries } from "./metadata/metadata.js";
 import { localPath } from "./system/paths.js";
-import { VIDEO, scanFolder } from "./mediafiles.js";
+import { VIDEO, scanFolder } from "./import/mediafiles.js";
 import { hiddenInBrowser } from "./system/roots.js";
 import { identifyContext } from "./search/search.js";
 import { getSettings } from "./system/settings.js";

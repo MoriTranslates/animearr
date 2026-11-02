@@ -2,8 +2,8 @@
  * The user's subtitle-track corrections (track_overrides), memoized. A leaf under mediafiles.ts (which applies them to
  * every record it reads) and detection.ts (which edits them).
  */
-import { db } from "./system/db.js";
-import { keyOf } from "./system/paths.js";
+import { db } from "../system/db.js";
+import { keyOf } from "../system/paths.js";
 
 export interface TrackOverride {
   id: number;

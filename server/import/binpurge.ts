@@ -8,10 +8,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_DIR, db } from "./system/db.js";
-import { logDecision } from "./system/activity.js";
-import { getSettings } from "./system/settings.js";
-import { mappedPath } from "./system/paths.js";
+import { CONFIG_DIR, db } from "../system/db.js";
+import { logDecision } from "../system/activity.js";
+import { getSettings } from "../system/settings.js";
+import { mappedPath } from "../system/paths.js";
 import { libraryRoots } from "./mediafiles.js";
 
 const DAY = 86_400_000;

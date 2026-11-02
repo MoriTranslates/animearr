@@ -22,7 +22,7 @@ import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "../arr
 import { allRows, cache, CONFIG_DIR, db, dbState } from "../system/db.js";
 import { clientToSonarr, mappedPath } from "../system/paths.js";
 import { ACTIVE, retryImport } from "./pipelineState.js";
-import { libraryRoots } from "../mediafiles.js";
+import { libraryRoots } from "../import/mediafiles.js";
 import { getSettings } from "../system/settings.js";
 import { readBatch } from "./batch.js";
 import { findCompleted } from "../arr/blackhole.js";

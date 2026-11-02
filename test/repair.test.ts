@@ -10,9 +10,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { checkNewImports } = await import("../server/repair.js");
+const { checkNewImports } = await import("../server/import/repair.js");
 const { planSchedule } = await import("../server/managed.js");
-type Deps = import("../server/repair.js").RepairDeps;
+type Deps = import("../server/import/repair.js").RepairDeps;
 type Probe = import("../server/grabs/verify.js").ProbeResult;
 
 before(() => {
@@ -219,7 +219,7 @@ test("global dry-run: non-managed shows aren't touched; a short file alone is on
 });
 
 test("no import vanishes: one outside the roots or of a show not synced yet gets a row with the reason, and the unsynced one is checked once the library catches up", async () => {
-  const { NOT_SYNCED, OUTSIDE_ROOTS } = await import("../server/repair.js");
+  const { NOT_SYNCED, OUTSIDE_ROOTS } = await import("../server/import/repair.js");
   patchSettings((s) => ({ ...s, repair: { mode: "log", maxPerDay: 10 } }));
   const now = Date.now();
   // Imported by Sonarr ~5 hours before the show reached AnimeArr's library.

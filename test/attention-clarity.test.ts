@@ -15,7 +15,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { calendar, episodeRows, planWrongLanguage, seriesHeader, wrongLanguageEpisodes } = await import("../server/episodes.js");
-const { markBurnedIn } = await import("../server/fileMarks.js");
+const { markBurnedIn } = await import("../server/import/fileMarks.js");
 const { attentionSummary, queueSummary } = await import("../server/system/summary.js");
 const { setLock } = await import("../server/search/qualityLocks.js");
 

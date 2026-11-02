@@ -6,8 +6,8 @@
  */
 import type { FastifyInstance } from "fastify";
 import path from "node:path";
-import { logDecision } from "./system/activity.js";
-import { cache, db, dbState } from "./system/db.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db, dbState } from "../system/db.js";
 
 /** The language a file was marked as having burned-in subtitles in, or null. */
 export function burnedInFile(filePath: string): string | null {

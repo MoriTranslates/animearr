@@ -13,8 +13,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, getSettings } = await import("../server/system/settings.js");
-const { planImport, executeImport, planRename, applyRename, renameBack } = await import("../server/importer.js");
-const { mapArrMedia } = await import("../server/mediadefaults.js");
+const { planImport, executeImport, planRename, applyRename, renameBack } = await import("../server/import/importer.js");
+const { mapArrMedia } = await import("../server/import/mediadefaults.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-imp-"));
 const LIB = path.join(tmp, "lib");
@@ -281,7 +281,7 @@ test("the real-import budget: one import, then a review pause", async () => {
 });
 
 test("rename route: Sonarr renames while it owns the show (RenameFiles), with its own preview", async () => {
-  const { renamePlan, applyRenameRouted, renameRoute } = await import("../server/importer.js");
+  const { renamePlan, applyRenameRouted, renameRoute } = await import("../server/import/importer.js");
   let pending = [
     {
       seriesId: 10,

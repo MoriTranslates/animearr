@@ -1,6 +1,6 @@
 /** Routes: The activity log and undo. */
 import { undropShow } from "../dropped.js";
-import { deleteOverrides, renameSidecarBack } from "../detection.js";
+import { deleteOverrides, renameSidecarBack } from "../import/detection.js";
 import { cache, db } from "../system/db.js";
 import { getDecision, listDecisions, logDecision, markUndone } from "../system/activity.js";
 import { coverFor } from "../metadata/covers.js";
@@ -8,10 +8,10 @@ import { setManaged, unmonitorInSonarr } from "../managed.js";
 import { invalidateIndex } from "../metadata/metadata.js";
 import { summarize } from "../system/summary.js";
 import { registerBlocklistApi } from "../grabs/blocklist.js";
-import { registerFileMarksApi } from "../fileMarks.js";
+import { registerFileMarksApi } from "../import/fileMarks.js";
 import { registerMetaOverrideApi } from "../metadata/metaoverride.js";
 
-import { renameBack } from "../importer.js";
+import { renameBack } from "../import/importer.js";
 import { getSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";

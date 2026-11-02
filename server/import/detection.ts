@@ -7,13 +7,13 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CACHE_DIR, cache, db } from "./system/db.js";
-import { underAllowedRoot } from "./system/settings.js";
-import { keyOf, localPath } from "./system/paths.js";
+import { CACHE_DIR, cache, db } from "../system/db.js";
+import { underAllowedRoot } from "../system/settings.js";
+import { keyOf, localPath } from "../system/paths.js";
 import { probeFile, recordFor } from "./mediafiles.js";
 import { invalidateOverrides, overridesFor } from "./trackOverrides.js";
-import { logDecision } from "./system/activity.js";
-import { learnFromVerify } from "./library.js";
+import { logDecision } from "../system/activity.js";
+import { learnFromVerify } from "../library.js";
 
 const bad = (m: string, code = 400) => Object.assign(new Error(m), { statusCode: code });
 

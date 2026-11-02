@@ -16,7 +16,7 @@ import { ownedElsewhere, ownedWhy, type Overlap } from "../duplicates.js";
 import { seedLimitsFor } from "../search/indexers.js";
 import { supersededBy } from "../system/fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
-import { executeImport, listVideos, planImport } from "../importer.js";
+import { executeImport, listVideos, planImport } from "../import/importer.js";
 import { isNativeSeriesId } from "../nativeIds.js";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
@@ -37,7 +37,7 @@ import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
 import { importMovie, movieFileOpts, movieNextForRow } from "../movies.js";
-import { scanFolder } from "../mediafiles.js";
+import { scanFolder } from "../import/mediafiles.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "../franchise.js";
 import { inspectFiles } from "./safety.js";
 import {

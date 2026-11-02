@@ -14,7 +14,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { planImport } = await import("../server/importer.js");
+const { planImport } = await import("../server/import/importer.js");
 const { identify } = await import("../server/core/identify.js");
 const { identifyContext } = await import("../server/search/search.js");
 const { inExtrasFolder } = await import("../server/core/resolver.js");

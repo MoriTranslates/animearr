@@ -19,7 +19,7 @@ import { seasonComparison } from "../metadata/seadexFiles.js";
 import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason } from "../metadata/seadex.js";
 import { catalogStatus, entriesForSeries } from "../metadata/catalog.js";
 
-import { renamePlan } from "../importer.js";
+import { renamePlan } from "../import/importer.js";
 import { ownedElsewhere, ownedWhy } from "../duplicates.js";
 import { deepSearch, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "../search/search.js";
 import { getSettings, patchSettings } from "../system/settings.js";

@@ -17,10 +17,10 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, CONFIG_DIR } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { planImport, executeImport, clearStalePart } = await import("../server/importer.js");
+const { planImport, executeImport, clearStalePart } = await import("../server/import/importer.js");
 const { removeDownloadPath, inProtected } = await import("../server/grabs/downloads.js");
 const { tarUnpack, tarPack } = await import("../server/system/backupTransfer.js");
-const { pinnedInBin, purgeBin, unpinBinned, binStatus } = await import("../server/binpurge.js");
+const { pinnedInBin, purgeBin, unpinBinned, binStatus } = await import("../server/import/binpurge.js");
 const { blockedOutboundHost } = await import("../server/system/outbound.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-harden-fs-"));
@@ -286,6 +286,6 @@ test("regexes meant as \b word boundaries are real boundaries (they were literal
   assert.deepEqual(qualityResource("Show.S01E05.v2.REPACK.1080p.WEB-DL-Grp").revision, { version: 2, real: 0, isRepack: true });
   assert.equal(qualityResource("Show.S01E05.1080p.WEB-DL-Grp").revision.isRepack, false);
   // No source file carries a control character any more.
-  for (const f of ["sonarrApi.ts", "episodes.ts", "search/search.ts", "importer.ts"])
+  for (const f of ["sonarrApi.ts", "episodes.ts", "search/search.ts", "import/importer.ts"])
     assert.ok(!/[\x00-\x08]/.test(fs.readFileSync(new URL(`../server/${f}`, import.meta.url), "utf8")), f);
 });

@@ -10,7 +10,7 @@
 import { animeTiers } from "./metadata/seadex.js";
 import { seedLimitsFor } from "./search/indexers.js";
 import { grabGate, GrabsPausedError } from "./grabs/downloads.js";
-import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";
+import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./import/importer.js";
 import { isNativeMovieId } from "./nativeIds.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -52,7 +52,7 @@ import { getSettings, underAllowedRoot } from "./system/settings.js";
 import { judge } from "./grabs/verify.js";
 import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
 import { indexerHealth } from "./search/health.js";
-import { ownFile, probeFile, probeOf } from "./mediafiles.js";
+import { ownFile, probeFile, probeOf } from "./import/mediafiles.js";
 
 export interface MovieRow {
   id: number;

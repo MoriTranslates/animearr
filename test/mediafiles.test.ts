@@ -9,7 +9,7 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-fi
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { db } = await import("../server/system/db.js");
-const { scanLibrary, recordFor, probeOf, fileSummary } = await import("../server/mediafiles.js");
+const { scanLibrary, recordFor, probeOf, fileSummary } = await import("../server/import/mediafiles.js");
 
 const lib = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-lib-"));
 const show = path.join(lib, "Show", "Season 1");
@@ -101,7 +101,7 @@ test("record keys use forward slashes: a Windows-style *arr path still finds the
 });
 
 test("own records win when they match the *arr or are newer than its import (Tdarr re-encode); stale ones don't", async () => {
-  const { ownFile } = await import("../server/mediafiles.js");
+  const { ownFile } = await import("../server/import/mediafiles.js");
   const rec = recordFor(arr(ep1))!;
   assert.ok(ownFile(arr(ep1), { size: rec.size }), "same size");
   assert.ok(

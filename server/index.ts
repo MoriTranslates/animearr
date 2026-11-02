@@ -1,4 +1,4 @@
-import { binTick } from "./binpurge.js";
+import { binTick } from "./import/binpurge.js";
 import { breakerTick } from "./search/health.js";
 import { fixesFor } from "./system/fixes.js";
 import { humanizeError } from "./system/errors.js";
@@ -22,15 +22,15 @@ import { lastSync, syncLibrary } from "./library.js";
 import { managedTick, rssTick } from "./managed.js";
 import { refreshMetadata } from "./metadata/metadata.js";
 import { pipelineTick, recoverGrabs } from "./grabs/pipeline.js";
-import { repairTick } from "./repair.js";
+import { repairTick } from "./import/repair.js";
 import { upgradeTick } from "./search/upgrade.js";
 import { qualityUpgradeTick } from "./search/qualityUpgrade.js";
 import { seadexTick } from "./metadata/seadex.js";
 import { movieTick } from "./search/movieSearch.js";
-import { fileScanTick } from "./mediafiles.js";
+import { fileScanTick } from "./import/mediafiles.js";
 import { fillInTick } from "./fillin.js";
 
-import { importMediaDefaultsOnce } from "./mediadefaults.js";
+import { importMediaDefaultsOnce } from "./import/mediadefaults.js";
 import { registerSonarrApi } from "./sonarrApi.js";
 import { materializeAll } from "./native.js";
 import { DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, usingDefaultPassword } from "./system/settings.js";

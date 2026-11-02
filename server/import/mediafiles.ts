@@ -14,11 +14,11 @@ import { applyOverrides } from "./trackOverrides.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { sidecarLang, toLang } from "./core/langs.js";
-import { cache, db, dbState, setJob, tx } from "./system/db.js";
-import { keyOf, localPath } from "./system/paths.js";
-import { getSettings } from "./system/settings.js";
-import { PARTIAL_TRACK } from "./grabs/verify.js";
+import { sidecarLang, toLang } from "../core/langs.js";
+import { cache, db, dbState, setJob, tx } from "../system/db.js";
+import { keyOf, localPath } from "../system/paths.js";
+import { getSettings } from "../system/settings.js";
+import { PARTIAL_TRACK } from "../grabs/verify.js";
 
 export const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm|wmv|mov)$/i;
 const SIDECAR = /\.(ass|ssa|srt|sup|sub|vtt)$/i;

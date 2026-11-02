@@ -1,5 +1,5 @@
 /** Routes: AnimeArr's own importer and renamer, manual import, movie search and grabs, the recycle bin. */
-import { binStatus, purgeBin, unpinBinned } from "../binpurge.js";
+import { binStatus, purgeBin, unpinBinned } from "../import/binpurge.js";
 import { searchConfigured } from "../search/indexers.js";
 import { reevaluate } from "../grabs/downloads.js";
 import { cache, db } from "../system/db.js";
@@ -8,10 +8,10 @@ import { setMoviePrefs } from "../profiles.js";
 import { finishGrabByHand, grabDownloadPath, keepGrab, nextForGrab, removeGrab } from "../grabs/pipeline.js";
 import { retryImport, type Candidate } from "../grabs/pipelineState.js";
 import { grabHistory, queueView, removeSonarrQueueItem, sonarrQueueProblems } from "../grabs/queue.js";
-import { recentChecks, repairTick } from "../repair.js";
-import { recycleSetting, recycleStatus } from "../recycle.js";
+import { recentChecks, repairTick } from "../import/repair.js";
+import { recycleSetting, recycleStatus } from "../import/recycle.js";
 import { movieSearchSummary, planMovies } from "../search/movieSearch.js";
-import { fileSummary, scanFolder, scanLibrary, scanRunning } from "../mediafiles.js";
+import { fileSummary, scanFolder, scanLibrary, scanRunning } from "../import/mediafiles.js";
 import { autoJobs, queueAutoSearch, queueAutoSearchMovie } from "../search/autosearch.js";
 import { scopeFor, scopePreview, setScope, validateScope } from "../scope.js";
 import { addToQueue, editQueue, fillInView } from "../fillin.js";
@@ -26,8 +26,8 @@ import {
   planMovieImport,
   planRename,
   renamePlan,
-} from "../importer.js";
-import { importMediaDefaults, previewNaming } from "../mediadefaults.js";
+} from "../import/importer.js";
+import { importMediaDefaults, previewNaming } from "../import/mediadefaults.js";
 import { isNativeSeriesId, rematerializeSeries } from "../native.js";
 import { seriesByTvdb } from "../search/search.js";
 import { getSettings, patchSettings } from "../system/settings.js";

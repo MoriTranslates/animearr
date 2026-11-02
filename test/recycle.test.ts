@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { recycleStatus, resetRecycleCache } = await import("../server/recycle.js");
+const { recycleStatus, resetRecycleCache } = await import("../server/import/recycle.js");
 
 const bin = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));
 before(() => {

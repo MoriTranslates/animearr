@@ -15,7 +15,7 @@ cache
     "INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, synced_at) VALUES (1, 1, 'Show', '/media/Anime/Show', '/media/Anime', 1, 0)",
   )
   .run();
-const { purgeBin, noteBinned, binFolder } = await import("../server/binpurge.js");
+const { purgeBin, noteBinned, binFolder } = await import("../server/import/binpurge.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-binf-"));
 const BIN = path.join(tmp, "Recycle", "animearr");

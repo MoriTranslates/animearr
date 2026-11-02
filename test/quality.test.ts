@@ -21,7 +21,7 @@ import {
 } from "../server/core/quality.js";
 import { rankRelease } from "../server/core/rank.js";
 import { parseRelease } from "../server/core/parser.js";
-import { renderEpisode } from "../server/naming.js";
+import { renderEpisode } from "../server/import/naming.js";
 
 const tiers = compileTiers(JSON.parse(fs.readFileSync(path.join(process.cwd(), "catalog", "anime-tiers.json"), "utf8")) as TierTable);
 

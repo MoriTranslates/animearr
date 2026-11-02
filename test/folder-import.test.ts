@@ -12,7 +12,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { addShow, checkExistingPath, NATIVE_BASE } = await import("../server/native.js");
 const { adoptFolder, matchFolder, parseFolderName, scanRoot, scoreTitle } = await import("../server/folderImport.js");
-const { scanFolder } = await import("../server/mediafiles.js");
+const { scanFolder } = await import("../server/import/mediafiles.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 type AddResult = import("../server/native.js").AddResult;
 

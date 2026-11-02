@@ -14,7 +14,7 @@ const { tvshowNfo, episodeNfo, seasonNfo, plexmatch, plainText, syncSeriesFiles,
   await import("../server/mediaout.js");
 const { embyRequest, kodiRequest, testEmbyLike, testKodi, notifyMediaServers, flushMediaServers } =
   await import("../server/mediaservers.js");
-const { renderSeriesFolder, serverIdHint } = await import("../server/naming.js");
+const { renderSeriesFolder, serverIdHint } = await import("../server/import/naming.js");
 
 const show = {
   title: "Frieren: Beyond Journey's End",

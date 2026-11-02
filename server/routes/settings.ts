@@ -5,7 +5,7 @@ import { droppedList, dropShow, undropShow } from "../dropped.js";
 import { breakerList, setBreaker, testIndexer as retestIndexer } from "../search/health.js";
 import { watchLinks } from "../watchIn.js";
 import { indexerNumId } from "../search/indexers.js";
-import { fileDetail, peekFrames, rescanOne, setTrackLanguage, useSidecar } from "../detection.js";
+import { fileDetail, peekFrames, rescanOne, setTrackLanguage, useSidecar } from "../import/detection.js";
 import { indexerCatalog } from "../search/indexerCatalog.js";
 import { homeSummary } from "../home.js";
 import { thumb, type ThumbSize } from "../metadata/img.js";
@@ -21,7 +21,7 @@ import { prowlarrConfigured, prowlarrIndexers } from "../arr/prowlarr.js";
 import { releaseDryRunDecisions } from "../managed.js";
 import { listManaged } from "../managedList.js";
 import { invalidateIndex } from "../metadata/metadata.js";
-import { libraryRoots } from "../mediafiles.js";
+import { libraryRoots } from "../import/mediafiles.js";
 
 import { getSettings, isMasked, publicSettings, regenerateApiKey, updateSettings, type Settings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";

@@ -18,7 +18,7 @@ import { deepSearch } from "./search/search.js";
 import { removeGrab, startGrab } from "./grabs/pipeline.js";
 import { backupNow } from "./system/db.js";
 import { rssTick } from "./managed.js";
-import { scanFolder } from "./mediafiles.js";
+import { scanFolder } from "./import/mediafiles.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./metadata/covers.js";
 import { allRows, cache, db, dbState } from "./system/db.js";

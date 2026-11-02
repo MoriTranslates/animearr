@@ -5,10 +5,10 @@
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
-import { burnedInFile } from "./fileMarks.js";
+import { burnedInFile } from "./import/fileMarks.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { movieSpecials } from "./franchise.js";
-import { ownFile, probeOf } from "./mediafiles.js";
+import { ownFile, probeOf } from "./import/mediafiles.js";
 import fs from "node:fs";
 import path from "node:path";
 import { db, cache } from "./system/db.js";

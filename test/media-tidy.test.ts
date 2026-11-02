@@ -10,7 +10,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
-const { airDateMtime, applyFileDate, pruneEmptyFolders } = await import("../server/tidy.js");
+const { airDateMtime, applyFileDate, pruneEmptyFolders } = await import("../server/import/tidy.js");
 
 const DAY = 86_400_000;
 const posix = (p: string) => p.split(path.sep).join("/");
