@@ -239,6 +239,18 @@ test("S3/S4: Sonarr-API query names in any case; the series editor maps onto Ani
   assert.equal(s.monitored, false);
   assert.deepEqual(s.tags, []);
   assert.equal((await put({ seriesIds: [10], qualityProfileId: 9999 })).statusCode, 404);
+
+  // PUT /series/{id} behaves like the editor: monitored:false un-manages the show (its files stay), true manages it again.
+  const one = (payload: object) => app.inject({ method: "PUT", url: "/api/v3/series/10", payload });
+  const files = async () => ((await app.inject({ method: "GET", url: "/api/v3/episodefile?seriesId=10" })).json() as unknown[]).length;
+  assert.equal((await put({ seriesIds: [10], monitored: true })).statusCode, 202);
+  const before = await files();
+  r = await one({ monitored: false });
+  assert.equal(r.statusCode, 202, r.body);
+  assert.equal((r.json() as { monitored: boolean }).monitored, false, "single-show monitored:false un-manages, like the editor");
+  assert.equal(await files(), before, "no file is touched");
+  r = await one({ monitored: true });
+  assert.equal((r.json() as { monitored: boolean }).monitored, true);
   await app.close();
 });
 

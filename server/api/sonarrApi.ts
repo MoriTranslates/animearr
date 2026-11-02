@@ -319,7 +319,8 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     return seriesResource(seriesByTvdb(added.tvdbId)!);
   });
 
-  // Edit: season monitoring (the scope), tags, and managing a show that wasn't. Never written to Sonarr.
+  // Edit: season monitoring (the scope), tags, and managing (monitored) or un-managing (unmonitored) the show. Never
+  // written to Sonarr.
   const edit = async (idParam: unknown, b: Record<string, unknown>) => {
     writable();
     const s = mustSeries(int(idParam));
@@ -327,6 +328,8 @@ export function registerSonarrApi(app: FastifyInstance, opts: { urlBase: string;
     if (seasons) applySeasons(s.tvdb_id, seasons);
     if (b.tags !== undefined) setSeriesTags(s.tvdb_id, b.tags);
     if (b.monitored === true && !isManaged(s.tvdb_id)) setManaged([s.tvdb_id], true, { live: true });
+    // Like the series editor: "unmonitored" = not managed by AnimeArr any more; its files stay.
+    if (b.monitored === false) setManaged([s.tvdb_id], false, { live: true });
     const profile = b.qualityProfileId !== undefined ? profileByApiId(b.qualityProfileId) : null;
     if (profile && profile.id !== profileFor(s.tvdb_id).id) setSeriesPrefs(s.tvdb_id, profile.id, null);
     return seriesResource(mustSeries(s.id));
