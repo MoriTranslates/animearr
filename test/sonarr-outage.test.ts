@@ -122,6 +122,20 @@ test("before any complete Sonarr answer, Add and import lists refuse instead of 
   L.deleteList(l.id);
 });
 
+test("the import-list job logs 'Sonarr not read yet' once, not once per list on every run", async () => {
+  const lists = [1, 2].map((n) => {
+    const l = L.saveList(null, { name: `List ${n}`, source: "anilist", username: `me${n}`, statuses: ["CURRENT"], rootFolder: "/tv" });
+    db.prepare("UPDATE import_lists SET confirmed = 1 WHERE id = ?").run(l.id);
+    return l;
+  });
+  const before = (db.prepare("SELECT MAX(id) AS id FROM decisions").get() as { id: number | null }).id ?? 0;
+  for (let i = 0; i < 3; i++) await L.importListsTick();
+  const logged = db.prepare("SELECT kind, why FROM decisions WHERE id > ?").all(before) as { kind: string; why: string }[];
+  assert.equal(logged.filter((d) => /Sonarr/.test(d.why)).length, 1, JSON.stringify(logged));
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM native_series").get() as { n: number }).n, 0);
+  for (const l of lists) L.deleteList(l.id);
+});
+
 test("a good sync fills the cache", async () => {
   seriesMode = "ok";
   episodesMode = "ok";
@@ -144,13 +158,14 @@ for (const mode of ["down", "timeout", "500", "empty", "partial", "notList", "ba
     assert.equal(syncJob()?.state, "error");
     assert.deepEqual(cachedShows(), [1, 2, 3]);
     for (const id of [1, 2, 3]) assert.equal(cachedEpisodes(id), 2, `episodes of show ${id} kept`);
+    if (mode === "empty" || mode === "partial") assert.ok(r.errors.some((e) => e.includes("Settings → System → Rebuild cache")));
     seriesMode = "ok";
   });
 
 test("the configured anime tag missing from Sonarr's answer keeps the shows that came in through it", async () => {
   tags = [];
   const r = await syncLibrary();
-  assert.ok(r.errors.some((e) => /tag/i.test(e)));
+  assert.ok(r.errors.some((e) => /tag/i.test(e) && e.includes("Settings → System → Rebuild cache")));
   assert.deepEqual(cachedShows(), [1, 2, 3]);
   tags = [{ id: 7, label: "anime" }];
 });

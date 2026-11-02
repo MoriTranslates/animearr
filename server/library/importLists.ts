@@ -17,7 +17,7 @@ import { droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
 import { animeListEntries, USER_AGENT } from "../metadata/metadata.js";
-import { addMovie, addShow, isNativeTvdb, NATIVE_BASE, SONARR_UNKNOWN, sonarrLibraryKnown } from "./native.js";
+import { addMovie, addShow, isNativeTvdb, libraryUnknownReason, NATIVE_BASE } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";
 import { getSettings } from "../system/settings.js";
@@ -497,6 +497,8 @@ async function addItem(l: ListCfg, it: PlanItem, deps: ListDeps) {
 }
 
 const running = new Set<number>();
+/** The job already logged that the lists wait for a first good library read (reset by a run that goes ahead). */
+let pausedLogged = false;
 
 export interface SyncOutcome {
   list: ListCfg;
@@ -514,9 +516,10 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
   const deps = opts.deps ?? realListDeps;
   const l = getList(id);
   if (running.has(id)) throw fail("This list is syncing already", 409);
-  // "Not in the cache" only means "not in the library" once Sonarr's list was read; until then every entry would look
-  // new and be added as a native duplicate of a Sonarr show. The list stays due and runs after a good sync.
-  if (!sonarrLibraryKnown()) throw fail(SONARR_UNKNOWN, 503);
+  // "Not in the cache" only means "not in the library" once Sonarr's (Radarr's) list was read; until then every entry
+  // would look new and be added as a native duplicate. The list stays due and runs after a good sync.
+  const unknown = libraryUnknownReason();
+  if (unknown) throw fail(unknown, 503);
   running.add(id);
   try {
     let plan: Plan;
@@ -589,6 +592,14 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
 /** The background job: lists that are due (every `lists.intervalHours`); an unconfirmed list only gets its first preview. */
 export async function importListsTick(now = Date.now(), deps: ListDeps = realListDeps) {
   const every = getSettings().lists.intervalHours * 3_600_000;
+  // Library not read yet: every due list would refuse (see syncList). Say so once, until a good read, not per list per run.
+  const unknown = libraryUnknownReason();
+  if (unknown) {
+    if (!pausedLogged && listLists().some((l) => l.enabled)) logDecision("fail", { why: `Import lists are paused: ${unknown}` });
+    pausedLogged = true;
+    return;
+  }
+  pausedLogged = false;
   for (const l of listLists()) {
     if (!l.enabled || running.has(l.id)) continue;
     if (!(l.lastSyncAt === null || (l.confirmed && now - l.lastSyncAt >= every))) continue;
