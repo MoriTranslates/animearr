@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { merryOn } from "../merry";
 import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";
-import { Link, query } from "../App";
+import { Link, query } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { Blocklist } from "./Blocklist";
 import { Chip, Confirm, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, usePoll, useToast, ReleaseName } from "../ui";

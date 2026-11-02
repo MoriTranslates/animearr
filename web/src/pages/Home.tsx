@@ -1,7 +1,7 @@
 import { ArrowRight, CaptionsOff, ChevronRight, CircleAlert, Download, FileX, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, store, sxe, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { EpisodeSheet, type EpisodeStatus } from "../episodes";
 import { t } from "../i18n";
 import { languageName } from "../lang";

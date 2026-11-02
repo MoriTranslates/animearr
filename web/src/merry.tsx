@@ -3,7 +3,7 @@
  * used on the 404 page, sailing by on the big "season complete" toast, and as the optional Merry theme.
  */
 import { store } from "./api";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { t } from "./i18n";
 
 export function SheepShip({ size = 120, className = "" }: { size?: number; className?: string }) {

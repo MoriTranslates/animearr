@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openInMediaServer } from "../filetools";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { airLabel, EpisodeSheet, langOf, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks, Tag as TagIcon } from "lucide-react";
 import { Ring } from "../posters";
@@ -32,7 +32,7 @@ import { ManualImport, RenamePreview } from "../media";
 import { RemoveNative } from "./Add";
 import { AnidbEntries } from "../anidb";
 import { MetaSource } from "../metasource";
-import { query } from "../App";
+import { query } from "../nav";
 import { languageName } from "../lang";
 import { TrailerButton } from "../trailer";
 import type { Trailer } from "../trailerLinks";

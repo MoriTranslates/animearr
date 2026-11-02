@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, store, type Settings as S } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
 import { ScopeFields, type Scope } from "../scope";

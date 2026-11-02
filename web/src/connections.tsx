@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { api, type Settings as S, withBase } from "./api";
-import { navigate } from "./App";
+import { navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { MediaOutputCard } from "./mediaout";
 import { Confirm, dateTime, ErrorText, ListInput, Modal, relTime, SecretInput, useLoad, useToast } from "./ui";

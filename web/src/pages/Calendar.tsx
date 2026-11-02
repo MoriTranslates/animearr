@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ListFilter, Rss } from "lucide-react";
 import { seasonOf } from "../season";
 import { SeasonHeader } from "../seasonal";
 import { api, store, sxe } from "../api";
-import { navigate, Link } from "../App";
+import { navigate, Link } from "../nav";
 import { IcalLink } from "../icalLink";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";

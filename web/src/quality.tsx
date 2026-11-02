@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { api, fmtSize } from "./api";
 import { copyText } from "./errors";
 import { t, type I18nKey } from "./i18n";

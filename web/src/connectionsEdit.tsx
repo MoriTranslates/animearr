@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "./api";
-import { navigate } from "./App";
+import { navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import type { LanguageProfile } from "./profiles";
 import { Confirm, ErrorText, ListInput, Modal, NumberInput, SecretInput, Toggle, useLoad, useToast } from "./ui";

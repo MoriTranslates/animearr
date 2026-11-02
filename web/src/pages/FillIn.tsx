@@ -1,5 +1,5 @@
 import { api } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { AutomateTabs } from "./Managed";
 import { t, type I18nKey } from "../i18n";
 import { useState } from "react";

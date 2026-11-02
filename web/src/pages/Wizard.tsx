@@ -3,7 +3,7 @@ import { LibraryFolders } from "../folders";
 import { PhonePanel } from "../phone";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Settings as S, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { Cutover } from "../cutover";
 import { fromEntry, type CatalogEntry } from "../connectionsEdit";
 import { DownloadClients, Indexers, Migration, type SaveNow } from "../connections";

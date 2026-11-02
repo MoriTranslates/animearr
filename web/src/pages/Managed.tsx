@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import {

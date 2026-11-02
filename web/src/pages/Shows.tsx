@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api, type LibraryShow, type Status } from "../api";
-import { Link, navigate, query } from "../App";
+import { Link, navigate, query } from "../nav";
 import { t } from "../i18n";
 import { Confirm, Empty, ErrorBox, Menu, Modal, Skeleton, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";

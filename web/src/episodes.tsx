@@ -3,7 +3,7 @@ import { FixDetection, Peek, Verdicts, WatchIn } from "./filetools";
 import { CaptionsOff } from "lucide-react";
 import { api, fmtSize, sxe, type Fix } from "./api";
 import { FixButtons } from "./fixes";
-import { Link, navigate } from "./App";
+import { Link, navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, usePoll, useToast, Why, ReleaseName } from "./ui";
 import { showVars } from "./season";

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, runFix, type Fix } from "./api";
-import { navigate } from "./App";
+import { navigate } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { ImportBrowser } from "./importBrowser";
 import { followAutoJob, outcomeMessage } from "./autojobs";

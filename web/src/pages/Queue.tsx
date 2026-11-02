@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FixButtons } from "../fixes";
 import { api, fmtSize } from "../api";
-import { query } from "../App";
+import { query } from "../nav";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
 import {

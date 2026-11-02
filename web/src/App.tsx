@@ -5,7 +5,7 @@ import { Wizard } from "./pages/Wizard";
 import { FixHost } from "./fixes";
 import { UpdateCheck } from "./updateCheck";
 import { BellButton } from "./notify";
-import { api, store, type Status, appPath, withBase } from "./api";
+import { api, store, type Status, appPath } from "./api";
 import { setLanguage, t, type I18nKey } from "./i18n";
 import { Activity } from "./pages/Activity";
 import { Add } from "./pages/Add";
@@ -22,9 +22,9 @@ import { Settings } from "./pages/Settings";
 import { Show } from "./pages/Show";
 import { Shows } from "./pages/Shows";
 import { ToastProvider, usePoll, useToast } from "./ui";
-import { confirmLeave } from "./unsaved";
-import { applyFont, applyTextScale } from "./appearance";
-import { applySeason, seasonOf } from "./season";
+import { applyFont, applyTextScale, applyTheme } from "./appearance";
+import { Link, navigate } from "./nav";
+import { seasonOf } from "./season";
 import {
   CalendarDays,
   Download,
@@ -119,60 +119,6 @@ const KNOWN = [
   "/activity",
   "/settings",
 ];
-
-export function navigate(to: string) {
-  // Unsaved changes on the page: ask before leaving (they'd be lost).
-  if (!confirmLeave()) return;
-  history.pushState(null, "", withBase(to));
-  window.dispatchEvent(new PopStateEvent("popstate"));
-  window.scrollTo(0, 0);
-}
-
-export function Link({
-  to,
-  children,
-  className,
-  current,
-  style,
-  title,
-}: {
-  to: string;
-  children: React.ReactNode;
-  className?: string;
-  current?: boolean;
-  style?: React.CSSProperties;
-  title?: string;
-}) {
-  return (
-    <a
-      href={withBase(to)}
-      className={className}
-      style={style}
-      title={title}
-      aria-current={current ? "page" : undefined}
-      onClick={(e) => (e.preventDefault(), navigate(to))}
-    >
-      {children}
-    </a>
-  );
-}
-
-export const query = () => new URLSearchParams(location.search);
-
-export function applyTheme(theme: string) {
-  document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
-  // The browser chrome (address bar, PWA title bar) follows the theme; the root color-scheme comes from the CSS.
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f5f6fa" : "#0b0d14");
-  applySeason(theme === "light" ? "light" : "dark");
-  // The Merry palette (Appearance): caramel wood, sea blue, sail white, instead of the season's accent.
-  document.documentElement.dataset.palette = store.get<string>("palette", "season") === "merry" ? "merry" : "season";
-  applyFont(store.get<string>("font", "inter"));
-  // The device's own text size; without one, the saved default (applied when the status arrives).
-  const ts = store.get<string | null>("textScale", null);
-  if (ts) applyTextScale(ts);
-  // Manga speech-bubble toasts are the default; "standard" is the opt-out (Settings → Appearance).
-  document.documentElement.dataset.toasts = store.get<string>("toastStyle", "bubble") === "standard" ? "standard" : "bubble";
-}
 
 export function App() {
   const [path, setPath] = useState(appPath());

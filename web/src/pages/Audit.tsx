@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, fmtSize, sxe } from "../api";
-import { Link, navigate, query } from "../App";
+import { Link, navigate, query } from "../nav";
 import { QualityUpgradesPanel } from "../quality";
 import { ShowLink, useEpisodeActions } from "../episodes";
 import { t, type I18nKey } from "../i18n";

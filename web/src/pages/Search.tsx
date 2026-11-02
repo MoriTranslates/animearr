@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtSize, type SearchResponse, type SearchResult } from "../api";
 import { EpisodePicker, ShowPicker, type PickedShow } from "../picker";
-import { Link, query } from "../App";
+import { Link, query } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { compareQuality, libraryQuality, qualityName, splitPacks, type LibraryQuality, type Pack, type Quality } from "../packs";
 import { Chip, Confirm, Cover, Empty, ErrorBox, FlagChips, Spinner, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";

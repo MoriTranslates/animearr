@@ -4,7 +4,7 @@ import { FixDetection, Peek, WatchIn } from "../filetools";
 import { LibraryHead } from "./Shows";
 import { RemoveNative } from "./Add";
 import { api, fmtSize, type SearchResult } from "../api";
-import { Link, navigate } from "../App";
+import { Link, navigate } from "../nav";
 import { t } from "../i18n";
 import {
   Chip,

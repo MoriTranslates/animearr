@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, store, sxe } from "./api";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { airLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "./episodes";
 import { t } from "./i18n";
 import { Cover, Empty, Spinner, useLoad } from "./ui";

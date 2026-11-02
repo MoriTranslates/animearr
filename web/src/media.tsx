@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MediaSettings, type Settings as S } from "./api";
-import { Link } from "./App";
+import { Link } from "./nav";
 import { t, type I18nKey } from "./i18n";
 import { ImportBrowser } from "./importBrowser";
 import { Chip, Confirm, ErrorBox, NumberInput, Spinner, Toggle, useLoad, useToast } from "./ui";
