@@ -23,7 +23,7 @@ import { parseRelease, type Source } from "./core/parser.js";
 import { isNewerRevision, type ProperMode } from "./core/propers.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { cache, db } from "./db.js";
-import { haveRevisions, properMode } from "./propers.js";
+import { haveRevisions } from "./propers.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 

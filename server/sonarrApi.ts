@@ -25,7 +25,7 @@ import { scanFolder } from "./mediafiles.js";
 import { registerSonarrMore } from "./sonarrApiMore.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
-import { allRows, cache, db, dbState, tx } from "./db.js";
+import { allRows, cache, db, dbState } from "./db.js";
 import { refuseDropped } from "./dropped.js";
 import { setManaged } from "./managed.js";
 import { mediaByIds } from "./anilist.js";

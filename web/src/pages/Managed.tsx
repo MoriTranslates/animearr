@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, sxe, type Grab, type ManagedShow, type Status } from "../api";
 import { Link, navigate } from "../App";
 import { ShowLink } from "../episodes";

@@ -106,7 +106,6 @@ const fileRows = (where: string, ...args: unknown[]) => cache.prepare(`SELECT ${
 // ---------------------------------------------------------------- history
 
 const EVENT_TYPES: Record<string, number> = { grabbed: 1, seriesFolderImported: 2, downloadFolderImported: 3, downloadFailed: 4, episodeFileDeleted: 5, episodeFileRenamed: 6, downloadIgnored: 7 };
-const eventName = (n: number) => Object.keys(EVENT_TYPES).find((k) => EVENT_TYPES[k] === n);
 interface HistEvent { id: number; type: string; at: number; seriesId: number; episodeId: number; release: string; downloadId: string | null; data: Record<string, string> }
 
 /** Sonarr history events from AnimeArr's grabs and deletes, newest first. Ids are stable: grab id x type, or Activity id x episode. */

@@ -9,7 +9,6 @@ import { calendar, episodeRows } from "./episodes.js";
 import { missingLanguage } from "./audit.js";
 import { coverFor } from "./audit.js";
 import { profileFor } from "./profiles.js";
-import { judge } from "./verify.js";
 import { listManaged } from "./managed.js";
 
 const DAY = 86_400_000;

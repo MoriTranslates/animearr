@@ -20,7 +20,6 @@ type Cfg = import("../server/settings.js").ClientCfg;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-cc-"));
 const NZB_DIR = path.join(tmp, "usenet", "animearr");
-const TR_DIR = path.join(tmp, "torrents", "animearr");
 const client = (over: Partial<Cfg>): Cfg => ({ id: "x", type: "nzbget", name: "NZBGet", url: "http://nzbget", username: "u", password: "p", category: "animearr", priority: 1, enabled: true, removeCompleted: true, pathMappings: [], ...over });
 
 const write = (p: string, bytes = 10) => (fs.mkdirSync(path.dirname(p), { recursive: true }), fs.writeFileSync(p, Buffer.alloc(bytes)));

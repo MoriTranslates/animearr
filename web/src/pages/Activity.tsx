@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { merryOn } from "../merry";
 import { FixButtons } from "../fixes";
 import { api, type Decision } from "../api";

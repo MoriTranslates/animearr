@@ -27,7 +27,6 @@ interface MovieItem { id: number; tmdbId: number | null; title: string; year: nu
 type Filter = "all" | "missing" | "problems";
 /** Radarr's release dates are date-only (UTC midnight). */
 const dateOnly = (ms: number) => new Date(ms).toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
-const STATUS_TONE = { have: "good", missing: "warn", downloading: "accent", attention: "warn", unreleased: "info" } as const;
 
 /** Anime movies from Radarr, Sonarr-style poster grid. */
 export function Movies() {

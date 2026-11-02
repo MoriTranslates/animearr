@@ -4,7 +4,7 @@ import { Link, navigate } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
 import { ScopeFields, type Scope } from "../scope";
-import { Chip, Confirm, Cover, Empty, ErrorBox, Modal, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Confirm, Cover, Empty, ErrorBox, Modal, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
 import { PosterCard } from "../posters";
 import { seasonOf } from "../season";
 import { TrailerButton } from "../trailer";

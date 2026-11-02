@@ -22,7 +22,7 @@ fs.writeFileSync(
 const { cache, db } = await import("../server/db.js");
 const { patchSettings, getSettings } = await import("../server/settings.js");
 const { createTag, tagsOf } = await import("../server/tags.js");
-const { listActivity } = await import("../server/activity.js").then((m) => ({ listActivity: () => db.prepare("SELECT kind, why FROM decisions ORDER BY id").all() as { kind: string; why: string }[] }));
+const { listActivity } = await import("../server/activity.js").then((_m) => ({ listActivity: () => db.prepare("SELECT kind, why FROM decisions ORDER BY id").all() as { kind: string; why: string }[] }));
 const L = await import("../server/importLists.js");
 type AniMedia = import("../server/anilist.js").AniMedia;
 

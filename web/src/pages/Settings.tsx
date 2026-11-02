@@ -626,7 +626,6 @@ function MappingList({ value, onChange, title, help }: { value: PathMapping[]; o
 
 /** Plex: partial scans after AnimeArr's own imports and renames (token stored encrypted; read-only otherwise). */
 function PlexCard({ s, upd, bare = false }: { s: S; upd: Upd; bare?: boolean }) {
-  const toast = useToast();
   const p = s.plex;
   const set = (patch: Partial<S["plex"]>) => upd((x) => ({ ...x, plex: { ...x.plex, ...patch } }));
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);

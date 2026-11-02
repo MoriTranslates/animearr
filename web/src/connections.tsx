@@ -231,7 +231,6 @@ function EditConn({ k, s, saveNow, onClose, children }: { k: Key; s: S; saveNow:
   const [del, setDel] = useState(false);
   const set = (fn: (x: S) => S) => setDraft((x) => fn(structuredClone(x)));
   const c = (k === "plex" ? { url: draft.plex.url, apiKey: draft.plex.token } : draft[k]) as Record<string, unknown>;
-  const field = (f: string, v: unknown) => set((x) => ({ ...x, [k]: { ...(x[k] as object), [f]: v } }));
   async function test() {
     setBusy(true);
     try {

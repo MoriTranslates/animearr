@@ -1,5 +1,5 @@
 import { getSettings } from "../settings.js";
-import { jsonCall, redactUrl, type Conn } from "./http.js";
+import { jsonCall, type Conn } from "./http.js";
 import { cachedQuery } from "../searchQueue.js";
 
 /** Prowlarr v1 API client: searches (read-only) and fetching a release's NZB/torrent for the grab pipeline. */

@@ -335,15 +335,6 @@ function trackAudio(d: Detail) {
   const unknown = a.length - known.length;
   return [...known, ...(unknown ? [t("ep.tracksUnknown", { n: unknown })] : [])].join(" + ");
 }
-/** "none", "English (signs only)", "1 track, language unknown (ASS)". */
-function trackSubs(d: Detail) {
-  const s = d.own?.subs ?? [];
-  const side = d.own?.sidecars ?? [];
-  if (!s.length && !side.length) return d.file?.subs.length ? d.file.subs.map((x) => langName(x)).join(", ") : t("ep.tracksNone");
-  const parts = s.map((x) => (x.lang ? `${langName(x.lang)}${x.partial ? ` (${t("ep.signsOnly")})` : ""}` : `${t("ep.tracksUnknown", { n: 1 })} (${(x.codec ?? "?").toUpperCase()})`));
-  for (const x of side) parts.push(`${x.lang ? langName(x.lang) : t("ep.tracksUnknown", { n: 1 })} (${t("ep.sidecar")})`);
-  return parts.join(", ");
-}
 
 interface Detail extends EpisodeRow {
   art?: { cover: string | null; banner: string | null; color: string | null };

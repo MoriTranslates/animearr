@@ -35,7 +35,7 @@ import path from "node:path";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
-import { authState, COOKIE, csrfOk, defaultLoginRefusal, guard, hostAllowed, isLocalRequest, loginAllowed, loginSucceeded, makeSession, trustProxyOption } from "./auth.js";
+import { authState, COOKIE, csrfOk, defaultLoginRefusal, guard, loginAllowed, loginSucceeded, makeSession, trustProxyOption } from "./auth.js";
 import { BACKUP_DIR, backupNow, cache, CONFIG_DIR, db, dbState, listBackups, listJobs, resetCache, restoreBackup, setJob, startupWarnings } from "./db.js";
 import { getDecision, listDecisions, logDecision, markUndone, pruneDecisions } from "./activity.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrIndexers, prowlarrSearch, testProwlarr } from "./arr/prowlarr.js";
@@ -52,7 +52,6 @@ import { addExclusion, cleanList, deleteList, excludeShow, exclusions, importLis
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "./episodes.js";
 import { identify } from "./core/identify.js";
 import { compactKey } from "./core/normalize.js";
-import { parseRelease } from "./core/parser.js";
 import { refreshCovers } from "./covers.js";
 import { lastSync, syncLibrary, syncRunning } from "./library.js";
 import { backlogSummary, candidates, managePreview, listManaged, managedTick, releaseDryRunDecisions, rssTick, scheduleFor, setManaged, setShowDryRun, unmonitorInSonarr } from "./managed.js";
@@ -76,7 +75,7 @@ import { movieSearchSummary, movieTick, planMovies } from "./movieSearch.js";
 import { fileScanTick, fileSummary, lastFolderScan, scanFolder, scanLibrary, scanRunning, libraryRoots } from "./mediafiles.js";
 import { autoJobs, autoSearchMovie, queueAutoSearch, queueAutoSearchMovie, searchMissingNow } from "./autosearch.js";
 import { rootRefusal } from "./roots.js";
-import { missingScoped, scopedEpisodeIds, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
+import { missingScoped, scopeFor, scopePreview, setScope, validateScope, type Scope } from "./scope.js";
 import { addToQueue, editQueue, fillInTick, fillInView } from "./fillin.js";
 import { catalogStatus, entriesForSeries, refreshCatalog, tmdbEpisodes } from "./catalog.js";
 
@@ -100,7 +99,7 @@ import { applyRenameRouted, browseImport, executeImport, executeMovieImport, pla
 import { importMediaDefaults, importMediaDefaultsOnce, previewNaming } from "./mediadefaults.js";
 import { registerSonarrApi } from "./sonarrApi.js";
 import { adoptFolder, matchFolder, scanRoot } from "./folderImport.js";
-import { addMovie, addShow, isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
+import { addMovie, addShow, isNativeSeriesId, materializeAll, rematerializeSeries, removeMovie, removeShow, searchAdd, seasonPicks } from "./native.js";
 import { duplicateListings, ownedElsewhere, ownedWhy } from "./duplicates.js";
 import { deepSearch, episodesFor, identifyContext, seriesByTvdb, type SearchProgress, type SearchResult } from "./search.js";
 import { checkPassword, DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, isMasked, usingDefaultPassword, patchSettings, publicSettings, regenerateApiKey, safeEqual, setAccount, setBypassLocal, updateSettings, type LanguageProfile, type Settings } from "./settings.js";

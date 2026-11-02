@@ -1,0 +1,14 @@
+dist/
+node_modules/
+local/
+private/
+research/
+catalog/
+docs/
+test/fixtures/
+package-lock.json
+*.md
+*.json
+*.yml
+*.css
+*.html
