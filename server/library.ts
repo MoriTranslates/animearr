@@ -19,7 +19,8 @@ import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { animeListEntries, invalidateIndex } from "./metadata.js";
-import { isNativeSeriesId, materializeAll, NATIVE_BASE, rematerializeSeries } from "./native.js";
+import { materializeAll, rematerializeSeries } from "./native.js";
+import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 import { getSettings } from "./settings.js";
 
 let running: Promise<SyncResult> | null = null;

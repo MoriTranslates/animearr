@@ -7,7 +7,8 @@
 import { isDropped } from "./dropped.js";
 import { logDecision } from "./activity.js";
 import { cache, db, dbState, setJob } from "./db.js";
-import { listManaged, setManaged } from "./managed.js";
+import { listManaged } from "./managedList.js";
+import { setManaged } from "./managed.js";
 import { missingScoped, scopeFor, setScope } from "./scope.js";
 import { getSettings } from "./settings.js";
 

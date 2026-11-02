@@ -36,3 +36,6 @@ export function mappedPath(p: string): string {
 export function clientToSonarr(p: string): string {
   return apply(p, getSettings().remotePathMappings) ?? p.replace(/\\/g, "/");
 }
+
+/** Record keys use forward slashes, whatever OS the *arr runs on. */
+export const keyOf = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");

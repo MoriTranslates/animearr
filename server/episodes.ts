@@ -4,9 +4,9 @@
  * Destructive actions are user-confirmed in the UI, guarded by the allowed root folders, and logged.
  */
 import { isDropped } from "./dropped.js";
-import { artFor } from "./home.js";
+import { artFor, coverFor } from "./covers.js";
 import { anidbSpecialKind } from "./anidb.js";
-import { NATIVE_BASE } from "./native.js";
+import { NATIVE_BASE } from "./nativeIds.js";
 import path from "node:path";
 import { listDecisions, logDecision } from "./activity.js";
 import * as sonarr from "./arr/sonarr.js";
@@ -16,14 +16,15 @@ import { ownFile, probeOf, recordFor } from "./mediafiles.js";
 import { catalogLookup, entriesForSeries } from "./catalog.js";
 import { grabStages } from "./pipeline.js";
 import { specialType } from "./audit.js";
-import { burnedInFact, coverFor } from "./audit.js";
+import { burnedInFact } from "./audit.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
 import { refreshSeriesEpisodes } from "./library.js";
-import { listManaged } from "./managed.js";
+import { listManaged } from "./managedList.js";
 import { filePick } from "./seadexFiles.js";
 import { aliasIndex } from "./metadata.js";
-import { startGrab, type Candidate } from "./pipeline.js";
+import { startGrab } from "./pipeline.js";
+import { type Candidate } from "./pipelineState.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";

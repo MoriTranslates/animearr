@@ -24,7 +24,7 @@ const { placeholders, qualifies, upgradePass } = await import("../server/upgrade
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");
 type Deps = import("../server/upgrade.js").UpgradeDeps;
 type SR = import("../server/search.js").SearchResult;
-type PDeps = import("../server/pipeline.js").PipelineDeps;
+type PDeps = import("../server/pipelineState.js").PipelineDeps;
 
 const DAY = 86_400_000;
 const now = Date.now();

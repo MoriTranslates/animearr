@@ -95,7 +95,8 @@ import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "
 import { getTags, sonarrConfigured, sonarrOptions, testSonarr } from "./arr/sonarr.js";
 import { testQbit, testSab } from "./arr/clients.js";
 import { redactUrl } from "./arr/http.js";
-import { gaps, listFacts, missingLanguage, specials, coverFor } from "./audit.js";
+import { gaps, listFacts, missingLanguage, specials } from "./audit.js";
+import { coverFor } from "./covers.js";
 import { deleteRule, listRules, saveRule, testRules } from "./releaseRules.js";
 import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "./tags.js";
 import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs, setMoviePrefs } from "./profiles.js";
@@ -124,7 +125,6 @@ import {
   backlogSummary,
   candidates,
   managePreview,
-  listManaged,
   managedTick,
   releaseDryRunDecisions,
   rssTick,
@@ -133,6 +133,7 @@ import {
   setShowDryRun,
   unmonitorInSonarr,
 } from "./managed.js";
+import { listManaged } from "./managedList.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "./metadata.js";
 import { summarize } from "./summary.js";
 import {
@@ -144,10 +145,9 @@ import {
   pipelineTick,
   recoverGrabs,
   removeGrab,
-  retryImport,
   startGrab,
-  type Candidate,
 } from "./pipeline.js";
+import { retryImport, type Candidate } from "./pipelineState.js";
 import { registerBlocklistApi } from "./blocklist.js";
 import { registerFileMarksApi } from "./fileMarks.js";
 import { registerMetaOverrideApi } from "./metaoverride.js";

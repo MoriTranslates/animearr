@@ -22,7 +22,7 @@ beforeEach(() => {
 const { parseRelease } = await import("../server/core/parser.js");
 const { matchMovie, movieQueries, searchMovie, startMovieGrab, listMovies } = await import("../server/movies.js");
 const { pipelineTick } = await import("../server/pipeline.js");
-type Deps = import("../server/pipeline.js").PipelineDeps;
+type Deps = import("../server/pipelineState.js").PipelineDeps;
 
 const SUZUME = { title: "Suzume", original_title: "すずめの戸締まり", alt_titles: ["Suzume no Tojimari"], year: 2022 };
 

@@ -16,7 +16,7 @@ import { searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "./arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
 import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "./movies.js";
-import { FETCH_PREFIX, type Candidate } from "./pipeline.js";
+import { FETCH_PREFIX, type Candidate } from "./pipelineState.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
 const HOUR = 3_600_000;

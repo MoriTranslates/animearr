@@ -17,181 +17,50 @@ import { seedLimitsFor } from "./indexers.js";
 import { supersededBy } from "./fixes.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
 import { executeImport, listVideos, planImport } from "./importer.js";
-import { isNativeSeriesId } from "./native.js";
+import { isNativeSeriesId } from "./nativeIds.js";
 import path from "node:path";
 import { logDecision } from "./activity.js";
-import { fetchReleaseFile as realFetchRelease, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "./arr/clients.js";
-import {
-  applySelection,
-  batchLine,
-  existingFiles,
-  planBatch,
-  readBatch,
-  writeBatch,
-  type BatchInfo,
-  type ExistingFile,
-  type FileMapOpts,
-} from "./batch.js";
-import { scopeFor } from "./scope.js";
-import * as radarr from "./arr/radarr.js";
-import * as sonarr from "./arr/sonarr.js";
+import { applySelection, batchLine, existingFiles, planBatch, readBatch, type BatchInfo, type ExistingFile } from "./batch.js";
 import { identify } from "./core/identify.js";
 import { inExtrasFolder } from "./core/resolver.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState } from "./db.js";
 import { burnedInFact } from "./audit.js";
-import { learnFromVerify, refreshSeriesEpisodes, sourceKey } from "./library.js";
-import { clientToSonarr, localPath as realLocalPath } from "./paths.js";
-import { episodesFor, identifyContext, seriesByTvdb, type SearchResult } from "./search.js";
+import { learnFromVerify, sourceKey } from "./library.js";
+import { clientToSonarr } from "./paths.js";
+import { episodesFor, identifyContext, seriesByTvdb } from "./search.js";
 import { profileFor } from "./profiles.js";
 import { properMode } from "./propers.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
-import { ffprobe, judge, type ProbeResult } from "./verify.js";
-import { cleanUnpacked, extractIfNeeded, UNPACK_DIR, type ExtractOutcome } from "./extract.js";
-import { importMovie, movieNextForRow } from "./movies.js";
-import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
+import { judge } from "./verify.js";
+import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
+import { importMovie, movieFileOpts, movieNextForRow } from "./movies.js";
 import { scanFolder } from "./mediafiles.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
-import { inspectFiles, walkFiles } from "./safety.js";
-
-export interface PipelineDeps {
-  clients: DownloadClients;
-  fetchRelease(r: ProwlarrRelease): Promise<{ data?: Buffer; magnet?: string; filename: string }>;
-  /** Clean-up right after an outcome is final (downloads.ts cleanupGrab); absent in tests = nothing deleted. */
-  cleanup?: (grabId: number, outcome: "imported" | "rejected") => Promise<string | null>;
-  /** Radarr calls for movie grabs (optional: tests of episode grabs don't need them). */
-  radarr?: {
-    preview: typeof radarr.radarrImportPreview;
-    importFiles: typeof radarr.radarrManualImport;
-    command: typeof radarr.getRadarrCommand;
-    movie: typeof radarr.getMovie;
-  };
-  sonarr: {
-    preview: typeof sonarr.manualImportPreview;
-    importFiles: typeof sonarr.manualImport;
-    command: typeof sonarr.getCommand;
-    episode: typeof sonarr.getEpisode;
-    episodeFile: typeof sonarr.getEpisodeFile;
-  };
-  probe(file: string): Promise<ProbeResult>;
-  localPath(p: string): string | null;
-  sleep(ms: number): Promise<void>;
-  /** Re-reads the series from Sonarr into the cache after an import (so the UI shows the new file at once). */
-  refreshSeries?(seriesId: number): Promise<void>;
-  /** Unpacks a download that arrived as archives (Settings → extraction); polled, "pending" while it runs. */
-  extract?(localDir: string, key: string, only?: string[]): Promise<ExtractOutcome> | ExtractOutcome;
-}
-
-export const realDeps: PipelineDeps = {
-  clients: realClients,
-  fetchRelease: realFetchRelease,
-  cleanup: (id, outcome) => import("./downloads.js").then((m) => m.cleanupGrab(id, outcome)),
-  sonarr: {
-    preview: sonarr.manualImportPreview,
-    importFiles: sonarr.manualImport,
-    command: sonarr.getCommand,
-    episode: sonarr.getEpisode,
-    episodeFile: sonarr.getEpisodeFile,
-  },
-  radarr: {
-    preview: radarr.radarrImportPreview,
-    importFiles: radarr.radarrManualImport,
-    command: radarr.getRadarrCommand,
-    movie: radarr.getMovie,
-  },
-  probe: (f) => ffprobe(f),
-  localPath: realLocalPath,
-  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-  refreshSeries: (id) => refreshSeriesEpisodes(id),
-  extract: (dir, key, only) => extractIfNeeded(dir, key, { only }),
-};
-
-export type Candidate = Pick<
-  SearchResult,
-  "guid" | "title" | "indexerId" | "indexer" | "protocol" | "size" | "downloadUrl" | "magnetUrl" | "label" | "group"
-> & { why: string; episodeIds: number[] };
-
-export interface GrabRequest {
-  tvdbId: number;
-  /** Episodes the user/scheduler asked for. */
-  episodeIds: number[];
-  candidate: Candidate;
-  /** Next-best accepted candidates, tried in order if this one fails. */
-  fallbacks: Candidate[];
-  /** "manual" = Deep Search with confirmation (global dry-run applies); "managed" = scheduler (show dry-run applies too). */
-  origin: "manual" | "managed";
-  attempt?: number;
-  /**
-   * "dual-upgrade": replaces a sub-only placeholder, so the file must really have the dub (checked strictly).
-   * "replace": Replace season (the user's explicit choice): the pack replaces the selected episodes' files, each only
-   * after its new file passed the check; an episode whose new file fails (or is missing from the pack) keeps its file.
-   */
-  purpose?: "dual-upgrade" | "replace" | null;
-  /** ⚡ automatic search: also honour the show's own dry-run (interactive grabs only follow the global switch). */
-  automatic?: boolean;
-  /** The next try of a whole-season Replace season: only a season pack may take over (never a single episode). */
-  packsOnly?: boolean;
-}
-
-export interface GrabRow {
-  id: number;
-  at: number;
-  updated_at: number;
-  tvdb_id: number;
-  series_id: number;
-  episode_ids: string;
-  release: string;
-  guid: string;
-  protocol: string;
-  client: string | null;
-  client_ref: string | null;
-  state: string;
-  dry_run: number;
-  why: string;
-  error: string | null;
-  candidates: string;
-  origin: "manual" | "managed";
-  /** Radarr movie id for movie grabs (tvdb_id/series_id are null then). */
-  movie_id?: number | null;
-  /** The user asked to replace the file the movie already has. */
-  replace_file?: number;
-  purpose?: "dual-upgrade" | "replace" | null;
-  attempt?: number;
-  progress?: number | null;
-  progress_at?: number | null;
-  keep?: number;
-  /** Smart batch info (JSON, batch.ts). */
-  batch?: string | null;
-  /** Strikes so far (consecutive health checks that found it stalled), when the last one was added, and why. */
-  strikes?: number;
-  strike_at?: number | null;
-  strike_why?: string | null;
-  /** The indexer's name (blocklist page). */
-  indexer?: string | null;
-}
-
-/** Grab states that are still in flight (a new grab for the same episode must wait for these). */
-export const ACTIVE = ["sending", "downloading", "importing"];
-/** Default stall time (tests); the live value is Settings → queueHealth.stallHours. */
-export const STALL_MS = 6 * 3_600_000;
-export const MAX_ATTEMPTS = 3;
-
-export const setState = (id: number, state: string, error: string | null = null, extra: { client?: string; ref?: string } = {}) =>
-  db
-    .prepare(
-      "UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?",
-    )
-    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id);
+import { inspectFiles } from "./safety.js";
+import {
+  ACTIVE,
+  blocklist,
+  fetchOrNote,
+  importModeFor,
+  isFetchFailure,
+  MAX_ATTEMPTS,
+  remainingFallbacks,
+  runTimeSec,
+  setState,
+  VIDEO,
+  type Candidate,
+  type GrabRequest,
+  type GrabRow,
+  type PipelineDeps,
+} from "./pipelineState.js";
+import { episodeFileOpts, realDeps, rejectUnsafeDownload, rowTitle, runtimeOf, selectAfterAdd, unsafeDownload } from "./grabSteps.js";
 
 function managedDryRun(tvdbId: number): boolean | null {
   const r = db.prepare("SELECT dry_run FROM managed WHERE tvdb_id = ?").get(tvdbId) as { dry_run: number } | undefined;
   return r ? !!r.dry_run : null;
-}
-
-export function isBlocked(c: { guid: string; title: string }) {
-  return !!db.prepare("SELECT 1 FROM blocklist WHERE release = ? OR (guid IS NOT NULL AND guid = ?) LIMIT 1").get(c.title, c.guid);
 }
 
 /** Managed-schedule bookkeeping: the episodes of a finished/failed grab go to "done" or back to "retry". */
@@ -201,63 +70,6 @@ function scheduleAfter(episodeIds: number[], outcome: "done" | "retry", why: str
     db.prepare(
       "UPDATE search_state SET state = CASE WHEN ? = 'retry' AND kind = 'backlog' THEN 'backlog' ELSE ? END, next_at = ?, last_why = ? WHERE episode_id = ? AND state = 'grabbed'",
     ).run(outcome, outcome, outcome === "done" ? now : now + 30 * 60_000, why, e);
-}
-
-/** The .nzb/.torrent couldn't be fetched: the indexer's problem (health), not the release's or the episode's. */
-export class FetchFailedError extends Error {
-  readonly fetchFailed = true;
-  constructor(
-    message: string,
-    readonly indexerId: number | null,
-  ) {
-    super(message);
-  }
-}
-export const isFetchFailure = (e: unknown): e is FetchFailedError => !!(e as { fetchFailed?: boolean } | null)?.fetchFailed;
-/** Prefix of a fetch failure's message (also how it's recognised in grabs.error). */
-export const FETCH_PREFIX = "Couldn't download the";
-
-/**
- * Fetches the NZB/torrent. A failing download link counts against the indexer (ranking penalty, then the circuit
- * breaker after 3 in a row), except Prowlarr's HTTP 500 on non-ASCII titles, which isn't the indexer's fault. The
- * caller moves on to a candidate from another indexer without using up an attempt (no blocklist: the release is fine).
- */
-export async function fetchOrNote(deps: PipelineDeps, c: Candidate) {
-  try {
-    const out = await deps.fetchRelease({
-      guid: c.guid,
-      title: c.title,
-      size: c.size,
-      indexerId: c.indexerId,
-      indexer: c.indexer,
-      protocol: c.protocol,
-      downloadUrl: c.downloadUrl,
-      magnetUrl: c.magnetUrl,
-    });
-    recordIndexerSuccess(c.indexerId);
-    return out;
-  } catch (e) {
-    const msg = describeFetchError(e, c.downloadUrl);
-    if (isTitleEncodingError(msg, c.title))
-      throw new FetchFailedError(
-        `${FETCH_PREFIX} release: Prowlarr couldn't serve it (HTTP 500 on its non-ASCII name); trying the next one`,
-        null,
-      );
-    recordIndexerFailure(c.indexerId, msg, Date.now(), { name: c.indexer });
-    throw new FetchFailedError(
-      `${FETCH_PREFIX} ${c.protocol === "usenet" ? ".nzb" : ".torrent"} from ${c.indexer ?? "the indexer"}: ${msg}`,
-      c.indexerId ?? null,
-    );
-  }
-}
-
-/**
- * What's left to try: not blocklisted, not from an indexer that's off; after a fetch failure, not from that same
- * indexer either (its host is likely down for all of them).
- */
-export function remainingFallbacks(fallbacks: Candidate[], failed?: unknown) {
-  const badIndexer = isFetchFailure(failed) ? failed.indexerId : null;
-  return fallbacks.filter((f) => !isBlocked(f) && !indexerOff(f.indexerId) && !(badIndexer && f.indexerId === badIndexer));
 }
 
 /**
@@ -542,30 +354,6 @@ async function tryNext(
   }
 }
 
-export function blocklist(row: GrabRow, reason: string) {
-  return Number(
-    db
-      .prepare("INSERT INTO blocklist (guid, release, tvdb_id, reason, at, movie_id, protocol, indexer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(row.guid, row.release, row.tvdb_id, reason, Date.now(), row.movie_id ?? null, row.protocol ?? null, row.indexer ?? null)
-      .lastInsertRowid,
-  );
-}
-
-export const VIDEO = /\.(mkv|mp4|avi|m4v|ts|webm)$/i;
-
-/** *arr mediaInfo runTime ("23:40" or "1:58:12") → seconds. */
-export function runTimeSec(rt: string | null | undefined): number | null {
-  const parts = (rt ?? "").split(":").map(Number);
-  if (parts.length < 2 || !parts.every(Number.isFinite)) return null;
-  return parts.reduce((s, n) => s * 60 + n, 0);
-}
-
-/**
- * ManualImport mode: torrents are copied (hardlinked when the *arr has hardlinks on) so they keep seeding; Usenet
- * downloads are moved. "auto" would move untracked downloads, which pulls files out from under qBittorrent.
- */
-export const importModeFor = (client: string | null): "copy" | "move" => (isTorrentClient(client) ? "copy" : "move");
-
 /** After a restart: grabs caught mid-import need a look; grabs caught mid-send never reached a client. */
 export function recoverGrabs() {
   if (dbState.corrupt) return;
@@ -608,29 +396,6 @@ function placedByGrab(grabId: number): Set<number> {
   return new Set(rows.flatMap((r) => JSON.parse(r.episode_ids) as number[]));
 }
 
-/** The runtime (minutes) of the episode, or movie, a grab is for; null when unknown. */
-function runtimeOf(row: GrabRow): number | null {
-  if (row.movie_id)
-    return (
-      (cache.prepare("SELECT runtime FROM movies WHERE id = ?").get(row.movie_id) as { runtime: number | null } | undefined)?.runtime ??
-      null
-    );
-  const wanted = JSON.parse(row.episode_ids) as number[];
-  return episodesFor(row.tvdb_id).find((e) => wanted.includes(e.id))?.runtime ?? null;
-}
-
-/** Malware blocker, before import: looks through the download's folder (or file) when AnimeArr can reach it. */
-export function unsafeDownload(deps: Pick<PipelineDeps, "localPath">, row: GrabRow, arrPath: string, isFolder: boolean): string | null {
-  const s = getSettings().malware;
-  if (!s.enabled) return null;
-  const local = deps.localPath(arrPath);
-  if (!local) return null;
-  return inspectFiles(walkFiles(local, isFolder ? (rel) => rel === UNPACK_DIR || rel.startsWith(`${UNPACK_DIR}/`) : undefined), {
-    extensions: s.extensions,
-    runtimeMin: runtimeOf(row),
-  });
-}
-
 /** Grabs whose torrent file list was already checked and found fine. */
 const scanned = new Set<number>();
 /** Malware blocker, while downloading: the file list of a torrent (once it has metadata), for clients that expose it. */
@@ -649,26 +414,7 @@ async function scanWhileDownloading(row: GrabRow, job: ClientJob, deps: Pipeline
  * with the plain reason, the next release searched; nothing from it is ever imported.
  */
 export async function rejectUnsafe(row: GrabRow, reason: string, deps: PipelineDeps, when: string) {
-  setState(row.id, "failed", reason);
-  const bid = blocklist(row, reason);
-  let removed = "";
-  if (row.client && row.client_ref) {
-    try {
-      await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
-      removed = `; removed it from ${clientName(row.client) || row.client}`;
-    } catch (e) {
-      removed = `; couldn't remove it from the download client (${(e as Error).message}), so delete it there by hand`;
-    }
-  }
-  logDecision("fail", {
-    tvdbId: row.tvdb_id,
-    title: rowTitle(row),
-    episodeIds: JSON.parse(row.episode_ids),
-    release: row.release,
-    why: `${row.release} ${reason} (found ${when}). Blocklisted it${removed}; nothing from it was imported. Looking for the next release.`,
-    detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) },
-    undo: { action: "unblock", args: { id: bid, release: row.release } },
-  });
+  await rejectUnsafeDownload(row, reason, deps, when);
   if (row.movie_id) await movieNextForRow(row, deps, reason);
   else await tryNext(row.id, rowRequest(row), deps, reason);
 }
@@ -848,13 +594,6 @@ export function grabStages(): Map<number, { stage: "downloading" | "waiting" | "
   return out;
 }
 
-/** Title for activity entries: the show's, or the movie's for movie grabs. */
-function rowTitle(row: GrabRow): string | undefined {
-  if (row.movie_id)
-    return (cache.prepare("SELECT title FROM movies WHERE id = ?").get(row.movie_id) as { title: string } | undefined)?.title;
-  return row.tvdb_id ? (seriesByTvdb(row.tvdb_id)?.title ?? undefined) : undefined;
-}
-
 /**
  * Fix buttons. "Keep anyway": import a download whose language check failed (the user decides), if nothing else is
  * already downloading for it. "Try next release": the grab's next candidate.
@@ -909,10 +648,7 @@ export async function nextForGrab(id: number, deps: PipelineDeps = realDeps) {
   if (newer) throw Object.assign(new Error(`A newer download (grab ${newer}) is already handling it`), { statusCode: 409 });
   if (row.state === "needs-attention") setState(id, "failed", "you moved on to the next release");
   if (!db.prepare("SELECT 1 FROM blocklist WHERE release = ? LIMIT 1").get(row.release)) blocklist(row, "you moved on to the next release");
-  if (row.movie_id) {
-    const { movieNextForRow } = await import("./movies.js");
-    return movieNextForRow(row, deps, "you moved on to the next release");
-  }
+  if (row.movie_id) return movieNextForRow(row, deps, "you moved on to the next release");
   return tryNext(id, rowRequest(row), deps, "you moved on to the next release");
 }
 
@@ -935,63 +671,12 @@ function rowRequest(row: GrabRow): GrabRequest {
   };
 }
 
-/** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */
-export function episodeFileOpts(tvdbId: number, wantedIds: number[]): FileMapOpts {
-  const ctx = identifyContext();
-  const minConf = getSettings().managed.minConfidence;
-  const has = new Set(
-    episodesFor(tvdbId)
-      .filter((e) => e.hasFile)
-      .map((e) => e.id),
-  );
-  return {
-    wantedIds,
-    resolve: (name) => {
-      const id = identify(name, ctx, { tvdbId, expect: wantedIds });
-      return id.resolution?.ok && id.resolution.confidence >= minConf ? id.resolution.episodes.map((e) => e.id) : null;
-    },
-    keepCreditless: scopeFor(tvdbId).creditless,
-    hasFile: (e) => has.has(e),
-  };
-}
-
-/**
- * Right after a batch torrent was added stopped: read its files and skip the unwanted ones (a .torrent lists them at
- * once; a magnet needs its metadata first, so it is polled briefly here and then by the pipeline tick).
- */
-export async function selectAfterAdd(
-  grabId: number,
-  job: ClientJob,
-  batch: BatchInfo,
-  deps: Pick<PipelineDeps, "clients" | "sleep">,
-  log: { tvdbId: number | null; title?: string; release: string; episodeIds: number[]; movieId?: number | null },
-  magnet: boolean,
-  opts?: FileMapOpts,
-) {
-  if (!job.select) {
-    // The client can't skip files (or already had this torrent): the whole batch; the import takes what it needs.
-    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files" });
-    return;
-  }
-  writeBatch(grabId, { ...batch, paused: !!job.paused });
-  const ctx = { grabId, job, clients: deps.clients, opts: opts ?? episodeFileOpts(log.tvdbId!, log.episodeIds), log };
-  for (let i = 0; i < (magnet ? 5 : 3); i++) {
-    try {
-      if ((await applySelection(ctx)) !== "pending") return;
-    } catch {
-      /* the tick tries again */
-    }
-    await deps.sleep(2000);
-  }
-}
-
 /** Pipeline tick: batch torrents still waiting for their file list (magnets fetching metadata). */
 export async function pendingSelection(row: GrabRow, deps: PipelineDeps) {
   const b = readBatch(row.batch);
   if (b?.mode !== "pending" || !row.client || !row.client_ref) return;
   const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
   if (row.movie_id) {
-    const { movieFileOpts } = await import("./movies.js");
     await applySelection({
       grabId: row.id,
       job,
@@ -1443,16 +1128,6 @@ async function finishImport(
   }
   // Confirmed import (files placed, the show refreshed): the download can go (or once seeding is done).
   if (cleanup) await deps.cleanup?.(row.id, "imported");
-}
-
-/** "Retry import" for a grab that downloaded fine but couldn't be imported. */
-export function retryImport(id: number) {
-  const r = db
-    .prepare(
-      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention'",
-    )
-    .run(Date.now(), Date.now(), id);
-  if (!r.changes) throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
 }
 
 export function listGrabs(limit = 50, opts: { episodesOnly?: boolean } = {}) {

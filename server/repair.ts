@@ -27,7 +27,7 @@ import { cache, db, dbState, setJob } from "./db.js";
 import { searchAgainSoon } from "./episodes.js";
 import { radarrMovieSpecials } from "./franchise.js";
 import { learnFromVerify, sourceKey } from "./library.js";
-import { listManaged } from "./managed.js";
+import { listManaged } from "./managedList.js";
 import { localPath } from "./paths.js";
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";

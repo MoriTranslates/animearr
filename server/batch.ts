@@ -24,6 +24,8 @@ import { isNewerRevision, type ProperMode } from "./core/propers.js";
 import { isCreditlessTitle } from "./core/resolver.js";
 import { cache, db } from "./db.js";
 import { haveRevisions } from "./propers.js";
+import { profileFor } from "./profiles.js";
+import { getSettings } from "./settings.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 
@@ -616,8 +618,6 @@ export async function batchPrefersSingles(
 ): Promise<string | null> {
   const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
   if (!s || r.episodeIds.length < 2) return null;
-  const { profileFor } = await import("./profiles.js");
-  const { getSettings } = await import("./settings.js");
   const prof = profileFor(tvdbId);
   const seasons = (
     cache.prepare(`SELECT DISTINCT season FROM episodes WHERE id IN (${r.episodeIds.map(() => "?").join(",")})`).all(...r.episodeIds) as {

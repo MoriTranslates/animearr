@@ -11,7 +11,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/db.js");
 const { registerBlocklistApi } = await import("../server/blocklist.js");
-const { isBlocked } = await import("../server/pipeline.js");
+const { isBlocked } = await import("../server/pipelineState.js");
 
 const app = Fastify();
 registerBlocklistApi(app);

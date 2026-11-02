@@ -15,6 +15,7 @@ import { db, cache } from "./db.js";
 import { compactKey } from "./core/normalize.js";
 import { sidecarLang } from "./core/langs.js";
 import { animeListEntries } from "./metadata.js";
+import { coverFor } from "./covers.js";
 import { profileFor } from "./profiles.js";
 import { judge } from "./verify.js";
 import { localPath } from "./paths.js";
@@ -36,22 +37,6 @@ const seriesRows = () =>
   cache
     .prepare("SELECT id, tvdb_id, title, path, monitored, status, poster, seasons, original_language FROM series ORDER BY sort_title")
     .all() as unknown as SeriesRow[];
-
-export function coverFor(s: { tvdb_id: number; poster: string | null }): string | null {
-  // AniList art when mapped (newest entry first), else Sonarr's poster.
-  const aids = animeListEntriesFor(s.tvdb_id);
-  for (const aid of aids) {
-    const c = cache.prepare("SELECT cover FROM covers WHERE anidb_id = ? AND cover IS NOT NULL").get(aid) as { cover: string } | undefined;
-    if (c) return c.cover;
-  }
-  return s.poster;
-}
-function animeListEntriesFor(tvdbId: number): number[] {
-  const out: { aid: number; season: number }[] = [];
-  for (const e of animeListEntries().values())
-    if (e.tvdbId === tvdbId) out.push({ aid: e.aid, season: typeof e.defaultSeason === "number" ? e.defaultSeason : 0 });
-  return out.sort((a, b) => b.season - a.season).map((x) => x.aid);
-}
 
 // ---------------------------------------------------------------- facts the user confirmed
 

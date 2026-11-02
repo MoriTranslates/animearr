@@ -15,8 +15,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/db.js");
 const { patchSettings } = await import("../server/settings.js");
 const { importAndVerify } = await import("../server/pipeline.js");
-type Deps = import("../server/pipeline.js").PipelineDeps;
-type Row = import("../server/pipeline.js").GrabRow;
+type Deps = import("../server/pipelineState.js").PipelineDeps;
+type Row = import("../server/pipelineState.js").GrabRow;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rs-"));
 const LIB = path.join(tmp, "lib");

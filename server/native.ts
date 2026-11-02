@@ -11,6 +11,7 @@
  * of AnimeArr (search, grabs, scopes, calendar, the Show page) works on it like on a Sonarr show.
  */
 import { requestSeadex } from "./seadex.js";
+import { NATIVE_BASE } from "./nativeIds.js";
 import { anidbForTvdb } from "./anidb.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,10 +27,7 @@ import { renderMovie, renderSeriesFolder } from "./naming.js";
 import { localPath, mappedPath } from "./paths.js";
 import { getSettings, underAllowedRoot } from "./settings.js";
 
-/** Cache ids of native shows/episodes/files start here (Sonarr's ids are far below). */
-export const NATIVE_BASE = 900_000_000;
-/** Synthetic TVDB ids for shows TVDB doesn't have: NATIVE_BASE + AniList id. */
-export const isNativeSeriesId = (id: number) => id >= NATIVE_BASE;
+export { isNativeMovieId, isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 const episodeId = (row: number, season: number, episode: number) => NATIVE_BASE + row * 1_000_000 + season * 10_000 + episode;
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
@@ -761,7 +759,6 @@ interface NativeMovieRow {
 }
 
 export const nativeMovies = () => db.prepare("SELECT * FROM native_movies ORDER BY id").all() as unknown as NativeMovieRow[];
-export const isNativeMovieId = (id: number) => id >= NATIVE_BASE;
 /** Radarr has this movie too (by TMDB id): Radarr's copy is used; the native one is parked. */
 const movieOwnedByRadarr = (tmdbId: number | null) =>
   !!tmdbId && !!cache.prepare("SELECT 1 FROM movies WHERE tmdb_id = ? AND id < ?").get(tmdbId, NATIVE_BASE);

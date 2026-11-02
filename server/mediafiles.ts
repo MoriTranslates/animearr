@@ -10,13 +10,13 @@ import os from "node:os";
  * Paths are stored as the *arr/library sees them (the same paths Sonarr/Radarr use), mapped to this machine's paths
  * through Settings → Paths for reading.
  */
-import { applyOverrides } from "./detection.js";
+import { applyOverrides } from "./trackOverrides.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { sidecarLang, toLang } from "./core/langs.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
-import { localPath } from "./paths.js";
+import { keyOf, localPath } from "./paths.js";
 import { getSettings } from "./settings.js";
 import { PARTIAL_TRACK } from "./verify.js";
 
@@ -136,9 +136,6 @@ export function probeFile(
     );
   });
 }
-
-/** Record keys use forward slashes, whatever OS the *arr runs on. */
-export const keyOf = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
 
 /** The library roots: the root folders of the synced anime series and movies (as the *arrs see them), nested ones folded. */
 export function libraryRoots(): string[] {

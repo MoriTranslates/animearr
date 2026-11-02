@@ -11,7 +11,7 @@ import { animeTiers } from "./seadex.js";
 import { seedLimitsFor } from "./indexers.js";
 import { grabGate, GrabsPausedError } from "./downloads.js";
 import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";
-import { isNativeMovieId } from "./native.js";
+import { isNativeMovieId } from "./nativeIds.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./activity.js";
@@ -31,17 +31,14 @@ import {
   isFetchFailure,
   MAX_ATTEMPTS,
   remainingFallbacks,
-  realDeps,
-  rejectUnsafe,
   runTimeSec,
-  selectAfterAdd,
   setState,
-  unsafeDownload,
   VIDEO,
   type Candidate,
   type GrabRow,
   type PipelineDeps,
-} from "./pipeline.js";
+} from "./pipelineState.js";
+import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "./grabSteps.js";
 import type { BatchInfo, FileMapOpts } from "./batch.js";
 import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
@@ -932,7 +929,12 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   const folder = single ? path.posix.dirname(p0) : p0;
   // Malware blocker: nothing from a download with dangerous or fake files is imported.
   const unsafe = unsafeDownload(deps, row, p0, !single);
-  if (unsafe) return rejectUnsafe(row, unsafe, deps, "before import");
+  if (unsafe) {
+    // Same as pipeline.ts rejectUnsafe for a movie grab: reject the download, then try the movie's next release.
+    await rejectUnsafeDownload(row, unsafe, deps, "before import");
+    if (row.movie_id) await movieNextForRow(row, deps, unsafe);
+    return;
+  }
   let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];
   if (native) {
     const lf = deps.localPath(single ? p0 : folder);

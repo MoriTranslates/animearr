@@ -21,7 +21,7 @@ import { logDecision } from "./activity.js";
 import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "./arr/clients.js";
 import { allRows, cache, CONFIG_DIR, db, dbState } from "./db.js";
 import { clientToSonarr, mappedPath } from "./paths.js";
-import { ACTIVE, retryImport } from "./pipeline.js";
+import { ACTIVE, retryImport } from "./pipelineState.js";
 import { libraryRoots } from "./mediafiles.js";
 import { getSettings } from "./settings.js";
 import { readBatch } from "./batch.js";

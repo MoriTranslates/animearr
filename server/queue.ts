@@ -1,11 +1,12 @@
 /** Queue (AnimeArr's own downloads, with live client status) and grab history. */
 import { clientName } from "./arr/clients.js";
 import { batchLine, readBatch } from "./batch.js";
-import { colorFor } from "./home.js";
-import { coverFor } from "./audit.js";
+import { colorFor, coverFor } from "./covers.js";
 import { liveFixesFor } from "./fixes.js";
 import { cache, db } from "./db.js";
-import { grabStages, realDeps, type GrabRow, type PipelineDeps } from "./pipeline.js";
+import { grabStages } from "./pipeline.js";
+import { realDeps } from "./grabSteps.js";
+import { type GrabRow, type PipelineDeps } from "./pipelineState.js";
 import type { ClientJob } from "./arr/clients.js";
 import * as sonarr from "./arr/sonarr.js";
 import { logDecision } from "./activity.js";

@@ -12,52 +12,26 @@ import { isDropped } from "./dropped.js";
 import { parseRelease } from "./core/parser.js";
 import { matchMovie } from "./movies.js";
 import { episodesAreNew, grabGate, GrabsPausedError } from "./downloads.js";
-import { NATIVE_BASE } from "./native.js";
+import { NATIVE_BASE } from "./nativeIds.js";
+import { listManaged, type ManagedRow } from "./managedList.js";
 import { logDecision } from "./activity.js";
 import { searchConfigured } from "./indexers.js";
 import { searchAll } from "./indexers.js";
 import { setSeriesMonitored } from "./arr/sonarr.js";
 import { identify } from "./core/identify.js";
 import { cache, db, dbState, setJob, tx } from "./db.js";
-import { startGrab, type Candidate } from "./pipeline.js";
+import { startGrab } from "./pipeline.js";
+import { toCandidate } from "./pipelineState.js";
 import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
-import { burnedInFact, coverFor } from "./audit.js";
+import { burnedInFact } from "./audit.js";
+import { coverFor } from "./covers.js";
 import { profileFor } from "./profiles.js";
 import { newerVersionOf } from "./propers.js";
 import { CATEGORY_NAME, ladderRank, qualityScore } from "./core/quality.js";
 import { hintProper, recheckSoon, upgradeUnits, type Unit } from "./qualityUpgrade.js";
 import { missingScoped, scopedEpisodeIds } from "./scope.js";
 import { planWrongLanguage } from "./episodes.js";
-
-export interface ManagedRow {
-  tvdbId: number;
-  seriesId: number;
-  title: string;
-  dryRun: boolean;
-  since: number;
-  unmonitoredInSonarr: boolean;
-}
-
-export function listManaged(): ManagedRow[] {
-  return (
-    db.prepare("SELECT tvdb_id, series_id, title, dry_run, since, unmonitored_in_sonarr FROM managed ORDER BY title").all() as {
-      tvdb_id: number;
-      series_id: number;
-      title: string;
-      dry_run: number;
-      since: number;
-      unmonitored_in_sonarr: number;
-    }[]
-  ).map((r) => ({
-    tvdbId: r.tvdb_id,
-    seriesId: r.series_id,
-    title: r.title,
-    dryRun: !!r.dry_run,
-    since: r.since,
-    unmonitoredInSonarr: !!r.unmonitored_in_sonarr,
-  }));
-}
 
 const DAY = 86_400_000;
 
@@ -325,23 +299,6 @@ export function delayLeftMin(r: { protocol: "usenet" | "torrent"; ageHours: numb
   const delay = r.protocol === "usenet" ? p.usenetDelayMin : p.torrentDelayMin;
   if (!delay || r.ageHours === null) return 0;
   return Math.max(0, Math.ceil(delay - r.ageHours * 60));
-}
-
-export function toCandidate(r: SearchResult): Candidate {
-  return {
-    guid: r.guid,
-    title: r.title,
-    indexerId: r.indexerId,
-    indexer: r.indexer,
-    protocol: r.protocol,
-    size: r.size,
-    downloadUrl: r.downloadUrl,
-    magnetUrl: r.magnetUrl,
-    label: r.label,
-    group: r.group,
-    why: r.rank.why,
-    episodeIds: r.episodeIds,
-  };
 }
 
 /** Searches one episode of a managed show and grabs (or, in dry-run, logs) the best acceptable release. */

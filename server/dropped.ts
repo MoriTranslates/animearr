@@ -5,7 +5,7 @@
 import { cache, db } from "./db.js";
 import { logDecision } from "./activity.js";
 import { setSeriesMonitored } from "./arr/sonarr.js";
-import { NATIVE_BASE } from "./native.js";
+import { NATIVE_BASE } from "./nativeIds.js";
 import { underAllowedRoot } from "./settings.js";
 
 export const isDropped = (tvdbId: number | null | undefined) =>

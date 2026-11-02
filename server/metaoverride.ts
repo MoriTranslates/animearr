@@ -6,7 +6,6 @@
 import { tmdbFetch } from "./catalog.js";
 import type { FastifyInstance } from "fastify";
 import { db } from "./db.js";
-import { tmdbTarget } from "./episodemeta.js";
 
 export interface MetaOverride {
   tmdbTv: number;
@@ -203,4 +202,44 @@ export function registerMetaOverrideApi(app: FastifyInstance, deps: MetaRouteDep
     const season = req.query.season === undefined ? null : whole(req.query.season, 0, "season");
     return { id, seasons, titles: season === null ? null : await upstream(() => tmdbSeasonTitles(id, season, k, deps.fetch)) };
   });
+}
+
+// ---------------------------------------------------------------- TMDB episode mapping (used by episodemeta.ts)
+
+export interface MapRow {
+  tvdb_season: string;
+  tvdb_offset: number;
+  episodes: number | null;
+  tmdb_tv: number | null;
+  tmdb_season: number | null;
+  tmdb_offset: number;
+}
+
+/** The TMDB episode (show, season, number) for one AnimeArr episode, through the entry that covers it. Specials aren't guessed. */
+export function tmdbTarget(
+  rows: MapRow[],
+  season: number,
+  episode: number,
+  absolute: number | null,
+  overrides?: Map<number, MetaOverride>,
+) {
+  // The user's choice for this season replaces the catalog mapping (and is the only way specials get a TMDB episode).
+  const o = overrides?.get(season);
+  if (o) return { tv: o.tmdbTv, season: o.tmdbSeason, episode: episode + o.tmdbOffset };
+  if (season === 0) return null;
+  for (const r of rows) {
+    // AnimeArr/TVDB numbering → the entry's own episode number (as catalogLookup), then → TMDB numbering with tmdb_offset.
+    const n =
+      r.tvdb_season === "a"
+        ? absolute
+          ? absolute - r.tvdb_offset
+          : null
+        : Number(r.tvdb_season) === season
+          ? episode - r.tvdb_offset
+          : null;
+    if (!n || n < 1 || (r.episodes && n > r.episodes)) continue;
+    if (!r.tmdb_tv || r.tmdb_season === null) return null;
+    return { tv: r.tmdb_tv, season: r.tmdb_season, episode: n + (r.tmdb_offset ?? 0) };
+  }
+  return null;
 }

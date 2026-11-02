@@ -19,7 +19,7 @@ const { searchMovie, startMovieGrab } = await import("../server/movies.js");
 const { pipelineTick } = await import("../server/pipeline.js");
 const { fixesFor } = await import("../server/fixes.js");
 const { asciiJson } = await import("../server/json.js");
-type Deps = import("../server/pipeline.js").PipelineDeps;
+type Deps = import("../server/pipelineState.js").PipelineDeps;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-manual-fs-"));
 const DL = path.join(tmp, "dl");

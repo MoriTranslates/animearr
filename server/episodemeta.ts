@@ -16,8 +16,8 @@ import { tmdbFetch } from "./catalog.js";
 import { cache, db } from "./db.js";
 import { getSettings } from "./settings.js";
 import * as sonarr from "./arr/sonarr.js";
-import { NATIVE_BASE } from "./native.js";
-import { metaOverrides, type MetaOverride } from "./metaoverride.js";
+import { NATIVE_BASE } from "./nativeIds.js";
+import { metaOverrides, tmdbTarget, type MapRow } from "./metaoverride.js";
 import type { EpisodeMeta } from "./mediaout.js";
 
 const WEEK = 7 * 24 * 3600_000;
@@ -80,44 +80,6 @@ async function tmdbSeason(tv: number, season: number, key: string, deps: MetaDep
   } catch {
     return cached();
   }
-}
-
-interface MapRow {
-  tvdb_season: string;
-  tvdb_offset: number;
-  episodes: number | null;
-  tmdb_tv: number | null;
-  tmdb_season: number | null;
-  tmdb_offset: number;
-}
-
-/** The TMDB episode (show, season, number) for one AnimeArr episode, through the entry that covers it. Specials aren't guessed. */
-export function tmdbTarget(
-  rows: MapRow[],
-  season: number,
-  episode: number,
-  absolute: number | null,
-  overrides?: Map<number, MetaOverride>,
-) {
-  // The user's choice for this season replaces the catalog mapping (and is the only way specials get a TMDB episode).
-  const o = overrides?.get(season);
-  if (o) return { tv: o.tmdbTv, season: o.tmdbSeason, episode: episode + o.tmdbOffset };
-  if (season === 0) return null;
-  for (const r of rows) {
-    // AnimeArr/TVDB numbering → the entry's own episode number (as catalogLookup), then → TMDB numbering with tmdb_offset.
-    const n =
-      r.tvdb_season === "a"
-        ? absolute
-          ? absolute - r.tvdb_offset
-          : null
-        : Number(r.tvdb_season) === season
-          ? episode - r.tvdb_offset
-          : null;
-    if (!n || n < 1 || (r.episodes && n > r.episodes)) continue;
-    if (!r.tmdb_tv || r.tmdb_season === null) return null;
-    return { tv: r.tmdb_tv, season: r.tmdb_season, episode: n + (r.tmdb_offset ?? 0) };
-  }
-  return null;
 }
 
 /**

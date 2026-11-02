@@ -18,7 +18,7 @@ const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQu
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");
 const { cleanupGrab, removeJobFolder } = await import("../server/downloads.js");
 const { transmissionDriver } = await import("../server/arr/moreClients.js");
-type Deps = import("../server/pipeline.js").PipelineDeps;
+type Deps = import("../server/pipelineState.js").PipelineDeps;
 type ExistingFile = import("../server/batch.js").ExistingFile;
 type ClientFile = import("../server/arr/clients.js").ClientFile;
 

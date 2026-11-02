@@ -21,7 +21,7 @@ import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
 import { allRows, cache, db, dbState, setJob, tx } from "./db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
-import { ACTIVE } from "./pipeline.js";
+import { ACTIVE } from "./pipelineState.js";
 import { getSettings, patchSettings } from "./settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });

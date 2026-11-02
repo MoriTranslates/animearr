@@ -12,7 +12,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/settings.js");
 const { db } = await import("../server/db.js");
-const { enrichEpisodes, tmdbTarget, realMetaDeps } = await import("../server/episodemeta.js");
+const { enrichEpisodes, realMetaDeps } = await import("../server/episodemeta.js");
+const { tmdbTarget } = await import("../server/metaoverride.js");
 const { metaOverrides, registerMetaOverrideApi, setMetaOverride } = await import("../server/metaoverride.js");
 
 const rows = [
