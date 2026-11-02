@@ -14,7 +14,6 @@ import {
   addJackettTracker,
   deleteClient,
   deleteIndexer,
-  indexerCatalog,
   jackettTrackers,
   listClients,
   listIndexers,
@@ -24,6 +23,7 @@ import {
   testExtraClient,
   testIndexer,
 } from "./connectionsAdmin.js";
+import { indexerCatalog } from "./indexerCatalog.js";
 import { airingShowCount, homeSummary } from "./home.js";
 import { thumb, type ThumbSize } from "./img.js";
 import { connectionsOverview, invalidateConnections } from "./connections.js";

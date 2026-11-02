@@ -277,7 +277,7 @@ test("M10: outbound addresses refuse link-local and metadata in every spelling; 
 });
 
 test("regexes meant as \b word boundaries are real boundaries (they were literal backspace bytes)", async () => {
-  const { qualityResource } = await import("../server/sonarrApi.js");
+  const { qualityResource } = await import("../server/sonarrResources.js");
   assert.deepEqual(
     qualityResource("[Grp] Show - 05v2 REPACK (1080p)").revision,
     { version: 1, real: 0, isRepack: true },

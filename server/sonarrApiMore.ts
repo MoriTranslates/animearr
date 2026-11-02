@@ -43,7 +43,7 @@ import {
   type EpRow,
   type SeriesRow,
   type SonarrApiDeps,
-} from "./sonarrApi.js";
+} from "./sonarrResources.js";
 
 const qs = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : v === undefined ? "" : String(v));
 const flag = (v: unknown, dflt = false) => (v === undefined || v === "" ? dflt : String(v).toLowerCase() === "true");

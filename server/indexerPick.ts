@@ -10,7 +10,7 @@
 import { wizardState } from "./wizard.js";
 import { getSettings, patchSettings } from "./settings.js";
 import { prowlarrConfigured, prowlarrIndexerDetails, type ProwlarrIndexerDetail } from "./arr/prowlarr.js";
-import { indexerCatalog } from "./connectionsAdmin.js";
+import { indexerCatalog } from "./indexerCatalog.js";
 
 export type AnimeFit = "great" | "general" | "not";
 
