@@ -125,7 +125,7 @@ All notable changes, newest first. The commit history has the crew's version of 
   shows imported through Sonarr keep Sonarr's behaviour.
 - **Release rules.** Settings → Release rules works like Sonarr's release profiles: a rule lists terms a release name
   must contain (any one of them) and terms it must not contain, plus optional preferred terms with a score. A term is
-  plain text (capitals don't matter) or a regular expression between slashes, like `/(x265|hevc)/`; a
+  plain text (capitals don't matter) or a regular expression between slashes, like `/\b(x265|hevc)\b/`; a
   regular expression that doesn't work is refused when you save. A release a rule blocks is skipped everywhere
   (searches, automatic grabs, upgrades, movies) and shown with the reason: "Blocked by release rule 'No HEVC':
   contains 'x265'". Preferred terms only nudge the order (at most 8 points), after language, quality and SeaDex, so
