@@ -11,8 +11,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { delugeDriver, rtorrentDriver, torrentHash, encodeCall, decodeResponse } = await import("../server/arr/torrentClients.js");
 const { partialCapable, PROTOCOL } = await import("../server/arr/clients.js");
-const { patchSettings } = await import("../server/settings.js");
-type Cfg = import("../server/settings.js").ClientCfg;
+const { patchSettings } = await import("../server/system/settings.js");
+type Cfg = import("../server/system/settings.js").ClientCfg;
 
 const cfg = (type: "deluge" | "rtorrent", url: string): Cfg => ({
   id: `${type}1`,

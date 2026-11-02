@@ -13,8 +13,8 @@ import {
   switchToAnimeArr,
   unmatch,
 } from "../cutover.js";
-import { cache, db } from "../db.js";
-import { logDecision } from "../activity.js";
+import { cache, db } from "../system/db.js";
+import { logDecision } from "../system/activity.js";
 import { setSeriesPrefs, setMoviePrefs } from "../profiles.js";
 import {
   addExclusion,
@@ -38,7 +38,7 @@ import { addToQueue } from "../fillin.js";
 
 import { adoptFolder, matchFolder, scanRoot } from "../folderImport.js";
 import { addMovie, addShow, materializeAll, removeMovie, removeShow, searchAdd, seasonPicks } from "../native.js";
-import { getSettings } from "../settings.js";
+import { getSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";
 

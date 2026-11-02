@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-dup-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { duplicateListings, overlapsFor, ownedElsewhere, resetDuplicateCache } = await import("../server/duplicates.js");
 const { missingScoped, scopedEpisodeIds } = await import("../server/scope.js");
 const { autoSearchEpisodes } = await import("../server/autosearch.js");

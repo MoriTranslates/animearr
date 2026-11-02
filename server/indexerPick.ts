@@ -7,8 +7,8 @@
  *   known to be a poor fit, unticked otherwise, plus a "New indexer, review" badge until the user ticks/unticks it.
  * - The first time (fresh install / wizard), with nothing chosen yet, the same defaults pick the list.
  */
-import { wizardState } from "./wizard.js";
-import { getSettings, patchSettings } from "./settings.js";
+import { wizardState } from "./system/wizard.js";
+import { getSettings, patchSettings } from "./system/settings.js";
 import { prowlarrConfigured, prowlarrIndexerDetails, type ProwlarrIndexerDetail } from "./arr/prowlarr.js";
 import { indexerCatalog } from "./indexerCatalog.js";
 

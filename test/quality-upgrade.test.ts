@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-quality-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { getSettings, patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { getSettings, patchSettings } = await import("../server/system/settings.js");
 const { profileFor, saveProfile, defaultProfile } = await import("../server/profiles.js");
 const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/qualityLocks.js");

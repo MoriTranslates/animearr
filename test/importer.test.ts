@@ -11,8 +11,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings, getSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings, getSettings } = await import("../server/system/settings.js");
 const { planImport, executeImport, planRename, applyRename, renameBack } = await import("../server/importer.js");
 const { mapArrMedia } = await import("../server/mediadefaults.js");
 

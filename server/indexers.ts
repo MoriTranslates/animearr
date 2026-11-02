@@ -7,7 +7,7 @@
 import { ensureProwlarrSelection } from "./indexerPick.js";
 import { describeFetchError, noteSeen, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import crypto from "node:crypto";
-import { getSettings, type IndexerCfg } from "./settings.js";
+import { getSettings, type IndexerCfg } from "./system/settings.js";
 import { prowlarrConfigured, prowlarrIndexers, prowlarrSearch, type ProwlarrRelease } from "./arr/prowlarr.js";
 import { redactUrl } from "./arr/http.js";
 import { cachedQuery, querySlot } from "./searchQueue.js";

@@ -9,7 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 
 export interface FileInfo {
   name: string;

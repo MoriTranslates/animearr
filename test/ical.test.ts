@@ -10,8 +10,8 @@ import fastifyCookie from "@fastify/cookie";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ical-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { setAccount, regenerateApiKey } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/ical.js");
 const { createTag, setTags } = await import("../server/tags.js");
 

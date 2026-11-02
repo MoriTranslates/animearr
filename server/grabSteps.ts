@@ -3,7 +3,7 @@
  * checks, rejecting an unsafe download, and picking the wanted files of a batch torrent. Neither of those modules is
  * imported from here, which keeps them out of an import cycle.
  */
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { clientName, realClients, type ClientJob } from "./arr/clients.js";
 import { fetchReleaseFile as realFetchRelease } from "./arr/prowlarr.js";
 import * as radarr from "./arr/radarr.js";
@@ -11,15 +11,15 @@ import * as sonarr from "./arr/sonarr.js";
 import { cleanupGrab } from "./downloads.js";
 import { applySelection, writeBatch, type BatchInfo, type FileMapOpts } from "./batch.js";
 import { identify } from "./core/identify.js";
-import { cache } from "./db.js";
+import { cache } from "./system/db.js";
 import { extractIfNeeded, UNPACK_DIR } from "./extract.js";
 import { refreshSeriesEpisodes } from "./library.js";
-import { localPath as realLocalPath } from "./paths.js";
+import { localPath as realLocalPath } from "./system/paths.js";
 import { blocklist, setState, type GrabRow, type PipelineDeps } from "./pipelineState.js";
 import { inspectFiles, walkFiles } from "./safety.js";
 import { scopeFor } from "./scope.js";
 import { episodesFor, identifyContext, seriesByTvdb } from "./search.js";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 import { ffprobe } from "./verify.js";
 
 /** The real side effects (tests pass mocks instead). */

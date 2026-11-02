@@ -10,8 +10,8 @@ import Fastify from "fastify";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings } = await import("../server/settings.js");
-const { db } = await import("../server/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { db } = await import("../server/system/db.js");
 const { enrichEpisodes, realMetaDeps } = await import("../server/episodemeta.js");
 const { tmdbTarget } = await import("../server/metaoverride.js");
 const { metaOverrides, registerMetaOverrideApi, setMetaOverride } = await import("../server/metaoverride.js");
@@ -109,5 +109,5 @@ test("only metadata reads the override table", () => {
     }
   };
   walk(dir);
-  assert.deepEqual(readers.sort(), ["db.ts", "episodemeta.ts", "metaoverride.ts", "routes/activity.ts"]);
+  assert.deepEqual(readers.sort(), ["episodemeta.ts", "metaoverride.ts", "routes/activity.ts", "system/db.ts"]);
 });

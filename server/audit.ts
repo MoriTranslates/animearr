@@ -11,14 +11,14 @@ import { movieSpecials } from "./franchise.js";
 import { ownFile, probeOf } from "./mediafiles.js";
 import fs from "node:fs";
 import path from "node:path";
-import { db, cache } from "./db.js";
+import { db, cache } from "./system/db.js";
 import { compactKey } from "./core/normalize.js";
 import { sidecarLang } from "./core/langs.js";
 import { animeListEntries } from "./metadata.js";
 import { coverFor } from "./covers.js";
 import { profileFor } from "./profiles.js";
 import { judge } from "./verify.js";
-import { localPath } from "./paths.js";
+import { localPath } from "./system/paths.js";
 import { isMissing } from "./scope.js";
 
 interface SeriesRow {

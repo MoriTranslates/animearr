@@ -1,7 +1,7 @@
 /** The curated indexer catalogue (catalog/indexers.json). A leaf: connectionsAdmin.ts and indexerPick.ts both read it. */
 import fs from "node:fs";
 import path from "node:path";
-import type { IndexerCfg } from "./settings.js";
+import type { IndexerCfg } from "./system/settings.js";
 
 let catalogCache: { at: number; v: Catalog } | null = null;
 export interface CatalogEntry {

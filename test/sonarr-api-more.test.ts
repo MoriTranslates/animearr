@@ -10,9 +10,9 @@ import fastifyCookie from "@fastify/cookie";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-sonarrmore-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings, setAccount, regenerateApiKey } = await import("../server/settings.js");
-const { guard } = await import("../server/auth.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
+const { guard } = await import("../server/system/auth.js");
 const { registerSonarrApi } = await import("../server/sonarrApi.js");
 type SearchResult = import("../server/search.js").SearchResult;
 

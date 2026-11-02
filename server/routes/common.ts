@@ -2,20 +2,20 @@
  * Helpers shared by server/index.ts and the route modules: request checks (ids, read-only mode, outbound URLs, stored
  * secrets), the session cookie, the test-app switch, the port and start time, the web build id, the breaker's probes.
  */
-import { blockedOutboundHost } from "../outbound.js";
+import { blockedOutboundHost } from "../system/outbound.js";
 import { type Fetcher } from "../health.js";
 import { indexerNumId, searchIndexer } from "../indexers.js";
 import fs from "node:fs";
 import path from "node:path";
 import { type FastifyReply, type FastifyRequest } from "fastify";
-import { COOKIE, makeSession } from "../auth.js";
-import { dbState, setJob } from "../db.js";
+import { COOKIE, makeSession } from "../system/auth.js";
+import { dbState, setJob } from "../system/db.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrSearch } from "../arr/prowlarr.js";
 import { refreshCatalog, tmdbEpisodes } from "../catalog.js";
 
 import { materializeAll } from "../native.js";
-import { getSettings, isMasked } from "../settings.js";
-import { ROOT_DIR } from "../version.js";
+import { getSettings, isMasked } from "../system/settings.js";
+import { ROOT_DIR } from "../system/version.js";
 
 /**
  * ANIMEARR_TEST_APP=1: the routes are built (and `app` exported) but nothing is started: no background jobs, no

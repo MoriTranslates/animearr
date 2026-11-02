@@ -3,7 +3,7 @@
  * Same contract as the primary ones: AnimeArr sends with its own category (NZBGet category; Transmission label and a
  * category sub-folder), reads progress, and removes only its own jobs.
  */
-import type { ClientCfg } from "../settings.js";
+import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
 import type { ClientFile, ClientStatus, OwnTorrent } from "./clients.js";
 

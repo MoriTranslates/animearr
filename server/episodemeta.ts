@@ -13,8 +13,8 @@
  */
 import { spawn } from "node:child_process";
 import { tmdbFetch } from "./catalog.js";
-import { cache, db } from "./db.js";
-import { getSettings } from "./settings.js";
+import { cache, db } from "./system/db.js";
+import { getSettings } from "./system/settings.js";
 import * as sonarr from "./arr/sonarr.js";
 import { NATIVE_BASE } from "./nativeIds.js";
 import { metaOverrides, tmdbTarget, type MapRow } from "./metaoverride.js";

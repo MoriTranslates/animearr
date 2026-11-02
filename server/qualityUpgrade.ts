@@ -19,7 +19,7 @@
  * - A show with no Blu-ray release (a DVD-era show, or no BD seen in months) caps its goal at the best that exists.
  * - Honours dry-run (show + global) like every managed grab.
  */
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import {
   CATEGORY_NAME,
   beatsCurrent,
@@ -34,7 +34,7 @@ import {
   type QualityScore,
   type SeadexEntry,
 } from "./core/quality.js";
-import { cache, db, dbState, setJob } from "./db.js";
+import { cache, db, dbState, setJob } from "./system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "./core/propers.js";
 import { ownedElsewhere } from "./duplicates.js";
 import { searchConfigured } from "./indexers.js";
@@ -47,7 +47,7 @@ import { isLocked } from "./qualityLocks.js";
 import { animeTiers, seadexForSeason } from "./seadex.js";
 import { releaseOf } from "./seadexFiles.js";
 import { deepSearch, type SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./settings.js";
+import { getSettings, underAllowedRoot } from "./system/settings.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;

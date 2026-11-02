@@ -11,10 +11,10 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-summary-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db } = await import("../server/db.js");
-const { summarize, plainReason, queueSummary } = await import("../server/summary.js");
-const { logDecision, listDecisions } = await import("../server/activity.js");
-const { fixesFor, liveFixesFor } = await import("../server/fixes.js");
+const { db } = await import("../server/system/db.js");
+const { summarize, plainReason, queueSummary } = await import("../server/system/summary.js");
+const { logDecision, listDecisions } = await import("../server/system/activity.js");
+const { fixesFor, liveFixesFor } = await import("../server/system/fixes.js");
 const { bell, markRead } = await import("../server/notify.js");
 
 const noJargon = (s: string | null) => {

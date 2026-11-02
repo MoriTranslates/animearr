@@ -16,19 +16,19 @@ import {
 import { autoSearchEpisodes, searchMissingNow } from "./autosearch.js";
 import { deepSearch } from "./search.js";
 import { removeGrab, startGrab } from "./pipeline.js";
-import { backupNow } from "./db.js";
+import { backupNow } from "./system/db.js";
 import { rssTick } from "./managed.js";
 import { scanFolder } from "./mediafiles.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
-import { allRows, cache, db, dbState } from "./db.js";
+import { allRows, cache, db, dbState } from "./system/db.js";
 import { mediaByIds } from "./anilist.js";
 import { animeListEntries } from "./metadata.js";
 import { NATIVE_BASE, searchAdd } from "./native.js";
 import { profileFor } from "./profiles.js";
 import { queueView } from "./queue.js";
 import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "./scope.js";
-import { getSettings, type LanguageProfile } from "./settings.js";
+import { getSettings, type LanguageProfile } from "./system/settings.js";
 import { setTags, tagsOf } from "./tags.js";
 
 /** What the API reaches outside the database (tests swap these). */

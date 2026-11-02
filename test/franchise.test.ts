@@ -20,8 +20,8 @@ fs.writeFileSync(
 </anime-list>`,
 );
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { moviesForSeries, seriesForMovie, movieSpecials, setLink, refuseMovieSpecials } = await import("../server/franchise.js");
 const { episodeRows } = await import("../server/episodes.js");
 

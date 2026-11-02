@@ -1,5 +1,5 @@
 /** The list of managed shows (a leaf: SeaDex, quality upgrades, episodes and home read it without importing managed.ts). */
-import { db } from "./db.js";
+import { db } from "./system/db.js";
 
 export interface ManagedRow {
   tvdbId: number;

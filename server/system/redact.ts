@@ -1,4 +1,4 @@
-import { redactUrl } from "./arr/http.js";
+import { redactUrl } from "../arr/http.js";
 
 /**
  * Scrubs secrets from text that is logged or shown: everything redactUrl catches (apikey= parameters, user:pass@host,

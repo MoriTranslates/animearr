@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { rssTick } = await import("../server/managed.js");
 
 const FAR = Date.now() + 30 * 86_400_000;

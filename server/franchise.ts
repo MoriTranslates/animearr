@@ -12,7 +12,7 @@
  */
 import { animeListEntries } from "./metadata.js";
 import { coverFor } from "./covers.js";
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 
 export interface MovieLink {
   tvdbId: number;

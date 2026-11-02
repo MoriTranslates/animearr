@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { addShow, checkExistingPath, NATIVE_BASE } = await import("../server/native.js");
 const { adoptFolder, matchFolder, parseFolderName, scanRoot, scoreTitle } = await import("../server/folderImport.js");
 const { scanFolder } = await import("../server/mediafiles.js");

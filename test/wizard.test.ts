@@ -7,7 +7,7 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-wiz-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { saveWizard, wizardState, listFolders } = await import("../server/wizard.js");
+const { saveWizard, wizardState, listFolders } = await import("../server/system/wizard.js");
 
 test("progress is saved and validated", () => {
   assert.deepEqual([wizardState().done, wizardState().step], [false, "welcome"]);

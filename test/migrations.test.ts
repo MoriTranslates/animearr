@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-mig-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { migrateUserDb, userMigrations, userSchemaVersion, db } = await import("../server/db.js");
+const { migrateUserDb, userMigrations, userSchemaVersion, db } = await import("../server/system/db.js");
 
 const version = (d: DatabaseSync) => (d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
 const tables = (d: DatabaseSync) =>

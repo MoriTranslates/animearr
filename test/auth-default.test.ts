@@ -10,8 +10,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 delete process.env.ANIMEARR_LOCAL_NETWORKS;
 delete process.env.TRUST_PROXY;
 const { usingDefaultPassword, setAccount, getSettings, patchSettings, checkPassword, ensureDefaultAccount, DEFAULT_LOGIN } =
-  await import("../server/settings.js");
-const { defaultLoginRefusal, DEFAULT_REMOTE_REFUSED } = await import("../server/auth.js");
+  await import("../server/system/settings.js");
+const { defaultLoginRefusal, DEFAULT_REMOTE_REFUSED } = await import("../server/system/auth.js");
 
 /** A request as Fastify would see it: the client IP, the socket peer, and the Host header. */
 const req = (ip: string, headers: Record<string, string> = {}) =>

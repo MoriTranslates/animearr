@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-files-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db } = await import("../server/db.js");
+const { db } = await import("../server/system/db.js");
 const { scanLibrary, recordFor, probeOf, fileSummary } = await import("../server/mediafiles.js");
 
 const lib = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-lib-"));

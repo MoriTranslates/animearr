@@ -2,9 +2,9 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
-import type { GoalId } from "./core/quality.js";
+import type { GoalId } from "../core/quality.js";
 import { open, seal } from "./secretbox.js";
-import type { NotifyChannel } from "./notifyChannels.js";
+import type { NotifyChannel } from "../notifyChannels.js";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -335,7 +335,7 @@ export interface Settings {
   };
   /** Download-folder rules and clean-up (AnimeArr's own category folders only). */
   downloads: {
-    rules: import("./downloads.js").FolderRule[];
+    rules: import("../downloads.js").FolderRule[];
     /** Always on: under this many GB free on the download disk, every grab pauses. */
     freeSpaceGb: number;
     /** Where to measure free space ("" = automatic: Unraid's cache pool at /unraid/cache when downloads are on the FUSE union). */

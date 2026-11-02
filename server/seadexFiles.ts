@@ -3,7 +3,7 @@
  * ORIGINAL release name: the scene name recorded at import, so a Tdarr re-encode still counts as what it came from.
  */
 import { compareToSeadex, pickOfRelease, type SeadexComparison } from "./core/seadexCompare.js";
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 import { profileFor } from "./profiles.js";
 import { seadexForSeason } from "./seadex.js";
 

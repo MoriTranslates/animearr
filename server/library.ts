@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { localPath } from "./paths.js";
+import { localPath } from "./system/paths.js";
 /**
  * Import / sync of the existing Sonarr and Radarr libraries into cache.db (companion mode: Sonarr stays the source of
  * truth for files). Read-only towards Sonarr/Radarr: nothing here changes their settings or data.
@@ -13,15 +13,15 @@ import { localPath } from "./paths.js";
 import { invalidateFranchise } from "./franchise.js";
 import { getEpisodeFiles, getEpisodes, getSeries, getTags, sonarrConfigured, type SonarrSeries } from "./arr/sonarr.js";
 import { getMovies, radarrConfigured } from "./arr/radarr.js";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { langList } from "./core/langs.js";
 import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
-import { cache, db, dbState, setJob, tx } from "./db.js";
+import { cache, db, dbState, setJob, tx } from "./system/db.js";
 import { animeListEntries, invalidateIndex } from "./metadata.js";
 import { materializeAll, rematerializeSeries } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 
 let running: Promise<SyncResult> | null = null;
 

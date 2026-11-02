@@ -7,8 +7,8 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { patchSettings } = await import("../server/settings.js");
-const { cache } = await import("../server/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
+const { cache } = await import("../server/system/db.js");
 // The library (so the bin can be checked against it).
 cache
   .prepare(

@@ -2,7 +2,7 @@
  * "Watch in …": a link to the file's item in the user's media server, to check it with your own eyes (burned-in
  * subtitles, a wrong scan). Media-server agnostic: Plex now; Jellyfin/Emby/Kodi providers slot in here later.
  */
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 import { plexApi, plexSections, sectionFor, toPlexPath } from "./plex.js";
 
 export interface WatchLink {

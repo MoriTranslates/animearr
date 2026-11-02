@@ -13,7 +13,7 @@
  * folder under the clean-up's rules (inside AnimeArr's download folders only, deleting switched on).
  */
 import { createHash } from "node:crypto";
-import type { ClientCfg } from "../settings.js";
+import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
 import type { ClientFile, ClientStatus } from "./clients.js";
 

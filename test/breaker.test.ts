@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-breaker-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db, cache } = await import("../server/db.js");
+const { db, cache } = await import("../server/system/db.js");
 const { parseRelease } = await import("../server/core/parser.js");
 const { matchMovie, liveAction } = await import("../server/movies.js");
 const health = await import("../server/health.js");
@@ -162,7 +162,7 @@ test("a dropped show is never managed, grabbed, queued or re-added", async () =>
 
 test("Prowlarr indexer selection: anime-fit hints and defaults for new indexers", async () => {
   const { animeFit, syncProwlarrSelection } = await import("../server/indexerPick.js");
-  const { getSettings, patchSettings } = await import("../server/settings.js");
+  const { getSettings, patchSettings } = await import("../server/system/settings.js");
   assert.equal(animeFit("Nyaa.si"), "great");
   assert.equal(animeFit("Sukebei (Nyaa)"), "not", "Sukebei is checked before Nyaa");
   assert.equal(animeFit("EZTV"), "not");
@@ -200,7 +200,7 @@ test("Prowlarr indexer selection: anime-fit hints and defaults for new indexers"
 });
 
 test("a movie download with several large files offers Import manually…", async () => {
-  const { fixesFor } = await import("../server/fixes.js");
+  const { fixesFor } = await import("../server/system/fixes.js");
   const f = fixesFor(
     "Downloaded X but couldn't import it: the download has several large video files (a.mkv, b.mkv); import the right one by hand. The download is kept",
     { movieId: 1351, grabId: 74, kind: "fail" },

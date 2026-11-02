@@ -11,8 +11,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 
 // These tests cover the earlier Sonarr/Radarr import route; the settings can't choose it any more.
 patchSettings((s) => ({ ...s, importer: { ...s.importer, engine: "sonarr" } }));

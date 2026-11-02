@@ -8,7 +8,7 @@ import { isTorrentClient } from "./arr/clients.js";
 import type { ProwlarrRelease } from "./arr/prowlarr.js";
 import type * as radarr from "./arr/radarr.js";
 import type * as sonarr from "./arr/sonarr.js";
-import { db } from "./db.js";
+import { db } from "./system/db.js";
 import type { ExtractOutcome } from "./extract.js";
 import { describeFetchError, indexerOff, isTitleEncodingError, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import type { SearchResult } from "./search.js";

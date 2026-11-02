@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings } = await import("../server/settings.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = await import("../server/anidb.js");
 const DAY_MS = 86_400_000;
 
@@ -56,7 +56,7 @@ test("one request at a time, gzip handled, and a ban stops everything for a day 
 });
 
 test("rolling budgets from the persisted log: 30 an hour, 200 a day; probation after a ban; a restart changes nothing", async () => {
-  const { db } = await import("../server/db.js");
+  const { db } = await import("../server/system/db.js");
   db.prepare("DELETE FROM anidb_state").run();
   db.prepare("DELETE FROM anidb_requests").run();
   const now = Date.now();

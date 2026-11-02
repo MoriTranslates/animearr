@@ -1,16 +1,16 @@
 /** Routes: System: jobs, metadata, logs, update check, backups. */
-import { humanizeError } from "../errors.js";
-import { checkForUpdates } from "../releases.js";
-import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "../backupTransfer.js";
-import { getLogs, logText } from "../logs.js";
+import { humanizeError } from "../system/errors.js";
+import { checkForUpdates } from "../system/releases.js";
+import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "../system/backupTransfer.js";
+import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply } from "fastify";
-import { authState, loginAllowed } from "../auth.js";
-import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../db.js";
+import { authState, loginAllowed } from "../system/auth.js";
+import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
 import { syncLibrary } from "../library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata.js";
 
-import { checkPassword, getSettings } from "../settings.js";
-import { VERSION } from "../version.js";
+import { checkPassword, getSettings } from "../system/settings.js";
+import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
 import { STARTED, fail, writable } from "./common.js";
 

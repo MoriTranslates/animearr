@@ -14,14 +14,14 @@
  * the search runs as a background job (a few at a time, its indexer queries in a lane of the app-wide scheduler) and its
  * outcomes land in Activity, the bell (grabs, failures) and GET /api/autosearch/jobs. Jobs live in memory only.
  */
-import { logDecision } from "./activity.js";
-import { cache, db } from "./db.js";
+import { logDecision } from "./system/activity.js";
+import { cache, db } from "./system/db.js";
 import { radarrMovieSpecials } from "./franchise.js";
 import { automaticPicks } from "./managed.js";
 import { toCandidate } from "./pipelineState.js";
 import { startGrab } from "./pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./settings.js";
+import { getSettings, underAllowedRoot } from "./system/settings.js";
 import { searchMovie, startMovieGrab } from "./movies.js";
 import type { Candidate } from "./pipelineState.js";
 import { batchPrefersSingles } from "./batch.js";

@@ -4,9 +4,9 @@
  * (core/rank.ts) is the one place that applies them, so searches, automatic grabs and upgrades all obey the same rules.
  */
 import crypto from "node:crypto";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { applyRules, cleanTerms, type PreferredTerm, type ReleaseRule } from "./core/rules.js";
-import { db, dbState, tx } from "./db.js";
+import { db, dbState, tx } from "./system/db.js";
 import { tagRows, tagsOf, type TagKind } from "./tags.js";
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });

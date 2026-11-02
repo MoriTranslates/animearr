@@ -4,7 +4,7 @@
  * too. The tag in the file name is the single source of truth for both tools: it survives a database restore and
  * works for anyone who reads the folder. The user's own "[Remaster]" files count the same.
  */
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 import { profileFor } from "./profiles.js";
 
 export const KEEP_TAG = "[Keep]";

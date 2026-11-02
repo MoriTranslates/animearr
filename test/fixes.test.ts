@@ -11,11 +11,11 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-fixes-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { fixesFor, liveFixesFor, linkFor } = await import("../server/fixes.js");
+const { cache, db } = await import("../server/system/db.js");
+const { fixesFor, liveFixesFor, linkFor } = await import("../server/system/fixes.js");
 const { keepGrab, nextForGrab } = await import("../server/pipeline.js");
 const { queueView } = await import("../server/queue.js");
-const { listDecisions } = await import("../server/activity.js");
+const { listDecisions } = await import("../server/system/activity.js");
 
 const actions = (why: string, ctx = {}) => fixesFor(why, ctx).map((f) => f.action);
 

@@ -9,21 +9,21 @@ import { fileDetail, peekFrames, rescanOne, setTrackLanguage, useSidecar } from 
 import { indexerCatalog } from "../indexerCatalog.js";
 import { homeSummary } from "../home.js";
 import { thumb, type ThumbSize } from "../img.js";
-import { invalidateConnections } from "../connections.js";
+import { invalidateConnections } from "../system/connections.js";
 import { testTmdb } from "../catalog.js";
 import { metadataSyncRunning, syncAllMetadata, syncSeriesMetadata } from "../mediaout.js";
 import { reevaluate } from "../downloads.js";
 import fs from "node:fs";
 import path from "node:path";
-import { authState } from "../auth.js";
-import { logDecision } from "../activity.js";
+import { authState } from "../system/auth.js";
+import { logDecision } from "../system/activity.js";
 import { prowlarrConfigured, prowlarrIndexers } from "../arr/prowlarr.js";
 import { releaseDryRunDecisions } from "../managed.js";
 import { listManaged } from "../managedList.js";
 import { invalidateIndex } from "../metadata.js";
 import { libraryRoots } from "../mediafiles.js";
 
-import { getSettings, isMasked, publicSettings, regenerateApiKey, updateSettings, type Settings } from "../settings.js";
+import { getSettings, isMasked, publicSettings, regenerateApiKey, updateSettings, type Settings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { PORT, fail, id, writable, breakerDeps } from "./common.js";
 

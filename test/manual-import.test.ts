@@ -11,14 +11,14 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-manual-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { movieSubtitles, namesSubtitle, fileForMovie, looksLikeEpisodes } = await import("../server/core/movieTitle.js");
 const { browseImport, clearStalePart, planMovieImport } = await import("../server/importer.js");
 const { searchMovie, startMovieGrab } = await import("../server/movies.js");
 const { pipelineTick } = await import("../server/pipeline.js");
-const { fixesFor } = await import("../server/fixes.js");
-const { asciiJson } = await import("../server/json.js");
+const { fixesFor } = await import("../server/system/fixes.js");
+const { asciiJson } = await import("../server/system/json.js");
 type Deps = import("../server/pipelineState.js").PipelineDeps;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-manual-fs-"));

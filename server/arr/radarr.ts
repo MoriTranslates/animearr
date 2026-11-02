@@ -1,4 +1,4 @@
-import { getSettings } from "../settings.js";
+import { getSettings } from "../system/settings.js";
 import { jsonCall, type Conn } from "./http.js";
 
 /** Radarr v3 API client: reads everywhere; the only write is ManualImport for AnimeArr's own movie grabs. */

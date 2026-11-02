@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { record, getLogs, resetLogs, fromPino, flushLogs, logText, LOG_FILE } = await import("../server/logs.js");
-const { redactText } = await import("../server/redact.js");
+const { record, getLogs, resetLogs, fromPino, flushLogs, logText, LOG_FILE } = await import("../server/system/logs.js");
+const { redactText } = await import("../server/system/redact.js");
 
 test("the ring keeps the newest 2000 lines", () => {
   resetLogs();

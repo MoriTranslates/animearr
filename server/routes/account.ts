@@ -1,9 +1,9 @@
 /** Routes: Status, login/logout, account and API key. */
-import { wizardState } from "../wizard.js";
+import { wizardState } from "../system/wizard.js";
 import { airingShowCount } from "../home.js";
 import { downloadsStatus } from "../downloads.js";
-import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../auth.js";
-import { cache, db, dbState, startupWarnings } from "../db.js";
+import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
+import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library.js";
 import { listManaged } from "../managedList.js";
 
@@ -16,8 +16,8 @@ import {
   safeEqual,
   setAccount,
   setBypassLocal,
-} from "../settings.js";
-import { VERSION } from "../version.js";
+} from "../system/settings.js";
+import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
 import { fail, writable, sessionCookie, webBuild } from "./common.js";
 

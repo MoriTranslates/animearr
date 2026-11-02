@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-setuphealth-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { setupProblems, withSetupProblems, resetSetupProblems } = await import("../server/setupHealth.js");
+const { setupProblems, withSetupProblems, resetSetupProblems } = await import("../server/system/setupHealth.js");
 
 test("a failing download client and a failed metadata download need action; fine ones don't", async () => {
   resetSetupProblems();

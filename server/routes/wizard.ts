@@ -1,5 +1,5 @@
 /** Routes: The setup wizard. */
-import { applyArrPreview, arrPreview, createCategory, listFolders, saveWizard, wizardState } from "../wizard.js";
+import { applyArrPreview, arrPreview, createCategory, listFolders, saveWizard, wizardState } from "../system/wizard.js";
 import {
   addJackettTracker,
   deleteClient,
@@ -12,18 +12,18 @@ import {
   setClientPrefs,
   testExtraClient,
   testIndexer,
-} from "../connectionsAdmin.js";
-import { connectionsOverview, invalidateConnections } from "../connections.js";
+} from "../system/connectionsAdmin.js";
+import { connectionsOverview, invalidateConnections } from "../system/connections.js";
 import { testPlex } from "../plex.js";
 import { testEmbyLike, testKodi } from "../mediaservers.js";
-import { CONFIG_DIR } from "../db.js";
+import { CONFIG_DIR } from "../system/db.js";
 import { testProwlarr } from "../arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "../arr/radarr.js";
 import { sonarrOptions, testSonarr } from "../arr/sonarr.js";
 import { testQbit, testSab } from "../arr/clients.js";
-import { rootRefusal } from "../roots.js";
+import { rootRefusal } from "../system/roots.js";
 
-import { getSettings } from "../settings.js";
+import { getSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, writable, withSecret, type TestBody } from "./common.js";
 

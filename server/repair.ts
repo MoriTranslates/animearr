@@ -18,19 +18,19 @@
  * - Each import is recorded before anything is changed, so an error can't make it repeat.
  */
 import path from "node:path";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import * as sonarr from "./arr/sonarr.js";
 import { burnedInFact } from "./audit.js";
 import { langList } from "./core/langs.js";
 import { parseRelease } from "./core/parser.js";
-import { cache, db, dbState, setJob } from "./db.js";
+import { cache, db, dbState, setJob } from "./system/db.js";
 import { searchAgainSoon } from "./episodes.js";
 import { radarrMovieSpecials } from "./franchise.js";
 import { learnFromVerify, sourceKey } from "./library.js";
 import { listManaged } from "./managedList.js";
-import { localPath } from "./paths.js";
+import { localPath } from "./system/paths.js";
 import { profileFor } from "./profiles.js";
-import { getSettings, isDryRun, underAllowedRoot } from "./settings.js";
+import { getSettings, isDryRun, underAllowedRoot } from "./system/settings.js";
 import { ffprobe, judge, type ProbeResult, type VerifyVerdict } from "./verify.js";
 
 export interface RepairDeps {

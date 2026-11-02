@@ -1,4 +1,4 @@
-import { getSettings } from "../settings.js";
+import { getSettings } from "../system/settings.js";
 import { jsonCall, type Conn } from "./http.js";
 
 /**

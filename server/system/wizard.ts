@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getSettings, patchSettings, type ClientCfg } from "./settings.js";
-import { jsonCall } from "./arr/http.js";
+import { jsonCall } from "../arr/http.js";
 import { logDecision } from "./activity.js";
 import { cache, CONFIG_DIR } from "./db.js";
 import { hiddenInBrowser, rootRefusal } from "./roots.js";

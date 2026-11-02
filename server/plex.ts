@@ -6,8 +6,8 @@
  * The token is stored encrypted in the settings (entered in the UI; never logged). Paths are mapped from AnimeArr's
  * view to Plex's with Plex path mappings (longest prefix wins); unmapped paths are used as they are.
  */
-import { logDecision } from "./activity.js";
-import { getSettings, type PathMapping } from "./settings.js";
+import { logDecision } from "./system/activity.js";
+import { getSettings, type PathMapping } from "./system/settings.js";
 
 interface Conn {
   url: string;

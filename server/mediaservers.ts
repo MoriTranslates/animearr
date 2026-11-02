@@ -13,10 +13,10 @@
  * Keys and passwords are stored encrypted in the settings (never logged). Paths are mapped from AnimeArr's view to the
  * server's with each server's own path mappings (longest prefix wins).
  */
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { BULK_SCAN_FOLDERS, toPlexPath as mapPath } from "./plex.js";
-import { getSettings, type MediaServerConn, type PathMapping } from "./settings.js";
-import { VERSION as appVersion } from "./version.js";
+import { getSettings, type MediaServerConn, type PathMapping } from "./system/settings.js";
+import { VERSION as appVersion } from "./system/version.js";
 
 export type NotifyKind = "jellyfin" | "emby" | "kodi";
 export const SERVER_NAMES: Record<NotifyKind, string> = { jellyfin: "Jellyfin", emby: "Emby", kodi: "Kodi" };

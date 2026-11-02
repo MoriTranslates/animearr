@@ -12,8 +12,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-batch-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQuality } = await import("../server/batch.js");
 const { startGrab, pipelineTick } = await import("../server/pipeline.js");
 const { cleanupGrab, removeJobFolder } = await import("../server/downloads.js");

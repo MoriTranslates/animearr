@@ -1,7 +1,7 @@
 /** "Check for updates" asks GitHub's releases (read-only) and copes with being offline. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkForUpdates, compareVersions } from "../server/releases.js";
+import { checkForUpdates, compareVersions } from "../server/system/releases.js";
 
 test("version order: numbers, then a release beats its pre-release", () => {
   assert.equal(compareVersions("0.9.1", "0.9.0-beta"), 1);

@@ -12,14 +12,14 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ncx-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { planImport } = await import("../server/importer.js");
 const { identify } = await import("../server/core/identify.js");
 const { identifyContext } = await import("../server/search.js");
 const { inExtrasFolder } = await import("../server/core/resolver.js");
-const { fixesFor } = await import("../server/fixes.js");
-const { attentionSummary } = await import("../server/summary.js");
+const { fixesFor } = await import("../server/system/fixes.js");
+const { attentionSummary } = await import("../server/system/summary.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-ncx-"));
 const LIB = path.join(tmp, "lib");

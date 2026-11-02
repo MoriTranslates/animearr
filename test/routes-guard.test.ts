@@ -14,7 +14,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 process.env.ANIMEARR_TEST_APP = "1";
 process.env.LOG_LEVEL = "silent";
 
-const { setAccount, getSettings } = await import("../server/settings.js");
+const { setAccount, getSettings } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1");
 const { app, registeredRoutes } = await import("../server/index.js");
 
@@ -101,7 +101,7 @@ test("backup download: never through the home-network bypass alone, never with t
   });
   assert.equal(keyPost.statusCode, 403);
   // The home-network bypass: a request that counts as "local" (a 192.168 peer, no proxy headers).
-  const { patchSettings } = await import("../server/settings.js");
+  const { patchSettings } = await import("../server/system/settings.js");
   patchSettings((s) => ({ ...s, auth: { ...s.auth, bypassLocal: true } }));
   try {
     const local = {

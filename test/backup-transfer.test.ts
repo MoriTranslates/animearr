@@ -10,9 +10,9 @@ import zlib from "node:zlib";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { getSettings, patchSettings } = await import("../server/settings.js");
-const { BACKUP_DIR, listBackups, userSchemaVersion } = await import("../server/db.js");
-const { createBackup, parseBackup, applyBackup, safetyBackup, tarPack, tarUnpack } = await import("../server/backupTransfer.js");
+const { getSettings, patchSettings } = await import("../server/system/settings.js");
+const { BACKUP_DIR, listBackups, userSchemaVersion } = await import("../server/system/db.js");
+const { createBackup, parseBackup, applyBackup, safetyBackup, tarPack, tarUnpack } = await import("../server/system/backupTransfer.js");
 
 patchSettings((s) => ({ ...s, externalUrl: "http://backup-test.lan" })); // something to find again after a restore
 const sha = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");

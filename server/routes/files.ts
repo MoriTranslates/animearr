@@ -2,8 +2,8 @@
 import { binStatus, purgeBin, unpinBinned } from "../binpurge.js";
 import { searchConfigured } from "../indexers.js";
 import { reevaluate } from "../downloads.js";
-import { cache, db } from "../db.js";
-import { logDecision } from "../activity.js";
+import { cache, db } from "../system/db.js";
+import { logDecision } from "../system/activity.js";
 import { setMoviePrefs } from "../profiles.js";
 import { finishGrabByHand, grabDownloadPath, keepGrab, nextForGrab, removeGrab } from "../pipeline.js";
 import { retryImport, type Candidate } from "../pipelineState.js";
@@ -30,7 +30,7 @@ import {
 import { importMediaDefaults, previewNaming } from "../mediadefaults.js";
 import { isNativeSeriesId, rematerializeSeries } from "../native.js";
 import { seriesByTvdb } from "../search.js";
-import { getSettings, patchSettings } from "../settings.js";
+import { getSettings, patchSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";
 

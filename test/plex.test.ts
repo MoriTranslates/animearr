@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings } = await import("../server/settings.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { toPlexPath, sectionFor, notifyPlex, flush } = await import("../server/plex.js");
 
 const sections = [

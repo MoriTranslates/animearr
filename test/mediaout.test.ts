@@ -9,7 +9,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings, updateSettings, publicSettings } = await import("../server/settings.js");
+const { patchSettings, updateSettings, publicSettings } = await import("../server/system/settings.js");
 const { tvshowNfo, episodeNfo, seasonNfo, plexmatch, plainText, syncSeriesFiles, MARKER, realWriteDeps } =
   await import("../server/mediaout.js");
 const { embyRequest, kodiRequest, testEmbyLike, testKodi, notifyMediaServers, flushMediaServers } =
@@ -188,14 +188,14 @@ test("notify: only enabled servers, mapped paths, batched; secrets stay masked",
   assert.notEqual(pub.jellyfin.apiKey, "k3y", "the key never goes to the browser");
   // A new address without re-entering the key drops the old key (it was only valid for the old address).
   updateSettings({ jellyfin: { url: "http://other:8096", apiKey: pub.jellyfin.apiKey } });
-  const { getSettings } = await import("../server/settings.js");
+  const { getSettings } = await import("../server/system/settings.js");
   assert.equal(getSettings().jellyfin.apiKey, "");
   updateSettings({ mediaOutput: { main: "vlc" } });
   assert.equal(getSettings().mediaOutput.main, "none", "an unknown server is ignored");
 });
 
 test("from AnimeArr's catalog: a show's files are written only inside an allowed root and only when switched on", async () => {
-  const { cache, db } = await import("../server/db.js");
+  const { cache, db } = await import("../server/system/db.js");
   const { syncSeriesMetadata, afterLibraryChange } = await import("../server/mediaout.js");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-lib-"));
   const showDir = path.join(root, "Frieren (2023)", "Season 01");

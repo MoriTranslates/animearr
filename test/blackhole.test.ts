@@ -8,13 +8,13 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bh-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db, cache } = await import("../server/db.js");
-const { patchSettings, getSettings } = await import("../server/settings.js");
-const { saveClient } = await import("../server/connectionsAdmin.js");
+const { db, cache } = await import("../server/system/db.js");
+const { patchSettings, getSettings } = await import("../server/system/settings.js");
+const { saveClient } = await import("../server/system/connectionsAdmin.js");
 const { clientsFor, partialCapable } = await import("../server/arr/clients.js");
 const { blackholeDriver, normName, isTempName, STABLE_MS } = await import("../server/arr/blackhole.js");
 const { cleanupGrab } = await import("../server/downloads.js");
-type Cfg = import("../server/settings.js").ClientCfg;
+type Cfg = import("../server/system/settings.js").ClientCfg;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bh-data-"));
 const WATCH = path.join(tmp, "bh", "watch");

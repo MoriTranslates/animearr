@@ -12,11 +12,11 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-attn-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { calendar, episodeRows, planWrongLanguage, seriesHeader, wrongLanguageEpisodes } = await import("../server/episodes.js");
 const { markBurnedIn } = await import("../server/fileMarks.js");
-const { attentionSummary, queueSummary } = await import("../server/summary.js");
+const { attentionSummary, queueSummary } = await import("../server/system/summary.js");
 const { setLock } = await import("../server/qualityLocks.js");
 
 const TVDB = 610001;

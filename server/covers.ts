@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { CACHE_DIR, cache, setJob } from "./db.js";
+import { CACHE_DIR, cache, setJob } from "./system/db.js";
 import { animeListEntries, USER_AGENT } from "./metadata.js";
 import { anilistQuery } from "./anilist.js";
 

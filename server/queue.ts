@@ -2,16 +2,16 @@
 import { clientName } from "./arr/clients.js";
 import { batchLine, readBatch } from "./batch.js";
 import { colorFor, coverFor } from "./covers.js";
-import { liveFixesFor } from "./fixes.js";
-import { cache, db } from "./db.js";
+import { liveFixesFor } from "./system/fixes.js";
+import { cache, db } from "./system/db.js";
 import { grabStages } from "./pipeline.js";
 import { realDeps } from "./grabSteps.js";
 import { type GrabRow, type PipelineDeps } from "./pipelineState.js";
 import type { ClientJob } from "./arr/clients.js";
 import * as sonarr from "./arr/sonarr.js";
-import { logDecision } from "./activity.js";
-import { getSettings, underAllowedRoot } from "./settings.js";
-import { queueSummary } from "./summary.js";
+import { logDecision } from "./system/activity.js";
+import { getSettings, underAllowedRoot } from "./system/settings.js";
+import { queueSummary } from "./system/summary.js";
 
 const label = (id: number) => {
   const e = cache.prepare("SELECT season, episode, title FROM episodes WHERE id = ?").get(id) as

@@ -16,9 +16,9 @@ fs.writeFileSync(
   `<anime-list><anime anidbid="5001" tvdbid="777" defaulttvdbseason="1" episodeoffset=""><name>Harbor Tales</name></anime><anime anidbid="5002" tvdbid="777" defaulttvdbseason="2" episodeoffset=""><name>Harbor Tales 2</name></anime></anime-list>`,
 );
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings, setAccount, regenerateApiKey } = await import("../server/settings.js");
-const { guard } = await import("../server/auth.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
+const { guard } = await import("../server/system/auth.js");
 const { registerSonarrApi } = await import("../server/sonarrApi.js");
 const { NATIVE_BASE } = await import("../server/native.js");
 const { scopeFor } = await import("../server/scope.js");

@@ -98,8 +98,8 @@ test("verify: dub, dual and either modes", () => {
 });
 
 test("profiles: the old single profile migrates to the seeded default; per-show watch-mode override", async () => {
-  const { db, cache } = await import("../server/db.js");
-  const { seal } = await import("../server/secretbox.js");
+  const { db, cache } = await import("../server/system/db.js");
+  const { seal } = await import("../server/system/secretbox.js");
   // An 0.1 settings row with the old single "profile".
   db.prepare("INSERT INTO settings (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
     seal(
@@ -115,7 +115,7 @@ test("profiles: the old single profile migrates to the seeded default; per-show 
       }),
     ),
   );
-  const { getSettings } = await import("../server/settings.js");
+  const { getSettings } = await import("../server/system/settings.js");
   const s = getSettings();
   assert.equal(s.profiles.length, 1);
   assert.equal(s.profiles[0].name, "English subs (default)");

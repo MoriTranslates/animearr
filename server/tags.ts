@@ -2,8 +2,8 @@
  * Tags (Sonarr/Radarr's): free labels on shows and movies. A tag can scope a release rule (releaseRules.ts) and is what
  * request apps see at /api/v3/tag. Deleting a tag unlinks it everywhere it was used.
  */
-import { logDecision } from "./activity.js";
-import { db, dbState, tx } from "./db.js";
+import { logDecision } from "./system/activity.js";
+import { db, dbState, tx } from "./system/db.js";
 
 export type TagKind = "series" | "movie";
 export interface Tag {

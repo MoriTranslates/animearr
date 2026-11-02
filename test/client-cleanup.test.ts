@@ -12,11 +12,11 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { db } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { db } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { cleanupGrab, sweepExtraClients } = await import("../server/downloads.js");
 const { realClients } = await import("../server/arr/clients.js");
-type Cfg = import("../server/settings.js").ClientCfg;
+type Cfg = import("../server/system/settings.js").ClientCfg;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-cc-"));
 const NZB_DIR = path.join(tmp, "usenet", "animearr");

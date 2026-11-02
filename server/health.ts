@@ -10,8 +10,8 @@
  *    keep it off.
  * Nothing is hard-coded per indexer.
  */
-import { db } from "./db.js";
-import { logDecision } from "./activity.js";
+import { db } from "./system/db.js";
+import { logDecision } from "./system/activity.js";
 import type { Known } from "./core/rank.js";
 
 const WINDOW = 3 * 86_400_000;

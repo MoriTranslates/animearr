@@ -1,6 +1,6 @@
 /** Routes: Library sync, managed shows, language profiles, tags and release rules, episodes, audits, facts/aliases/numbering rules. */
-import { cache, db } from "../db.js";
-import { logDecision } from "../activity.js";
+import { cache, db } from "../system/db.js";
+import { logDecision } from "../system/activity.js";
 import { gaps, listFacts, missingLanguage, specials } from "../audit.js";
 import { coverFor } from "../covers.js";
 import { deleteRule, listRules, saveRule, testRules } from "../releaseRules.js";
@@ -23,7 +23,7 @@ import { movieCalendar, movieDetail } from "../movies.js";
 import { isNativeSeriesId, rematerializeSeries } from "../native.js";
 import { duplicateListings } from "../duplicates.js";
 import { episodesFor, seriesByTvdb } from "../search.js";
-import { getSettings, type LanguageProfile } from "../settings.js";
+import { getSettings, type LanguageProfile } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";
 

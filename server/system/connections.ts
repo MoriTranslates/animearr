@@ -2,20 +2,20 @@
  * Settings → Indexers / Download clients / Media servers / Migration: one overview of every connection with a live
  * status ("Connected · v4.3.2" / "Can't reach: …"), what it's used for (grabs), and indexer health. Read-only.
  */
-import { syncProwlarrSelection, type AnimeFit } from "./indexerPick.js";
-import { breakerList } from "./health.js";
+import { syncProwlarrSelection, type AnimeFit } from "../indexerPick.js";
+import { breakerList } from "../health.js";
 import { db } from "./db.js";
 import { getSettings } from "./settings.js";
-import { testProwlarr } from "./arr/prowlarr.js";
-import { testQbit, testSab } from "./arr/clients.js";
+import { testProwlarr } from "../arr/prowlarr.js";
+import { testQbit, testSab } from "../arr/clients.js";
 import { humanizeError } from "./errors.js";
-import { testSonarr } from "./arr/sonarr.js";
-import { testRadarr } from "./arr/radarr.js";
-import { testPlex } from "./plex.js";
-import { testEmbyLike, testKodi } from "./mediaservers.js";
-import { redactUrl } from "./arr/http.js";
+import { testSonarr } from "../arr/sonarr.js";
+import { testRadarr } from "../arr/radarr.js";
+import { testPlex } from "../plex.js";
+import { testEmbyLike, testKodi } from "../mediaservers.js";
+import { redactUrl } from "../arr/http.js";
 import { getSettings as settingsNow } from "./settings.js";
-import { clientConfigured, testClient } from "./arr/clients.js";
+import { clientConfigured, testClient } from "../arr/clients.js";
 import { indexerDuplicates, listIndexers } from "./connectionsAdmin.js";
 
 export interface ConnStatus {

@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-recycle-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { recycleStatus, resetRecycleCache } = await import("../server/recycle.js");
 
 const bin = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-bin-"));

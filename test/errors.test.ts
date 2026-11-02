@@ -1,7 +1,7 @@
 /** Connection and validation errors in plain words, with the raw text kept as detail (playtest: "fetch failed"). */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { humanizeError, addressOf } from "../server/errors.js";
+import { humanizeError, addressOf } from "../server/system/errors.js";
 
 test("unreachable services: name the service and the address, say what to check; raw text as detail", () => {
   const a = humanizeError("SABnzbd unreachable (fetch failed)", { url: "http://example.invalid:8080/sab" });

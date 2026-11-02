@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, db } = await import("../server/db.js");
-const { patchSettings, getSettings } = await import("../server/settings.js");
+const { cache, db } = await import("../server/system/db.js");
+const { patchSettings, getSettings } = await import("../server/system/settings.js");
 const { addMovie, NATIVE_BASE, removeMovie } = await import("../server/native.js");
 const { planMovieImport, executeMovieImport, fileLink } = await import("../server/importer.js");
 type AniMedia = import("../server/anilist.js").AniMedia;

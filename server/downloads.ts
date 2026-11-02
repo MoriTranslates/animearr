@@ -17,17 +17,17 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "./arr/clients.js";
-import { allRows, cache, CONFIG_DIR, db, dbState } from "./db.js";
-import { clientToSonarr, mappedPath } from "./paths.js";
+import { allRows, cache, CONFIG_DIR, db, dbState } from "./system/db.js";
+import { clientToSonarr, mappedPath } from "./system/paths.js";
 import { ACTIVE, retryImport } from "./pipelineState.js";
 import { libraryRoots } from "./mediafiles.js";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 import { readBatch } from "./batch.js";
 import { findCompleted } from "./arr/blackhole.js";
 import { nzbgetDriver, transmissionDriver } from "./arr/moreClients.js";
-import type { ClientCfg } from "./settings.js";
+import type { ClientCfg } from "./system/settings.js";
 
 export interface FolderRule {
   id: string;

@@ -9,9 +9,9 @@
  */
 import { isCreditlessTitle } from "./core/resolver.js";
 import { anidbSpecialKind } from "./anidb.js";
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 import { ownedElsewhere } from "./duplicates.js";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";

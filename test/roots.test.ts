@@ -8,8 +8,8 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-roots-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { rootRefusal, hiddenInBrowser } = await import("../server/roots.js");
-const { getSettings, patchSettings, updateSettings } = await import("../server/settings.js");
+const { rootRefusal, hiddenInBrowser } = await import("../server/system/roots.js");
+const { getSettings, patchSettings, updateSettings } = await import("../server/system/settings.js");
 
 test("refuses /config, the app data folder, system folders and CD/USB placeholders", () => {
   for (const bad of [

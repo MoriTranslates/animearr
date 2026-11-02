@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-test-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { patchSettings, getSettings, publicSettings, MASK } = await import("../server/settings.js");
+const { patchSettings, getSettings, publicSettings, MASK } = await import("../server/system/settings.js");
 const { send, testChannel, channelStatus } = await import("../server/notify.js");
 const { newChannel, cleanChannels, maskChannel, buildRequest, deliver } = await import("../server/notifyChannels.js");
 

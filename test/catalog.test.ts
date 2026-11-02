@@ -18,7 +18,7 @@ fs.writeFileSync(
 </anime-list>`,
 );
 
-const { cache, db } = await import("../server/db.js");
+const { cache, db } = await import("../server/system/db.js");
 const { refreshCatalog, entriesForSeries, catalogEpisode, parseStreamingTitle } = await import("../server/catalog.js");
 const { episodeRows } = await import("../server/episodes.js");
 type M = import("../server/anilist.js").AniMedia;

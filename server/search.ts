@@ -13,7 +13,7 @@ import { animeTiers, seadexForSeason } from "./seadex.js";
 import type { LibEpisode, NumberingRule } from "./core/resolver.js";
 import { burnedInFact, seasonResolution } from "./audit.js";
 import { coverFor } from "./covers.js";
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 import { learnedFor, sourceKey } from "./library.js";
 import { aliasIndex } from "./metadata.js";
 import { profileFor } from "./profiles.js";

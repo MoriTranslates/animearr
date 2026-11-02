@@ -1,10 +1,10 @@
 /** Routes: Notifications: the bell, setup problems and the extra channels. */
-import { setupProblems, withSetupProblems } from "../setupHealth.js";
+import { setupProblems, withSetupProblems } from "../system/setupHealth.js";
 import { bell, channelStatus, markRead, send, testChannel } from "../notify.js";
 import { cleanChannels, maskChannel, CHANNEL_TYPES } from "../notifyChannels.js";
 import { getTags, sonarrConfigured } from "../arr/sonarr.js";
 
-import { getSettings, patchSettings } from "../settings.js";
+import { getSettings, patchSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, writable } from "./common.js";
 

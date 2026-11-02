@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-nrestore-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { db, backupNow, restoreBackup, listBackups, BACKUP_DIR, USER_DB } = await import("../server/db.js");
+const { db, backupNow, restoreBackup, listBackups, BACKUP_DIR, USER_DB } = await import("../server/system/db.js");
 
 const mark = (v: string) => db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('restore-test', ?)").run(v);
 

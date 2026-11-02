@@ -14,13 +14,13 @@ import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } fro
 import { isNativeMovieId } from "./nativeIds.js";
 import fs from "node:fs";
 import path from "node:path";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import { type ProwlarrRelease } from "./arr/prowlarr.js";
 import { searchAll } from "./indexers.js";
 import { langList } from "./core/langs.js";
 import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
-import { allRows, cache, db, dbState } from "./db.js";
+import { allRows, cache, db, dbState } from "./system/db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
 import {
   ACTIVE,
@@ -42,13 +42,13 @@ import { realDeps, rejectUnsafeDownload, selectAfterAdd, unsafeDownload } from "
 import type { BatchInfo, FileMapOpts } from "./batch.js";
 import { clientName } from "./arr/clients.js";
 import type { RadarrMovie } from "./arr/radarr.js";
-import { clientToSonarr } from "./paths.js";
+import { clientToSonarr } from "./system/paths.js";
 import { moviePrefs, profileForMovie } from "./profiles.js";
 import { releaseRulesFor } from "./releaseRules.js";
 import { tagsOf } from "./tags.js";
 import { seriesForMovie } from "./franchise.js";
 import type { SearchResult } from "./search.js";
-import { getSettings, underAllowedRoot } from "./settings.js";
+import { getSettings, underAllowedRoot } from "./system/settings.js";
 import { judge } from "./verify.js";
 import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
 import { indexerHealth } from "./health.js";

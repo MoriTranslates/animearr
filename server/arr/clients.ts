@@ -1,8 +1,8 @@
-import { getSettings, type ClientCfg, type Settings } from "../settings.js";
+import { getSettings, type ClientCfg, type Settings } from "../system/settings.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
 import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
 import { blackholeDriver, isBlackhole } from "./blackhole.js";
-import { mappedPath } from "../paths.js";
+import { mappedPath } from "../system/paths.js";
 
 /**
  * Download clients. AnimeArr sends its grabs with its own category ("animearr" by default), so Sonarr's own

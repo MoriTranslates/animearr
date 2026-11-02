@@ -15,13 +15,13 @@ import { sparseFile } from "./sparse.js";
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-harden-"));
 process.env.ANIMEARR_NO_LOCK = "1";
 
-const { cache, CONFIG_DIR } = await import("../server/db.js");
-const { patchSettings } = await import("../server/settings.js");
+const { cache, CONFIG_DIR } = await import("../server/system/db.js");
+const { patchSettings } = await import("../server/system/settings.js");
 const { planImport, executeImport, clearStalePart } = await import("../server/importer.js");
 const { removeDownloadPath, inProtected } = await import("../server/downloads.js");
-const { tarUnpack, tarPack } = await import("../server/backupTransfer.js");
+const { tarUnpack, tarPack } = await import("../server/system/backupTransfer.js");
 const { pinnedInBin, purgeBin, unpinBinned, binStatus } = await import("../server/binpurge.js");
-const { blockedOutboundHost } = await import("../server/outbound.js");
+const { blockedOutboundHost } = await import("../server/system/outbound.js");
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-harden-fs-"));
 const LIB = path.join(tmp, "lib");

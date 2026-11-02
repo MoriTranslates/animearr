@@ -16,16 +16,16 @@
  * takes only the wanted files, and the leftovers are cleaned after a confirmed import.
  */
 import path from "node:path";
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import type { ClientJob, DownloadClients } from "./arr/clients.js";
 import { fileForMovie } from "./core/movieTitle.js";
 import { parseRelease, type Source } from "./core/parser.js";
 import { isNewerRevision, type ProperMode } from "./core/propers.js";
 import { isCreditlessTitle } from "./core/resolver.js";
-import { cache, db } from "./db.js";
+import { cache, db } from "./system/db.js";
 import { haveRevisions } from "./propers.js";
 import { profileFor } from "./profiles.js";
-import { getSettings } from "./settings.js";
+import { getSettings } from "./system/settings.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 

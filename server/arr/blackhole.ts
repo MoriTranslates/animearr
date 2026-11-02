@@ -10,7 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { ClientCfg } from "../settings.js";
+import type { ClientCfg } from "../system/settings.js";
 import type { ClientStatus } from "./clients.js";
 
 export const isBlackhole = (type: string | null | undefined) => type === "blackhole-usenet" || type === "blackhole-torrent";

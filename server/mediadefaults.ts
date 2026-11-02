@@ -3,11 +3,11 @@
  * importing, permissions), so the takeover doesn't rename anything just because the defaults differ.
  * The recycle bin stays AnimeArr's own (/media/Recycle/animearr/): Sonarr's path is from Sonarr's container.
  */
-import { logDecision } from "./activity.js";
+import { logDecision } from "./system/activity.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, renderSeriesFolder } from "./naming.js";
-import { getSettings, patchSettings, type Settings } from "./settings.js";
+import { getSettings, patchSettings, type Settings } from "./system/settings.js";
 
 const COLON = ["delete", "dash", "spaceDash", "spaceDashSpace", "smart"] as const;
 const MULTI = ["extend", "duplicate", "repeat", "scene", "range", "prefixedRange"] as const;
