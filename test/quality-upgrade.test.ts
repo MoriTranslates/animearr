@@ -14,6 +14,7 @@ const { profileFor, saveProfile, defaultProfile } = await import("../server/libr
 const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/search/qualityLocks.js");
 const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");
+const { setScope } = await import("../server/library/scope.js");
 type Deps = import("../server/search/qualityUpgrade.js").QualityDeps;
 type SR = import("../server/search/search.js").SearchResult;
 
@@ -57,6 +58,8 @@ before(() => {
   db.prepare(
     "INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (700001, 40, 'Web Show', 0, 0), (700002, 41, 'Encoded Show', 0, 0), (700003, 42, 'Old Show', 0, 0)",
   ).run();
+  // Every season monitored: these tests are about quality, not scope (unmonitored episodes are never upgraded).
+  setScope([700001, 700002, 700003], { seasons: "all", recentN: 1, episodes: "all", specials: false, creditless: false });
   patchSettings((s) => ({
     ...s,
     allowedRoots: ["/media/AnimeArr"],

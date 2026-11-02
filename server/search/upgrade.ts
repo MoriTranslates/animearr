@@ -85,9 +85,10 @@ export function placeholders(now = Date.now()): Waiting[] {
       audio_langs: string;
       resolution: string | null;
     }[];
-    // A show that wants nothing (scope "none", dropped) is not monitored: never upgraded behind your back.
-    if (rows.length && !wantedEpisodeIds(m.tvdbId, m.seriesId, now).size) continue;
+    // Not monitored (out of the show's scope, or a show that wants nothing): never upgraded behind your back.
+    const wanted = rows.length ? wantedEpisodeIds(m.tvdbId, m.seriesId, now) : new Set<number>();
     for (const r of rows) {
+      if (!wanted.has(r.id)) continue;
       const audio = langList(r.audio_langs);
       if (!audio.length || dub.some((l) => audio.some((a) => a.split("-")[0] === l))) continue; // unknown, or already has the dub
       out.push({

@@ -28,6 +28,7 @@ import { searchAgainSoon } from "../library/episodes.js";
 import { radarrMovieSpecials } from "../library/franchise.js";
 import { learnFromVerify, sourceKey } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
+import { wantedEpisodeIds } from "../library/scope.js";
 import { localPath } from "../system/paths.js";
 import { profileFor } from "../library/profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
@@ -252,6 +253,10 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
           : v.code === "short"
             ? "the episode runtime on TVDB is often wrong, so a short file alone changes nothing"
             : "Sonarr's track info disagrees, so nothing was changed";
+      } else if (!wantedEpisodeIds(series.tvdb_id, series.id, now).has(h.episodeId)) {
+        // Not monitored (Sonarr's rule): noted, never blocklisted and replaced automatically. "Download again" still can.
+        action = "suspected";
+        note = "the episode isn't monitored, so it isn't replaced automatically (Download again replaces it by hand)";
       } else if (mode !== "auto") {
         action = "would-repair";
         note = "the after-import check is in log-only mode";

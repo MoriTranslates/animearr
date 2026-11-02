@@ -251,3 +251,17 @@ test("no import vanishes: one outside the roots or of a show not synced yet gets
   assert.equal(r[0]?.historyId, early.id);
   assert.equal(row(early.id)?.action, "would-repair", row(early.id)?.why);
 });
+
+test("an episode you don't monitor is never blocklisted or replaced automatically (only noted)", async () => {
+  patchSettings((s) => ({ ...s, repair: { mode: "auto", maxPerDay: 10 }, managed: { ...s.managed, dryRun: false } }));
+  cache
+    .prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (1012, 11, 1, 9, 0, 1, 24)")
+    .run();
+  const u = item(1012, 11, "[ZhGroup] Other Show - 09 [CHS]", "Other Show");
+  const { d, calls } = deps([u], { [u.id]: { subs: ["zh"] } }, { [u.id]: "chi" });
+  const r = await checkNewImports(d);
+  assert.equal(r[0].action, "suspected");
+  assert.match(r[0].why, /isn't monitored/);
+  assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get(u.sourceTitle), undefined);
+  assert.deepEqual(calls.failed, []);
+});
