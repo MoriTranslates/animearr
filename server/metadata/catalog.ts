@@ -15,6 +15,7 @@ import { fribb } from "./covers.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, USER_AGENT } from "./metadata.js";
 import { getSettings } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 const DAY = 86_400_000;
 /** Relations that keep two entries in one franchise (not "character", "other", "adaptation"…). */
@@ -508,10 +509,14 @@ export function tmdbFetch(pathAndQuery: string, key: string, fetcher: typeof fet
   const bearer = /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(k);
   const sep = pathAndQuery.includes("?") ? "&" : "?";
   const url = `https://api.themoviedb.org/3${pathAndQuery}${bearer ? "" : `${sep}api_key=${encodeURIComponent(k)}`}`;
-  return fetcher(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...(bearer ? { Authorization: `Bearer ${k}` } : {}) },
-    signal: AbortSignal.timeout(20_000),
-  });
+  return safeFetch(
+    url,
+    {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...(bearer ? { Authorization: `Bearer ${k}` } : {}) },
+      signal: AbortSignal.timeout(20_000),
+    },
+    { fetch: fetcher },
+  );
 }
 
 /** What kind of TMDB credential this looks like (for the settings page). */

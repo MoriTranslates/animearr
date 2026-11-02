@@ -1,5 +1,6 @@
 import { getSettings } from "../system/settings.js";
 import { jsonCall, type Conn } from "./http.js";
+import { safeFetch } from "../system/safeFetch.js";
 import { cachedQuery } from "../search/searchQueue.js";
 
 /** Prowlarr v1 API client: searches (read-only) and fetching a release's NZB/torrent for the grab pipeline. */
@@ -110,23 +111,23 @@ export async function fetchReleaseFile(r: ProwlarrRelease): Promise<{ data?: Buf
   if (r.magnetUrl?.startsWith("magnet:")) return { magnet: r.magnetUrl, filename: r.title };
   if (r.guid.startsWith("magnet:") && !r.downloadUrl) return { magnet: r.guid, filename: r.title };
   if (!r.downloadUrl) throw new Error("This release has no download link");
-  let res = await fetch(r.downloadUrl, { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+  // The link's key is in its own query string and no credential header is sent. Prowlarr's proxy link legitimately
+  // redirects to the indexer's own download address (another host) or to a magnet, so a cross-origin hop is followed,
+  // with nothing but the URL the server handed out; every hop is still checked against the outbound address rules.
+  const get = (u: string) =>
+    safeFetch(u, { signal: AbortSignal.timeout(60_000) }, { crossOrigin: "strip", stopAt: (next) => next.protocol === "magnet:" });
+  let res = await get(r.downloadUrl);
   // Prowlarr's download proxy can fail (HTTP 500) on a non-ASCII file name: retry once with an ASCII one.
   if (res.status === 500 && /[^\x20-\x7e]/.test(r.title)) {
     const u = new URL(r.downloadUrl);
     if (u.searchParams.has("file")) {
-      await res.body?.cancel().catch(() => undefined);
+      await res.body?.cancel().catch(() => undefined); // only frees the socket of a response that is thrown away
       u.searchParams.set("file", r.title.normalize("NFKD").replace(/[^\x20-\x7e]/g, "_"));
-      res = await fetch(u.toString(), { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+      res = await get(u.toString());
     }
   }
   const loc = res.headers.get("location");
-  if (res.status >= 300 && res.status < 400 && loc) {
-    if (loc.startsWith("magnet:")) return { magnet: loc, filename: r.title };
-    const res2 = await fetch(loc, { signal: AbortSignal.timeout(60_000) });
-    if (!res2.ok) throw new Error(`Download link failed (HTTP ${res2.status})`);
-    return { data: await capped(res2), filename: r.title };
-  }
+  if (res.status >= 300 && res.status < 400 && loc?.startsWith("magnet:")) return { magnet: loc, filename: r.title };
   if (!res.ok) throw new Error(`Download link failed (HTTP ${res.status}) at ${new URL(r.downloadUrl).host}`);
   return { data: await capped(res), filename: r.title };
 }

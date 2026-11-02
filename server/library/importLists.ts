@@ -21,6 +21,7 @@ import { addMovie, addShow, isNativeTvdb, NATIVE_BASE } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";
 import { getSettings } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 import { setTags, tagRows } from "./tags.js";
 
 export type ListSource = "anilist" | "mal";
@@ -294,10 +295,14 @@ export async function malUserEntries(user: string, clientId: string, fetcher: ty
   let url: string | null =
     `https://api.myanimelist.net/v2/users/${encodeURIComponent(user)}/animelist?fields=list_status&limit=1000&nsfw=true`;
   for (let page = 0; url && page < 30; page++) {
-    const res: Response = await fetcher(url, {
-      headers: { "X-MAL-CLIENT-ID": clientId, "User-Agent": USER_AGENT, Accept: "application/json" },
-      signal: AbortSignal.timeout(30_000),
-    });
+    const res: Response = await safeFetch(
+      url,
+      {
+        headers: { "X-MAL-CLIENT-ID": clientId, "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      },
+      { fetch: fetcher },
+    );
     if (res.status === 404 || res.status === 403) throw fail(`MyAnimeList user "${user}" not found or the list is private`);
     if (res.status === 401) throw fail("MyAnimeList refused the client ID; check it at myanimelist.net/apiconfig");
     if (!res.ok) throw fail(`MyAnimeList failed (HTTP ${res.status})`, 502);

@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import { getSettings, type IndexerCfg } from "../system/settings.js";
 import { prowlarrConfigured, prowlarrIndexers, prowlarrSearch, type ProwlarrRelease } from "../arr/prowlarr.js";
 import { redactUrl } from "../arr/http.js";
+import { OutboundRefused, safeFetch } from "../system/safeFetch.js";
 import { cachedQuery, querySlot } from "./searchQueue.js";
 
 /** A stable numeric id per direct indexer (health is tracked per numeric indexer id); far above Prowlarr's ids. */
@@ -66,20 +67,14 @@ const magnetIn = (s: string | null) => /magnet:\?xt=urn:btih:[^"'<\s]+/i.exec(s 
 async function fetchText(url: string, timeout = 30_000) {
   let res: Response;
   try {
-    res = await fetch(url, {
+    // The URL carries the indexer's API key: redirects are followed on the same address only. A site that moved (to
+    // https or a new domain) gets an error naming the new address, so the user updates the indexer instead.
+    res = await safeFetch(url, {
       headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, application/json, text/xml" },
       signal: AbortSignal.timeout(timeout),
-      redirect: "manual",
     });
-    // One redirect, same scheme rules (sites moving to https or a new domain), never to link-local addresses.
-    const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
-    if (loc) {
-      const next = new URL(loc, url);
-      if (!/^https?:$/.test(next.protocol) || /^(169\.254\.|0\.|\[?fe80:)/i.test(next.hostname))
-        throw new Error("redirected somewhere not allowed");
-      res = await fetch(next.href, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(timeout), redirect: "manual" });
-    }
   } catch (e) {
+    if (e instanceof OutboundRefused) throw new Error(redactUrl(e.message));
     if ((e as Error).name === "TimeoutError") throw new Error(`timed out after ${Math.round(timeout / 1000)} s`);
     throw new Error(`unreachable (${redactUrl((e as Error).message)})`);
   }

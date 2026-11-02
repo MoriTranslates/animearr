@@ -8,6 +8,7 @@
  */
 import { logDecision } from "../system/activity.js";
 import { getSettings, type PathMapping } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 interface Conn {
   url: string;
@@ -33,7 +34,7 @@ async function plexCall<T>(p: string, conn: Conn = getSettings().plex, method = 
   const url = `${conn.url.replace(/\/+$/, "")}${p}`;
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       method,
       headers: {
         Accept: "application/json",

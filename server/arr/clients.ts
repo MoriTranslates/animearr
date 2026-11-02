@@ -1,4 +1,5 @@
 import { getSettings, type ClientCfg, type Settings } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
 import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
 import { blackholeDriver, isBlackhole } from "./blackhole.js";
@@ -158,7 +159,7 @@ async function sab<T>(params: Record<string, string>, conn = getSettings().sabnz
   const qs = new URLSearchParams({ ...params, output: "json", apikey: conn.apiKey });
   let res: Response;
   try {
-    res = await fetch(`${conn.url}/api?${qs}`, { method: form ? "POST" : "GET", body: form, signal: AbortSignal.timeout(60_000) });
+    res = await safeFetch(`${conn.url}/api?${qs}`, { method: form ? "POST" : "GET", body: form, signal: AbortSignal.timeout(60_000) });
   } catch (e) {
     throw new Error(`SABnzbd unreachable (${(e as Error).message})`);
   }
@@ -181,7 +182,7 @@ let qbitCookie: { url: string; sid: string } | null = null;
 async function qbit(path: string, init: RequestInit = {}, conn = getSettings().qbittorrent): Promise<Response> {
   if (!conn.url) throw new Error("qBittorrent is not configured");
   const doFetch = () =>
-    fetch(`${conn.url}/api/v2${path}`, {
+    safeFetch(`${conn.url}/api/v2${path}`, {
       ...init,
       headers: {
         ...(init.headers as Record<string, string>),
@@ -192,7 +193,7 @@ async function qbit(path: string, init: RequestInit = {}, conn = getSettings().q
     });
   let res = await doFetch();
   if (res.status === 403 && conn.username) {
-    const login = await fetch(`${conn.url}/api/v2/auth/login`, {
+    const login = await safeFetch(`${conn.url}/api/v2/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: conn.url },
       body: new URLSearchParams({ username: conn.username, password: conn.password }),
