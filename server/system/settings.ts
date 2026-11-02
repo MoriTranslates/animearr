@@ -380,7 +380,8 @@ export interface Settings {
   /** URL base for a reverse proxy on a sub-path ("/animearr"); the URL_BASE env wins; needs a restart. */
   urlBase: string;
   ui: { language: string; /** Text size for devices that haven't picked their own (sm/md/lg/xl). */ textScale?: string };
-  auth: { username: string; passwordHash: string; bypassLocal: boolean };
+  /** sessionGen: session tokens carry it and only the current one is valid; logout bumps it (signs out everywhere). */
+  auth: { username: string; passwordHash: string; bypassLocal: boolean; sessionGen: number };
   /** Admin API key, accepted only in the X-Api-Key header. */
   apiKey: string;
   secret: string;
@@ -509,7 +510,7 @@ const DEFAULTS: Settings = {
   externalUrl: "",
   urlBase: "",
   ui: { language: "en", textScale: "md" },
-  auth: { username: "", passwordHash: "", bypassLocal: false },
+  auth: { username: "", passwordHash: "", bypassLocal: false, sessionGen: 0 },
   apiKey: "",
   secret: "",
 };
@@ -917,6 +918,12 @@ export function updateSettings(patch: unknown) {
 
 export function setBypassLocal(on: boolean) {
   write({ ...getSettings(), auth: { ...getSettings().auth, bypassLocal: on } });
+}
+
+/** Ends every browser session (logout): tokens carry the generation, and only the current one is accepted. */
+export function endAllSessions() {
+  const s = getSettings();
+  write({ ...s, auth: { ...s.auth, sessionGen: (Number(s.auth.sessionGen) || 0) + 1 } });
 }
 
 /** Internal update that skips sanitising. */

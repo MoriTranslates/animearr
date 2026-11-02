@@ -10,6 +10,7 @@ import { listManaged } from "../library/managedList.js";
 import {
   checkPassword,
   DEFAULT_LOGIN,
+  endAllSessions,
   getSettings,
   usingDefaultPassword,
   patchSettings,
@@ -125,8 +126,11 @@ export function registerAccountRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post("/api/auth/logout", async (_req, reply) => {
+  app.post("/api/auth/logout", async (req, reply) => {
     reply.clearCookie(COOKIE, { path: "/" });
+    // Session tokens are signed, not stored, so a logout ends them all: a copied token stops working too (review L1).
+    // Only a browser session does this; the API key or the home-network bypass can't sign the owner out.
+    if (authState(req).via === "session") endAllSessions();
     return { ok: true };
   });
 

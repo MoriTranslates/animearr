@@ -47,6 +47,9 @@ All notable changes, newest first. The commit history has the crew's version of 
   was refused everywhere, so the password could never be changed. It now works from home through your proxy (when the
   proxy has a private or loopback address and you open AnimeArr by IP, a LAN name or a name in
   `ANIMEARR_ALLOWED_HOSTS`); it is still refused for clients outside your home network.
+- **Logging out really ends the session.** Before, the session stayed valid for 30 days after "Log out" (only the
+  browser forgot it), so a copied session cookie kept working. Logging out now signs out **every** browser, like a
+  password change does; log in again on your other devices.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers

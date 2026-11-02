@@ -35,8 +35,11 @@ export function trustProxyOption(): number | string[] | false {
 
 const hmac = (data: string) => crypto.createHmac("sha256", getSettings().secret).update(data).digest("base64url");
 
+/** The account's session generation: a token is only valid for the current one (logout bumps it; review L1). */
+const sessionGen = () => Number(getSettings().auth.sessionGen) || 0;
+
 export function makeSession(username: string) {
-  const payload = `${Buffer.from(username).toString("base64url")}.${Date.now() + TTL_MS}`;
+  const payload = `${Buffer.from(username).toString("base64url")}.${Date.now() + TTL_MS}.${sessionGen()}`;
   return `${payload}.${hmac(`session:${payload}`)}`;
 }
 
@@ -46,8 +49,11 @@ function validSession(token: string | undefined) {
   if (i < 0) return false;
   const payload = token.slice(0, i);
   if (!safeEqual(token.slice(i + 1), hmac(`session:${payload}`))) return false;
-  const [user, exp] = payload.split(".");
-  return Number(exp) > Date.now() && Buffer.from(user, "base64url").toString() === getSettings().auth.username;
+  // Tokens from before generations existed have two parts; they count as generation 0.
+  const [user, exp, gen = "0"] = payload.split(".");
+  return (
+    Number(exp) > Date.now() && Number(gen) === sessionGen() && Buffer.from(user, "base64url").toString() === getSettings().auth.username
+  );
 }
 
 /** Signed, expiring link for one action on one show (used by phone alert buttons). */
