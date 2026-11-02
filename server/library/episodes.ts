@@ -35,6 +35,7 @@ import { isLocked } from "../search/qualityLocks.js";
 import { LOCK_TAG } from "../core/quality.js";
 import { liveFixesFor, type Fix } from "../system/fixes.js";
 import { afterLibraryChange } from "../media/mediaout.js";
+import { wantedEpisodeIds } from "./scope.js";
 
 /** "wrong-lang": a managed show's file that fails the language check (and isn't kept as is): wanted like a missing one. */
 export type EpisodeStatus = "have" | "missing" | "downloading" | "unaired" | "attention" | "wrong-lang";
@@ -280,6 +281,11 @@ export interface EpisodeRow {
   airUtc: number | null;
   runtime: number | null;
   monitored: boolean;
+  /**
+   * Wanted (Sonarr's "monitored", AnimeArr's way: the scope of a managed show, else Sonarr's flags). An unwanted
+   * episode stays quiet: never counted as missing, never searched, no language or wrong-language warnings.
+   */
+  wanted: boolean;
   status: EpisodeStatus;
   progress: number | null;
   file: FileInfo | null;
@@ -376,6 +382,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
         : v;
     };
   const managedShow = listManaged().some((m) => m.tvdbId === tvdb);
+  const wanted = wantedEpisodeIds(tvdb, seriesId, now);
   // Why a missing episode is still missing: the scheduler's last word on it (no dead end on the row).
   const lastWhy = new Map(
     (
@@ -390,9 +397,9 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
     const f = e.file_id ? files.get(e.file_id) : undefined;
     const file = f ? { ...fileInfo(f, byFile.get(f.id), judgeFor(e.season, f.path)), burnedIn: marks.get(f.path) ?? null } : null;
     let base: EpisodeStatus = e.has_file || extraLinks.has(e.id) ? "have" : e.air_utc === null || e.air_utc > now ? "unaired" : "missing";
-    // Managed shows: a file in the wrong language is wanted again (unless it is kept as is).
+    // Managed shows: a file in the wrong language is wanted again (unless it is kept as is, or not wanted at all).
     const kept = file?.lang?.state === "no" ? keptWhy(tvdb, e.season, e.id, file.path) : null;
-    if (base === "have" && managedShow && file?.lang?.state === "no" && !kept) base = "wrong-lang";
+    if (base === "have" && managedShow && wanted.has(e.id) && file?.lang?.state === "no" && !kept) base = "wrong-lang";
     const status = statusWithGrab(base, g);
     const fallback =
       !e.title || /^TBA$/i.test(e.title) ? (lookup ??= catalogLookup(tvdbOf(seriesId)))(e.season, e.episode, e.absolute) : null;
@@ -406,6 +413,7 @@ export function episodeRows(seriesId: number): EpisodeRow[] {
       airUtc: e.air_utc,
       runtime: e.runtime,
       monitored: !!e.monitored,
+      wanted: wanted.has(e.id),
       status,
       progress: g && status === "downloading" ? g.progress : null,
       stage: g && status === "downloading" ? (g.stage ?? null) : null,
@@ -447,7 +455,8 @@ export function seriesHeader(tvdbId: number) {
     | undefined;
   if (!s) return null;
   const rows = episodeRows(s.id).filter((e) => e.season > 0);
-  const aired = rows.filter((e) => e.status !== "unaired");
+  // Like Sonarr's count: aired episodes you want, plus any you have (an unmonitored season adds only its files).
+  const aired = rows.filter((e) => e.status !== "unaired" && (e.wanted || !!e.file));
   const have = rows.filter((e) => e.status === "have");
   const wrongLang = rows.filter((e) => e.status === "wrong-lang");
   const prof = profileFor(tvdbId);
@@ -455,7 +464,8 @@ export function seriesHeader(tvdbId: number) {
   const langOf = (e: EpisodeRow) => e.file?.lang?.state ?? "unknown";
   const withFile = [...have, ...wrongLang];
   const withLang = withFile.filter((e) => langOf(e) === "ok");
-  const noLang = withFile.filter((e) => langOf(e) === "no");
+  // Unwanted episodes stay quiet: their files don't raise a language warning.
+  const noLang = withFile.filter((e) => langOf(e) === "no" && e.wanted);
   const unknownLang = withFile.filter((e) => langOf(e) === "unknown");
   const untagged = unknownLang.filter((e) => e.file?.lang?.code === "untagged");
   const aids = (JSON.parse(s.anidb_ids) as { aid: number; season: number | "a" | null }[]).sort(
@@ -501,7 +511,7 @@ export function seriesHeader(tvdbId: number) {
     counts: {
       have: have.length,
       aired: aired.length,
-      missing: rows.filter((e) => e.status === "missing" || e.status === "wrong-lang").length,
+      missing: rows.filter((e) => e.wanted && (e.status === "missing" || e.status === "wrong-lang")).length,
       wrongLang: wrongLang.length,
       downloading: rows.filter((e) => e.status === "downloading").length,
       total: rows.length,
@@ -634,8 +644,32 @@ function guard(tvdbId: number) {
   return s;
 }
 
-/** Deletes the files of the given episodes through Sonarr. Returns whether a managed, live show should search again. */
-export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], deps: EpisodeDeps = realEpisodeDeps) {
+/**
+ * True when `file` is strictly inside `folder` (Sonarr paths; `..` resolved, Windows paths compared without case).
+ * A delete never reaches a file outside its show's folder, whatever Sonarr's records say.
+ */
+export function insideFolder(file: string, folder: string) {
+  const norm = (p: string) => {
+    const x = path.posix.normalize(p.replace(/\\/g, "/")).replace(/\/+$/, "");
+    return /^[a-z]:\//i.test(x) ? x.toLowerCase() : x;
+  };
+  const f = norm(file);
+  const d = norm(folder);
+  return !!d && d !== "." && f.startsWith(`${d}/`);
+}
+
+/**
+ * Deletes the files of the given episodes through Sonarr (its recycle bin), each one re-checked live: an episode of
+ * this show, a file of this show, inside the allowed roots and inside the show's folder. With `onlySeason`, a file
+ * that also holds an episode of another season is skipped (deleting a season never takes a neighbour's episode).
+ * Returns what was deleted, what was skipped and why, and whether a managed, live show should search again.
+ */
+export async function deleteEpisodeFiles(
+  tvdbId: number,
+  episodeIds: number[],
+  deps: EpisodeDeps = realEpisodeDeps,
+  opts: { onlySeason?: number } = {},
+) {
   const s = guard(tvdbId);
   if (s.id >= NATIVE_BASE)
     throw Object.assign(
@@ -670,10 +704,18 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
       const f = await deps.episodeFile(ep.episodeFileId);
       if (f.seriesId !== s.id) throw new Error("Sonarr says this file belongs to another series");
       if (!underAllowedRoot(f.path)) throw new Error(`the file is outside the allowed root folders (${f.path})`);
+      if (!insideFolder(f.path, s.path)) throw new Error(`the file is outside the show's folder (${f.path})`);
       const sharing = cache
         .prepare("SELECT id, season, episode FROM episodes WHERE file_id = ? ORDER BY season, episode")
         .all(ep.episodeFileId) as { id: number; season: number; episode: number }[];
       const labels = sharing.length ? sharing.map((x) => sxe(x.season, x.episode)) : [sxe(ep.seasonNumber, ep.episodeNumber)];
+      if (opts.onlySeason !== undefined) {
+        const other = sharing.filter((x) => x.season !== opts.onlySeason);
+        if (ep.seasonNumber !== opts.onlySeason || other.length)
+          throw new Error(
+            `the file also holds ${other.map((x) => sxe(x.season, x.episode)).join(" + ") || "another season"}; delete it on its own`,
+          );
+      }
       await deps.deleteFile(ep.episodeFileId);
       done.add(ep.episodeFileId);
       deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
@@ -689,11 +731,28 @@ export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], d
       skipped.push({ episodeId: eid, why: (e as Error).message });
     }
   }
+  // Harmless to lose: the deletes are done and logged; a failed refresh only leaves the cache stale until the next sync.
   await deps.refresh(s.id).catch(() => undefined);
   if (deleted.length) await afterLibraryChange({ tvdbId, folders: [s.path] });
   const m = listManaged().find((x) => x.tvdbId === tvdbId);
   const affected = all.filter((e) => deleted.some((d) => d.episodes.includes(sxe(e.season, e.episode)))).map((e) => e.id);
   return { deleted, skipped, affected, askSearch: !!m && !isDryRun(m.dryRun) && deleted.length > 0 };
+}
+
+/**
+ * Deletes every file of one season through the same guarded path as the episode delete (deleteEpisodeFiles): only
+ * that season's episodes with a file are asked for, and a file shared with another season is skipped. Partial
+ * failures come back in `skipped`, one line per episode, never hidden.
+ */
+export async function deleteSeasonFiles(tvdbId: number, season: number, deps: EpisodeDeps = realEpisodeDeps) {
+  const s = guard(tvdbId);
+  const ids = (
+    cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND season = ? AND has_file = 1 ORDER BY episode").all(s.id, season) as {
+      id: number;
+    }[]
+  ).map((r) => r.id);
+  if (!ids.length) throw Object.assign(new Error(`Season ${season} has no files to delete`), { statusCode: 409 });
+  return { season, asked: ids.length, ...(await deleteEpisodeFiles(tvdbId, ids, deps, { onlySeason: season })) };
 }
 
 /** Episodes of a managed show whose file is in the wrong language (not kept as is): id → why. */
@@ -865,7 +924,7 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
   const active = grabStates();
   const rows = cache
     .prepare(
-      "SELECT e.id, e.season, e.episode, e.title, e.air_utc, e.has_file, e.monitored, s.tvdb_id, s.title AS series, s.poster FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.air_utc BETWEEN ? AND ? AND e.season > 0 ORDER BY e.air_utc",
+      "SELECT e.id, e.season, e.episode, e.title, e.air_utc, e.has_file, e.monitored, e.series_id, s.tvdb_id, s.title AS series, s.poster FROM episodes e JOIN series s ON s.id = e.series_id WHERE e.air_utc BETWEEN ? AND ? AND e.season > 0 ORDER BY e.air_utc",
     )
     .all(fromMs, toMs) as {
     id: number;
@@ -875,16 +934,22 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
     air_utc: number;
     has_file: number;
     monitored: number;
+    series_id: number;
     tvdb_id: number;
     series: string;
     poster: string | null;
   }[];
   const now = Date.now();
   const covers = new Map<number, string | null>();
+  // Wanted per show, worked out once per show in the range (the same rule as the Show page).
+  const wantedBy = new Map<number, Set<number>>();
+  const wantedOf = (tvdbId: number, seriesId: number) =>
+    wantedBy.get(tvdbId) ?? (wantedBy.set(tvdbId, wantedEpisodeIds(tvdbId, seriesId, now)), wantedBy.get(tvdbId)!);
   return rows
     .filter((r) => !managedOnly || managed.has(r.tvdb_id))
     .map((r) => {
       if (!covers.has(r.tvdb_id)) covers.set(r.tvdb_id, coverFor({ tvdb_id: r.tvdb_id, poster: r.poster }));
+      const wanted = wantedOf(r.tvdb_id, r.series_id).has(r.id);
       const g = active.get(r.id);
       const status = statusWithGrab(r.has_file ? "have" : r.air_utc > now ? "unaired" : "missing", g);
       return {
@@ -901,6 +966,7 @@ export function calendar(fromMs: number, toMs: number, managedOnly: boolean) {
         stage: g?.stage ?? null,
         ahead: g?.ahead ?? null,
         managed: managed.has(r.tvdb_id),
+        wanted,
       };
     });
 }

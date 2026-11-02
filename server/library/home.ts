@@ -125,7 +125,8 @@ export function homeSummary(now = Date.now(), dayStart?: number, managedOnly = f
   }
 
   // Needs you: recent missing (aired in the last 14 days), imports that need a look, files without the language.
-  const recentMissing = calendar(today - 14 * DAY, now, false).filter((e) => e.status === "missing" && managed.has(e.tvdbId));
+  // Only wanted episodes (in the show's scope): an unmonitored season is never "needs you".
+  const recentMissing = calendar(today - 14 * DAY, now, false).filter((e) => e.status === "missing" && e.wanted && managed.has(e.tvdbId));
   const attention = db
     .prepare("SELECT id, tvdb_id, movie_id, release, error FROM grabs WHERE dry_run = 0 AND state = 'needs-attention' ORDER BY id DESC")
     .all() as { id: number; tvdb_id: number; movie_id: number | null; release: string; error: string | null }[];

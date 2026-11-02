@@ -51,6 +51,8 @@ export interface EpisodeRow {
   airUtc: number | null;
   runtime: number | null;
   monitored: boolean;
+  /** Wanted (the managed scope, else Sonarr's monitored flags). Unwanted rows stay quiet: no missing or language warnings. */
+  wanted: boolean;
   status: EpisodeStatus;
   progress: number | null;
   file: FileInfo | null;
@@ -101,6 +103,8 @@ export function StatusPill({
     stage?: string | null;
     ahead?: number | null;
     attention?: AttentionNote | null;
+    /** false: not monitored, so nothing here is a warning (Sonarr greys these out). */
+    wanted?: boolean;
   };
   lang?: string;
 }) {
@@ -139,6 +143,20 @@ export function StatusPill({
       </span>
     );
   }
+  // Not monitored: missing is just a fact, and a file's language is a quiet note, never a warning.
+  if (e.wanted === false && e.status === "missing")
+    return (
+      <span className="quiet-status" title={t("ep.notMonitoredHelp")}>
+        <span className="dot off" aria-hidden="true" />
+        {t("ep.notMonitored")}
+      </span>
+    );
+  if (e.wanted === false && e.status === "have" && e.file && ls === "no")
+    return (
+      <span className="tag neutral" title={e.file.lang?.why ?? t("ep.status.have")}>
+        <CaptionsOff className="lucide" aria-hidden="true" /> {t("ep.noSubsShort", { lang: lang.toUpperCase() })}
+      </span>
+    );
   if (e.status === "have" && e.file && ls === "unknown")
     return (
       <span className="tag neutral" title={e.file.lang?.why ?? t("ep.status.have")}>
@@ -175,7 +193,10 @@ export function StatusPill({
       </span>
     );
   return (
-    <Chip tone={TONE[e.status]} title={e.status === "attention" ? e.attention?.summary : undefined}>
+    <Chip
+      tone={e.wanted === false && e.status === "attention" ? "info" : TONE[e.status]}
+      title={e.status === "attention" ? e.attention?.summary : undefined}
+    >
       <span aria-hidden="true">{ICON[e.status]} </span>
       {label}
     </Chip>
@@ -934,7 +955,7 @@ export function EpisodeSheet({
 }
 
 /** Where a deleted file goes: Sonarr's recycle bin (and for how long), or nowhere. */
-function RecycleNote() {
+export function RecycleNote() {
   const r = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; error?: string }>("/recycle/setting"), []);
   if (!r.data || r.data.error) return <p className="small muted">{t("recycle.maybe")}</p>;
   return r.data.configured ? (

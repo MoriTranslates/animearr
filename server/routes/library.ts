@@ -10,6 +10,7 @@ import { registerIcal } from "../api/ical.js";
 import {
   calendar,
   deleteEpisodeFiles,
+  deleteSeasonFiles,
   episodeDetail,
   episodeRows,
   regrabEpisodes,
@@ -216,6 +217,17 @@ export function registerLibraryRoutes(app: FastifyInstance) {
     const { tvdbId, ids } = epBody(req.body);
     return deleteEpisodeFiles(tvdbId, ids);
   });
+  // A whole season's files, through the same guarded delete (its own route: a season can hold more than 100 episodes).
+  app.post<{ Params: { tvdbId: string; season: string }; Body: { confirm?: boolean } }>(
+    "/api/series/:tvdbId/seasons/:season/delete",
+    async (req) => {
+      writable();
+      if (req.body?.confirm !== true) throw fail("Confirm the delete first");
+      const season = Number(req.params.season);
+      if (!Number.isInteger(season) || season < 0 || season > 9999) throw fail("Bad season");
+      return deleteSeasonFiles(id(req.params.tvdbId), season);
+    },
+  );
   app.post<{ Body: EpBody }>("/api/episodes/regrab", async (req) => {
     writable();
     if (req.body?.confirm !== true) throw fail("Confirm the re-grab first");

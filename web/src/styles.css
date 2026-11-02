@@ -1207,6 +1207,9 @@ main { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 24px 28
 .track-summary p { margin: 0; }
 .ep-cell.have.lang-no { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
 .ep-cell.have.lang-unknown { background: var(--panel-2); color: var(--muted); }
+/* Not monitored: a fact, never a warning (Sonarr greys these out). */
+.ep-cell.missing.unwanted,
+.ep-cell.have.lang-no.unwanted { background: var(--panel-2); color: var(--muted); }
 
 /* Readability: release names and long problem text (contrast round) */
 .release-line.muted, .mono.muted { color: color-mix(in srgb, var(--text) 82%, var(--panel)); }

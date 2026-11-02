@@ -37,6 +37,7 @@ import {
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
 import { ownedElsewhere } from "../library/duplicates.js";
+import { wantedEpisodeIds } from "../library/scope.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
@@ -201,8 +202,10 @@ const heightOf = (res: string | null) => {
 /**
  * Seasons of managed shows with files below their profile's goal (locked shows/seasons/files left out). With `propers`,
  * recently aired files that meet the goal count too, to be checked for a newer version of the same release.
+ * Only wanted episodes (scope.ts wantedEpisodeIds): an episode you don't monitor is never upgraded automatically.
+ * `includeUnwanted` is for "Upgrade now", which you start by hand.
  */
-export async function upgradeUnits(now = Date.now(), opts: { propers?: boolean } = {}): Promise<Unit[]> {
+export async function upgradeUnits(now = Date.now(), opts: { propers?: boolean; includeUnwanted?: boolean } = {}): Promise<Unit[]> {
   const checkPropers = !!opts.propers && properMode() === "preferAndUpgrade";
   const hinted = checkPropers ? properHints(now) : new Map<number, number>();
   const tiers = animeTiers();
@@ -233,6 +236,11 @@ export async function upgradeUnits(now = Date.now(), opts: { propers?: boolean }
       resolution: string | null;
     }[];
     rows = rows.filter((r) => !owned.has(r.id));
+    // Not monitored (out of the show's scope, or a show that wants nothing): never upgraded behind your back.
+    if (rows.length && !opts.includeUnwanted) {
+      const wanted = wantedEpisodeIds(m.tvdbId, m.seriesId, now);
+      rows = rows.filter((r) => wanted.has(r.id));
+    }
     const seasons = [...new Set(rows.map((r) => r.season))];
     for (const season of seasons) {
       if (isLocked(m.tvdbId, season)) continue;
@@ -634,7 +642,8 @@ export async function upgradeSeasonNow(
   for (const [k, v] of previews) if (now - v.at > 10 * 60_000) previews.delete(k);
   let { unit, pick, results, bestSeen, noBd } = hit && now - hit.at <= 10 * 60_000 ? hit : ({} as Partial<NonNullable<typeof hit>>);
   if (!unit || !pick || !results) {
-    unit = (await upgradeUnits(now)).find((x) => x.tvdbId === tvdbId && x.season === season);
+    // You asked for this season: it's upgraded even when it isn't monitored.
+    unit = (await upgradeUnits(now, { includeUnwanted: true })).find((x) => x.tvdbId === tvdbId && x.season === season);
     if (!unit) return refuse("Nothing in this season is below the quality goal, or its files are protected ([Keep] / [Remaster])");
     const ids = unit.files.map((f) => f.episodeId);
     if (
