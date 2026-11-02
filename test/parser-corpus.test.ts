@@ -432,6 +432,11 @@ test("group, second group and metadata brackets: rows that must not change", () 
     { name: "[WtF-aNiMe][SCY] Show - 05", title: "Show", group: "WtF-aNiMe", absolute: [5] },
     { name: "[F-B] [SCY] Show - 05", title: "Show", group: "F-B", absolute: [5] },
     { name: "[Group] [F-B] Show - 05", title: "Show", group: "Group", absolute: [5] },
+    // A second group tag before a digit-first title (86 Eighty-Six) is still dropped.
+    { name: "[Group] [SCY] 86 - 05", title: "86", group: "Group", absolute: [5] },
+    { name: "[Group] 86 - 05", title: "86", group: "Group", absolute: [5] },
+    { name: "[Group][F-B] 86 - 05", title: "86", group: "Group", absolute: [5] },
+    { name: "[Group] [SCY] 86 S01E05 [1080p]", title: "86", group: "Group", season: 1, episodes: [5] },
   ]);
 });
 

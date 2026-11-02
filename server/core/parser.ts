@@ -390,12 +390,14 @@ export function parseRelease(input: string): ParsedRelease {
   if (lead && !/^\d+$/.test(lead[1]) && !RES_RE.test(lead[1])) {
     group = lead[1].trim();
     s = s.slice(lead[0].length);
-    // A second leading bracket that looks like a group tag ([F-B], [SCY]). When no title follows it (only an episode
-    // or season marker: "[Oshi no Ko] - 05", "[Oshi no Ko] 2nd Season - 05"), it is the title itself: unwrap it.
+    // A second leading bracket that looks like a group tag ([F-B], [SCY]). When no title follows it, it is the title
+    // itself and is unwrapped: "[Oshi no Ko] - 05", "[Show] S02E05". Before a digit ("[Oshi no Ko] 2nd Season - 05"
+    // vs "[SCY] 86 - 05") only a multi-word, mixed-case bracket counts as a title; a tag like SCY or F-B is dropped.
     const lead2 = s.match(/^\s*\[([A-Za-z][\w.& -]{0,20})\]\s*[._ ]?/);
     if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
       const rest = s.slice(lead2[0].length);
-      const noTitle = /^\s*(?:-|\d|S\d|E\d|Season\b|$)/i.test(rest);
+      const titleLike = /\s/.test(lead2[1].trim()) && lead2[1] !== lead2[1].toUpperCase();
+      const noTitle = /^\s*(?:-|S\d|E\d|Season\b|$)/i.test(rest) || (titleLike && /^\s*\d/.test(rest));
       s = noTitle ? `${lead2[1]} ${rest}` : rest;
     }
   }
