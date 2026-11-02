@@ -324,7 +324,7 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
       confidence: id.resolution.confidence,
       coversTarget: covers === targets.length,
       extra: eps.length - covers,
-      quality: { source: id.parsed.source, resolution: id.parsed.resolution, remux: /remux/i.test(r.title) },
+      quality: { source: id.parsed.source, resolution: id.parsed.resolution, remux: /\bremux\b/i.test(r.title) },
       rank,
       mappingWhy: id.resolution.why,
       group: id.parsed.group,
