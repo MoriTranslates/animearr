@@ -205,7 +205,12 @@ export function resolveRelease(
       if (explicit && !same) {
         const ownReading = { eps: explicit, method: "season-episode", certainty: 1, why: `the name's own ${labelOf(explicit)}` };
         if (!eps || !p.absolute.length) return finish([{ ...ownReading, why: `${ownReading.why} (over ${ruleWhy})` }]);
-        return finish([ownReading, { eps, method: "rule-absolute", certainty: 0.97, why: ruleWhy }]);
+        // Both readings capped at 0.7 up front: finish() only ever lowers a certainty, so neither a publish date nor
+        // a grab's episodes can lift this contradiction to an automatic match. The SxxEyy stays first.
+        return finish([
+          { ...ownReading, certainty: 0.7, why: `${ownReading.why}, but the name's absolute number says otherwise` },
+          { eps, method: "rule-absolute", certainty: 0.69, why: ruleWhy },
+        ]);
       }
     } else if (rule.season !== null) eps = mapAll(rule.season, rule.mode === "offset" ? rule.offset : 0);
     if (eps) return finish([{ eps, method: `rule-${rule.mode}`, certainty: 1, why: ruleWhy }]);

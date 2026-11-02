@@ -422,6 +422,46 @@ test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
   assert.deepEqual(at("[Group] Some Show - S01E05 - 005 [1080p]"), { label: "S1E5", conf: 96 });
 });
 
+test("an absolute-rule clash stays below auto even with a publish date or a grab's episodes (review #2)", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const week = 7 * 86_400_000;
+  const start = Date.parse("2026-01-04T15:00:00Z");
+  // Two seasons of 12, one episode a week: S02E01 (absolute 13) aired 8 weeks before S02E09.
+  const eps = (t: number) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: i < 12 ? 1 : 2,
+      episode: (i % 12) + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: start + i * week,
+    }));
+  const ctx = {
+    index: new AliasIndex({ library: [lib(1, "Some Show")] }),
+    now: start + 30 * week,
+    episodesFor: (t: number) => eps(t),
+    rulesFor: () => [{ group: null, mode: "absolute" as const, season: null, offset: 0 }],
+  };
+  const name = "[Group] Some Show - S02E09 - 013 [1080p]";
+  const s2e9Aired = start + 20 * week;
+  // The reviewer's repro: published just after S02E09 aired (was S02E09 at 86%).
+  for (const publishDate of [s2e9Aired + 3_600_000, start + 12 * week + 3_600_000]) {
+    const r = identify(name, ctx, { publishDate });
+    assert.ok(r.resolution?.ok, r.summary);
+    assert.ok(r.resolution!.confidence < 80, r.summary);
+  }
+  // A grab made for either reading doesn't settle it either.
+  for (const expect of [[121], [113]]) {
+    const r = identify(name, ctx, { expect });
+    assert.ok(r.resolution!.confidence < 80, r.summary);
+  }
+  // Must not change: when the two agree, a publish date leaves it fully certain.
+  const agree = identify("[Group] Some Show - S02E01 - 013 [1080p]", ctx, { publishDate: start + 12 * week + 3_600_000 });
+  assert.equal(agree.resolution?.confidence, 96, agree.summary);
+});
+
 test("a trailing Roman numeral is a season, but a lone 'X' is part of the title (Gundam X)", () => {
   const split = (t: string) => {
     const s = splitSeason(t);
