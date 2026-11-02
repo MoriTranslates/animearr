@@ -16,7 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
-import { noteBinned, pinBinned } from "./binpurge.js";
+import { binFolder, noteBinned, pinBinned } from "./binpurge.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
 import { isTorrentClient } from "../arr/clients.js";
 import fs from "node:fs";
@@ -354,7 +354,7 @@ export async function planImport(
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
   const torrent = isTorrentClient(input.client);
-  const binSet = !!m.recycleBin.trim();
+  const binProblem = recycleBinProblem();
   const items: PlanItem[] = [];
   const taken = new Set<string>();
   // Files the user picked (the hand import): only those count for "two files would get the same name".
@@ -446,7 +446,7 @@ export async function planImport(
     else if (fileIds.length > 1) problem = "these episodes are in separate files now: import this one by hand";
     else if (others) problem = "the current file also holds other episodes: import this one by hand";
     else if (current && !currentLocal) problem = "AnimeArr can't reach the episode's current file, so it can't replace it";
-    else if (currentLocal && !binSet) problem = "no recycling bin is set, so the current file can't be replaced safely";
+    else if (currentLocal && binProblem) problem = `${binProblem}, so the current file can't be replaced safely`;
     else if (picked(f) && taken.has(dest)) problem = "two files would get the same name";
     else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
       problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
@@ -551,14 +551,21 @@ async function placeFile(action: PlanItem["action"], a: string, b: string): Prom
   return "copy";
 }
 
+/** Why the recycling bin can't take a replaced file (the same checks as its purge), or null when it can. */
+function recycleBinProblem() {
+  const bin = binFolder();
+  return "error" in bin ? bin.error : null;
+}
+
 /**
- * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set (never
- * deletes). Returns where each file went, so it can be put back.
+ * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set or the bin
+ * is unsafe (in or holding a library folder, relative, too near the disk root): then nothing moves. Never deletes.
+ * Returns where each file went, so it can be put back.
  */
 export async function recycle(localFile: string, seriesLocal: string) {
-  const bin = getSettings().media.recycleBin.trim();
-  if (!bin) throw new Error("no recycling bin is set; nothing was replaced");
-  const binLocal = mappedPath(bin.replace(/\/+$/, ""));
+  const bin = binFolder();
+  if ("error" in bin) throw new Error(`${bin.error}; nothing was replaced, the old file is where it was`);
+  const binLocal = bin.local;
   let rel = path.relative(path.dirname(seriesLocal), localFile);
   if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) rel = path.basename(localFile);
   const moved: { from: string; to: string }[] = [];
@@ -944,12 +951,13 @@ export async function planMovieImport(
   const dest = mappedPath(destArr);
   const currentArr = mv.file ? ((JSON.parse(mv.file) as { path: string | null }).path ?? null) : null;
   const currentLocal = currentArr ? localPath(currentArr) : null;
+  const binProblem = currentLocal ? recycleBinProblem() : null;
   if (problem) {
     /* keep the first problem */
   } else if (!underAllowedRoot(mv.path)) problem = "outside the allowed root folders";
   else if (currentArr && !currentLocal) problem = "AnimeArr can't reach the movie's current file, so it can't replace it";
   else if (currentLocal && input.part) problem = "the movie already has a file: replacing it with a multi-part release is done by hand";
-  else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
+  else if (currentLocal && binProblem) problem = `${binProblem}, so the current file can't be replaced safely`;
   else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
     problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
   else if (!freeSpaceOk(dest, main.size, { source: main.f, action: base.action, ledger: deps.space }))
