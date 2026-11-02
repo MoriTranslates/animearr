@@ -4,6 +4,33 @@ All notable changes, newest first. The commit history has the crew's version of 
 
 ## Unreleased
 
+### Safety
+- **A replace that can't be undone says where both files are.** If an import replaced a file, failed, and then couldn't
+  put the old file back, the message now names the old file's place in the recycling bin and where the new file is. The
+  grab waits in "needs attention", and the old file is pinned in the bin: the daily purge and "Empty bin now" leave it
+  alone until you press "I dealt with it" in Audit → Recycle.
+- **Restoring a backup can't leave you without a database.** The backup is copied next to the live database, checked,
+  and only then swapped in with one rename. If AnimeArr can't save a copy of the current database first, nothing is
+  restored.
+- **A batch import checks free space for all its files together.** Before, each file was checked on its own, so a big
+  batch of copies could eat through the Minimum Free Space. Hardlinks and moves on the same disk still need no room.
+- **The clean-up never deletes a folder that holds your library** (or AnimeArr's own data folder), even if a download
+  client reports such a folder as a download.
+- **Downloading a backup file asks for your password**, also when "no password on my home network" is on: the file
+  holds the key to every saved password.
+- **Cutover:** if Sonarr removes a show but its answer never arrives, AnimeArr finishes the switch on its next start (or
+  when you switch the show again) instead of leaving it half done.
+- Service addresses refuse link-local and cloud metadata addresses in every IPv6 spelling too.
+
+### Fixed
+- The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers
+  `PUT series/editor` (bulk monitoring, quality profile and tags; nothing that moves or deletes files).
+- The Sonarr-compatible API reports repacks and `v2` releases correctly again.
+- Remux releases are recognised as remuxes again when season packs and search results are compared (a few patterns had
+  been saved with an invisible control character instead of a word boundary).
+- Browsing a big download folder in the manual import no longer pauses the rest of the app; pages stop polling while
+  their browser tab is hidden.
+
 ### Added
 - **Episode thumbnails and descriptions for Jellyfin, Emby and Kodi.** Next to each video AnimeArr can now write a
   `name-thumb.jpg` picture, and each episode's NFO gets its description. They come from TMDB first (the right episode,
