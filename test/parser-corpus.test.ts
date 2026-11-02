@@ -233,6 +233,50 @@ test("Steins;Gate 0 identifies Steins;Gate 0, not the decoy Steins;Gate", () => 
   );
 });
 
+test("a year in the title stays in the title (remakes)", () => {
+  check([
+    { name: "[Group] Hunter x Hunter (2011) - 05 [1080p]", title: "Hunter x Hunter (2011)", group: "Group", absolute: [5] },
+    { name: "[Group] Hunter x Hunter - 05 [1080p]", title: "Hunter x Hunter", group: "Group", absolute: [5] },
+    { name: "Hunter.x.Hunter.2011.S01E05.1080p.BluRay.x264-GRP", title: "Hunter x Hunter 2011", group: "GRP", season: 1, episodes: [5] },
+  ]);
+});
+
+test("remakes: a title with no year goes to the show with that exact title, not the first remake in library order", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const eps = (t: number) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: 1,
+      episode: i + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const ctxOf = (library: ReturnType<typeof lib>[]) => ({
+    index: new AliasIndex({ library }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+  });
+  // The remake comes first in library order on purpose: before the fix it won the tie.
+  for (const library of [
+    [lib(2, "Hunter x Hunter (2011)"), lib(1, "Hunter x Hunter")],
+    [lib(1, "Hunter x Hunter"), lib(2, "Hunter x Hunter (2011)")],
+  ]) {
+    const ctx = ctxOf(library);
+    const plain = identify("[Group] Hunter x Hunter - 05 [1080p]", ctx);
+    assert.equal(plain.candidate?.tvdbId, 1, plain.summary);
+    const remake = identify("[Group] Hunter x Hunter (2011) - 05 [1080p]", ctx);
+    assert.equal(remake.candidate?.tvdbId, 2, remake.summary);
+    assert.equal(identify("Hunter.x.Hunter.2011.S01E05.1080p.BluRay.x264-GRP", ctx).candidate?.tvdbId, 2);
+  }
+  // Unchanged: with only the remake in the library, a release without the year still maps to it at the same confidence.
+  const only = identify("[Group] Hunter x Hunter - 05 [1080p]", ctxOf([lib(2, "Hunter x Hunter (2011)")]));
+  assert.equal(only.candidate?.tvdbId, 2, only.summary);
+  assert.equal(only.resolution?.confidence, 86, only.summary);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },
