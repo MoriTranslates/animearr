@@ -277,6 +277,41 @@ test("remakes: a title with no year goes to the show with that exact title, not 
   assert.equal(only.resolution?.confidence, 86, only.summary);
 });
 
+test("multi-episode files keep every episode, not just the first two", () => {
+  const ep = (season: number, episodes: number[]) => ({ season, episodes });
+  check([
+    { name: "Show.S01E01-02-03.1080p.WEB.x264-GRP", title: "Show", group: "GRP", ...ep(1, [1, 2, 3]) },
+    { name: "Show.S01E01E02E03.1080p.WEB.x264-GRP", title: "Show", group: "GRP", ...ep(1, [1, 2, 3]) },
+    { name: "Show - S01E01-02-03-04 [1080p]", title: "Show", group: null, ...ep(1, [1, 2, 3, 4]) },
+    { name: "Show - S01E01E02E03E04 [1080p]", title: "Show", group: null, ...ep(1, [1, 2, 3, 4]) },
+    { name: "Show S02E05E06E07E08E09 x265", title: "Show", group: null, ...ep(2, [5, 6, 7, 8, 9]) },
+    { name: "Show S02E05-06-07-08-09 x265", title: "Show", group: null, ...ep(2, [5, 6, 7, 8, 9]) },
+    { name: "Show (2020) S01E01-02-03 [ABCD1234]", title: "Show (2020)", group: null, ...ep(1, [1, 2, 3]) },
+    // The "-E03" end of a range is part of the SxxEyy, not a separate absolute number.
+    { name: "Show S01E01-E03 1080p", title: "Show", group: null, ...ep(1, [1, 2, 3]) },
+    { name: "Show S01E01-E02-E03 1080p", title: "Show", group: null, ...ep(1, [1, 2, 3]) },
+    { name: "[Group] Show - S01E01-E02 (1080p) [ABCD1234].mkv", title: "Show", group: "Group", ...ep(1, [1, 2]) },
+    // Without a season.
+    { name: "Show E01-E03", title: "Show", group: null, absolute: [1, 2, 3] },
+    { name: "Show - E01-E03 [1080p]", title: "Show", group: null, absolute: [1, 2, 3] },
+    { name: "Show - 01-03 [1080p]", title: "Show", group: null, absolute: [1, 2, 3] },
+    { name: "Show Ep01-03", title: "Show", group: null, absolute: [1, 2, 3] },
+  ]);
+});
+
+test("SxxEyy next to resolution, codec, year and hash: rows that must not change", () => {
+  check([
+    { name: "Show.S01E01-02.1080p.WEB.x264-GRP", title: "Show", group: "GRP", season: 1, episodes: [1, 2] },
+    // Pins the episode list only; the "1080p" group is an old quirk of the scene "-GROUP" rule, left as it is.
+    { name: "Show S01E05-1080p", title: "Show", group: "1080p", season: 1, episodes: [5] },
+    { name: "Show S01E01 1080p x264", title: "Show", group: null, season: 1, episodes: [1] },
+    { name: "Show.S01E05.2160p.WEB.x265-GRP", title: "Show", group: "GRP", season: 1, episodes: [5] },
+    { name: "Show (2019) - S01E05 - 005 [1080p] [ABCD1234]", title: "Show (2019)", group: null, season: 1, episodes: [5], absolute: [5] },
+    { name: "[Group] Show - S01E05 [E1A2B3C4]", title: "Show", group: "Group", season: 1, episodes: [5] },
+    { name: "Show S01E05v2 720p", title: "Show", group: null, season: 1, episodes: [5] },
+  ]);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },

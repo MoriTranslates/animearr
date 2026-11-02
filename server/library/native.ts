@@ -248,7 +248,8 @@ export function materialize(n: NativeRow, now = Date.now()) {
   for (const r of recs) {
     const name = path.posix.basename(r.path);
     const folderSeason = /(?:^|\/)Season (\d+)\//i.exec(r.path.slice(base.length))?.[1];
-    const m = /S(\d{1,2})E(\d{1,4})(?:-?E?(\d{1,4}))?/i.exec(name);
+    // "S01E01", "S01E01-02", and longer chains "S01E01-02-03" / "S01E01E02E03" (first to last); "S01E05-1080p" is one.
+    const m = /S(\d{1,2})E(\d{1,4})((?:-?E?\d{1,4}(?![\dp]))*)/i.exec(name);
     let hit: Ep[] = [];
     const linked = links.get(r.path);
     if (linked) hit = linked.map((id) => eps.find((e) => e.id === id)).filter((x): x is Ep => !!x);
@@ -257,7 +258,7 @@ export function materialize(n: NativeRow, now = Date.now()) {
     } else if (m) {
       const s = Number(m[1]);
       const a = Number(m[2]);
-      const b = m[3] ? Number(m[3]) : a;
+      const b = m[3] ? Number(m[3].match(/\d+/g)!.at(-1)) : a;
       for (let k = a; k <= b && k - a < 50; k++) if (byKey.get(`${s}x${k}`)) hit.push(byKey.get(`${s}x${k}`)!);
     } else if (oneSeason || folderSeason) {
       const p = parseRelease(name);

@@ -483,10 +483,12 @@ export function parseRelease(input: string): ParsedRelease {
     markers.push({ at: m.index!, end: m.index! + m[0].length, ...mk });
   let m: RegExpExecArray | null;
 
-  // S01E02(-E03|E03)(v2), S01E01-02
-  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?(?:(?:[-~]|-?E)E?(\d{1,4})(?!\d))?(?:v(\d))?/gi;
-  while ((m = reSE.exec(work)))
-    push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
+  // S01E02(-E03|E03)(v2), S01E01-02, and longer chains: S01E01-02-03, S01E01E02E03, S01E01-E02-E03 (first to last).
+  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?![\dp]))*)(?:v(\d))?/gi;
+  while ((m = reSE.exec(work))) {
+    const last = m[4] ? m[4].match(/\d+/g)!.at(-1) : undefined;
+    push(m, { season: +m[1], episodes: last ? range(+m[2], +last) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
+  }
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;
   while ((m = reX.exec(work)))
@@ -508,7 +510,7 @@ export function parseRelease(input: string): ParsedRelease {
   const reSeasonOnly = /(?<!\b\d{1,2}(?:st|nd|rd|th)\s+)\(?\bSeason\s+(\d{1,2})\b\)?|\bS(\d{1,2})\b(?!\s*-\s*\d)(?![ ._]?E\d)/gi;
   while ((m = reSeasonOnly.exec(work))) push(m, { season: +(m[1] ?? m[2]), fullSeason: true, batch: true });
   // Ranges: "(01-12)", "01~10", "01 - 119", "091-123", "[01-05]", "Ep01-12", "Episode 99-100", "1-13"
-  const reRange = /(?:^|\s|\(|-\s)(?:EP?|Episode\s?)?(\d{1,4})\s*(?:[-~]|\s-\s)\s*(\d{1,4})(?=\s|\)|$|v\d)/gi;
+  const reRange = /(?:^|\s|\(|-\s)(?:EP?|Episode\s?)?(\d{1,4})\s*(?:[-~]|\s-\s)\s*(?:EP?)?(\d{1,4})(?=\s|\)|$|v\d)/gi;
   while ((m = reRange.exec(work))) {
     const a = +m[1];
     const b = +m[2];
@@ -547,6 +549,8 @@ export function parseRelease(input: string): ParsedRelease {
   while ((m = reEp.exec(work))) {
     // "E1135" must not be part of SxxEyy (handled above).
     if (/S\d{1,2}[ ._]?$/i.test(work.slice(Math.max(0, m.index - 4), m.index))) continue;
+    // ...nor the "-E03" end of an SxxEyy range ("S01E01-E03").
+    if (markers.some((x) => x.episodes && m!.index >= x.at && m!.index < x.end)) continue;
     push(m, { absolute: [+(m[1] ?? m[3])], version: Number(m[2] ?? 1) });
   }
   // "[01]" / "[05v2]" episode in brackets (Chinese/Russian style)
