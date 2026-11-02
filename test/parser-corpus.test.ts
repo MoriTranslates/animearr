@@ -495,6 +495,38 @@ test("a version after the episode, spaced or in brackets, is read (05 v2, 05 [v2
   assert.deepEqual(v("[Group] Show - 05 - Title v2"), ["Show", [5], [], 1]);
 });
 
+test("an 'Ep' marker is not left in the title (Show Ep 05)", () => {
+  check([
+    // Was title "Show Ep" / "Show Ep.05" / "Show - Ep".
+    { name: "Show Ep 05", title: "Show", group: null, absolute: [5] },
+    { name: "Show Ep.05", title: "Show", group: null, absolute: [5] },
+    { name: "Show Ep. 05", title: "Show", group: null, absolute: [5] },
+    { name: "Show - Ep 05", title: "Show", group: null, absolute: [5] },
+    { name: "[Group] Show Ep 05 [1080p]", title: "Show", group: "Group", absolute: [5] },
+    { name: "Show.Ep.05.1080p.WEB.x264-GRP", title: "Show", group: "GRP", absolute: [5] },
+    // Must not change.
+    { name: "Show EP05", title: "Show", group: null, absolute: [5] },
+    { name: "Show Episode 05", title: "Show", group: null, absolute: [5] },
+    { name: "Show E05", title: "Show", group: null, absolute: [5] },
+    { name: "[Group] Deep Insanity The Lost Child - 05 [1080p]", title: "Deep Insanity The Lost Child", group: "Group", absolute: [5] },
+    {
+      name: "[Group] Sleepy Princess in the Demon Castle - 05",
+      title: "Sleepy Princess in the Demon Castle",
+      group: "Group",
+      absolute: [5],
+    },
+    { name: "[Group] Keep Your Hands Off Eizouken! - 05", title: "Keep Your Hands Off Eizouken!", group: "Group", absolute: [5] },
+    {
+      name: "Keep.Your.Hands.Off.Eizouken.S01E05.1080p.WEB.x264-GRP",
+      title: "Keep Your Hands Off Eizouken",
+      group: "GRP",
+      season: 1,
+      episodes: [5],
+    },
+  ]);
+  assert.equal(parseRelease("Show Ep 05 v2").version, 2);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },

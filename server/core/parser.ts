@@ -551,8 +551,8 @@ export function parseRelease(input: string): ParsedRelease {
     if (/^\s+[A-Za-z]/.test(rest) && !/^\s+-/.test(rest) && /\s-\s?\d{1,4}(?:v\d)?(?=\s|$|\(|\[)/.test(rest)) continue;
     push(m, { absolute: [n], version: Number(m[2] ?? 1) });
   }
-  // EP06 / Ep01 / E1135 / Episode 56 / e66 / #957 / 第07话 / {01}
-  const reEp = /(?:\bEP?|\bEpisode\s?|\bEpisodio\s|#|\be)(\d{1,4})(?:v(\d))?(?![\d.x])|第\s*(\d{1,4})\s*[话話集]/gi;
+  // EP06 / Ep01 / Ep 01 / Ep.01 / E1135 / Episode 56 / e66 / #957 / 第07话 / {01}
+  const reEp = /(?:\bEP?|\bEP\.?\s?|\bEpisode\s?|\bEpisodio\s|#|\be)(\d{1,4})(?:v(\d))?(?![\d.x])|第\s*(\d{1,4})\s*[话話集]/gi;
   while ((m = reEp.exec(work))) {
     // "E1135" must not be part of SxxEyy (handled above).
     if (/S\d{1,2}[ ._]?$/i.test(work.slice(Math.max(0, m.index - 4), m.index))) continue;
