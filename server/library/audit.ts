@@ -1,7 +1,8 @@
 /**
  * Read-only audits over the synced library (nothing is changed in Sonarr/Radarr).
  * - Missing my language: files with neither a subtitle track nor an audio track in a profile subtitle language.
- * - Gaps: aired, monitored episodes without a file, and whole seasons with nothing (unaired episodes are hidden).
+ * - Gaps: aired, wanted episodes without a file, and wanted seasons with nothing (unaired episodes are hidden).
+ * Both follow Sonarr's rule that a show you don't monitor stays quiet (scope.ts wantedEpisodeIds).
  * - Specials: Season 0 split into real content (OVA/episode/movie) and junk (PVs, recaps, promos...), with movies of
  *   60+ minutes flagged "belongs in Radarr" and whether Radarr already has them.
  */
@@ -19,7 +20,7 @@ import { coverFor } from "../metadata/covers.js";
 import { profileFor } from "./profiles.js";
 import { judge } from "../grabs/verify.js";
 import { localPath } from "../system/paths.js";
-import { isMissing } from "./scope.js";
+import { isMissing, wantedEpisodeIds } from "./scope.js";
 
 interface SeriesRow {
   id: number;
@@ -138,8 +139,22 @@ export function missingLanguage(opts: { checkSidecars?: boolean } = {}) {
       sub_langs: string;
     }[];
     const bySeason = new Map<number, MissingGroup>();
+    // Files of unwanted episodes only (an unmonitored season or show) raise no language warning.
+    let wantedFile: (fileId: number) => boolean = () => true;
+    if (files.length) {
+      const wanted = wantedEpisodeIds(s.tvdb_id, s.id);
+      const holders = new Map<number, number[]>();
+      for (const e of cache.prepare("SELECT id, file_id FROM episodes WHERE series_id = ? AND file_id IS NOT NULL").all(s.id) as {
+        id: number;
+        file_id: number;
+      }[])
+        holders.set(e.file_id, [...(holders.get(e.file_id) ?? []), e.id]);
+      // A file no episode points at (not matched yet) stays listed: unknown isn't "unwanted".
+      wantedFile = (fileId) => !holders.has(fileId) || holders.get(fileId)!.some((id) => wanted.has(id));
+    }
     for (const f of files) {
       checked++;
+      if (!wantedFile(f.id)) continue;
       // AnimeArr's own scan first (it sees forced flags and sidecars); Sonarr's mediaInfo otherwise.
       const own = ownFile(f.path, { size: f.size, dateAdded: f.date_added });
       const p = own ? probeOf(own) : null;
@@ -250,21 +265,21 @@ export function gaps() {
       has_file: number;
     }[];
     const aired = eps.filter((e) => e.air_utc !== null && e.air_utc <= now);
-    // The shared definition (scope.ts isMissing), over every monitored episode (Gaps ignores a managed show's scope).
-    const missing = aired.filter((e) => e.monitored && isMissing(e, now));
+    // The shared definitions (scope.ts isMissing and wantedEpisodeIds): a managed show's scope, else Sonarr's flags.
+    const wanted = wantedEpisodeIds(s.tvdb_id, s.id, now);
+    const missing = aired.filter((e) => wanted.has(e.id) && isMissing(e, now));
     const seasons = new Map<number, { aired: number; files: number; monitored: boolean }>();
     for (const e of aired) {
       const x = seasons.get(e.season) ?? { aired: 0, files: 0, monitored: false };
       x.aired++;
       x.files += e.has_file;
-      x.monitored ||= !!e.monitored;
+      x.monitored ||= wanted.has(e.id);
       seasons.set(e.season, x);
     }
-    const anyFiles = eps.some((e) => e.has_file);
-    // A whole season with nothing: a monitored one always (a show added with nothing yet has every season missing),
-    // an unmonitored one only when the show has files elsewhere (it's being collected).
+    // A whole season with nothing, when you want it (a show added with nothing yet has every season missing). An
+    // unmonitored season stays quiet, even when the show has files elsewhere (Sonarr's rule).
     const missingSeasons = [...seasons]
-      .filter(([, x]) => x.files === 0 && (anyFiles || x.monitored))
+      .filter(([, x]) => x.files === 0 && x.monitored)
       .map(([season, x]) => ({ season, aired: x.aired, monitored: x.monitored }));
     // Every missing episode is listed (whole seasons too), so the counts match the show page and the search covers them.
     const partial = missing;

@@ -37,6 +37,7 @@ import {
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
 import { ownedElsewhere } from "../library/duplicates.js";
+import { wantedEpisodeIds } from "../library/scope.js";
 import { searchConfigured } from "./indexers.js";
 import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
@@ -233,6 +234,9 @@ export async function upgradeUnits(now = Date.now(), opts: { propers?: boolean }
       resolution: string | null;
     }[];
     rows = rows.filter((r) => !owned.has(r.id));
+    // A show that wants nothing (scope "none", dropped) is not monitored: never upgraded behind your back. (Per-season
+    // narrowing to the scope would also stop upgrades of older seasons of every default-scope show: not done here.)
+    if (rows.length && !wantedEpisodeIds(m.tvdbId, m.seriesId, now).size) continue;
     const seasons = [...new Set(rows.map((r) => r.season))];
     for (const season of seasons) {
       if (isLocked(m.tvdbId, season)) continue;

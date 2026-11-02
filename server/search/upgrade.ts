@@ -19,6 +19,7 @@ import { langList } from "../core/langs.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { listManaged } from "../library/managedList.js";
+import { wantedEpisodeIds } from "../library/scope.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
 import { profileFor } from "../library/profiles.js";
@@ -84,6 +85,8 @@ export function placeholders(now = Date.now()): Waiting[] {
       audio_langs: string;
       resolution: string | null;
     }[];
+    // A show that wants nothing (scope "none", dropped) is not monitored: never upgraded behind your back.
+    if (rows.length && !wantedEpisodeIds(m.tvdbId, m.seriesId, now).size) continue;
     for (const r of rows) {
       const audio = langList(r.audio_langs);
       if (!audio.length || dub.some((l) => audio.some((a) => a.split("-")[0] === l))) continue; // unknown, or already has the dub

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { openInMediaServer } from "../filetools";
 import { api, fmtSize, store, sxe, type Decision } from "../api";
 import { Link, navigate } from "../nav";
-import { airLabel, EpisodeSheet, langOf, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
+import { airLabel, EpisodeSheet, langOf, RecycleNote, resLabel, StatusPill, useEpisodeActions, type EpisodeRow } from "../episodes";
 import { Captions, CaptionsOff, Check, ChevronDown, Download, LayoutGrid, List, ListChecks, Tag as TagIcon } from "lucide-react";
 import { Ring } from "../posters";
 import { showVars } from "../season";
@@ -140,6 +140,26 @@ export function Show({ tvdbId }: { tvdbId: number }) {
     dryRun,
     onDone: () => (setSel(new Set()), setSelecting(false), void d.reload(), void act.reload()),
   });
+  // ⋯ → Delete file on one row: the same confirm and the same guarded delete as the bulk bar.
+  const [epDelete, setEpDelete] = useState<EpisodeRow | null>(null);
+  const single = useEpisodeActions({
+    tvdbId,
+    episodes: epDelete
+      ? [
+          {
+            id: epDelete.id,
+            label: sxe(epDelete.season, epDelete.episode),
+            release: epDelete.file?.sceneName ?? null,
+            file: epDelete.file?.name ?? null,
+            fileEpisodes: epDelete.file?.episodes,
+          },
+        ]
+      : [],
+    managedLive,
+    dryRun,
+    onDone: () => (void d.reload(), void act.reload()),
+  });
+  const [deletingSeason, setDeletingSeason] = useState<number | null>(null);
 
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data || !h) return <Spinner label={t("app.loading")} />;
@@ -152,9 +172,13 @@ export function Show({ tvdbId }: { tvdbId: number }) {
       return n;
     });
 
+  // Only what you monitor is "missing" (Sonarr's rule): an unmonitored season or show stays quiet.
   const missingAll = (d.data?.rows ?? []).filter(
-    (r) => r.status === "missing" && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless",
+    (r) => r.status === "missing" && r.wanted && !r.movie && r.special?.cls !== "junk" && r.special?.cls !== "creditless",
   );
+  const deleteEp = (r: EpisodeRow) => (setEpDelete(r), single.remove());
+  // Deletes go through Sonarr inside the allowed roots; shows added in AnimeArr don't delete from here yet.
+  const canDelete = h.allowed && !h.native;
   const links = [
     { label: "AniList ↗", href: h.links.anilist },
     { label: "AniDB ↗", href: h.links.anidb },
@@ -413,8 +437,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           {!s.rows.length && <Empty icon="▤">{t("show.noEpisodes")}</Empty>}
           {seasons.map(([season, rows], i) => {
             // A file in the wrong language (managed shows) is wanted like a missing one: ⚡ searches for a replacement.
+            // Only wanted episodes count (Sonarr's rule): an unmonitored episode raises no missing or language warning.
             const missing = rows.filter(
               (r) =>
+                r.wanted &&
                 (r.status === "missing" || r.status === "wrong-lang") &&
                 !r.movie &&
                 r.special?.cls !== "junk" &&
@@ -423,15 +449,19 @@ export function Show({ tvdbId }: { tvdbId: number }) {
             const wrongLang = rows.filter((r) => r.status === "wrong-lang");
             const openings = season === 0 ? rows.filter((r) => r.special?.cls === "creditless").sort((a, b) => a.episode - b.episode) : [];
             const nextId = rows.filter((r) => r.status === "unaired" && r.airUtc).sort((a, b) => a.airUtc! - b.airUtc!)[0]?.id;
-            const aired = rows.filter((r) => r.status !== "unaired");
+            // Like Sonarr's "have / episodes": aired ones you want, plus any you have.
+            const aired = rows.filter((r) => r.status !== "unaired" && (r.wanted || !!r.file));
             const have = rows.filter((r) => r.status === "have");
-            const noLang = have.filter((r) => r.file && langOf(r.file, lang) === "no");
-            const unknownLang = have.filter((r) => r.file && langOf(r.file, lang) === "unknown" && r.file.lang?.code !== "untagged");
-            const untaggedLang = have.filter((r) => r.file?.lang?.code === "untagged");
+            const wantedHave = have.filter((r) => r.wanted);
+            const noLang = wantedHave.filter((r) => r.file && langOf(r.file, lang) === "no");
+            const unknownLang = wantedHave.filter((r) => r.file && langOf(r.file, lang) === "unknown" && r.file.lang?.code !== "untagged");
+            const untaggedLang = wantedHave.filter((r) => r.file?.lang?.code === "untagged");
             // When most of the season shares the same language problem, the season tag says it once; rows keep their dot.
             const quietLang = noLang.length >= Math.max(3, have.length * 0.6);
             const dl = rows.filter((r) => r.status === "downloading");
-            const attention = rows.filter((r) => r.status === "attention");
+            // A stuck download is real even when unmonitored (it sits in the queue), but then it's said quietly.
+            const attention = rows.filter((r) => r.status === "attention" && r.wanted);
+            const attentionQuiet = rows.filter((r) => r.status === "attention" && !r.wanted);
             const attentionWhy = [...new Set(attention.map((r) => r.attention?.summary).filter(Boolean))].join(" · ");
             const quiet =
               !missing.length &&
@@ -440,9 +470,12 @@ export function Show({ tvdbId }: { tvdbId: number }) {
               !untaggedLang.length &&
               !dl.length &&
               !attention.length &&
+              !attentionQuiet.length &&
               !wrongLang.length &&
               have.length === aired.length;
-            const unmonitored = rows.length > 0 && rows.every((r) => !r.monitored) && !h.managed;
+            const unmonitored = rows.length > 0 && rows.every((r) => !r.wanted);
+            // ⋯ → Delete season files: every file of the season, counted once (a multi-episode file is one file).
+            const seasonFiles = [...new Map(rows.filter((r) => r.file).map((r) => [r.file!.id, r.file!])).values()];
             const years = [...new Set(rows.filter((r) => r.airUtc).map((r) => new Date(r.airUtc!).getFullYear()))].sort();
             // The latest season that has aired opens by default (older seasons show their issues as header tags).
             const firstOpen = seasons.findIndex(([n, rs]) => n > 0 && rs.some((r) => r.status !== "unaired"));
@@ -468,6 +501,12 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                       items={[
                         { label: t("replace.menu"), onSelect: () => setReplacing(season), hidden: !(season > 0 && have.length > 0) },
                         { label: t("metasrc.menu"), onSelect: () => setMetaSeason(season) },
+                        {
+                          label: t("season.delete"),
+                          onSelect: () => setDeletingSeason(season),
+                          hidden: !seasonFiles.length || !h.allowed || !!h.native,
+                          danger: true,
+                        },
                       ]}
                     />
                   )}
@@ -516,19 +555,26 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                         {t("show.attentionCount", { n: attention.length })}
                       </span>
                     )}
+                    {!!attentionQuiet.length && (
+                      <span className="tag neutral">{t("show.attentionQuiet", { n: attentionQuiet.length })}</span>
+                    )}
                   </summary>
                   {grid ? (
                     <div className="ep-grid">
                       {[...rows].reverse().map((r) => (
                         <button
                           key={r.id}
-                          className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${sel.has(r.id) ? " selected" : ""}`}
+                          className={`ep-cell ${r.status}${r.status === "have" && r.file ? ` lang-${langOf(r.file, lang)}` : ""}${r.wanted ? "" : " unwanted"}${sel.has(r.id) ? " selected" : ""}`}
                           onClick={() => (selecting ? toggle(r.id) : openEp(r.id))}
                           aria-pressed={selecting ? sel.has(r.id) : undefined}
-                          title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}${r.status === "attention" && r.attention ? ` · ${r.attention.summary}` : ""}`}
+                          title={`${sxe(r.season, r.episode)} ${r.title ?? ""} · ${t(`ep.status.${r.status}`)}${r.wanted ? "" : ` · ${t("ep.notMonitored")}`}${r.status === "attention" && r.attention ? ` · ${r.attention.summary}` : ""}`}
                         >
                           {r.episode}
-                          <span className="sr-only"> {t(`ep.status.${r.status}`)}</span>
+                          <span className="sr-only">
+                            {" "}
+                            {t(`ep.status.${r.status}`)}
+                            {r.wanted ? "" : ` · ${t("ep.notMonitored")}`}
+                          </span>
                         </button>
                       ))}
                       <p className="legend small muted">
@@ -550,6 +596,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                           selected={sel.has(r.id)}
                           onToggle={() => toggle(r.id)}
                           onOpen={(f) => openEp(r.id, f)}
+                          onDelete={canDelete ? () => deleteEp(r) : undefined}
                         />
                       ))}
                     </ul>
@@ -563,11 +610,11 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                           · {t("special.openingsHave", { have: openings.filter((r) => r.status === "have").length, n: openings.length })}
                         </span>
                       </summary>
-                      {openings.some((r) => r.status === "missing") && (
+                      {openings.some((r) => r.status === "missing" && r.wanted) && (
                         <div className="openings-find">
                           <SeasonSearch
                             tvdbId={tvdbId}
-                            missing={openings.filter((r) => r.status === "missing")}
+                            missing={openings.filter((r) => r.status === "missing" && r.wanted)}
                             dryRun={dryRun}
                             onDone={() => (void d.reload(), void act.reload())}
                           />
@@ -584,6 +631,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                             selected={sel.has(r.id)}
                             onToggle={() => toggle(r.id)}
                             onOpen={(f) => openEp(r.id, f)}
+                            onDelete={canDelete ? () => deleteEp(r) : undefined}
                           />
                         ))}
                       </ul>
@@ -607,6 +655,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                               selected={false}
                               onToggle={() => undefined}
                               onOpen={(f) => openEp(r.id, f)}
+                              onDelete={canDelete ? () => deleteEp(r) : undefined}
                             />
                           ))}
                       </ul>
@@ -626,6 +675,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                             selected={false}
                             onToggle={() => undefined}
                             onOpen={(f) => openEp(r.id, f)}
+                            onDelete={canDelete ? () => deleteEp(r) : undefined}
                           />
                         ))}
                       </ul>
@@ -655,6 +705,16 @@ export function Show({ tvdbId }: { tvdbId: number }) {
         </div>
       )}
       {bulk.ui}
+      {single.ui}
+      {deletingSeason !== null && (
+        <DeleteSeason
+          tvdbId={tvdbId}
+          season={deletingSeason}
+          rows={seasons.find(([n]) => n === deletingSeason)?.[1] ?? []}
+          onClose={() => setDeletingSeason(null)}
+          onDone={() => (void d.reload(), void act.reload())}
+        />
+      )}
       {open !== null && (
         <EpisodeSheet
           key={`${open}-${openFocus ?? ""}`}
@@ -748,6 +808,7 @@ function EpRow({
   selected,
   onToggle,
   onOpen,
+  onDelete,
 }: {
   r: EpisodeRow;
   lang: string;
@@ -758,23 +819,32 @@ function EpRow({
   selected: boolean;
   onToggle: () => void;
   onOpen: (focus?: "fix") => void;
+  /** ⋯ → Delete file (absent when this show's files can't be deleted from here). */
+  onDelete?: () => void;
 }) {
   const toast = useToast();
   const ls = r.status === "have" && r.file ? langOf(r.file, lang) : "ok";
   const noLang = ls !== "ok";
+  // Not monitored: missing and a file's language are facts here, never warnings (grey, like Sonarr).
   const dot =
     r.status === "have"
       ? ls === "no"
-        ? "warn"
+        ? r.wanted
+          ? "warn"
+          : "off"
         : ls === "unknown"
           ? "off"
           : "good"
       : r.status === "downloading"
         ? "info"
         : r.status === "missing"
-          ? "bad"
+          ? r.wanted
+            ? "bad"
+            : "off"
           : r.status === "attention" || r.status === "wrong-lang"
-            ? "warn"
+            ? r.wanted
+              ? "warn"
+              : "off"
             : "off";
   const quality = r.file ? ((r.file.resolution ? resLabel(r.file.resolution) : r.file.quality) ?? "") : "";
   return (
@@ -803,7 +873,7 @@ function EpRow({
               airLabel(r.airUtc)
             )}
             {r.season === 0 && r.runtime ? ` · ${t("ep.minutes", { n: r.runtime })}` : ""}
-            {r.status === "missing" && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
+            {r.status === "missing" && r.wanted && r.missingWhy ? <span className="miss-why"> · {shortWhy(r.missingWhy)}</span> : ""}
             {/* Why it needs you, right on the row (the sheet has the buttons); a good file only gets a quiet note. */}
             {r.status === "attention" && r.attention ? (
               <span className="miss-why" title={r.attention.summary}>
@@ -856,6 +926,7 @@ function EpRow({
               onSelect: () => void openInMediaServer(r.file!.path, showTitle, "episode", toast),
             },
             { label: t("fix.title"), onSelect: () => onOpen("fix") },
+            { label: t("ep.delete"), onSelect: () => onDelete?.(), hidden: !onDelete, danger: true },
           ]}
         />
       )}
@@ -1362,6 +1433,59 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
           <p className="small muted">{t("replace.how")}</p>
         </>
       )}
+    </Confirm>
+  );
+}
+
+/**
+ * "Delete season files…": how many files and how much space, where they go (Sonarr's recycle bin), then the server's
+ * guarded season delete. What it couldn't delete is said, per reason, never hidden.
+ */
+function DeleteSeason({
+  tvdbId,
+  season,
+  rows,
+  onClose,
+  onDone,
+}: {
+  tvdbId: number;
+  season: number;
+  rows: EpisodeRow[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const files = [...new Map(rows.filter((r) => r.file).map((r) => [r.file!.id, r.file!])).values()];
+  const bytes = files.reduce((n, f) => n + (f.size ?? 0), 0);
+  const name = season === 0 ? t("series.specials") : t("common.season", { n: season });
+  const shared = files.some((f) => f.episodes.some((e) => Number(/^S(\d+)/.exec(e)?.[1]) !== season));
+  return (
+    <Confirm
+      danger
+      title={t("season.deleteTitle", { season: name })}
+      confirmLabel={t("season.deleteConfirm", { n: files.length })}
+      onClose={onClose}
+      onConfirm={async () => {
+        try {
+          const r = await api<{ deleted: unknown[]; skipped: { why: string }[] }>(`/series/${tvdbId}/seasons/${season}/delete`, {
+            body: { confirm: true },
+          });
+          const why = [...new Set(r.skipped.map((x) => x.why))].join("; ");
+          toast(
+            t("season.deleted", { n: r.deleted.length, season: name }) +
+              (r.skipped.length ? ` · ${t("season.deleteSkipped", { n: r.skipped.length, why })}` : ""),
+            r.deleted.length === 0 || r.skipped.length > 0,
+          );
+          onClose();
+          onDone();
+        } catch (e) {
+          toast((e as Error).message, true);
+        }
+      }}
+    >
+      <p>{t("season.deleteBody", { n: files.length, bytes: fmtSize(bytes), season: name })}</p>
+      {shared && <p className="small warn-text">{t("season.deleteShared")}</p>}
+      <RecycleNote />
     </Confirm>
   );
 }

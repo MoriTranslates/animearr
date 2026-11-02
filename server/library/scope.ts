@@ -12,6 +12,7 @@ import { anidbSpecialKind } from "../metadata/anidb.js";
 import { cache, db } from "../system/db.js";
 import { ownedElsewhere } from "./duplicates.js";
 import { getSettings } from "../system/settings.js";
+import { setQuietRule } from "../notify/notify.js";
 
 export type SeasonScope = "all" | "first" | "latest" | "recent" | "picked";
 export type EpisodeScope = "all" | "missing" | "future" | "futureAndMissing" | "existing" | "none";
@@ -198,10 +199,47 @@ export function scopedEpisodeIds(tvdbId: number, seriesId: number, now = Date.no
  * THE definition of a missing episode, shared by every screen that counts them: it has aired (an air time in the
  * past), has no file, and is in the show's monitoring scope (regular seasons; specials only when the scope takes them).
  * Screens differ only in which part they show: the normal schedule covers the last 30 days, the missing-episode
- * search everything older; Audit → Gaps counts all monitored episodes, whatever a managed show's scope.
+ * search everything older; Audit → Gaps counts the wanted ones (wantedEpisodeIds: the scope, or Sonarr's flags).
  */
 export const isMissing = (e: { air_utc: number | null; has_file: number }, now = Date.now()) =>
   !e.has_file && e.air_utc !== null && e.air_utc <= now;
+
+/**
+ * THE definition of a wanted ("monitored") episode, shared by every screen and job that warns or acts. Sonarr's rule:
+ * a show you don't monitor stays quiet. Managed shows: AnimeArr's scope decides (an episode with a file counts when the
+ * scope would want it as is or as missing, so a wrong-language file in a scoped season is still wanted). Other
+ * shows: Sonarr's series and episode monitored flags. A dropped show wants nothing; owned-elsewhere episodes neither.
+ */
+export function wantedEpisodeIds(tvdbId: number, seriesId: number, now = Date.now()): Set<number> {
+  if (db.prepare("SELECT 1 FROM dropped WHERE tvdb_id = ?").get(tvdbId)) return new Set();
+  const eps = scopeEps(tvdbId, seriesId);
+  if (!db.prepare("SELECT 1 FROM managed WHERE tvdb_id = ?").get(tvdbId)) {
+    const s = cache.prepare("SELECT monitored FROM series WHERE id = ?").get(seriesId) as { monitored: number } | undefined;
+    return s?.monitored ? new Set(eps.filter((e) => e.monitored).map((e) => e.id)) : new Set();
+  }
+  const scope = scopeFor(tvdbId);
+  const owned = ownedElsewhere(tvdbId);
+  const asIs = inScope(scope, eps, now);
+  const asMissing = inScope(
+    scope,
+    eps.map((e) => ({ ...e, has_file: 0 })),
+    now,
+  );
+  return new Set([...asIs, ...asMissing].filter((e) => !owned.has(e.id)).map((e) => e.id));
+}
+
+/**
+ * True when nothing about these episodes (or, without episodes, the whole show) is wanted: notifications about it stay
+ * quiet. A show that isn't in the library is never quiet.
+ */
+export function quietShow(tvdbId: number, episodeIds: number[] = [], now = Date.now()) {
+  const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(tvdbId) as { id: number } | undefined;
+  if (!s) return false;
+  const wanted = wantedEpisodeIds(tvdbId, s.id, now);
+  return episodeIds.length ? !episodeIds.some((id) => wanted.has(id)) : wanted.size === 0;
+}
+// Notifications ask this before they go out (registered here: notify can't import the library layer).
+setQuietRule((tvdbId, episodeIds) => quietShow(tvdbId, episodeIds));
 
 /** A show's missing episodes (in scope), with their air times. */
 export function missingScoped(tvdbId: number, seriesId: number, now = Date.now()) {

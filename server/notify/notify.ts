@@ -12,6 +12,15 @@ import { channelProblem, deliver, type ChannelDeps, type Note, type NotifyChanne
 import { redactText } from "../system/redact.js";
 import { safeFetch } from "../system/safeFetch.js";
 
+/**
+ * "Is this show quiet?" (scope.ts registers quietShow when it loads: notify can't import the library layer without an
+ * import cycle). Until then nothing is quiet, so a notice is never lost to a missing rule.
+ */
+let quietRule: (tvdbId: number, episodeIds: number[]) => boolean = () => false;
+export function setQuietRule(fn: typeof quietRule) {
+  quietRule = fn;
+}
+
 export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
 export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused", "indexer"];
 
@@ -142,6 +151,21 @@ export async function testChannel(c: NotifyChannel, deps: ChannelDeps = { fetch 
   return { channel: c.name, id: c.id, ...r };
 }
 
+/**
+ * Quiet: the decision is about a show in the library of which nothing (or none of its episodes) is wanted. Grabs-paused
+ * and indexer notices carry no show, so they are never quiet. If the check itself fails, the notice goes out (loud):
+ * a missed real problem costs more than one extra message.
+ */
+function isQuiet(tvdbId: number | null | undefined, episodeIds: number[] | undefined) {
+  if (!tvdbId) return false;
+  try {
+    return quietRule(tvdbId, episodeIds ?? []);
+  } catch (e) {
+    console.warn(`notification quiet check failed (sending it anyway): ${(e as Error).message}`);
+    return false;
+  }
+}
+
 /** Called for every activity entry: the bell always records it; Discord/ntfy and the extra channels when switched on. */
 export function onDecision(
   kind: string,
@@ -150,6 +174,9 @@ export function onDecision(
   if (dbState.corrupt) return;
   const ev = eventOf(kind, d.why, d.detail);
   if (!ev) return;
+  // A show you don't monitor (nothing of it wanted, or none of these episodes) stays quiet, like Sonarr: the bell keeps
+  // the entry already read and out of "Needs action", and nothing is pushed. Activity still has the full record.
+  const quiet = isQuiet(d.tvdbId, d.episodeIds);
   try {
     const det = (d.detail ?? {}) as { grabId?: number; movieId?: number };
     const ctx = {
@@ -158,18 +185,21 @@ export function onDecision(
       tvdbId: d.tvdbId ?? null,
       movieId: det.movieId ?? null,
       episodeIds: d.episodeIds ?? [],
+      ...(quiet ? { quiet: true } : {}),
     };
-    db.prepare("INSERT INTO notifications (at, event, title, body, read, ctx) VALUES (?, ?, ?, ?, 0, ?)").run(
+    db.prepare("INSERT INTO notifications (at, event, title, body, read, ctx) VALUES (?, ?, ?, ?, ?, ?)").run(
       Date.now(),
       ev,
       d.title ?? "",
       d.why,
+      quiet ? 1 : 0,
       JSON.stringify(ctx),
     );
     db.prepare("DELETE FROM notifications WHERE id <= (SELECT MAX(id) - 500 FROM notifications)").run();
   } catch {
     /* the bell is best effort */
   }
+  if (quiet) return;
   // After the caller's work (and any transaction) is done.
   const det2 = (d.detail ?? {}) as { grabId?: number; movieId?: number };
   const link = linkFor(
@@ -259,6 +289,7 @@ export function bell(limit = 40) {
     const fixes = problem ? liveFixesFor(r.body, ctx) : [];
     const action =
       problem &&
+      !(ctx as { quiet?: boolean }).quiet &&
       Date.now() - r.at < 14 * 86_400_000 &&
       !settled(ctx, r.event, r.at, r.title, r.body) &&
       (fixes.length > 0 || r.event !== "failed");
