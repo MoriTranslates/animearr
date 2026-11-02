@@ -50,6 +50,9 @@ All notable changes, newest first. The commit history has the crew's version of 
 - **Logging out really ends the session.** Before, the session stayed valid for 30 days after "Log out" (only the
   browser forgot it), so a copied session cookie kept working. Logging out now signs out **every** browser, like a
   password change does; log in again on your other devices.
+- **Other websites can't use "No password on my local network".** With it on, a page you visited could make your
+  browser call AnimeArr (for example start an indexer search through an image link). Requests let in without a
+  password must now come from AnimeArr's own pages, a typed address, or a script.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers

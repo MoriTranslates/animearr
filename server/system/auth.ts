@@ -201,6 +201,23 @@ export function csrfOk(req: FastifyRequest) {
   }
 }
 
+/**
+ * A browser request sent by some other page (review M12): Sec-Fetch-Site says so on every modern browser, also for
+ * <img> and plain links; a foreign Origin covers older ones. "same-origin" (our own UI) and "none" (a typed URL or
+ * bookmark) are fine, and so is a request without these headers (curl, scripts).
+ */
+export function fromOtherSite(req: FastifyRequest) {
+  const site = req.headers["sec-fetch-site"];
+  if (site !== undefined && site !== "same-origin" && site !== "none") return true;
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true; // an Origin we can't read ("null" from a sandboxed frame or a redirect): treat it as foreign
+  }
+}
+
 export function authState(req: FastifyRequest) {
   const a = getSettings().auth;
   const setupRequired = !a.passwordHash;
@@ -253,6 +270,9 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
   if (st.via === "apikey" && API_KEY_REFUSED.has(`${req.method} ${route}`))
     return reply.code(403).send({ error: "Log in to do this: the API key can't change settings or delete files" });
   if (st.via !== "apikey" && !csrfOk(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
+  // The home-network bypass has no cookie for SameSite to hold back, so a page elsewhere could make the browser send
+  // requests that count as "local" (GETs included: e.g. an indexer search through GET /api/v3/release).
+  if (st.via === "local" && fromOtherSite(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
 }
 
 // In-memory login throttle per IP + username, with growing back-off instead of a hard lock-out.
