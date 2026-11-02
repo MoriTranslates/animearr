@@ -319,10 +319,36 @@ test("'Show 0 - 12' with no batch word: a batch from episode 0 when 'Show 0' is 
     batch.summary,
   );
   assert.equal(batch.parsed.batch, true);
+  // ...but it is a guess from the library, so a human confirms it: never automatic.
+  assert.ok(batch.resolution!.confidence < 80, batch.summary);
   // The decoy: "Steins;Gate 0 - 05" never becomes episodes 0-5 of Steins;Gate (it has no episode 0): still unknown.
   const sg0 = identify("[SubsPlease] Steins;Gate 0 - 05 (1080p) [ABCD1234].mkv", ctx);
   assert.equal(sg0.candidate, null, sg0.summary);
   assert.equal(sg0.parsed.title, "Steins;Gate 0");
+  // Must not change: with a batch word the parser reads the range itself, at full confidence.
+  const labelled = identify("[Group] Show 0 - 12 [Batch]", ctx);
+  assert.equal(labelled.resolution?.episodes.length, 13, labelled.summary);
+  assert.ok(labelled.resolution!.confidence >= 80, labelled.summary);
+});
+
+test("'Steins;Gate 0 - 05' with only a Steins;Gate that has an episode 0 stays below auto", () => {
+  const eps = Array.from({ length: 25 }, (_, i) => ({
+    id: 300 + i,
+    season: 1,
+    episode: i,
+    absolute: i,
+    sceneSeason: null,
+    sceneEpisode: null,
+    sceneAbsolute: null,
+    airUtc: 0,
+  }));
+  const ctx = {
+    index: new AliasIndex({ library: [{ seriesId: 3, tvdbId: 3, title: "Steins;Gate", path: "/a/3", altTitles: [] }] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: () => eps,
+  };
+  const r = identify("[SubsPlease] Steins;Gate 0 - 05 (1080p) [ABCD1234].mkv", ctx);
+  assert.ok(!r.resolution?.ok || r.resolution.confidence < 80, r.summary);
 });
 
 test("a year in the title stays in the title (remakes)", () => {

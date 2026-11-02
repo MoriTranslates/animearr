@@ -38,12 +38,15 @@ export function identify(
   // fallback show is accepted only when its episodes confirm the reading (`confirm` says why not); otherwise the name
   // stays unknown, exactly as without the fallback, so a shorter title never pulls the release onto a decoy show.
   let confirm = null as ((r: Resolution) => string | null) | null;
-  const retry = (alt: ParsedRelease, check: (r: Resolution) => string | null) => {
+  // A fallback that is only a guess from the library: its match is capped below the auto threshold (≤ 70%).
+  let guess: string | null = null;
+  const retry = (alt: ParsedRelease, check: (r: Resolution) => string | null, guessWhy: string | null = null) => {
     const altCands = lookup(alt);
     if (!altCands.length) return;
     parsed = alt;
     cands = altCands;
     confirm = check;
+    guess = guessWhy;
   };
   // "One Piece 1050 S21E1050": the parser keeps a number before SxxEyy in the title ("Mob Psycho 100 S03E05"). Try
   // "Title" + absolute number; the resolved episode must have exactly that absolute number.
@@ -56,12 +59,15 @@ export function identify(
     );
   }
   // "Show 0 - 12" with no batch word: the parser reads "Show 0", episode 12 ("Steins;Gate 0 - 05"). Try "Show",
-  // episodes 0-12; the show must hold every one of them.
+  // episodes 0-12; the show must hold every one of them, and a human confirms it (a "Steins;Gate" with an episode 0
+  // would also fit "Steins;Gate 0 - 05"). With a batch word the parser reads the range itself.
   const zero = !cands.length && !parsed.episodes.length && parsed.absolute.length === 1 ? /^(.*\S)\s+0$/.exec(parsed.title) : null;
   if (zero && parsed.absolute[0] > 0) {
     const last = parsed.absolute[0];
-    retry({ ...parsed, title: zero[1], absolute: Array.from({ length: last + 1 }, (_, i) => i), batch: true, fullSeason: false }, (r) =>
-      r.episodes.length === last + 1 ? null : `the show doesn't hold episodes 0-${last}`,
+    retry(
+      { ...parsed, title: zero[1], absolute: Array.from({ length: last + 1 }, (_, i) => i), batch: true, fullSeason: false },
+      (r) => (r.episodes.length === last + 1 ? null : `the show doesn't hold episodes 0-${last}`),
+      `read as episodes 0-${last} of "${zero[1]}" because "${parsed.title}" is not a known title: confirm it by hand`,
     );
   }
   const others = cands
@@ -87,6 +93,7 @@ export function identify(
     });
     const notConfirmed = confirm && r.ok ? confirm(r) : null;
     if (notConfirmed) r = { ...r, ok: false, why: [...r.why, notConfirmed] };
+    else if (guess && r.ok) r = { ...r, confidence: Math.min(r.confidence, Math.round(c.score * 0.7)), why: [...r.why, guess] };
     first ??= { c, r };
     if (r.ok) {
       const title = ctx.index.library(c.tvdbId)?.title ?? c.matchedTitle;
