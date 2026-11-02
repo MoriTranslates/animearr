@@ -228,7 +228,7 @@ export function planSchedule(now = Date.now()) {
           "INSERT INTO search_state (episode_id, tvdb_id, air_utc, next_at, state) VALUES (?, ?, ?, ?, 'waiting') ON CONFLICT(episode_id) DO NOTHING",
         )
         .run(e.id, m.tvdbId, e.air_utc, e.air_utc + s.searchDelayMin * 60_000);
-      added += Number(r.changes);
+      added += Number(r.changes) || reopenReturned(e.id, "new", e.air_utc + s.searchDelayMin * 60_000);
     }
   }
   return added;
@@ -468,6 +468,22 @@ async function decideSafely(st: StateRow, now: number) {
 const HOUR = 3_600_000;
 const BACKLOG_STATES = "('backlog', 'retry')"; // a failed backlog grab comes back as 'retry' but stays in the backlog's budget
 
+const LEFT_SONARR = "no longer in Sonarr";
+/**
+ * A search closed because its episode left Sonarr's list reopens when the episode is back (still missing, in scope):
+ * the close may have come from a cache gap (a rebuilt cache, a half answer), and the schedule's insert never touches
+ * an existing row (review 2026-11-02, H11). Returns 1 when it reopened.
+ */
+function reopenReturned(episodeId: number, kind: "new" | "backlog", nextAt: number): number {
+  return Number(
+    db
+      .prepare(
+        "UPDATE search_state SET state = ?, kind = ?, attempts = 0, next_at = ?, last_why = 'back in Sonarr' WHERE episode_id = ? AND state = 'done' AND last_why = ?",
+      )
+      .run(kind === "new" ? "waiting" : "backlog", kind, nextAt, episodeId, LEFT_SONARR).changes,
+  );
+}
+
 /**
  * Closes schedule rows whose episode got a file in the meantime (Sonarr, a manual import), was unmonitored, left
  * Sonarr or isn't managed any more. Runs even while the missing-episode search is off. 'replace' rows are left
@@ -490,7 +506,7 @@ function closeFound(now = Date.now()) {
   tx(db, () => {
     for (const r of rows) {
       const e = epInfo.get(r.episode_id) as { has_file: number; monitored: number } | undefined;
-      if (!e) close.run("no longer in Sonarr", r.episode_id);
+      if (!e) close.run(LEFT_SONARR, r.episode_id);
       else if (e.has_file) close.run("Sonarr has a file", r.episode_id);
       else if (r.kind === "backlog" && !managedIds.has(r.tvdb_id)) close.run("not managed", r.episode_id);
       else if (managedIds.has(r.tvdb_id) && !inScopeCached(r.tvdb_id, r.episode_id))
@@ -529,7 +545,7 @@ export function planBacklog(now = Date.now()) {
       const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
       for (const e of (listEps.all(m.seriesId, now - 30 * DAY) as { id: number; air_utc: number }[]).filter((x) => scoped.has(x.id))) {
         const n = Number(insert.run(e.id, m.tvdbId, e.air_utc, now).changes);
-        added += n || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
+        added += n || reopenReturned(e.id, "backlog", now) || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
       }
     }
   });

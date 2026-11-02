@@ -242,15 +242,40 @@ async function syncSonarr(full: boolean, res: SyncResult) {
   });
 }
 
+/**
+ * Is this episode list shorter than Sonarr itself says the show is (review 2026-11-02, H11)? Sonarr's series record
+ * counts every season's episodes (statistics.totalEpisodeCount, cached from the last series read); its episode list
+ * should hold at least that many per season. When Sonarr really removes episodes those counts drop too, so a real
+ * removal still applies. Without counts (an old Sonarr) a list shorter than the cached one can't be told from a half
+ * answer, so it counts as short too. Returns what's missing, or null.
+ */
+function shortEpisodeList(seriesId: number, eps: { seasonNumber: number }[]): string | null {
+  const row = cache.prepare("SELECT seasons FROM series WHERE id = ?").get(seriesId) as { seasons: string } | undefined;
+  const seasons = (row ? (JSON.parse(row.seasons) as { season: number; total?: number }[]) : []).filter((s) => (s.total ?? 0) > 0);
+  if (seasons.length) {
+    const got = new Map<number, number>();
+    for (const e of eps) got.set(e.seasonNumber, (got.get(e.seasonNumber) ?? 0) + 1);
+    const lacking = seasons.filter((s) => (got.get(s.season) ?? 0) < s.total!);
+    return lacking.length ? lacking.map((s) => `season ${s.season}: ${got.get(s.season) ?? 0} of ${s.total}`).join(", ") : null;
+  }
+  const cached = (cache.prepare("SELECT COUNT(*) AS n FROM episodes WHERE series_id = ?").get(seriesId) as { n: number }).n;
+  return eps.length < cached ? `${eps.length} episodes, ${cached} known` : null;
+}
+
 /** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   if (isNativeSeriesId(seriesId)) return rematerializeSeries(seriesId);
   const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
-  // Keep the cached episodes over a malformed or empty answer: a Sonarr show always has episodes, so none means Sonarr
-  // half-answered, and an emptied list would close the show's managed searches (the files list may be empty).
-  if (!Array.isArray(eps) || !Array.isArray(files)) throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
-  if (!eps.length && cache.prepare("SELECT 1 FROM episodes WHERE series_id = ? LIMIT 1").get(seriesId))
-    throw new Error("Sonarr answered with no episodes for this show; kept the cached ones");
+  // Keep the cached episodes over a malformed or short answer: a dropped episode closes its managed search. A record
+  // without an id would even become a made-up episode (SQLite numbers a NULL key itself). The files list may be empty.
+  if (
+    !Array.isArray(eps) ||
+    !Array.isArray(files) ||
+    eps.some((e) => !e || typeof e.id !== "number" || typeof e.seasonNumber !== "number" || typeof e.episodeNumber !== "number")
+  )
+    throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
+  const short = shortEpisodeList(seriesId, eps);
+  if (short) throw new Error(`Sonarr's episode list is short (${short}); kept the cached episodes, read again on the next sync`);
   tx(cache, () => {
     cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);
     cache.prepare("DELETE FROM files WHERE series_id = ?").run(seriesId);
