@@ -15,12 +15,21 @@ interface Row {
   season?: number | null;
   episodes?: number[];
   absolute?: number[];
+  /** Checked only when given. */
+  batch?: boolean;
 }
 
 function check(rows: Row[]) {
   for (const r of rows) {
     const p = parseRelease(r.name);
-    const got = { title: p.title, group: p.group, season: p.season, episodes: p.episodes, absolute: p.absolute };
+    const got = {
+      title: p.title,
+      group: p.group,
+      season: p.season,
+      episodes: p.episodes,
+      absolute: p.absolute,
+      ...(r.batch === undefined ? {} : { batch: p.batch }),
+    };
     const want = { season: null, episodes: [], absolute: [], ...r };
     delete (want as Partial<Row>).name;
     assert.deepEqual(got, want, r.name);
@@ -149,6 +158,79 @@ test("a trailing-number title identifies its own show, not the show named by the
     [[3, 5]],
   );
   assert.equal(identify("Kaiju.No.8.S01E05.1080p.WEB.H264-GRP", ctx).candidate?.tvdbId, 3);
+});
+
+test("a title ending in 0 before ' - NN' is one episode, not a batch from 0 (Steins;Gate 0)", () => {
+  check([
+    { name: "Steins;Gate 0 - 05", title: "Steins;Gate 0", group: null, absolute: [5], batch: false },
+    {
+      name: "[SubsPlease] Steins;Gate 0 - 05 (1080p) [ABCD1234].mkv",
+      title: "Steins;Gate 0",
+      group: "SubsPlease",
+      absolute: [5],
+      batch: false,
+    },
+    {
+      name: "[Group] Steins;Gate 0 - 01 - 23 [Batch]",
+      title: "Steins;Gate 0",
+      group: "Group",
+      absolute: Array.from({ length: 23 }, (_, i) => i + 1),
+      batch: true,
+    },
+  ]);
+});
+
+test("titles ending in a number or ';:_' before ' - NN', and real batches: rows that must not change", () => {
+  const r12 = Array.from({ length: 12 }, (_, i) => i + 1);
+  check([
+    { name: "[Group] Zoku Owarimonogatari - 03 [1080p]", title: "Zoku Owarimonogatari", group: "Group", absolute: [3], batch: false },
+    { name: "[SubsPlease] Re:Zero - 05 (1080p)", title: "Re:Zero", group: "SubsPlease", absolute: [5], batch: false },
+    {
+      name: "[Group] Ghost in the Shell: SAC_2045 - 03 [1080p]",
+      title: "Ghost in the Shell: SAC_2045",
+      group: "Group",
+      absolute: [3],
+      batch: false,
+    },
+    { name: "Show - 01-12", title: "Show", group: null, absolute: r12, batch: true },
+    { name: "Show - 01 ~ 12", title: "Show", group: null, absolute: r12, batch: true },
+    { name: "Show (01-12)", title: "Show", group: null, absolute: r12, batch: true },
+    {
+      name: "[Group] Show 01-24 [Batch]",
+      title: "Show",
+      group: "Group",
+      absolute: Array.from({ length: 24 }, (_, i) => i + 1),
+      batch: true,
+    },
+    { name: "[Group] Show - 01 - 12 [Batch]", title: "Show", group: "Group", absolute: r12, batch: true },
+    { name: "[Group] Show 01 - 12", title: "Show", group: "Group", absolute: r12, batch: true },
+    { name: "[Group] Show - 00 - 12", title: "Show", group: "Group", absolute: [0, ...r12], batch: true },
+    { name: "[Group] Show - 0 - 12 (Complete)", title: "Show", group: "Group", absolute: [0, ...r12], batch: true },
+    { name: "[Group] Show 0 - 12 [Batch]", title: "Show", group: "Group", absolute: [0, ...r12], batch: true },
+  ]);
+});
+
+test("Steins;Gate 0 identifies Steins;Gate 0, not the decoy Steins;Gate", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const eps = (t: number) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: 1,
+      episode: i + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const index = new AliasIndex({ library: [lib(1, "Steins;Gate 0"), lib(2, "Steins;Gate")] });
+  const ctx = { index, now: Date.parse("2026-11-02T00:00:00Z"), episodesFor: (t: number) => eps(t) };
+  const r = identify("[SubsPlease] Steins;Gate 0 - 05 (1080p) [ABCD1234].mkv", ctx);
+  assert.equal(r.candidate?.tvdbId, 1, r.summary);
+  assert.deepEqual(
+    r.resolution?.episodes.map((e) => [e.season, e.episode]),
+    [[1, 5]],
+  );
 });
 
 test("real paths still reduce to the file name (unchanged)", () => {

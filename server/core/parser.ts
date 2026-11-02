@@ -514,6 +514,14 @@ export function parseRelease(input: string): ParsedRelease {
     const b = +m[2];
     const spacedDash = /\d\s+-\s+\d/.test(m[0]);
     const batchWord = /\b(batch|complete)\b/i.test(s);
+    // A bare "0" right after the title, before " - ", ends the title ("Steins;Gate 0 - 05"); look again from the next
+    // number for a range after it ("Steins;Gate 0 - 01 - 23 [Batch]"). A padded start ("01 - 12", "00 - 12"), a "0"
+    // after a dash ("Show - 0 - 12") and a batch with no other range ("Show 0 - 12 [Batch]") stay ranges, as before.
+    const later = /^\d{1,4}\s*(?:[-~]|\s-\s)\s*\d{1,4}(?=\s|\)|$|v\d)/.test(work.slice(m.index + m[0].length - m[2].length));
+    if (spacedDash && m[1] === "0" && !m[0].startsWith("-") && (!batchWord || later)) {
+      reRange.lastIndex = m.index + 1;
+      continue;
+    }
     if (spacedDash && !(m[1].startsWith("0") || batchWord)) continue;
     if (b > a && !(isYear(a) || isYear(b)) && b - a < 1500) {
       const off = m[0].search(/\d/);
