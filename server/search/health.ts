@@ -134,6 +134,12 @@ export function indexerOff(indexerId: number | null | undefined) {
   return !!r && r.state !== "on";
 }
 
+/** Off since before `t`: a standing state (kept off, or tripped earlier), not one that failures just now caused. */
+export function indexerOffBefore(indexerId: number, t: number) {
+  const r = row(indexerId);
+  return !!r && (r.state === "kept-off" || (r.state === "off" && (r.off_since ?? t) < t));
+}
+
 /** Recent failures vs. grabs that got to the download client, for one indexer; plus the breaker state. */
 const memo = new Map<number, { at: number; v: Known["indexerHealth"] }>();
 export function indexerHealth(indexerId: number | null | undefined, now = Date.now()): Known["indexerHealth"] {

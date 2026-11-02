@@ -14,7 +14,7 @@
  */
 import { isWanted } from "../library/movies.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, searchConfigured, type SearchOutage } from "./indexers.js";
 import { langList } from "../core/langs.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
@@ -234,8 +234,11 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
     db.prepare("INSERT INTO upgrade_searches (at) VALUES (?)").run(now);
     searched++;
     let results: SearchResult[];
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(w.tvdbId, [w.episodeId], { budget: 8 })).results;
+      const r = await deps.search(w.tvdbId, [w.episodeId], { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       save(w.episodeId, w.tvdbId, {
         state: "waiting",
@@ -248,6 +251,17 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
       continue;
     }
     const ok = results.filter((r) => qualifies(r, minConf, w.height));
+    // Not every indexer answered: not "no dual-audio release yet", and not a search that waits recheckDays (M4).
+    if (!ok.length && gap) {
+      save(w.episodeId, w.tvdbId, {
+        state: "waiting",
+        why: `couldn't search fully: ${gap.why}; looking again on the next pass`,
+        now,
+        fileId: w.fileId,
+        release: null,
+      });
+      continue;
+    }
     if (!ok.length) {
       save(w.episodeId, w.tvdbId, {
         state: "waiting",
@@ -440,6 +454,14 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
           !(x.protocol === "torrent" && !x.seeders)
         );
       });
+      const gap = couldntSearch(r);
+      if (!ok.length && gap) {
+        save(w.movieId, "waiting", `couldn't search fully: ${gap.why}; looking again on the next pass`, {
+          filePath: w.filePath,
+          release: null,
+        });
+        continue;
+      }
       if (!ok.length) {
         save(w.movieId, "waiting", `no dual-audio release yet (${r.matched} releases matched); next look in ${s.recheckDays} days`, {
           searched: true,

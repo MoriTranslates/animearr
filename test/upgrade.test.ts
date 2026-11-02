@@ -216,3 +216,23 @@ test("import of a dual-upgrade grab is strict: a sub-only file fails before it r
   assert.equal(imports.length, 0, "nothing imported");
   assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get(cand.title));
 });
+
+test("indexers down (all or some): not recorded as 'no dual-audio release yet', and not pushed back by recheckDays", async () => {
+  patchSettings((s) => ({ ...s, dualUpgrade: { ...s.dualUpgrade, mode: "auto", perHour: 50 } }));
+  cache.prepare("UPDATE files SET audio_langs = 'jpn' WHERE id = ?").run(3003 + 50000);
+  for (const kind of ["all", "partial"] as const) {
+    db.prepare("DELETE FROM upgrade_state WHERE episode_id = 3003").run();
+    db.prepare("DELETE FROM upgrade_searches").run();
+    const d: Deps = {
+      ...deps([]).d,
+      search: (async () => ({ results: [], outage: { kind, why: "O1 didn't answer (timed out)", counts: false } })) as never,
+    };
+    await upgradePass(d, now + 30 * DAY);
+    const st = db.prepare("SELECT state, last_at, why FROM upgrade_state WHERE episode_id = 3003").get() as
+      { state: string; last_at: number | null; why: string } | undefined;
+    assert.ok(st, `a row for ${kind}`);
+    assert.equal(st.last_at, null, `${kind}: not counted as a search (next pass looks again)`);
+    assert.match(st.why, /didn't answer/);
+    assert.doesNotMatch(st.why, /no dual-audio release yet/);
+  }
+});

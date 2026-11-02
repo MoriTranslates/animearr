@@ -15,7 +15,7 @@ import { episodesAreNew, grabGate, GrabsPausedError } from "../grabs/downloads.j
 import { NATIVE_BASE } from "./nativeIds.js";
 import { listManaged, type ManagedRow } from "./managedList.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "../search/indexers.js";
+import { couldntSearch, OUTAGE_RETRY_MS, searchConfigured } from "../search/indexers.js";
 import { searchAll } from "../search/indexers.js";
 import { setSeriesMonitored } from "../arr/sonarr.js";
 import { identify } from "../core/identify.js";
@@ -318,15 +318,8 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
-  // Prowlarr down: every query failed. Try again later without using up an attempt.
-  if (res.errors.length && res.errors.length >= res.queries.length) {
-    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(
-      now + 30 * 60_000,
-      `Prowlarr didn't answer (${res.errors[0]}); trying again in 30 min`,
-      st.episode_id,
-    );
-    return;
-  }
+  // Indexers down (all of them, or some): "nothing found" doesn't count; see below, once the picks are known.
+  const gap = couldntSearch(res);
   const season = res.targets[0]?.season ?? null;
   const ok = automaticPicks(res.results, st.tvdb_id, season, { delays: true });
   // Everything good is still inside its protocol delay: look again when the first one is old enough.
@@ -362,6 +355,17 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     }
   }
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
+  // Nothing to grab, but not every indexer answered: not an attempt (no give-up, no backoff, no retryDays), asked
+  // again soon, and the reason is on the schedule (review 2026-11-02, M4).
+  if (gap && !(best && ok.includes(best))) {
+    outagesThisRound++;
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(
+      now + OUTAGE_RETRY_MS,
+      `Couldn't search fully: ${gap.why}; ${res.found} releases seen, trying again in ${OUTAGE_RETRY_MS / 60_000} min`,
+      st.episode_id,
+    );
+    return;
+  }
   const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
   if (best && ok.includes(best)) {
@@ -616,10 +620,13 @@ export function backlogSummary(now = Date.now()) {
 }
 
 let ticking = false;
+/** Searches this round that couldn't ask every indexer (the job's status says so instead of "done" alone). */
+let outagesThisRound = 0;
 /** Scheduler tick: plan, then search episodes that are due (a few per tick, to be gentle on indexers). */
 export async function managedTick(now = Date.now()) {
   if (ticking || dbState.corrupt || !searchConfigured() || !listManaged().length) return;
   ticking = true;
+  outagesThisRound = 0;
   try {
     planSchedule(now);
     const due = db
@@ -629,10 +636,13 @@ export async function managedTick(now = Date.now()) {
       .all(now) as unknown as StateRow[];
     for (const st of due) await decideSafely(st, now);
     const backlog = await backlogPass(now);
+    const detail = `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`;
     setJob(
       "managed",
-      "done",
-      `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`,
+      outagesThisRound ? "error" : "done",
+      outagesThisRound
+        ? `${detail}. ${outagesThisRound} couldn't reach every indexer: tried again in ${OUTAGE_RETRY_MS / 60_000} min`
+        : detail,
     );
   } finally {
     ticking = false;

@@ -237,6 +237,26 @@ test("auto: the upgrade is a Replace-season grab of the files below the goal, wi
   );
 });
 
+test("indexers down (all or some): not 'nothing better', no 'no Blu-ray' count, not pushed back by recheckDays", async () => {
+  for (const kind of ["all", "partial"] as const) {
+    db.prepare("UPDATE quality_upgrade SET last_at = NULL, no_bd = 0, why = '' WHERE tvdb_id = 700003").run();
+    const d: Deps = {
+      ...deps([]).d,
+      search: (async () => ({ results: [], outage: { kind, why: "O1 didn't answer (HTTP 500)", counts: false } })) as never,
+    };
+    await qualityUpgradePass(d, now + 3 * DAY + (kind === "all" ? 0 : HOUR_MS));
+    const st = db.prepare("SELECT last_at, no_bd, why FROM quality_upgrade WHERE tvdb_id = 700003 AND season = 1").get() as {
+      last_at: number | null;
+      no_bd: number;
+      why: string;
+    };
+    assert.equal(st.last_at, null, `${kind}: not counted as a search`);
+    assert.equal(st.no_bd, 0, `${kind}: an outage isn't evidence that no Blu-ray exists`);
+    assert.match(st.why, /didn't answer/);
+  }
+});
+const HOUR_MS = 3_600_000;
+
 test("SeaDex: parsed from releases.moe, cached per AniList entry, merged per TVDB season, fetched within a budget", async () => {
   const json = {
     items: [

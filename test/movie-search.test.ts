@@ -118,6 +118,29 @@ test("pass: grabs within the budget, skips what Radarr is downloading, backs off
   assert.ok(st(1)!.next_at >= now + 4 * HOUR + 12 * HOUR - 1000, "second attempt waits 12 h");
 });
 
+test("indexers down (all or some): not an attempt, not 'nothing acceptable', tried again within the hour", async () => {
+  for (const [i, kind] of (["all", "partial"] as const).entries()) {
+    const t = now + (30 + i * 2) * HOUR;
+    db.prepare("UPDATE movie_search SET state = 'retry', next_at = 0 WHERE movie_id = 1").run();
+    db.prepare("DELETE FROM movie_searches").run();
+    const before = st(1)!.attempts;
+    const deps = {
+      search: (async () => ({
+        results: [],
+        matched: 0,
+        found: 0,
+        outage: { kind, why: "O1 didn't answer (HTTP 401)", counts: false },
+      })) as never,
+      grab: (async () => assert.fail("no grab")) as never,
+      radarrQueue: async () => [],
+    };
+    await moviePass(deps, t);
+    assert.equal(st(1)!.attempts, before, `${kind}: not an attempt`);
+    assert.ok(st(1)!.next_at <= t + HOUR, `${kind}: tried again within the hour`);
+    assert.match(st(1)!.last_why, /didn't answer/);
+  }
+});
+
 test("dual upgrades for movies: a Dual-mode movie with a sub-only file is a placeholder; log mode reports", async () => {
   setMoviePrefs(5, null, "dual");
   assert.deepEqual(

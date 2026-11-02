@@ -38,7 +38,7 @@ import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
 import { ownedElsewhere } from "../library/duplicates.js";
 import { wantedEpisodeIds } from "../library/scope.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, searchConfigured, type SearchOutage } from "./indexers.js";
 import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
@@ -550,14 +550,30 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     note("search", now);
     res.searched++;
     let results: SearchResult[];
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(u.tvdbId, ids, { budget: 8 })).results;
+      const r = await deps.search(u.tvdbId, ids, { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       save(u.tvdbId, u.season, { state: "waiting", why: `search failed: ${(e as Error).message}`, now, searched: true });
       continue;
     }
-    const { bestSeen, noBd, prof, seadex, pick } = analyse(results, u, st, minConfidence);
+    const analysed = analyse(results, u, st, minConfidence);
+    const { bestSeen, prof, seadex, pick } = analysed;
+    // Not every indexer answered: no evidence that no Blu-ray exists (the "no BD" count stays as it was).
+    const noBd = gap ? (st?.no_bd ?? 0) : analysed.noBd;
     const label = `${u.title} S${String(u.season).padStart(2, "0")}`;
+    // ...and not "nothing better", nor a search that waits recheckDays (review 2026-11-02, M4).
+    if (!pick && gap) {
+      save(u.tvdbId, u.season, {
+        state: "waiting",
+        why: `couldn't search fully: ${gap.why}; looking again on the next pass`,
+        now,
+        release: null,
+      });
+      continue;
+    }
     if (!pick) {
       save(u.tvdbId, u.season, {
         state: "waiting",
@@ -655,13 +671,19 @@ export async function upgradeSeasonNow(
     )
       return refuse("These episodes are already downloading");
     note("search", now);
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(tvdbId, ids, { budget: 8 })).results;
+      const r = await deps.search(tvdbId, ids, { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       return { status: "failed", why: `Search failed: ${(e as Error).message}` };
     }
-    const a = analyse(results, unit, stateOf(tvdbId, season), getSettings().managed.minConfidence);
+    const prev = stateOf(tvdbId, season);
+    const a = analyse(results, unit, prev, getSettings().managed.minConfidence);
     ({ bestSeen, noBd } = a);
+    if (gap) noBd = prev?.no_bd ?? 0; // an outage is no evidence that no Blu-ray exists
+    if (!a.pick && gap) return { status: "failed", why: `Couldn't search fully: ${gap.why}. Nothing was grabbed; try again later.` };
     if (!a.pick) {
       save(tvdbId, season, {
         state: "waiting",

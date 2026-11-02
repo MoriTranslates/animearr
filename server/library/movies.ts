@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import { type ProwlarrRelease } from "../arr/prowlarr.js";
-import { searchAll } from "../search/indexers.js";
+import { searchAll, searchOutage, type IndexerFailure } from "../search/indexers.js";
 import { langList } from "../core/langs.js";
 import { parseRelease, type ParsedRelease } from "../core/parser.js";
 import { compareRanked, rankRelease } from "../core/rank.js";
@@ -379,10 +379,13 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
   const results: MovieSearchResult[] = [];
   const started = Date.now();
   const yearQ = m.year ? `${m.title} ${m.year}` : null;
+  const failed = new Map<string, IndexerFailure>();
+  const onFailed = (fs: IndexerFailure[]) => fs.forEach((f) => failed.set(f.name, f));
   await Promise.all(
     queries.map(async (q) => {
       try {
-        for (const r of await search(q, q === yearQ ? { categories: [] } : {})) if (!raw.has(r.guid)) raw.set(r.guid, r);
+        for (const r of await search(q, q === yearQ ? { categories: [], onFailed } : { onFailed }))
+          if (!raw.has(r.guid)) raw.set(r.guid, r);
       } catch (e) {
         errors.push(`${q}: ${(e as Error).message}`);
       }
@@ -524,6 +527,8 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
     matched: results.length,
     skipped,
     errors,
+    /** Whether every, some or no indexer answered (couldn't search is never "found nothing"). */
+    outage: searchOutage(queries.length, errors, [...failed.values()], started),
     tookMs: Date.now() - started,
     results,
   };

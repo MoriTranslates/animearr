@@ -32,6 +32,7 @@ import { scopedEpisodeIds } from "../library/scope.js";
 import { ownedElsewhere, ownedWhy } from "../library/duplicates.js";
 import { properMode } from "./propers.js";
 import { inLane } from "./searchQueue.js";
+import { couldntSearch } from "./indexers.js";
 import crypto from "node:crypto";
 
 export interface AutoDeps {
@@ -205,6 +206,8 @@ async function checkVersion(
   try {
     const res = await deps.search(tvdbId, [id], { budget: 12 });
     const ok = automaticPicks(res.results, tvdbId, e.season).filter((r) => r.rank.flags.some((f) => f.key === "newerVersion"));
+    const gap = couldntSearch(res);
+    if (!ok.length && gap) return { episodeIds: [id], label, outcome: "failed", why: `couldn't check for a newer version: ${gap.why}` };
     if (!ok.length) return none("already has a file (no newer version found)");
     const o = await grabOne(deps, tvdbId, [id], ok, label, "replace");
     logDecision("info", {
@@ -292,6 +295,19 @@ async function searchTargets(
     try {
       const res = await deps.search(tvdbId, [id], { budget: 12, earlyStop: { minConfidence: minConf } });
       const ok = automaticPicks(res.results, tvdbId, e.season);
+      // Not every indexer answered: say so, instead of "needs a look" at a list that isn't complete (M4).
+      const gap = couldntSearch(res);
+      if (!ok.length && gap) {
+        const why = `couldn't search fully: ${gap.why}`;
+        out.push({ episodeIds: [id], label, outcome: "failed", why });
+        logDecision("fail", {
+          tvdbId,
+          title: seriesTitle,
+          episodeIds: [id],
+          why: `Automatic search for ${seriesTitle} ${label}: ${why}. Nothing was grabbed; try again once the indexers answer.`,
+        });
+        continue;
+      }
       if (!ok.length) {
         const why = gateWhy(res.results, minConf);
         out.push({ episodeIds: [id], label, outcome: "needs-look", why: `${why} (${res.results.length} results)` });

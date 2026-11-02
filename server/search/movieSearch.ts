@@ -12,7 +12,7 @@
 import { grabGate } from "../grabs/downloads.js";
 import { isNativeMovieId, nativeMovies } from "../library/native.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, OUTAGE_RETRY_MS, searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "../arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "../library/movies.js";
@@ -220,6 +220,18 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
           !x.rank.flags.some((f) => f.key === "burnIn") &&
           !(x.protocol === "torrent" && !x.seeders),
       );
+      // Not every indexer answered: not an attempt and not "nothing acceptable"; asked again soon (M4).
+      const gap = couldntSearch(res);
+      if (!ok.length && gap) {
+        const why = `couldn't search fully: ${gap.why}`;
+        db.prepare("UPDATE movie_search SET state = 'retry', next_at = ?, last_why = ? WHERE movie_id = ?").run(
+          now + OUTAGE_RETRY_MS,
+          `${why}; trying again in ${OUTAGE_RETRY_MS / 60_000} min`,
+          r.movie_id,
+        );
+        logDecision("fail", { title: label, why: `Movie search for ${label}: ${why}`, detail: { movieId: r.movie_id } });
+        continue;
+      }
       if (!ok.length) {
         const why = `nothing acceptable yet (${res.matched} of ${res.found} releases matched)`;
         db.prepare("UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ? WHERE movie_id = ?").run(
