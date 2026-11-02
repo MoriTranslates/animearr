@@ -154,6 +154,35 @@ test("secrets are masked for the browser and kept when saved back masked", () =>
   assert.equal(cleanChannels(masked, saved)[0].url, "https://other.example.com/x");
 });
 
+test("saved secrets are dropped when the destination changes, unless they are typed again (review H5)", () => {
+  const saved = full();
+  const masked = saved.map(maskChannel);
+
+  // Webhook pointed elsewhere with the header left masked: the stored Authorization header must not follow it.
+  const hook = { ...masked[0], url: "https://attacker.example.net/collect" };
+  const [h] = cleanChannels([hook], saved);
+  assert.equal(h.url, "https://attacker.example.net/collect");
+  assert.deepEqual(h.headers, [], "masked header dropped for a new address");
+  assert.ok(!JSON.stringify(buildRequest(h, note)).includes("SECRETHDR"));
+  // ...but a header typed again for the new address is kept.
+  const [h2] = cleanChannels([{ ...hook, headers: [{ name: "Authorization", value: "Bearer NEW" }] }], saved);
+  assert.deepEqual(h2.headers, [{ name: "Authorization", value: "Bearer NEW" }]);
+  // Same address (masked or typed out identically): the header stays.
+  assert.equal(cleanChannels([masked[0]], saved)[0].headers[0].value, "Bearer SECRETHDR");
+  assert.equal(cleanChannels([{ ...masked[0], url: saved[0].url }], saved)[0].headers[0].value, "Bearer SECRETHDR");
+
+  // Email: a new server, port or security setting with the password left masked drops the password.
+  for (const patch of [{ host: "smtp.attacker.example.net" }, { port: 25 }, { secure: "none" }]) {
+    const [e] = cleanChannels([{ ...masked[3], ...patch }], saved);
+    assert.equal(e.password, "", `password dropped for ${JSON.stringify(patch)}`);
+  }
+  const [e2] = cleanChannels([{ ...masked[3], host: "smtp.attacker.example.net", password: "typed-again" }], saved);
+  assert.equal(e2.password, "typed-again");
+  // Unchanged server (host compared without case): the password stays.
+  assert.equal(cleanChannels([masked[3]], saved)[0].password, "SMTPPASSWORD");
+  assert.equal(cleanChannels([{ ...masked[3], host: "SMTP.Example.com" }], saved)[0].password, "SMTPPASSWORD");
+});
+
 test("channel input is validated", () => {
   assert.throws(() => cleanChannels([{ type: "webhook", url: "ftp://x" }], []), /web address|http/);
   assert.throws(() => cleanChannels([{ type: "webhook", url: "http://169.254.169.254/x" }], []), /isn't allowed/);
