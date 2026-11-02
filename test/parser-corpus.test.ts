@@ -288,6 +288,43 @@ test("Steins;Gate 0 identifies Steins;Gate 0, not the decoy Steins;Gate", () => 
   );
 });
 
+test("'Show 0 - 12' with no batch word: a batch from episode 0 when 'Show 0' is unknown and the show has 0-12 (review #4)", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  // "Show" has a prologue episode 0; "Steins;Gate" (the decoy for "Steins;Gate 0") starts at 1.
+  const eps = (t: number) =>
+    Array.from({ length: t === 1 ? 13 : 24 }, (_, i) => {
+      const n = t === 1 ? i : i + 1;
+      return {
+        id: t * 100 + i + 1,
+        season: 1,
+        episode: n,
+        absolute: n,
+        sceneSeason: null,
+        sceneEpisode: null,
+        sceneAbsolute: null,
+        airUtc: 0,
+      };
+    });
+  const ctx = {
+    index: new AliasIndex({ library: [lib(1, "Show"), lib(2, "Steins;Gate")] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+  };
+  // The reviewer's repro (was episode 12 of the unknown "Show 0").
+  const batch = identify("[Group] Show 0 - 12 [1080p]", ctx);
+  assert.equal(batch.candidate?.tvdbId, 1, batch.summary);
+  assert.deepEqual(
+    batch.resolution?.episodes.map((e) => e.episode),
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    batch.summary,
+  );
+  assert.equal(batch.parsed.batch, true);
+  // The decoy: "Steins;Gate 0 - 05" never becomes episodes 0-5 of Steins;Gate (it has no episode 0): still unknown.
+  const sg0 = identify("[SubsPlease] Steins;Gate 0 - 05 (1080p) [ABCD1234].mkv", ctx);
+  assert.equal(sg0.candidate, null, sg0.summary);
+  assert.equal(sg0.parsed.title, "Steins;Gate 0");
+});
+
 test("a year in the title stays in the title (remakes)", () => {
   check([
     { name: "[Group] Hunter x Hunter (2011) - 05 [1080p]", title: "Hunter x Hunter (2011)", group: "Group", absolute: [5] },

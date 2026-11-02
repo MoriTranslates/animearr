@@ -34,20 +34,35 @@ export function identify(
     return opts.tvdbId !== undefined ? found.filter((c) => c.tvdbId === opts.tvdbId) : found;
   };
   let cands = lookup(parsed);
-  // "One Piece 1050 S21E1050": the parser keeps a number before SxxEyy in the title ("Mob Psycho 100 S03E05"). When
-  // that title is unknown, try it as "Title" + absolute number, but only accept a show whose resolved episode has
-  // exactly that absolute number, so "Mob Psycho 100" never lands on a show called "Mob Psycho".
-  let absCheck: number | null = null;
+  // When the parsed title is unknown, two readings the parser can't settle without the library get a second try. A
+  // fallback show is accepted only when its episodes confirm the reading (`confirm` says why not); otherwise the name
+  // stays unknown, exactly as without the fallback, so a shorter title never pulls the release onto a decoy show.
+  let confirm = null as ((r: Resolution) => string | null) | null;
+  const retry = (alt: ParsedRelease, check: (r: Resolution) => string | null) => {
+    const altCands = lookup(alt);
+    if (!altCands.length) return;
+    parsed = alt;
+    cands = altCands;
+    confirm = check;
+  };
+  // "One Piece 1050 S21E1050": the parser keeps a number before SxxEyy in the title ("Mob Psycho 100 S03E05"). Try
+  // "Title" + absolute number; the resolved episode must have exactly that absolute number.
   const numbered =
     !cands.length && parsed.episodes.length === 1 && !parsed.absolute.length ? /^(.*\S)\s+(\d{1,4})$/.exec(parsed.title) : null;
   if (numbered) {
-    const alt = { ...parsed, title: numbered[1], absolute: [Number(numbered[2])] };
-    const altCands = lookup(alt);
-    if (altCands.length) {
-      parsed = alt;
-      cands = altCands;
-      absCheck = alt.absolute[0];
-    }
+    const n = Number(numbered[2]);
+    retry({ ...parsed, title: numbered[1], absolute: [n] }, (r) =>
+      r.episodes.length === 1 && r.episodes[0].absolute === n ? null : `${n} isn't the absolute number of ${r.label}`,
+    );
+  }
+  // "Show 0 - 12" with no batch word: the parser reads "Show 0", episode 12 ("Steins;Gate 0 - 05"). Try "Show",
+  // episodes 0-12; the show must hold every one of them.
+  const zero = !cands.length && !parsed.episodes.length && parsed.absolute.length === 1 ? /^(.*\S)\s+0$/.exec(parsed.title) : null;
+  if (zero && parsed.absolute[0] > 0) {
+    const last = parsed.absolute[0];
+    retry({ ...parsed, title: zero[1], absolute: Array.from({ length: last + 1 }, (_, i) => i), batch: true, fullSeason: false }, (r) =>
+      r.episodes.length === last + 1 ? null : `the show doesn't hold episodes 0-${last}`,
+    );
   }
   const others = cands
     .slice(1)
@@ -70,8 +85,8 @@ export function identify(
       now: ctx.now,
       expect: opts.expect,
     });
-    if (absCheck !== null && r.ok && !(r.episodes.length === 1 && r.episodes[0].absolute === absCheck))
-      r = { ...r, ok: false, why: [...r.why, `${absCheck} isn't the absolute number of ${r.label}`] };
+    const notConfirmed = confirm && r.ok ? confirm(r) : null;
+    if (notConfirmed) r = { ...r, ok: false, why: [...r.why, notConfirmed] };
     first ??= { c, r };
     if (r.ok) {
       const title = ctx.index.library(c.tvdbId)?.title ?? c.matchedTitle;
@@ -85,7 +100,7 @@ export function identify(
     }
   }
   // The fallback found no show that confirms the number: the name stays unknown, as without it.
-  if (absCheck !== null)
+  if (confirm)
     return {
       parsed: original,
       candidate: null,
