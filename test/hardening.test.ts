@@ -206,7 +206,7 @@ test("T1 (was already right): tar entry names are only map keys, never paths", (
 });
 
 test("S3/S4: Sonarr-API query names in any case; the series editor maps onto AnimeArr and never touches files", async () => {
-  const { registerSonarrApi } = await import("../server/sonarrApi.js");
+  const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
   const app = Fastify({ routerOptions: { caseSensitive: false } });
   registerSonarrApi(app, { urlBase: "", deps: {} as never } as never);
   await app.ready();
@@ -277,7 +277,7 @@ test("M10: outbound addresses refuse link-local and metadata in every spelling; 
 });
 
 test("regexes meant as \b word boundaries are real boundaries (they were literal backspace bytes)", async () => {
-  const { qualityResource } = await import("../server/sonarrResources.js");
+  const { qualityResource } = await import("../server/api/sonarrResources.js");
   assert.deepEqual(
     qualityResource("[Grp] Show - 05v2 REPACK (1080p)").revision,
     { version: 1, real: 0, isRepack: true },
@@ -286,6 +286,6 @@ test("regexes meant as \b word boundaries are real boundaries (they were literal
   assert.deepEqual(qualityResource("Show.S01E05.v2.REPACK.1080p.WEB-DL-Grp").revision, { version: 2, real: 0, isRepack: true });
   assert.equal(qualityResource("Show.S01E05.1080p.WEB-DL-Grp").revision.isRepack, false);
   // No source file carries a control character any more.
-  for (const f of ["sonarrApi.ts", "episodes.ts", "search/search.ts", "import/importer.ts"])
+  for (const f of ["api/sonarrApi.ts", "episodes.ts", "search/search.ts", "import/importer.ts"])
     assert.ok(!/[\x00-\x08]/.test(fs.readFileSync(new URL(`../server/${f}`, import.meta.url), "utf8")), f);
 });

@@ -13,17 +13,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import { listDecisions } from "./system/activity.js";
-import { langList } from "./core/langs.js";
-import { cache, db, dbState } from "./system/db.js";
-import { breakerList } from "./search/health.js";
-import { recordFor } from "./import/mediafiles.js";
-import { mappedPath } from "./system/paths.js";
-import { type Candidate, type GrabRow } from "./grabs/pipelineState.js";
-import { upgradeUnits } from "./search/qualityUpgrade.js";
-import type { SearchResult } from "./search/search.js";
-import { scopedEpisodeIds } from "./scope.js";
-import { getSettings } from "./system/settings.js";
+import { listDecisions } from "../system/activity.js";
+import { langList } from "../core/langs.js";
+import { cache, db, dbState } from "../system/db.js";
+import { breakerList } from "../search/health.js";
+import { recordFor } from "../import/mediafiles.js";
+import { mappedPath } from "../system/paths.js";
+import { type Candidate, type GrabRow } from "../grabs/pipelineState.js";
+import { upgradeUnits } from "../search/qualityUpgrade.js";
+import type { SearchResult } from "../search/search.js";
+import { scopedEpisodeIds } from "../scope.js";
+import { getSettings } from "../system/settings.js";
 import {
   EP_COLS,
   episodeResources,

@@ -3,11 +3,11 @@
  * their release dates. Calendar apps can't log in, so the route (ical.ts registerIcal) takes the API key as ?apikey=.
  */
 import type { FastifyInstance } from "fastify";
-import { authState } from "./system/auth.js";
-import { cache, db } from "./system/db.js";
-import { calendar } from "./episodes.js";
-import { movieCalendar } from "./movies.js";
-import { tagRows } from "./tags.js";
+import { authState } from "../system/auth.js";
+import { cache, db } from "../system/db.js";
+import { calendar } from "../episodes.js";
+import { movieCalendar } from "../movies.js";
+import { tagRows } from "../tags.js";
 
 const DAY = 86_400_000;
 

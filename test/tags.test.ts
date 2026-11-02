@@ -18,7 +18,7 @@ fs.writeFileSync(
 const { db } = await import("../server/system/db.js");
 const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { guard } = await import("../server/system/auth.js");
-const { registerSonarrApi } = await import("../server/sonarrApi.js");
+const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
 const { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } = await import("../server/tags.js");
 const { listRules, saveRule } = await import("../server/search/releaseRules.js");
 type AniMedia = import("../server/metadata/anilist.js").AniMedia;

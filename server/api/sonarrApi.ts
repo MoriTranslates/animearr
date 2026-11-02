@@ -41,15 +41,15 @@ import {
   type SonarrApiDeps,
   writable,
 } from "./sonarrResources.js";
-import { allRows, cache } from "./system/db.js";
-import { refuseDropped } from "./dropped.js";
-import { setManaged } from "./managed.js";
-import { addShow, NATIVE_BASE, removeShow } from "./native.js";
-import { mappedPath } from "./system/paths.js";
-import { profileFor, setSeriesPrefs } from "./profiles.js";
-import { getSettings } from "./system/settings.js";
-import { bulkTags, clearTags, createTag, deleteTag, renameTag, tagRows } from "./tags.js";
-import { VERSION } from "./system/version.js";
+import { allRows, cache } from "../system/db.js";
+import { refuseDropped } from "../dropped.js";
+import { setManaged } from "../managed.js";
+import { addShow, NATIVE_BASE, removeShow } from "../native.js";
+import { mappedPath } from "../system/paths.js";
+import { profileFor, setSeriesPrefs } from "../profiles.js";
+import { getSettings } from "../system/settings.js";
+import { bulkTags, clearTags, createTag, deleteTag, renameTag, tagRows } from "../tags.js";
+import { VERSION } from "../system/version.js";
 
 // ---------------------------------------------------------------- commands
 

@@ -31,7 +31,7 @@ import { fileScanTick } from "./import/mediafiles.js";
 import { fillInTick } from "./fillin.js";
 
 import { importMediaDefaultsOnce } from "./import/mediadefaults.js";
-import { registerSonarrApi } from "./sonarrApi.js";
+import { registerSonarrApi } from "./api/sonarrApi.js";
 import { materializeAll } from "./native.js";
 import { DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, usingDefaultPassword } from "./system/settings.js";
 import { TEST_APP, later, WEB_DIR, PORT, fail, id, writable, breakerDeps, catalogTick } from "./routes/common.js";

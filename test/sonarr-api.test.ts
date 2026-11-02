@@ -19,7 +19,7 @@ fs.writeFileSync(
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { guard } = await import("../server/system/auth.js");
-const { registerSonarrApi } = await import("../server/sonarrApi.js");
+const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
 const { NATIVE_BASE } = await import("../server/native.js");
 const { scopeFor } = await import("../server/scope.js");
 const { saveProfile } = await import("../server/profiles.js");

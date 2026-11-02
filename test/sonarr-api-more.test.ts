@@ -13,7 +13,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, setAccount, regenerateApiKey } = await import("../server/system/settings.js");
 const { guard } = await import("../server/system/auth.js");
-const { registerSonarrApi } = await import("../server/sonarrApi.js");
+const { registerSonarrApi } = await import("../server/api/sonarrApi.js");
 type SearchResult = import("../server/search/search.js").SearchResult;
 
 const LIB = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-sonarrmore-lib-"));

@@ -2,7 +2,7 @@
  * The Sonarr v3 API's resources and helpers (series/episode/quality/language/queue resources, input checks), shared by
  * sonarrApi.ts and sonarrApiMore.ts, which register the routes.
  */
-import { langName } from "./core/rank.js";
+import { langName } from "../core/rank.js";
 import {
   CATEGORY_NAME,
   CATEGORY_QUALITIES,
@@ -12,24 +12,24 @@ import {
   LADDER,
   ladderRank,
   type Category,
-} from "./core/quality.js";
-import { autoSearchEpisodes, searchMissingNow } from "./search/autosearch.js";
-import { deepSearch } from "./search/search.js";
-import { removeGrab, startGrab } from "./grabs/pipeline.js";
-import { backupNow } from "./system/db.js";
-import { rssTick } from "./managed.js";
-import { scanFolder } from "./import/mediafiles.js";
-import { compactKey } from "./core/normalize.js";
-import { fribb } from "./metadata/covers.js";
-import { allRows, cache, db, dbState } from "./system/db.js";
-import { mediaByIds } from "./metadata/anilist.js";
-import { animeListEntries } from "./metadata/metadata.js";
-import { NATIVE_BASE, searchAdd } from "./native.js";
-import { profileFor } from "./profiles.js";
-import { queueView } from "./grabs/queue.js";
-import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "./scope.js";
-import { getSettings, type LanguageProfile } from "./system/settings.js";
-import { setTags, tagsOf } from "./tags.js";
+} from "../core/quality.js";
+import { autoSearchEpisodes, searchMissingNow } from "../search/autosearch.js";
+import { deepSearch } from "../search/search.js";
+import { removeGrab, startGrab } from "../grabs/pipeline.js";
+import { backupNow } from "../system/db.js";
+import { rssTick } from "../managed.js";
+import { scanFolder } from "../import/mediafiles.js";
+import { compactKey } from "../core/normalize.js";
+import { fribb } from "../metadata/covers.js";
+import { allRows, cache, db, dbState } from "../system/db.js";
+import { mediaByIds } from "../metadata/anilist.js";
+import { animeListEntries } from "../metadata/metadata.js";
+import { NATIVE_BASE, searchAdd } from "../native.js";
+import { profileFor } from "../profiles.js";
+import { queueView } from "../grabs/queue.js";
+import { scopedEpisodeIds, scopeFor, setScope, type Scope } from "../scope.js";
+import { getSettings, type LanguageProfile } from "../system/settings.js";
+import { setTags, tagsOf } from "../tags.js";
 
 /** What the API reaches outside the database (tests swap these). */
 export interface SonarrApiDeps {

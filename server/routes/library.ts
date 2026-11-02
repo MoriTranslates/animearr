@@ -6,7 +6,7 @@ import { coverFor } from "../metadata/covers.js";
 import { deleteRule, listRules, saveRule, testRules } from "../search/releaseRules.js";
 import { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } from "../tags.js";
 import { deleteProfile, listProfiles, profileFor, saveProfile, setSeriesPrefs, seriesPrefs } from "../profiles.js";
-import { registerIcal } from "../ical.js";
+import { registerIcal } from "../api/ical.js";
 import { calendar, deleteEpisodeFiles, episodeDetail, episodeRows, regrabEpisodes, searchAgainSoon, seriesHeader } from "../episodes.js";
 import { compactKey } from "../core/normalize.js";
 import { refreshCovers } from "../metadata/covers.js";

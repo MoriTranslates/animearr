@@ -12,7 +12,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { cache, db } = await import("../server/system/db.js");
 const { setAccount, regenerateApiKey } = await import("../server/system/settings.js");
-const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/ical.js");
+const { buildIcal, icalEscape, icalFold, icalOptions, registerIcal } = await import("../server/api/ical.js");
 const { createTag, setTags } = await import("../server/tags.js");
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
