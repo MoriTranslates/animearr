@@ -24,6 +24,7 @@ import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { anidbToTvdb } from "../core/animedata.js";
 import { animeListEntries } from "./metadata.js";
 import { getSettings } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 const DAY = 86_400_000;
 const SPACING_MS = 4_000;
@@ -170,10 +171,14 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
     };
     let res: Response;
     try {
-      res = await deps.fetch(url, {
-        headers: { "Accept-Encoding": "gzip", "User-Agent": `${s.anidbClient}/${s.anidbClientVer}` },
-        signal: AbortSignal.timeout(30_000),
-      });
+      res = await safeFetch(
+        url,
+        {
+          headers: { "Accept-Encoding": "gzip", "User-Agent": `${s.anidbClient}/${s.anidbClientVer}` },
+          signal: AbortSignal.timeout(30_000),
+        },
+        { fetch: deps.fetch },
+      );
     } catch (e) {
       throw block(`unreachable (${(e as Error).message})`, 3_600_000);
     }

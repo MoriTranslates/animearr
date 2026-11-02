@@ -16,6 +16,7 @@
 import { logDecision } from "../system/activity.js";
 import { BULK_SCAN_FOLDERS, toPlexPath as mapPath } from "./plex.js";
 import { getSettings, type MediaServerConn, type PathMapping } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 import { VERSION as appVersion } from "../system/version.js";
 
 export type NotifyKind = "jellyfin" | "emby" | "kodi";
@@ -43,7 +44,7 @@ function checkUrl(url: string, name: string) {
 async function call<T>(name: string, url: string, init: RequestInit, f: Fetch): Promise<T | null> {
   let res: Response;
   try {
-    res = await f(url, { ...init, signal: AbortSignal.timeout(20_000) });
+    res = await safeFetch(url, { ...init, signal: AbortSignal.timeout(20_000) }, { fetch: f });
   } catch (e) {
     throw new Error(`${name} unreachable (${(e as Error).message})`);
   }

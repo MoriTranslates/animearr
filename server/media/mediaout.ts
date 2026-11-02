@@ -26,6 +26,7 @@ import { notifyMediaServers } from "./mediaservers.js";
 import { mappedPath } from "../system/paths.js";
 import { notifyPlex } from "./plex.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 export const MARKER = "Written by AnimeArr";
 const NOTE = `${MARKER}. Delete this line to keep your own edits; AnimeArr then leaves the file alone.`;
@@ -200,7 +201,11 @@ export const realWriteDeps: WriteDeps = {
 async function fetchImage(url: string): Promise<{ data: Buffer; ext: string } | null> {
   if (!allowedImage(url)) return null;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    const res = await safeFetch(
+      url,
+      { signal: AbortSignal.timeout(20_000) },
+      { crossOrigin: "strip", allowHop: (u) => allowedImage(u.href) },
+    );
     const type = res.headers.get("content-type") ?? "";
     if (!res.ok || !/^image\/(jpeg|png|webp)/i.test(type)) return null;
     const data = Buffer.from(await res.arrayBuffer());

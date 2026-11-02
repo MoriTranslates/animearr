@@ -10,6 +10,7 @@ import { getSettings } from "../system/settings.js";
 import { summarize } from "../system/summary.js";
 import { channelProblem, deliver, type ChannelDeps, type Note, type NotifyChannel, type NotifyMeta } from "./notifyChannels.js";
 import { redactText } from "../system/redact.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
 export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused", "indexer"];
@@ -73,16 +74,20 @@ async function sendNow(ev: NotifyEvent, title: string, body: string, deps: Chann
   const secrets = [s.discordWebhook, s.ntfyToken];
   if (legacy && s.discordWebhook) {
     try {
-      const r = await deps.fetch(s.discordWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: "AnimeArr",
-          content: [...`**${head}**\n${body}`].slice(0, 1800).join("") + (link ? `\n${link}` : ""),
-          allowed_mentions: { parse: [] },
-        }),
-        signal: AbortSignal.timeout(15_000),
-      }); // release names can't ping anyone
+      const r = await safeFetch(
+        s.discordWebhook,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: "AnimeArr",
+            content: [...`**${head}**\n${body}`].slice(0, 1800).join("") + (link ? `\n${link}` : ""),
+            allowed_mentions: { parse: [] },
+          }),
+          signal: AbortSignal.timeout(15_000),
+        },
+        { fetch: deps.fetch },
+      ); // release names can't ping anyone
       out.push({ channel: "discord", ok: r.ok, why: r.ok ? "sent" : `HTTP ${r.status}` });
       if (r.status === 429) await new Promise((res) => setTimeout(res, 2000)); // back off a little
     } catch (e) {
@@ -104,7 +109,11 @@ async function sendNow(ev: NotifyEvent, title: string, body: string, deps: Chann
         } catch {
           /* not a valid URL: no click target */
         }
-      const r = await deps.fetch(s.ntfyUrl, { method: "POST", headers, body: body.slice(0, 3000), signal: AbortSignal.timeout(15_000) });
+      const r = await safeFetch(
+        s.ntfyUrl,
+        { method: "POST", headers, body: body.slice(0, 3000), signal: AbortSignal.timeout(15_000) },
+        { fetch: deps.fetch },
+      );
       out.push({ channel: "ntfy", ok: r.ok, why: r.ok ? "sent" : `HTTP ${r.status}` });
     } catch (e) {
       out.push({ channel: "ntfy", ok: false, why: redactText((e as Error).message, secrets) });

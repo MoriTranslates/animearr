@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSettings, patchSettings, type ClientCfg } from "./settings.js";
 import { jsonCall } from "../arr/http.js";
+import { safeFetch } from "./safeFetch.js";
 import { logDecision } from "./activity.js";
 import { cache, CONFIG_DIR } from "./db.js";
 import { hiddenInBrowser, rootRefusal } from "./roots.js";
@@ -95,7 +96,7 @@ export async function createCategory(client: "sabnzbd" | "qbittorrent") {
     const c = s.sabnzbd;
     if (!c.url || !c.apiKey) throw Object.assign(new Error("Connect SABnzbd first"), { statusCode: 400 });
     const ask = async (params: Record<string, string>) => {
-      const res = await fetch(`${c.url}/api?${new URLSearchParams({ ...params, output: "json", apikey: c.apiKey })}`, {
+      const res = await safeFetch(`${c.url}/api?${new URLSearchParams({ ...params, output: "json", apikey: c.apiKey })}`, {
         signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw Object.assign(new Error(`SABnzbd answered HTTP ${res.status}`), { statusCode: 502 });
@@ -111,14 +112,14 @@ export async function createCategory(client: "sabnzbd" | "qbittorrent") {
   }
   const c = s.qbittorrent;
   if (!c.url) throw Object.assign(new Error("Connect qBittorrent first"), { statusCode: 400 });
-  const login = await fetch(`${c.url}/api/v2/auth/login`, {
+  const login = await safeFetch(`${c.url}/api/v2/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: c.url },
     body: new URLSearchParams({ username: c.username, password: c.password }),
     signal: AbortSignal.timeout(20_000),
   });
   const sid = /SID=([^;]+)/.exec(login.headers.get("set-cookie") ?? "")?.[1];
-  const res = await fetch(`${c.url}/api/v2/torrents/createCategory`, {
+  const res = await safeFetch(`${c.url}/api/v2/torrents/createCategory`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: c.url, ...(sid ? { Cookie: `SID=${sid}` } : {}) },
     body: new URLSearchParams({ category: c.category, savePath: "" }),

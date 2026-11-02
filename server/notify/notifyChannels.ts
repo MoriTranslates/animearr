@@ -7,6 +7,7 @@
 import { MASK, isMasked } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import { redactText } from "../system/redact.js";
+import { safeFetch } from "../system/safeFetch.js";
 
 export type ChannelType = "webhook" | "telegram" | "pushover" | "email";
 export const CHANNEL_TYPES: ChannelType[] = ["webhook", "telegram", "pushover", "email"];
@@ -322,7 +323,7 @@ export async function deliver(c: NotifyChannel, n: Note, deps: ChannelDeps): Pro
       return { ok: true, why: "sent" };
     }
     const req = buildRequest(c, n)!;
-    const r = await deps.fetch(req.url, { ...req.init, signal: AbortSignal.timeout(15_000) });
+    const r = await safeFetch(req.url, { ...req.init, signal: AbortSignal.timeout(15_000) }, { fetch: deps.fetch });
     if (r.status === 429) await new Promise((res) => setTimeout(res, 2000)); // back off a little
     return r.ok ? { ok: true, why: "sent" } : { ok: false, why: `HTTP ${r.status}` };
   } catch (e) {

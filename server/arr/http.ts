@@ -1,3 +1,5 @@
+import { OutboundRefused, safeFetch } from "../system/safeFetch.js";
+
 /** Small fetch wrapper for the *arr and download-client APIs. Error messages never include keys or query strings. */
 
 export interface Conn {
@@ -27,7 +29,7 @@ export async function jsonCall<T>(
   if (!/^https?:\/\//i.test(conn.url)) throw new Error(`${app} URL must start with http:// or https://`);
   let res: Response;
   try {
-    res = await fetch(`${conn.url}${apiBase}${path}`, {
+    res = await safeFetch(`${conn.url}${apiBase}${path}`, {
       method,
       headers: { "X-Api-Key": conn.apiKey, "Content-Type": "application/json", Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -35,6 +37,7 @@ export async function jsonCall<T>(
     });
   } catch (e) {
     const err = e as Error;
+    if (err instanceof OutboundRefused) throw new Error(`${app}: ${err.message}`);
     throw new Error(
       `${app} unreachable (${err.name === "TimeoutError" ? "timed out" : ((err.cause as Error | undefined)?.message ?? err.message)})`,
     );

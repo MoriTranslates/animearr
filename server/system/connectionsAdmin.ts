@@ -10,6 +10,7 @@ import { mappedPath } from "./paths.js";
 import { hostOf, indexerNumId, lastErrors, searchIndexer } from "../search/indexers.js";
 import { db } from "./db.js";
 import { blockedOutboundHost } from "./outbound.js";
+import { safeFetch } from "./safeFetch.js";
 import { redactUrl } from "../arr/http.js";
 import { logDecision } from "./activity.js";
 
@@ -314,7 +315,7 @@ export async function jackettTrackers(input: Record<string, unknown>) {
   if (!key) throw bad("Enter Jackett's API key (top right of its dashboard)");
   let res: Response;
   try {
-    res = await fetch(`${url}/api/v2.0/indexers?configured=true&apikey=${encodeURIComponent(key)}`, {
+    res = await safeFetch(`${url}/api/v2.0/indexers?configured=true&apikey=${encodeURIComponent(key)}`, {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (e) {

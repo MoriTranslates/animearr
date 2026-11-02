@@ -5,6 +5,7 @@
  */
 import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
+import { safeFetch } from "../system/safeFetch.js";
 import type { ClientFile, ClientStatus, OwnTorrent } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
@@ -21,7 +22,7 @@ async function nzbget<T>(c: ClientCfg, method: string, params: unknown[] = []): 
   if (!c.url) throw new Error(`${c.name} is not configured`);
   let res: Response;
   try {
-    res = await fetch(`${trim(c.url)}/jsonrpc`, {
+    res = await safeFetch(`${trim(c.url)}/jsonrpc`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -125,7 +126,7 @@ async function transmission<T>(c: ClientCfg, method: string, args: Record<string
   if (!c.url) throw new Error(`${c.name} is not configured`);
   const url = rpcUrl(c);
   const call = () =>
-    fetch(url, {
+    safeFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

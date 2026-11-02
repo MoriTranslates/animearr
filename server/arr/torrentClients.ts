@@ -15,6 +15,7 @@
 import { createHash } from "node:crypto";
 import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
+import { safeFetch } from "../system/safeFetch.js";
 import type { ClientFile, ClientStatus } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
@@ -98,7 +99,7 @@ async function delugeRaw<T>(
   const url = /\/json$/.test(trim(c.url)) ? trim(c.url) : `${trim(c.url)}/json`;
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -407,7 +408,7 @@ async function rtorrent<T extends XmlValue>(c: ClientCfg, method: string, params
   if (!c.url) throw new Error(`${c.name} is not configured`);
   let res: Response;
   try {
-    res = await fetch(trim(c.url), {
+    res = await safeFetch(trim(c.url), {
       method: "POST",
       headers: {
         "Content-Type": "text/xml",
