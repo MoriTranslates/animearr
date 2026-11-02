@@ -117,7 +117,13 @@ export function registerActivityRoutes(app: FastifyInstance) {
         undropShow(Number(a.tvdbId));
         break;
       case "delete-overrides":
-        deleteOverrides(String(a.ids).split(",").map(Number).filter(Boolean));
+        deleteOverrides(
+          String(a.ids ?? "")
+            .split(",")
+            .map(Number)
+            .filter(Boolean),
+          (d.undo.args.restore ?? []) as Parameters<typeof deleteOverrides>[1],
+        );
         break;
       case "rename-sidecar-back":
         await renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });

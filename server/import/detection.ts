@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CACHE_DIR, cache, db } from "../system/db.js";
+import { CACHE_DIR, cache, db, tx } from "../system/db.js";
 import { underAllowedRoot } from "../system/settings.js";
 import { keyOf, localPath } from "../system/paths.js";
 import { probeFile, recordFor } from "./mediafiles.js";
@@ -109,7 +109,12 @@ export async function setTrackLanguage(input: {
   const ins = db.prepare(
     "INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path, track_index) DO UPDATE SET lang = excluded.lang, forced = excluded.forced, at = excluded.at RETURNING id",
   );
-  const ids: number[] = [];
+  const prevOf = db.prepare("SELECT lang, forced, at FROM track_overrides WHERE path = ? AND track_index = ?");
+  // For the undo: rows this action created (deleted again), and the user's earlier corrections it changed (put back
+  // exactly). A file that already said the same is left out: the undo doesn't touch it.
+  const created: number[] = [];
+  const restore: { path: string; trackIndex: number; lang: string | null; forced: number; at: number }[] = [];
+  let marked = 0;
   const subFiles: string[] = [];
   for (const f of files) {
     // Only files whose track at that index is a subtitle track (season/group: the same layout).
@@ -117,7 +122,12 @@ export async function setTrackLanguage(input: {
     const isSub = !!rec?.subs.some((s) => s.index === input.trackIndex);
     if (f !== keyOf(input.path) && !isSub) continue;
     if (isSub) subFiles.push(f);
-    ids.push((ins.get(f, input.trackIndex, lang, input.forced ? 1 : 0, now) as { id: number }).id);
+    marked++;
+    const prev = prevOf.get(f, input.trackIndex) as { lang: string | null; forced: number; at: number } | undefined;
+    if (prev && prev.lang === lang && !!prev.forced === !!input.forced) continue; // already so
+    const id = (ins.get(f, input.trackIndex, lang, input.forced ? 1 : 0, now) as { id: number }).id;
+    if (prev) restore.push({ path: f, trackIndex: input.trackIndex, ...prev });
+    else created.push(id);
   }
   invalidateOverrides();
   if (scope === "group" && input.group && lang && !input.forced) learnFromVerify(input.group, "*", [lang], []);
@@ -130,14 +140,27 @@ export async function setTrackLanguage(input: {
   logDecision("fact", {
     tvdbId: input.tvdbId ?? null,
     title: input.title,
-    why: `You marked subtitle track ${input.trackIndex} as ${what} in ${ids.length} file${ids.length === 1 ? "" : "s"} (${scope === "file" ? path.posix.basename(input.path) : scope === "season" ? `season ${input.season}` : `release group ${input.group}`})${tagged.length ? `; the tag was also written into ${tagged.length} file${tagged.length === 1 ? "" : "s"}` : ""}`,
-    undo: { action: "delete-overrides", args: { ids: ids.join(",") } },
+    why: `You marked subtitle track ${input.trackIndex} as ${what} in ${marked} file${marked === 1 ? "" : "s"} (${scope === "file" ? path.posix.basename(input.path) : scope === "season" ? `season ${input.season}` : `release group ${input.group}`})${tagged.length ? `; the tag was also written into ${tagged.length} file${tagged.length === 1 ? "" : "s"}` : ""}`,
+    undo: { action: "delete-overrides", args: { ids: created.join(","), restore } },
   });
-  return { files: ids.length, tagged: tagged.length };
+  return { files: marked, tagged: tagged.length };
 }
 
-export function deleteOverrides(ids: number[]) {
-  for (const id of ids) db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
+/**
+ * The undo of a track-language mark: the rows it created go, the corrections it changed come back as they were.
+ * (Entries logged before `restore` was kept only list ids, which may include changed corrections: those are deleted.)
+ */
+export function deleteOverrides(
+  ids: number[],
+  restore: { path: string; trackIndex: number; lang: string | null; forced: number; at: number }[] = [],
+) {
+  tx(db, () => {
+    for (const id of ids) db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
+    for (const r of restore)
+      db.prepare(
+        "INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path, track_index) DO UPDATE SET lang = excluded.lang, forced = excluded.forced, at = excluded.at",
+      ).run(r.path, r.trackIndex, r.lang, r.forced, r.at);
+  });
   invalidateOverrides();
 }
 
