@@ -491,10 +491,13 @@ export function parseRelease(input: string): ParsedRelease {
   let m: RegExpExecArray | null;
 
   // S01E02(-E03|E03)(v2), S01E01-02, and longer chains: S01E01-02-03, S01E01E02E03, S01E01-E02-E03 (first to last).
-  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?![\dp]))*)(?:v(\d))?/gi;
+  // A chained number must end at a separator, another "E", a "v2" or the end, so "-10bit" and "-1080p" are not
+  // ranges; and a range longer than 200 episodes ("S01E05-720 Group") is the first episode only.
+  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d))*)(?:v(\d))?/gi;
   while ((m = reSE.exec(work))) {
-    const last = m[4] ? m[4].match(/\d+/g)!.at(-1) : undefined;
-    push(m, { season: +m[1], episodes: last ? range(+m[2], +last) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
+    const last = m[4] ? Number(m[4].match(/\d+/g)!.at(-1)) : undefined;
+    const eps = last !== undefined && last - +m[2] <= 200 ? range(+m[2], last) : [+m[2]];
+    push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1) });
   }
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;

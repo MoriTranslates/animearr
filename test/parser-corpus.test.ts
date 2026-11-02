@@ -498,6 +498,24 @@ test("SxxEyy next to resolution, codec, year and hash: rows that must not change
   ]);
 });
 
+test("a bit depth or bare resolution after SxxEyy is not the end of a range (review #9)", () => {
+  const eps = (name: string) => parseRelease(name).episodes;
+  // Was 5-10, 5-12, 5-10 and 5-720.
+  assert.deepEqual(eps("Show S01E05-10bit [1080p]"), [5]);
+  assert.deepEqual(eps("Show S01E05-12bit"), [5]);
+  assert.deepEqual(eps("Show.S01E05-10bit.1080p.WEB-GRP"), [5]);
+  assert.deepEqual(eps("Show S01E05-720 Group"), [5]);
+  // Must not change.
+  assert.deepEqual(eps("Show S01E05-06 [1080p]"), [5, 6]);
+  assert.deepEqual(eps("Show S01E05-E06"), [5, 6]);
+  assert.deepEqual(eps("Show S01E05-06-07"), [5, 6, 7]);
+  assert.deepEqual(eps("Show S01E01E02E03"), [1, 2, 3]);
+  assert.deepEqual(eps("Show S01E05-06v2"), [5, 6]);
+  assert.deepEqual(eps("Show S01E05-1080p"), [5]);
+  assert.deepEqual(eps("Show S01E01-E24 [Batch]").length, 24);
+  assert.deepEqual(eps("One Piece S21E892-1085 [Batch]").length, 194);
+});
+
 test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
   const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
   // Two seasons of 12: absolute 13 is S02E01.
