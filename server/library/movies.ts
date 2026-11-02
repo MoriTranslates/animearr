@@ -837,10 +837,12 @@ async function importParts(
         return false;
       }
     };
-    if (!items.every(placed)) {
-      const res = await executeMovieImport({ ...plans[0], items }, { grabId: row.id });
+    // A part placed by an earlier try is done; only the others are imported (planning a placed one again would refuse it).
+    const todo = items.filter((it) => !placed(it));
+    if (todo.length) {
+      const res = await executeMovieImport({ ...plans[0], items: todo }, { grabId: row.id });
       const bad = res.find((r) => !r.done);
-      if (bad || res.length !== parts.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
+      if (bad || res.length !== todo.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
     }
     if (!native) {
       const wants = new Set(items.map((x) => x.destArr));

@@ -948,8 +948,9 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     if (!imp.allowReal) return attention("real imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
     if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
     const keptIds = new Set(kept.map((k) => k.id));
-    // Retry import of a replace that stopped part-way: episodes this grab already placed are not copied again.
-    const placed = replacing ? placedByGrab(row.id) : new Set<number>();
+    // Retry import of an import that stopped part-way (a replace or not): episodes this grab already placed are not
+    // copied again (their file is in place under the new name, so planning them again would refuse them).
+    const placed = placedByGrab(row.id);
     const done = plan.filter((p) => p.episodeIds.every((e) => placed.has(e)));
     const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)) && !done.includes(p));
     if (!toPlace.every((p) => preVerified.has(p.item.path)))
