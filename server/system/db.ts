@@ -561,7 +561,16 @@ export function migrateUserDb(d: DatabaseSync, steps: readonly string[] = USER_M
 
 function migrateUser() {
   if (dbState.corrupt) return;
-  migrateUserDb(db, USER_MIGRATIONS, (v) => backupNow("premigration", `v${v}`));
+  // A database from a newer AnimeArr (after a downgrade, or a backup copied in by hand): this build doesn't know its
+  // tables, so it doesn't run on it at all. Nothing is written; the next start of a newer version uses it as it was.
+  const v = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (v > USER_MIGRATIONS.length) {
+    console.error(
+      `${USER_DB} is from a newer AnimeArr (database version ${v}; this version understands up to ${USER_MIGRATIONS.length}). AnimeArr won't run on it, so nothing in it is changed: update AnimeArr, or put back a backup made by this version (from ${BACKUP_DIR}).`,
+    );
+    process.exit(1);
+  }
+  migrateUserDb(db, USER_MIGRATIONS, (from) => backupNow("premigration", `v${from}`));
 }
 
 function migrateCache() {
