@@ -161,6 +161,60 @@ test("a trailing-number title identifies its own show, not the show named by the
   assert.equal(identify("Kaiju.No.8.S01E05.1080p.WEB.H264-GRP", ctx).candidate?.tvdbId, 3);
 });
 
+test("'Title ABS SxxEyy': an unknown numbered title falls back to the absolute number when the show confirms it (review #3)", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  // One Piece-like: season 21 holds absolute 892-1100 (TVDB numbers it 1-209); Sonarr's scene numbering (XEM) maps the
+  // releases' S21E1050 to it.
+  const onePiece = Array.from({ length: 1100 }, (_, i) => {
+    const abs = i + 1;
+    const s21 = abs >= 892;
+    return {
+      id: 10_000 + abs,
+      season: s21 ? 21 : 20,
+      episode: s21 ? abs - 891 : abs,
+      absolute: abs,
+      sceneSeason: s21 ? 21 : null,
+      sceneEpisode: s21 ? abs : null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    };
+  });
+  const mobDecoy = [1, 2, 3].flatMap((season) =>
+    Array.from({ length: 13 }, (_, i) => ({
+      id: 20_000 + season * 100 + i + 1,
+      season,
+      episode: i + 1,
+      absolute: (season - 1) * 13 + i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    })),
+  );
+  const ctx = {
+    index: new AliasIndex({ library: [lib(1, "One Piece"), lib(2, "Mob Psycho")] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => (t === 1 ? onePiece : t === 2 ? mobDecoy : []),
+  };
+  // The reviewer's repro (was "One Piece 1050" is not a known title).
+  const op = identify("One Piece 1050 S21E1050 [1080p]", ctx);
+  assert.equal(op.candidate?.tvdbId, 1, op.summary);
+  assert.deepEqual(
+    op.resolution?.episodes.map((e) => e.absolute),
+    [1050],
+    op.summary,
+  );
+  assert.equal(op.parsed.title, "One Piece");
+  // The decoy: only "Mob Psycho" is in the library. Absolute 100 isn't S03E05 of it (it has 39 episodes), so the
+  // release is not attached to it.
+  const mob = identify("Mob.Psycho.100.S03E05.1080p.WEB.H264-GRP", ctx);
+  assert.equal(mob.candidate, null, mob.summary);
+  assert.equal(mob.parsed.title, "Mob Psycho 100");
+  // A number that doesn't agree with the SxxEyy episode's absolute number: not attached either.
+  const off = identify("One Piece 1049 S21E1050 [1080p]", ctx);
+  assert.equal(off.candidate, null, off.summary);
+});
+
 test("a title ending in 0 before ' - NN' is one episode, not a batch from 0 (Steins;Gate 0)", () => {
   check([
     { name: "Steins;Gate 0 - 05", title: "Steins;Gate 0", group: null, absolute: [5], batch: false },
