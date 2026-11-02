@@ -504,20 +504,46 @@ function freeSpaceOk(dest: string, size: number, opts: { source?: string; action
 
 // ---------------------------------------------------------------- file operations that never overwrite
 
-/** Renames a → b; fails if b exists (link + unlink; exclusive copy across disks). */
+/**
+ * Renames a → b; fails if b exists (link + unlink; exclusive copy across disks). All or nothing: when the source can't
+ * be removed, the link or copy just made at b goes again, so a failed move leaves only the source.
+ */
 export async function moveNoClobber(a: string, b: string) {
   fs.mkdirSync(path.dirname(b), { recursive: true });
   try {
     fs.linkSync(a, b); // EEXIST if b exists: never overwritten
-    fs.unlinkSync(a);
-    return;
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
     if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") throw e;
+    await copyNoClobber(a, b);
+    // Checked before the source goes: a copy that came out short (a full disk on some filesystems) never costs it.
+    if (fs.statSync(b).size !== fs.statSync(a).size) {
+      dropOwn(b, a, new Error(`the copy of ${path.basename(a)} came out short; the original was kept`));
+    }
   }
-  await copyNoClobber(a, b);
-  fs.unlinkSync(a);
+  try {
+    fs.unlinkSync(a);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return; // the source is already gone: b holds the file, moved
+    dropOwn(b, a, e as Error);
+  }
+}
+
+/**
+ * Removes the link or copy this move just made at b (ours: b didn't exist before), then throws why the move failed.
+ * Only while the source is still there: b is never removed when it may be the last copy.
+ */
+function dropOwn(b: string, a: string, why: Error): never {
+  if (!fs.existsSync(a)) throw new Error(`${why.message}; ${a} is gone, so the file is kept at ${b}`, { cause: why });
+  try {
+    fs.unlinkSync(b);
+  } catch (re) {
+    throw new Error(`${why.message}; and the extra copy at ${b} couldn't be removed (${(re as Error).message}): ${a} is the original`, {
+      cause: why,
+    });
+  }
+  throw why;
 }
 
 /**
