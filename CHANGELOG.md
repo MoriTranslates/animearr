@@ -33,6 +33,9 @@ All notable changes, newest first. The commit history has the crew's version of 
 - **"No password on my local network" ignores forwarded traffic with a `TRUST_PROXY` list too.** Before, setting
   `TRUST_PROXY` to your proxy's address let any LAN device that sent `X-Forwarded-For` (a second tunnel or proxy, such
   as cloudflared) in without a password.
+- **The login page can't be used to tie up the server.** It reads at most 8 KB per request (before, anyone could make
+  AnimeArr hold up to 256 MB in memory per request), and the record of failed logins is capped: one address trying
+  many user names, or a flood of addresses, can't grow it without limit or wipe the back-off of a real guesser.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers

@@ -105,20 +105,25 @@ export function registerAccountRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post<{ Body: { username?: string; password?: string } }>("/api/auth/login", { config: { setup: true } }, async (req, reply) => {
-    if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
-    if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
-    const a = getSettings().auth;
-    const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
-    const okPass = await checkPassword(String(req.body?.password ?? ""), a.passwordHash || "00:00");
-    if (!okUser || !okPass) throw fail("Wrong username or password", 401);
-    // Safety rule: the default password only works from the home network, until it's changed.
-    const refused = defaultLoginRefusal(req, await usingDefaultPassword());
-    if (refused) throw fail(refused, 403);
-    loginSucceeded(req.ip, a.username);
-    sessionCookie(req, reply, a.username);
-    return { ok: true };
-  });
+  // Reachable without a login, so it reads at most a few KB (a username and a password).
+  app.post<{ Body: { username?: string; password?: string } }>(
+    "/api/auth/login",
+    { config: { setup: true }, bodyLimit: 8 * 1024 },
+    async (req, reply) => {
+      if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
+      if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
+      const a = getSettings().auth;
+      const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
+      const okPass = await checkPassword(String(req.body?.password ?? ""), a.passwordHash || "00:00");
+      if (!okUser || !okPass) throw fail("Wrong username or password", 401);
+      // Safety rule: the default password only works from the home network, until it's changed.
+      const refused = defaultLoginRefusal(req, await usingDefaultPassword());
+      if (refused) throw fail(refused, 403);
+      loginSucceeded(req.ip, a.username);
+      sessionCookie(req, reply, a.username);
+      return { ok: true };
+    },
+  );
 
   app.post("/api/auth/logout", async (_req, reply) => {
     reply.clearCookie(COOKIE, { path: "/" });

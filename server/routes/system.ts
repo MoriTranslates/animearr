@@ -87,9 +87,9 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     return sendBackup(reply);
   });
-  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_BACKUP_BYTES }, (_req, body, done) =>
-    done(null, body),
-  );
+  // No bodyLimit on the parser itself: it is registered app-wide, so a limit here would let every route (the public
+  // login included) buffer a backup-sized body (review M2). The upload route below raises its own limit.
+  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
   app.post<{ Body: Buffer }>("/api/system/backup/upload", { bodyLimit: MAX_BACKUP_BYTES }, async (req) => {
     if (authState(req).via === "apikey") throw fail("Log in to restore a backup", 403);
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw fail("Choose a backup file", 400);

@@ -222,24 +222,73 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
 }
 
 // In-memory login throttle per IP + username, with growing back-off instead of a hard lock-out.
-const attempts = new Map<string, { n: number; until: number; seen: number }>();
+const attempts = new Map<string, { n: number; until: number; seen: number; ip: string }>();
+/** Entries per IP (not counting its shared bucket), so one address can't fill the map by rotating user names. */
+const perIp = new Map<string, number>();
+const FREE_TRIES = 5;
+const FORGET_MS = 30 * 60_000;
+/** At most this many entries (review M3: a flood of addresses or user names must not grow memory without limit). */
+export const LOGIN_THROTTLE_MAX = 10_000;
+/** User names one IP gets its own entry for; further names from it share one bucket per IP. */
+const NAMES_PER_IP = 10;
+let swept = 0;
+// "u:" keys are per IP + user name, "s:" keys the IP's shared bucket; no user name can turn one into the other.
+const throttleKey = (ip: string, user: string) => `u:${ip}|${user.toLowerCase().slice(0, 64)}`;
+const sharedKey = (ip: string) => `s:${ip}`;
+const drop = (k: string) => {
+  const v = attempts.get(k);
+  if (!v) return;
+  attempts.delete(k);
+  if (k.startsWith("s:")) return;
+  const c = (perIp.get(v.ip) ?? 1) - 1;
+  if (c > 0) perIp.set(v.ip, c);
+  else perIp.delete(v.ip);
+};
+const sweep = (now: number) => {
+  swept = now;
+  for (const [k, v] of attempts) if (now - v.seen > FORGET_MS) drop(k);
+};
+/**
+ * Room for a new entry when the map is full: forget expired ones, else the entry with the fewest failures, but only one
+ * still within its free tries (it carries no back-off). An entry past them is never evicted, so a flood can't reset an
+ * attacker's count; if every entry is past them, the new key is refused until some expire (fail closed).
+ */
+function makeRoom(now: number) {
+  sweep(now);
+  if (attempts.size < LOGIN_THROTTLE_MAX) return true;
+  let victim: string | null = null;
+  let best: { n: number; seen: number } | null = null;
+  for (const [k, v] of attempts)
+    if (v.n <= FREE_TRIES && (!best || v.n < best.n || (v.n === best.n && v.seen < best.seen))) [victim, best] = [k, v];
+  if (victim === null) return false;
+  drop(victim);
+  return true;
+}
 export function loginAllowed(ip: string, user: string) {
   const now = Date.now();
-  for (const [k, v] of attempts) if (now - v.seen > 30 * 60_000) attempts.delete(k);
-  const key = `${ip}|${user.toLowerCase()}`;
-  const a = attempts.get(key) ?? { n: 0, until: 0, seen: now };
+  if (now - swept > 60_000) sweep(now);
+  let key = throttleKey(ip, user);
+  if (!attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
+  let a = attempts.get(key);
+  if (!a) {
+    if (attempts.size >= LOGIN_THROTTLE_MAX && !makeRoom(now)) return false;
+    a = { n: 0, until: 0, seen: now, ip };
+    if (key !== sharedKey(ip)) perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+  }
   if (a.until > now) return false;
   a.n++;
   a.seen = now;
   // 5 free tries, then 2s, 4s, 8s ... capped at 15s. Password hashing (scrypt) is the real brake on guessing; a long
   // lock would let anyone who knows the username keep the owner out (behind a proxy everyone shares one IP).
-  if (a.n > 5) a.until = now + Math.min(15_000, 1000 * 2 ** (a.n - 5));
+  if (a.n > FREE_TRIES) a.until = now + Math.min(15_000, 1000 * 2 ** (a.n - FREE_TRIES));
   attempts.set(key, a);
   return true;
 }
 export function loginSucceeded(ip: string, user: string) {
-  attempts.delete(`${ip}|${user.toLowerCase()}`);
+  drop(throttleKey(ip, user));
 }
+/** For tests: how many throttle entries are held. */
+export const throttleSize = () => attempts.size;
 
 export const DEFAULT_REMOTE_REFUSED = "The default password only works from your home network. Log in from home and change it first.";
 
