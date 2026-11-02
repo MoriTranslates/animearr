@@ -18,6 +18,7 @@
  */
 import { binFolder, noteBinned, pinBinned } from "./binpurge.js";
 import { movePathRows } from "./pathRows.js";
+import { touchesProtected } from "./protectedPaths.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
 import { isTorrentClient } from "../arr/clients.js";
 import fs from "node:fs";
@@ -29,9 +30,9 @@ import { identify } from "../core/identify.js";
 import { parseRelease } from "../core/parser.js";
 import { sonarrQualityName } from "../core/quality.js";
 import { keepTagFor } from "../search/qualityLocks.js";
-import { allRows, cache, CONFIG_DIR, db } from "../system/db.js";
+import { allRows, cache, db } from "../system/db.js";
 import { catalogLookup } from "../metadata/catalog.js";
-import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
+import { probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
 import { rematerializeMovie, rematerializeSeries } from "../library/native.js";
 import { isNativeMovieId, isNativeSeriesId } from "../library/nativeIds.js";
@@ -220,19 +221,12 @@ const under = (p: string, root: string) => {
   return a === r || a.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
 };
 
-/** Where an import may NOT come from: the library, the recycle bin, AnimeArr's own config. */
+/**
+ * Where an import may NOT come from: the library, the recycle bin, AnimeArr's own config, anything inside them, or a
+ * folder that holds one of them (a source above the library would move other shows' files).
+ */
 function forbiddenSource(real: string) {
-  const s = getSettings();
-  const roots = [...s.allowedRoots, ...libraryRoots()].map(mappedPath);
-  if (s.media.recycleBin) roots.push(mappedPath(s.media.recycleBin.replace(/\/+$/, "")));
-  roots.push(CONFIG_DIR);
-  return roots.some((r) => {
-    try {
-      return under(real, fs.existsSync(r) ? fs.realpathSync(r) : r);
-    } catch {
-      return under(real, r);
-    }
-  });
+  return touchesProtected(real, { bin: true });
 }
 
 /** Automatic imports: the source must be inside one of AnimeArr's own category folders (never Sonarr's/Radarr's/others). */
