@@ -25,13 +25,41 @@ export function binFolder(): { local: string } | { error: string } {
   const local = path.resolve(mappedPath(bin));
   const depth = local.split(/[\\/]+/).filter(Boolean).length;
   if (bin === "" || bin === "/" || depth < 2) return { error: `the recycling bin "${bin}" is too close to the root of the disk` };
-  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
-  if (roots.some((r) => r === local || r.startsWith(local + path.sep)))
-    return { error: `the recycling bin "${bin}" is (or contains) a library folder` };
-  const conf = path.resolve(CONFIG_DIR);
-  if (local === conf || conf.startsWith(local + path.sep) || local.startsWith(conf + path.sep))
+  // Both directions (a bin inside a library folder gets real episodes purged), by real path (another mount name or a
+  // link to the same folder), and ignoring case on Windows.
+  const real = realish(local);
+  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => realish(path.resolve(mappedPath(r.replace(/\/+$/, "")))));
+  if (roots.some((r) => overlaps(real, r))) return { error: `the recycling bin "${bin}" is in (or contains) a library folder` };
+  if (overlaps(real, realish(path.resolve(CONFIG_DIR))))
     return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
   return { local };
+}
+
+/**
+ * The real path of `p` for comparing folders: links resolved on the deepest part that exists (the bin may not exist
+ * yet), lower-cased on Windows, where case doesn't tell folders apart.
+ */
+function realish(p: string) {
+  let head = path.resolve(p);
+  const rest: string[] = [];
+  for (;;) {
+    try {
+      head = fs.realpathSync.native(head);
+      break;
+    } catch {
+      const up = path.dirname(head);
+      if (up === head) break; // nothing exists up to the disk root: compare the path as given
+      rest.unshift(path.basename(head));
+      head = up;
+    }
+  }
+  const full = path.join(head, ...rest);
+  return process.platform === "win32" ? full.toLowerCase() : full;
+}
+
+/** One folder is, is inside, or contains the other. */
+function overlaps(a: string, b: string) {
+  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep) || b.startsWith(a.endsWith(path.sep) ? a : a + path.sep);
 }
 
 /** Called by the importer for every file it moves into the bin. */
