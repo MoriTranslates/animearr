@@ -12,9 +12,9 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/system/settings.js");
 const { db } = await import("../server/system/db.js");
-const { enrichEpisodes, realMetaDeps } = await import("../server/episodemeta.js");
-const { tmdbTarget } = await import("../server/metaoverride.js");
-const { metaOverrides, registerMetaOverrideApi, setMetaOverride } = await import("../server/metaoverride.js");
+const { enrichEpisodes, realMetaDeps } = await import("../server/metadata/episodemeta.js");
+const { tmdbTarget } = await import("../server/metadata/metaoverride.js");
+const { metaOverrides, registerMetaOverrideApi, setMetaOverride } = await import("../server/metadata/metaoverride.js");
 
 const rows = [
   { tvdb_season: "1", tvdb_offset: 0, episodes: 13, tmdb_tv: 100, tmdb_season: 1, tmdb_offset: 0 },
@@ -52,7 +52,7 @@ test("enrichEpisodes asks TMDB for the override's show and season, then goes bac
   await enrichEpisodes(78777, null, files, { plot: true, still: true }, deps);
   assert.deepEqual(asked, ["72041:1"]);
   assert.equal((files[0].episodes[0] as { plot?: string }).plot, "Chronicles two");
-  const { clearMetaOverride } = await import("../server/metaoverride.js");
+  const { clearMetaOverride } = await import("../server/metadata/metaoverride.js");
   clearMetaOverride(78777, 2);
   files = mk();
   await enrichEpisodes(78777, null, files, { plot: true, still: true }, deps);
@@ -109,5 +109,5 @@ test("only metadata reads the override table", () => {
     }
   };
   walk(dir);
-  assert.deepEqual(readers.sort(), ["episodemeta.ts", "metaoverride.ts", "routes/activity.ts", "system/db.ts"]);
+  assert.deepEqual(readers.sort(), ["metadata/episodemeta.ts", "metadata/metaoverride.ts", "routes/activity.ts", "system/db.ts"]);
 });

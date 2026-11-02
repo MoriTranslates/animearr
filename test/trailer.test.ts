@@ -7,7 +7,7 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-trailer-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { normTrailer } = await import("../server/anilist.js");
+const { normTrailer } = await import("../server/metadata/anilist.js");
 const { trailerLinks } = await import("../web/src/trailerLinks.js");
 
 test("normTrailer keeps YouTube and Dailymotion trailers with a plain id", () => {

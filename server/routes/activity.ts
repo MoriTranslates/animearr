@@ -3,13 +3,13 @@ import { undropShow } from "../dropped.js";
 import { deleteOverrides, renameSidecarBack } from "../detection.js";
 import { cache, db } from "../system/db.js";
 import { getDecision, listDecisions, logDecision, markUndone } from "../system/activity.js";
-import { coverFor } from "../covers.js";
+import { coverFor } from "../metadata/covers.js";
 import { setManaged, unmonitorInSonarr } from "../managed.js";
-import { invalidateIndex } from "../metadata.js";
+import { invalidateIndex } from "../metadata/metadata.js";
 import { summarize } from "../system/summary.js";
 import { registerBlocklistApi } from "../blocklist.js";
 import { registerFileMarksApi } from "../fileMarks.js";
-import { registerMetaOverrideApi } from "../metaoverride.js";
+import { registerMetaOverrideApi } from "../metadata/metaoverride.js";
 
 import { renameBack } from "../importer.js";
 import { getSettings } from "../system/settings.js";

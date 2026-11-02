@@ -23,7 +23,7 @@ const { registerSonarrApi } = await import("../server/sonarrApi.js");
 const { NATIVE_BASE } = await import("../server/native.js");
 const { scopeFor } = await import("../server/scope.js");
 const { saveProfile } = await import("../server/profiles.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({
   id,

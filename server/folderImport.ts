@@ -7,13 +7,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { mediaByIds } from "./anilist.js";
-import { fribb } from "./covers.js";
+import { mediaByIds } from "./metadata/anilist.js";
+import { fribb } from "./metadata/covers.js";
 import { identify } from "./core/identify.js";
 import { compactKey, splitSeason } from "./core/normalize.js";
 import { cache, db } from "./system/db.js";
 import { addShow, NATIVE_BASE, rematerializeSeries, searchAdd, type AddResult } from "./native.js";
-import { aliasIndex, animeListEntries } from "./metadata.js";
+import { aliasIndex, animeListEntries } from "./metadata/metadata.js";
 import { localPath } from "./system/paths.js";
 import { VIDEO, scanFolder } from "./mediafiles.js";
 import { hiddenInBrowser } from "./system/roots.js";

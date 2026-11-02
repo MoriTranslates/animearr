@@ -26,7 +26,7 @@ const { listActivity } = await import("../server/system/activity.js").then((_m) 
   listActivity: () => db.prepare("SELECT kind, why FROM decisions ORDER BY id").all() as { kind: string; why: string }[],
 }));
 const L = await import("../server/importLists.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({
   id,

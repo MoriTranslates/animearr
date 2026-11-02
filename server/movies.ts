@@ -7,7 +7,7 @@
  * manual grabs need a confirmation and honour the global dry-run; never two downloads for one movie at once;
  * a pack or a series release is never taken for the movie.
  */
-import { animeTiers } from "./seadex.js";
+import { animeTiers } from "./metadata/seadex.js";
 import { seedLimitsFor } from "./indexers.js";
 import { grabGate, GrabsPausedError } from "./downloads.js";
 import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";

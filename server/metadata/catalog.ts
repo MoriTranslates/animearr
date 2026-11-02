@@ -9,12 +9,12 @@
  * Optional providers (Settings → Metadata): TMDB (episode titles/air dates, movies), AniDB HTTP API (needs a
  * registered client; at most 1 request per 2 s), TVDB v4 (needs a key; not used yet).
  */
-import { logDecision } from "./system/activity.js";
+import { logDecision } from "../system/activity.js";
 import { mediaByIds, normTrailer, type AniMedia, type Trailer } from "./anilist.js";
 import { fribb } from "./covers.js";
-import { cache, db, dbState, setJob, tx } from "./system/db.js";
+import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, USER_AGENT } from "./metadata.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 const DAY = 86_400_000;
 /** Relations that keep two entries in one franchise (not "character", "other", "adaptation"…). */

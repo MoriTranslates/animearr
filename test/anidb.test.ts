@@ -9,7 +9,7 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/system/settings.js");
-const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = await import("../server/anidb.js");
+const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = await import("../server/metadata/anidb.js");
 const DAY_MS = 86_400_000;
 
 const XML = `<?xml version="1.0"?><anime id="1" restricted="false"><type>TV Series</type><episodecount>2</episodecount><enddate>2001-01-01</enddate>

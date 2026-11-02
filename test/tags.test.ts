@@ -21,7 +21,7 @@ const { guard } = await import("../server/system/auth.js");
 const { registerSonarrApi } = await import("../server/sonarrApi.js");
 const { bulkTags, createTag, deleteTag, listTags, renameTag, setTags, tagsOf } = await import("../server/tags.js");
 const { listRules, saveRule } = await import("../server/releaseRules.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number): AniMedia => ({
   id,

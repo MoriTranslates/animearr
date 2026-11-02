@@ -11,7 +11,7 @@
  * release is still allowed, with a warning.
  */
 import { cache, db } from "./system/db.js";
-import { aliasIndex } from "./metadata.js";
+import { aliasIndex } from "./metadata/metadata.js";
 import { getSettings } from "./system/settings.js";
 
 /** AnimeArr's own shows have ids from here up (native.ts NATIVE_BASE; not imported to keep scope.ts free of import cycles). */

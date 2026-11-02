@@ -15,10 +15,10 @@
 import { logDecision } from "./system/activity.js";
 import * as radarr from "./arr/radarr.js";
 import * as sonarr from "./arr/sonarr.js";
-import { mediaByIds, searchMedia, type AniMedia } from "./anilist.js";
-import { applyOverrides, remapNow, upsertMedia } from "./catalog.js";
+import { mediaByIds, searchMedia, type AniMedia } from "./metadata/anilist.js";
+import { applyOverrides, remapNow, upsertMedia } from "./metadata/catalog.js";
 import { compactKey } from "./core/normalize.js";
-import { fribb } from "./covers.js";
+import { fribb } from "./metadata/covers.js";
 import { allRows, cache, db, dbState, setJob, tx } from "./system/db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
 import { ACTIVE } from "./pipelineState.js";

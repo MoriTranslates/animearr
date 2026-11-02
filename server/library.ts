@@ -18,7 +18,7 @@ import { langList } from "./core/langs.js";
 import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
 import { cache, db, dbState, setJob, tx } from "./system/db.js";
-import { animeListEntries, invalidateIndex } from "./metadata.js";
+import { animeListEntries, invalidateIndex } from "./metadata/metadata.js";
 import { materializeAll, rematerializeSeries } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 import { getSettings } from "./system/settings.js";

@@ -25,7 +25,7 @@ import { toCandidate } from "./pipelineState.js";
 import { decisionSummary, deepSearch, identifyContext, seasonGroupOf, type SearchResult } from "./search.js";
 import { getSettings, isDryRun, underAllowedRoot } from "./system/settings.js";
 import { burnedInFact } from "./audit.js";
-import { coverFor } from "./covers.js";
+import { coverFor } from "./metadata/covers.js";
 import { profileFor } from "./profiles.js";
 import { newerVersionOf } from "./propers.js";
 import { CATEGORY_NAME, ladderRank, qualityScore } from "./core/quality.js";

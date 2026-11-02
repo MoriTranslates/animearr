@@ -2,9 +2,9 @@
  * The files a season has now, set against SeaDex's picks (Details, the episode sheet). Files are judged by their
  * ORIGINAL release name: the scene name recorded at import, so a Tdarr re-encode still counts as what it came from.
  */
-import { compareToSeadex, pickOfRelease, type SeadexComparison } from "./core/seadexCompare.js";
-import { cache, db } from "./system/db.js";
-import { profileFor } from "./profiles.js";
+import { compareToSeadex, pickOfRelease, type SeadexComparison } from "../core/seadexCompare.js";
+import { cache, db } from "../system/db.js";
+import { profileFor } from "../profiles.js";
 import { seadexForSeason } from "./seadex.js";
 
 /** The original release name of a library file: its recorded scene name, else the file name. */

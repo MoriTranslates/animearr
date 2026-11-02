@@ -12,7 +12,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings, getSettings } = await import("../server/system/settings.js");
 const { addMovie, NATIVE_BASE, removeMovie } = await import("../server/native.js");
 const { planMovieImport, executeMovieImport, fileLink } = await import("../server/importer.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-mov-"));
 const LIB = path.join(tmp, "movies");

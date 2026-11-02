@@ -19,11 +19,11 @@
  * blocked shows, then 12 every 15 minutes) at 2.5 s spacing; the per-request spacing alone didn't prevent a flood.
  */
 import zlib from "node:zlib";
-import { logDecision } from "./system/activity.js";
-import { cache, db, dbState, setJob, tx } from "./system/db.js";
-import { anidbToTvdb } from "./core/animedata.js";
+import { logDecision } from "../system/activity.js";
+import { cache, db, dbState, setJob, tx } from "../system/db.js";
+import { anidbToTvdb } from "../core/animedata.js";
 import { animeListEntries } from "./metadata.js";
-import { getSettings } from "./system/settings.js";
+import { getSettings } from "../system/settings.js";
 
 const DAY = 86_400_000;
 const SPACING_MS = 4_000;

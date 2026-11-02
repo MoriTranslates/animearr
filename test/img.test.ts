@@ -7,7 +7,7 @@ import path from "node:path";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-img-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { sizedUrl, allowedImage, thumb } = await import("../server/img.js");
+const { sizedUrl, allowedImage, thumb } = await import("../server/metadata/img.js");
 
 test("sizes map to the provider's renditions", () => {
   assert.equal(

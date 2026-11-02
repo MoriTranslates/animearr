@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_DIR } from "./system/db.js";
+import { CONFIG_DIR } from "../system/db.js";
 
 export type ThumbSize = "sm" | "md" | "lg" | "xl";
 /** Pixel widths per size (sharp on 3× phones: a 48 px slot gets 144 px). */

@@ -1,7 +1,7 @@
 /** Queue (AnimeArr's own downloads, with live client status) and grab history. */
 import { clientName } from "./arr/clients.js";
 import { batchLine, readBatch } from "./batch.js";
-import { colorFor, coverFor } from "./covers.js";
+import { colorFor, coverFor } from "./metadata/covers.js";
 import { liveFixesFor } from "./system/fixes.js";
 import { cache, db } from "./system/db.js";
 import { grabStages } from "./pipeline.js";

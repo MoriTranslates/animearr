@@ -10,19 +10,19 @@
  * episodes, files, alt_titles) are materialized from the catalog and AnimeArr's own file records, so every other part
  * of AnimeArr (search, grabs, scopes, calendar, the Show page) works on it like on a Sonarr show.
  */
-import { requestSeadex } from "./seadex.js";
+import { requestSeadex } from "./metadata/seadex.js";
 import { NATIVE_BASE } from "./nativeIds.js";
-import { anidbForTvdb } from "./anidb.js";
+import { anidbForTvdb } from "./metadata/anidb.js";
 import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "./system/activity.js";
-import { mediaByIds, normTrailer, searchMedia, type AniMedia, type Trailer, anilistQuery } from "./anilist.js";
-import { rebuildFranchises, trailerOf, upsertMedia } from "./catalog.js";
+import { mediaByIds, normTrailer, searchMedia, type AniMedia, type Trailer, anilistQuery } from "./metadata/anilist.js";
+import { rebuildFranchises, trailerOf, upsertMedia } from "./metadata/catalog.js";
 import { compactKey } from "./core/normalize.js";
 import { parseRelease } from "./core/parser.js";
-import { fribb } from "./covers.js";
+import { fribb } from "./metadata/covers.js";
 import { cache, db, dbState, tx } from "./system/db.js";
-import { animeListEntries, invalidateIndex } from "./metadata.js";
+import { animeListEntries, invalidateIndex } from "./metadata/metadata.js";
 import { renderMovie, renderSeriesFolder } from "./naming.js";
 import { localPath, mappedPath } from "./system/paths.js";
 import { getSettings, underAllowedRoot } from "./system/settings.js";

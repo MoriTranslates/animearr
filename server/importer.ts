@@ -29,7 +29,7 @@ import { parseRelease } from "./core/parser.js";
 import { sonarrQualityName } from "./core/quality.js";
 import { keepTagFor } from "./qualityLocks.js";
 import { allRows, cache, CONFIG_DIR, db } from "./system/db.js";
-import { catalogLookup } from "./catalog.js";
+import { catalogLookup } from "./metadata/catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
 import { rematerializeMovie, rematerializeSeries } from "./native.js";

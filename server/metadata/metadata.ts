@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import { AliasIndex, type LibSeries, type UserAlias } from "./core/aliases.js";
-import { parseAnidbTitles, parseAnimeList, type AnidbAnime, type AnimeListEntry } from "./core/animedata.js";
-import { CACHE_DIR, cache, db, getMeta, setJob, setMeta } from "./system/db.js";
-import { VERSION } from "./system/version.js";
+import { AliasIndex, type LibSeries, type UserAlias } from "../core/aliases.js";
+import { parseAnidbTitles, parseAnimeList, type AnidbAnime, type AnimeListEntry } from "../core/animedata.js";
+import { CACHE_DIR, cache, db, getMeta, setJob, setMeta } from "../system/db.js";
+import { VERSION } from "../system/version.js";
 
 /**
  * Bulk metadata dumps (PROPOSAL §6.1, §6.7):

@@ -68,7 +68,7 @@ test("a new release for a wanted episode or movie brings its search forward (onc
 
 const { setLock } = await import("../server/qualityLocks.js");
 const { searchAll } = await import("../server/indexers.js");
-const { invalidateIndex } = await import("../server/metadata.js");
+const { invalidateIndex } = await import("../server/metadata/metadata.js");
 
 const DAY = 86_400_000;
 const hintsOf = () =>

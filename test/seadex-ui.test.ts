@@ -14,8 +14,8 @@ const { qualityScore, seadexPick, seadexSource } = await import("../server/core/
 const { compareToSeadex, pickOfRelease } = await import("../server/core/seadexCompare.js");
 const { budgetBytes, fitsBudget, qualityUpgradePass, startNow, upgradeSeasonNow, usedBytes } = await import("../server/qualityUpgrade.js");
 const { setLock } = await import("../server/qualityLocks.js");
-const { CHECK_COOLDOWN_MS, checkSeadexNow, cooldownLeft, saveSeadex } = await import("../server/seadex.js");
-const { seasonComparison, filePick } = await import("../server/seadexFiles.js");
+const { CHECK_COOLDOWN_MS, checkSeadexNow, cooldownLeft, saveSeadex } = await import("../server/metadata/seadex.js");
+const { seasonComparison, filePick } = await import("../server/metadata/seadexFiles.js");
 type SE = import("../server/core/quality.js").SeadexEntry;
 type SR = import("../server/search.js").SearchResult;
 

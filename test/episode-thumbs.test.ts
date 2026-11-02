@@ -13,7 +13,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { patchSettings } = await import("../server/system/settings.js");
 const { cache, db } = await import("../server/system/db.js");
 const { syncSeriesMetadata, syncSeriesFiles, realWriteDeps } = await import("../server/mediaout.js");
-const { tmdbTarget } = await import("../server/metaoverride.js");
+const { tmdbTarget } = await import("../server/metadata/metaoverride.js");
 
 const THUMB = Buffer.from("tmdb-picture");
 const old = Date.now() - 3600_000;

@@ -14,7 +14,7 @@ const { queueAutoSearch, autoJobs, autoJobsIdle } = await import("../server/auto
 const { clearQueryCache, schedulerStats } = await import("../server/searchQueue.js");
 const { searchAll, indexerNumId } = await import("../server/indexers.js");
 const { deepSearch, clearlyBest } = await import("../server/search.js");
-const { saveSeadex } = await import("../server/seadex.js");
+const { saveSeadex } = await import("../server/metadata/seadex.js");
 const { startGrab } = await import("../server/pipeline.js");
 type SR = import("../server/search.js").SearchResult;
 

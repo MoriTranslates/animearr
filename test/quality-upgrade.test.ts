@@ -13,7 +13,7 @@ const { getSettings, patchSettings } = await import("../server/system/settings.j
 const { profileFor, saveProfile, defaultProfile } = await import("../server/profiles.js");
 const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/qualityLocks.js");
-const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/seadex.js");
+const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");
 type Deps = import("../server/qualityUpgrade.js").QualityDeps;
 type SR = import("../server/search.js").SearchResult;
 

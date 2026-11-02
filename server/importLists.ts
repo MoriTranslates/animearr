@@ -10,13 +10,13 @@
  * in the settings). Jikan (a third-party scraper) needs no key, but it's unofficial and often down, so it isn't used.
  */
 import { logDecision } from "./system/activity.js";
-import { anilistQuery, mediaByIds, type AniMedia } from "./anilist.js";
-import { fribb } from "./covers.js";
+import { anilistQuery, mediaByIds, type AniMedia } from "./metadata/anilist.js";
+import { fribb } from "./metadata/covers.js";
 import { cache, db } from "./system/db.js";
 import { droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
-import { animeListEntries, USER_AGENT } from "./metadata.js";
+import { animeListEntries, USER_AGENT } from "./metadata/metadata.js";
 import { addMovie, addShow, isNativeTvdb, NATIVE_BASE } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";

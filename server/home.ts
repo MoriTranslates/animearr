@@ -7,7 +7,7 @@ import { clientName } from "./arr/clients.js";
 import { cache, db } from "./system/db.js";
 import { calendar, episodeRows } from "./episodes.js";
 import { missingLanguage } from "./audit.js";
-import { colorFor, coverFor, seriesInfo } from "./covers.js";
+import { colorFor, coverFor, seriesInfo } from "./metadata/covers.js";
 import { profileFor } from "./profiles.js";
 import { listManaged } from "./managedList.js";
 

@@ -11,7 +11,7 @@ import { type FastifyReply, type FastifyRequest } from "fastify";
 import { COOKIE, makeSession } from "../system/auth.js";
 import { dbState, setJob } from "../system/db.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrSearch } from "../arr/prowlarr.js";
-import { refreshCatalog, tmdbEpisodes } from "../catalog.js";
+import { refreshCatalog, tmdbEpisodes } from "../metadata/catalog.js";
 
 import { materializeAll } from "../native.js";
 import { getSettings, isMasked } from "../system/settings.js";

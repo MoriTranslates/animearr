@@ -44,8 +44,8 @@ import { startGrab } from "./pipeline.js";
 import { profileFor } from "./profiles.js";
 import { fileRevision, properMode } from "./propers.js";
 import { isLocked } from "./qualityLocks.js";
-import { animeTiers, seadexForSeason } from "./seadex.js";
-import { releaseOf } from "./seadexFiles.js";
+import { animeTiers, seadexForSeason } from "./metadata/seadex.js";
+import { releaseOf } from "./metadata/seadexFiles.js";
 import { deepSearch, type SearchResult } from "./search.js";
 import { getSettings, underAllowedRoot } from "./system/settings.js";
 

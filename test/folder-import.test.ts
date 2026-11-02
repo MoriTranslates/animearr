@@ -13,7 +13,7 @@ const { patchSettings } = await import("../server/system/settings.js");
 const { addShow, checkExistingPath, NATIVE_BASE } = await import("../server/native.js");
 const { adoptFolder, matchFolder, parseFolderName, scanRoot, scoreTitle } = await import("../server/folderImport.js");
 const { scanFolder } = await import("../server/mediafiles.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 type AddResult = import("../server/native.js").AddResult;
 
 const ROOT = "/media/Anime";

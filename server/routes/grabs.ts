@@ -15,9 +15,9 @@ import { upgradeList } from "../upgrade.js";
 import { GOAL_IDS, GOALS, goalLabel, isGoal, seadexSource } from "../core/quality.js";
 import { locksFor, setLock, TDARR_GUARD } from "../qualityLocks.js";
 import { qualityUpgradeView, startNow, upgradeSeasonNow } from "../qualityUpgrade.js";
-import { seasonComparison } from "../seadexFiles.js";
-import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason } from "../seadex.js";
-import { catalogStatus, entriesForSeries } from "../catalog.js";
+import { seasonComparison } from "../metadata/seadexFiles.js";
+import { checkSeadexNow, cooldownLeft, lastCheck, seadexForSeason } from "../metadata/seadex.js";
+import { catalogStatus, entriesForSeries } from "../metadata/catalog.js";
 
 import { renamePlan } from "../importer.js";
 import { ownedElsewhere, ownedWhy } from "../duplicates.js";

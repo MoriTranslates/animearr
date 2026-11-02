@@ -13,12 +13,12 @@
  */
 import { spawn } from "node:child_process";
 import { tmdbFetch } from "./catalog.js";
-import { cache, db } from "./system/db.js";
-import { getSettings } from "./system/settings.js";
-import * as sonarr from "./arr/sonarr.js";
-import { NATIVE_BASE } from "./nativeIds.js";
+import { cache, db } from "../system/db.js";
+import { getSettings } from "../system/settings.js";
+import * as sonarr from "../arr/sonarr.js";
+import { NATIVE_BASE } from "../nativeIds.js";
 import { metaOverrides, tmdbTarget, type MapRow } from "./metaoverride.js";
-import type { EpisodeMeta } from "./mediaout.js";
+import type { EpisodeMeta } from "../mediaout.js";
 
 const WEEK = 7 * 24 * 3600_000;
 /** TMDB's w780 still is ~60–120 KB; plenty for a 16:9 thumbnail in a media server's episode list. */

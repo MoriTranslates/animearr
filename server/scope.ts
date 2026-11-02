@@ -8,7 +8,7 @@
  * (Long-runners: seasons are TVDB seasons for now; AniDB entries/cours come with the own metadata, step 4.)
  */
 import { isCreditlessTitle } from "./core/resolver.js";
-import { anidbSpecialKind } from "./anidb.js";
+import { anidbSpecialKind } from "./metadata/anidb.js";
 import { cache, db } from "./system/db.js";
 import { ownedElsewhere } from "./duplicates.js";
 import { getSettings } from "./system/settings.js";

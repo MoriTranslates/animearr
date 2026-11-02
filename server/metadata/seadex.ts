@@ -8,9 +8,9 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { compileTiers, seadexSource, type CompiledTiers, type SeadexEntry, type SeadexTorrent, type TierTable } from "./core/quality.js";
-import { cache, db, setJob } from "./system/db.js";
-import { listManaged } from "./managedList.js";
+import { compileTiers, seadexSource, type CompiledTiers, type SeadexEntry, type SeadexTorrent, type TierTable } from "../core/quality.js";
+import { cache, db, setJob } from "../system/db.js";
+import { listManaged } from "../managedList.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -27,7 +27,14 @@ export function animeTiers(): CompiledTiers | null {
   if (tiersCache && Date.now() - tiersCache.at < 10 * 60_000) return tiersCache.v;
   const file = [
     path.join(process.cwd(), "catalog", "anime-tiers.json"),
-    path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "catalog", "anime-tiers.json"),
+    path.join(
+      path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")),
+      "..",
+      "..",
+      "..",
+      "catalog",
+      "anime-tiers.json",
+    ),
   ].find((f) => fs.existsSync(f));
   let v: CompiledTiers | null = null;
   try {

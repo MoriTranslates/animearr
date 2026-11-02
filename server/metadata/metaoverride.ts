@@ -5,7 +5,7 @@
  */
 import { tmdbFetch } from "./catalog.js";
 import type { FastifyInstance } from "fastify";
-import { db } from "./system/db.js";
+import { db } from "../system/db.js";
 
 export interface MetaOverride {
   tmdbTv: number;

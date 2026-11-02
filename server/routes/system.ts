@@ -7,7 +7,7 @@ import { type FastifyReply } from "fastify";
 import { authState, loginAllowed } from "../system/auth.js";
 import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
 import { syncLibrary } from "../library.js";
-import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata.js";
+import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
 
 import { checkPassword, getSettings } from "../system/settings.js";
 import { VERSION } from "../system/version.js";

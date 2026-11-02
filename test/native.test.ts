@@ -12,7 +12,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { addShow, searchAdd, NATIVE_BASE, rematerializeSeries } = await import("../server/native.js");
 const { renameRoute } = await import("../server/importer.js");
-type AniMedia = import("../server/anilist.js").AniMedia;
+type AniMedia = import("../server/metadata/anilist.js").AniMedia;
 
 const media = (id: number, over: Partial<AniMedia> = {}): AniMedia => ({
   id,
