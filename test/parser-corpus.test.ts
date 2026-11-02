@@ -468,6 +468,33 @@ test("[Oshi no Ko] goes to its own show, not a show named after what follows the
   );
 });
 
+test("a version after the episode, spaced or in brackets, is read (05 v2, 05 [v2])", () => {
+  const v = (name: string) => [
+    parseRelease(name).title,
+    parseRelease(name).absolute,
+    parseRelease(name).episodes,
+    parseRelease(name).version,
+  ];
+  // Was version 1.
+  assert.deepEqual(v("Show - 05 v2"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("Show - 05 [v2]"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("[Group] Show - 05 v2 [1080p]"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("[Group] Show - 05 [v2] [1080p]"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("[Group] Show - 05 [V3]"), ["Show", [5], [], 3]);
+  assert.deepEqual(v("Show - 05 (v2)"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("Show S01E05 v2"), ["Show", [], [5], 2]);
+  // Must not change.
+  assert.deepEqual(v("Show - 05v2"), ["Show", [5], [], 2]);
+  assert.deepEqual(v("[Group] Show - 05v3 (1080p)"), ["Show", [5], [], 3]);
+  assert.deepEqual(v("Show S01E05v2"), ["Show", [], [5], 2]);
+  assert.deepEqual(v("[Group] Show - 05 [1080p]"), ["Show", [5], [], 1]);
+  // "v2" in the title is part of the title, not a version.
+  assert.deepEqual(v("[Group] Love Live! Superstar!! v2 - 05"), ["Love Live! Superstar!! v2", [5], [], 1]);
+  assert.deepEqual(v("[Group] Show V2 - 05 [1080p]"), ["Show V2", [5], [], 1]);
+  // Words after the episode ("- Title v2") are an episode title, not a version.
+  assert.deepEqual(v("[Group] Show - 05 - Title v2"), ["Show", [5], [], 1]);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },

@@ -682,6 +682,11 @@ export function parseRelease(input: string): ParsedRelease {
   const scene =
     /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
   if (scene) version = Math.max(version, Number(scene[1] ?? 1) + 1);
+  // A version on its own after the title: "[v2]" / "(v2)" anywhere after it, or a bare "v2" right after the episode
+  // number ("- 05 v2", "S01E05 v2"). A "v2" inside the title ("Superstar!! v2 - 05") or an episode title is not one.
+  const epEnd = chosen.find((c) => c.episodes || c.absolute)?.end;
+  const verM = /[[(]\s*v(\d)\s*[\])]/i.exec(tail) ?? (epEnd !== undefined ? /^\s?v(\d)(?![A-Za-z0-9])/i.exec(work.slice(epEnd)) : null);
+  if (verM) version = Math.max(version, Number(verM[1]));
   // A dash number right after a fan "S6 - 01" is the same number; don't double-count.
   if (fan && absolute.length === 1 && episodes.length === 1 && absolute[0] === episodes[0]) absolute = [];
   // "S01E01-02 - 001-002" keeps both; SxxEyy plus a weak trailing number "S10E14 214" → absolute 214.
