@@ -206,6 +206,9 @@ export class AliasIndex {
     const byTvdb = new Map<number, Candidate>();
     // Series whose best hit is only the year-less key of a title with a year (see the remake rule below).
     const yearless = new Set<number>();
+    // Per in-library series, its best "name as it is" hit: exact key, not through the year-less key, an alt title from
+    // the release, a franchise base or an inferred AniDB entry. Only these count as a rival for the remake rule.
+    const asIs = new Map<number, number>();
     const consider = (h: RawHit, keySeason: number | null, exact: boolean, viaAlt: boolean) => {
       let tvdbId = h.tvdbId;
       let inferred = false;
@@ -244,6 +247,8 @@ export class AliasIndex {
       why.unshift(
         `title "${h.title}" (${h.source.replace("-", " ")}${h.aid ? `, AniDB ${h.aid}` : ""})${impliedSeason !== null ? ` implies season ${impliedSeason}` : ""}`,
       );
+      if (lib && exact && !viaAlt && !franchiseOnly && !inferred && !h.yearStripped)
+        asIs.set(tvdbId, Math.max(asIs.get(tvdbId) ?? -Infinity, score));
       const prev = byTvdb.get(tvdbId);
       // Prefer a hit that pins a season/entry over a plain franchise hit of similar strength.
       const specific = (c: { impliedSeason: number | null; entry: unknown }) => (c.impliedSeason !== null || c.entry ? 3 : 0);
@@ -269,16 +274,18 @@ export class AliasIndex {
     };
     for (const { hit, keySeason, exact } of this.hits(title)) consider(hit, keySeason, exact, false);
     for (const alt of altTitles) for (const { hit, keySeason, exact } of this.hits(alt)) consider(hit, keySeason, exact, true);
-    // Remakes: "Hunter x Hunter - 05" reaches "Hunter x Hunter (2011)" only by dropping its year. When another library
-    // show matches the name as it is, that show is meant; the remake drops below it (and below the auto threshold)
-    // instead of winning a tie by library order. With no such rival, the year-less match keeps its score.
-    if ([...byTvdb.values()].some((c) => c.inLibrary && !yearless.has(c.tvdbId)))
-      for (const id of yearless) {
-        const c = byTvdb.get(id)!;
-        if (!c.inLibrary) continue;
-        c.score -= 10;
-        c.why.push("matched only without the year in its title, and another show in the library matches the name as it is");
-      }
+    // Remakes: "Hunter x Hunter - 05" reaches "Hunter x Hunter (2011)" best by dropping its year. When another library
+    // show matches the name as it is at least as strongly, that show is meant: the remake drops 10 (below the auto
+    // threshold), or to its own best as-is hit (an alt title "Hunter x Hunter") if that is higher, instead of winning a
+    // tie by library order. A weaker rival (a sequel reached only through the franchise, "Dororo II") changes nothing.
+    for (const id of yearless) {
+      const c = byTvdb.get(id)!;
+      if (!c.inLibrary) continue;
+      const rival = [...asIs].some(([other, score]) => other !== id && score >= c.score);
+      if (!rival) continue;
+      c.score = Math.max(c.score - 10, asIs.get(id) ?? -Infinity);
+      c.why.push("matched best without the year in its title, and another show in the library matches the name as it is");
+    }
     return [...byTvdb.values()].sort((a, b) => Number(b.inLibrary) - Number(a.inLibrary) || b.score - a.score);
   }
 

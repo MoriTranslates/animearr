@@ -278,6 +278,52 @@ test("remakes: a title with no year goes to the show with that exact title, not 
   assert.equal(only.resolution?.confidence, 86, only.summary);
 });
 
+test("remakes: a weak rival (a sequel reached only through the franchise) doesn't penalise the remake (review #1)", () => {
+  const lib = (tvdbId: number, title: string, alts: string[] = []) => ({
+    seriesId: tvdbId,
+    tvdbId,
+    title,
+    path: `/a/${tvdbId}`,
+    altTitles: alts.map((t) => ({ title: t, sceneSeason: null })),
+  });
+  const eps = (t: number) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      id: t * 100 + i + 1,
+      season: 1,
+      episode: i + 1,
+      absolute: i + 1,
+      sceneSeason: null,
+      sceneEpisode: null,
+      sceneAbsolute: null,
+      airUtc: 0,
+    }));
+  const ctxOf = (library: ReturnType<typeof lib>[]) => ({
+    index: new AliasIndex({ library }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: (t: number) => eps(t),
+  });
+  // The reviewer's repro: Dororo (2019) and a separate "Dororo II", in both library orders.
+  for (const library of [
+    [lib(2, "Dororo (2019)"), lib(3, "Dororo II")],
+    [lib(3, "Dororo II"), lib(2, "Dororo (2019)")],
+  ]) {
+    const r = identify("[Group] Dororo - 05 [1080p]", ctxOf(library));
+    assert.equal(r.candidate?.tvdbId, 2, r.summary);
+    assert.equal(r.resolution?.confidence, 86, r.summary);
+  }
+  // Must not change: a remake that also carries the name without the year as an alternate title. The show whose own
+  // title is that name still wins, in both orders, and the remake isn't tied with it.
+  for (const library of [
+    [lib(2, "Hunter x Hunter (2011)", ["Hunter x Hunter"]), lib(1, "Hunter x Hunter")],
+    [lib(1, "Hunter x Hunter"), lib(2, "Hunter x Hunter (2011)", ["Hunter x Hunter"])],
+  ]) {
+    const r = identify("[Group] Hunter x Hunter - 05 [1080p]", ctxOf(library));
+    assert.equal(r.candidate?.tvdbId, 1, r.summary);
+    const cands = ctxOf(library).index.lookup("Hunter x Hunter");
+    assert.ok(cands[0].score > cands[1].score, JSON.stringify(cands.map((c) => [c.tvdbId, c.score])));
+  }
+});
+
 test("multi-episode files keep every episode, not just the first two", () => {
   const ep = (season: number, episodes: number[]) => ({ season, episodes });
   check([
