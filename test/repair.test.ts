@@ -265,3 +265,41 @@ test("an episode you don't monitor is never blocklisted or replaced automaticall
   assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = ?").get(u.sourceTitle), undefined);
   assert.deepEqual(calls.failed, []);
 });
+
+test("a Sonarr sourceTitle that is a relative path is reduced to the file name before parsing; a '/' title is kept", async () => {
+  const { historyReleaseName } = await import("../server/import/repair.js");
+  const dropped = "/downloads/[FolderGrp] Other Show Batch/[PathGroup] Other Show - 10 [1080p].mkv";
+  assert.equal(
+    historyReleaseName("[FolderGrp] Other Show Batch/[PathGroup] Other Show - 10 [1080p].mkv", dropped),
+    "[PathGroup] Other Show - 10 [1080p].mkv",
+  );
+  assert.equal(
+    historyReleaseName("[FolderGrp] Other Show Batch/[PathGroup] Other Show - 10 [1080p]", dropped),
+    "[PathGroup] Other Show - 10 [1080p]",
+  );
+  assert.equal(historyReleaseName("/downloads/x/[G] Show - 01.mkv"), "[G] Show - 01.mkv");
+  assert.equal(historyReleaseName("D:\\dl\\[G] Show - 01.mkv"), "[G] Show - 01.mkv");
+  assert.equal(historyReleaseName("dl\\[G] Show - 01.mkv"), "[G] Show - 01.mkv");
+  // A release title with a "/" that the dropped path doesn't end with stays whole.
+  assert.equal(
+    historyReleaseName("[SubsPlease] Fate/Zero - 01 (1080p)", "/downloads/[SubsPlease] Fate Zero - 01 (1080p).mkv"),
+    "[SubsPlease] Fate/Zero - 01 (1080p)",
+  );
+  assert.equal(historyReleaseName("[SubsPlease] Fate/Zero - 01 (1080p)"), "[SubsPlease] Fate/Zero - 01 (1080p)");
+  assert.equal(historyReleaseName("[SubsPlease] Show - 01 (1080p)", dropped), "[SubsPlease] Show - 01 (1080p)");
+
+  // End to end: the group learned from the import is the file's, not the folder's.
+  patchSettings((s) => ({ ...s, repair: { mode: "log", maxPerDay: 10 } }));
+  cache
+    .prepare("INSERT INTO episodes (id, series_id, season, episode, monitored, has_file, runtime) VALUES (1013, 11, 1, 10, 1, 1, 24)")
+    .run();
+  const it = item(1013, 11, "[FolderGrp] Other Show Batch/[PathGroup] Other Show - 10 [1080p]", "Other Show");
+  delete (it.data as { releaseGroup?: string }).releaseGroup;
+  (it.data as { droppedPath?: string }).droppedPath = dropped;
+  const { d } = deps([it], { [it.id]: { subs: ["en"] } }, { [it.id]: "eng" });
+  const r = await checkNewImports(d);
+  assert.equal(r[0]?.action, "none", r[0]?.why);
+  const grps = (db.prepare("SELECT DISTINCT grp FROM group_langs WHERE origin = 'verify'").all() as { grp: string }[]).map((g) => g.grp);
+  assert.ok(grps.includes("pathgroup"), grps.join(","));
+  assert.ok(!grps.includes("foldergrp"), grps.join(","));
+});

@@ -75,6 +75,21 @@ const kvGet = (k: string) => (db.prepare("SELECT value FROM kv WHERE key = ?").g
 const kvSet = (k: string, v: string) =>
   db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
 
+/**
+ * The release name to parse from a Sonarr import record. `sourceTitle` is normally the release title, which may itself
+ * hold a "/" ("Fate/Zero - 01"); for some imports it is a file path. A backslash or a rooted path is always a path. An
+ * unrooted "a/b" is a path only when the import's `droppedPath` ends with it; otherwise it is a title and kept whole.
+ */
+export function historyReleaseName(sourceTitle: string, droppedPath?: string): string {
+  const slashed = sourceTitle.replace(/\\/g, "/");
+  if (!slashed.includes("/")) return sourceTitle;
+  const last = slashed.split("/").filter(Boolean).pop() ?? sourceTitle;
+  if (sourceTitle.includes("\\") || /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(slashed)) return last;
+  const noExt = (p: string) => p.replace(/\.[A-Za-z0-9]{2,4}$/, "").toLowerCase();
+  const dropped = noExt((droppedPath ?? "").replace(/\\/g, "/"));
+  return dropped && dropped.endsWith("/" + noExt(slashed.replace(/^\/+/, ""))) ? last : sourceTitle;
+}
+
 /** Is this import AnimeArr's own (already verified by the pipeline, or still being handled by it)? */
 function ownImport(h: sonarr.HistoryItem, importedAt: number): string | null {
   if (h.downloadId && db.prepare("SELECT 1 FROM grabs WHERE lower(client_ref) = lower(?) LIMIT 1").get(h.downloadId))
@@ -213,11 +228,12 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
         record({ ok: false, action: "unchecked", why: "couldn't read the file or Sonarr's track info" });
         continue;
       }
-      const parsed = parseRelease(h.sourceTitle);
+      const releaseName = historyReleaseName(h.sourceTitle, h.data.droppedPath);
+      const parsed = parseRelease(releaseName);
       if (probe)
         learnFromVerify(
           h.data.releaseGroup ?? parsed.group,
-          parsed.platform ?? sourceKey(h.sourceTitle, null, parsed.source),
+          parsed.platform ?? sourceKey(releaseName, null, parsed.source),
           v.subs,
           v.audio,
         );
