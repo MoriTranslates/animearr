@@ -786,6 +786,19 @@ test("a '#N' in the title before the episode is part of the title (Show #1 - 05)
   assert.equal(parseRelease("Show #1 - 05v2").version, 2);
 });
 
+test("'#N - 1080p': a resolution after the dash is not the episode, so '#N' is (review #5)", () => {
+  check([
+    // The reviewer's repro (was title "Show #12 - 1080p" / "One Piece #957 - 1080p", no episode).
+    { name: "[Group] Show #12 - 1080p [HEVC]", title: "Show", group: "Group", absolute: [12] },
+    { name: "One Piece #957 - 1080p.mkv", title: "One Piece", group: null, absolute: [957] },
+    { name: "[Group] Show #12 - 720p", title: "Show", group: "Group", absolute: [12] },
+    { name: "[Group] Show #12 - 10bit [1080p]", title: "Show", group: "Group", absolute: [12] },
+    // Must not change: a real episode after the dash.
+    { name: "[Group] Show #12 - 05 [1080p]", title: "Show #12", group: "Group", absolute: [5] },
+    { name: "[Group] Show #1 - 1080 [1080p]", title: "Show #1", group: "Group", absolute: [1080] },
+  ]);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },
