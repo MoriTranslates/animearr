@@ -18,6 +18,7 @@ import { sidecarLang, toLang } from "../core/langs.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { keyOf, localPath } from "../system/paths.js";
 import { getSettings } from "../system/settings.js";
+import { libraryUnknownReason } from "../library/native.js";
 import { PARTIAL_TRACK } from "../grabs/verify.js";
 
 export const VIDEO = /\.(mkv|mp4|m4v|avi|ts|webm|wmv|mov)$/i;
@@ -345,8 +346,9 @@ export function scanLibrary(opts: { full?: boolean; probe?: typeof probeFile; ro
       }
       res.removed += Number(db.prepare("DELETE FROM media_files WHERE root = ? AND seen_at < ?").run(root, started).changes);
     }
-    // Roots that aren't library roots any more (moved or removed in Sonarr/Radarr).
-    if (!opts.roots && roots.length) {
+    // Roots that aren't library roots any more (moved or removed in Sonarr/Radarr). The roots come from the cache, so
+    // only once Sonarr's and Radarr's lists were read into it: an unfilled cache isn't "every root removed".
+    if (!opts.roots && roots.length && !libraryUnknownReason()) {
       const current = new Set(roots.map(keyOf));
       for (const r of db.prepare("SELECT DISTINCT root FROM media_files").all() as { root: string }[])
         if (!current.has(r.root)) res.removed += Number(db.prepare("DELETE FROM media_files WHERE root = ?").run(r.root).changes);

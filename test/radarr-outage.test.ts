@@ -134,6 +134,7 @@ test("a refused or malformed Radarr answer never deletes a multi-part movie reco
   await syncLibrary(true);
   // Movie 1: parts AnimeArr imported that are now gone from disk (an accepted sync drops this record).
   const gone = path.join(process.env.ANIMEARR_CONFIG!, "gone");
+  fs.mkdirSync(gone); // the folder is readable and the parts aren't in it: really gone
   db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(
     1,
     JSON.stringify({ parts: [`${gone}/cd1.mkv`, `${gone}/cd2.mkv`] }),
@@ -159,4 +160,72 @@ test("a refused Radarr answer still counts a multi-part movie's stacked parts as
   assert.equal(hasFile(1), 1);
   assert.ok(partsRecord(1));
   mode = "ok";
+});
+
+// ---------------------------------------------------------------- multi-part records vs an unreachable share
+
+/** A library root with a multi-part movie folder under it; `state` sets up what the share looks like. */
+function partsUnder(name: string) {
+  const root = path.join(process.env.ANIMEARR_CONFIG!, name);
+  const folder = path.join(root, "Movies", "Film (2001)");
+  const parts = ["cd1.mkv", "cd2.mkv"].map((f) => path.join(folder, f));
+  patchSettings((s) => ({ ...s, allowedRoots: [...s.allowedRoots, root.split(path.sep).join("/")] }));
+  db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(1, JSON.stringify({ parts }), Date.now());
+  return { root, folder, parts };
+}
+
+test("an unmounted share (the library root is missing) keeps the multi-part record and its file", async () => {
+  partsUnder("share-missing"); // nothing created on disk
+  mode = "ok";
+  ids = [1, 2, 3];
+  await syncLibrary(true);
+  assert.ok(partsRecord(1));
+  assert.equal(hasFile(1), 1, "still counts as having its file");
+});
+
+test("an empty mount point (the root is there but empty) keeps the multi-part record", async () => {
+  const { root } = partsUnder("share-empty");
+  fs.mkdirSync(root, { recursive: true });
+  await syncLibrary(true);
+  assert.ok(partsRecord(1));
+});
+
+test("a share mounted below the root (its empty mount point inside a root with content) keeps the record", async () => {
+  const { root } = partsUnder("share-nested");
+  fs.mkdirSync(path.join(root, "Movies"), { recursive: true }); // the share's mount point, empty: not mounted
+  fs.writeFileSync(path.join(root, "other.txt"), "x");
+  await syncLibrary(true);
+  assert.ok(partsRecord(1));
+});
+
+test("a permission error reading the movie folder keeps the multi-part record", async (t) => {
+  const { root, folder, parts } = partsUnder("share-eacces");
+  fs.mkdirSync(folder, { recursive: true });
+  for (const p of parts) fs.writeFileSync(p, "x");
+  fs.writeFileSync(path.join(root, "other.txt"), "x");
+  const real = fs.readdirSync;
+  const denied = (p: fs.PathLike) => path.resolve(String(p)) === path.resolve(folder);
+  t.mock.method(fs, "readdirSync", ((p: fs.PathLike, o?: never) => {
+    if (denied(p)) throw Object.assign(new Error(`EACCES: permission denied, scandir '${String(p)}'`), { code: "EACCES" });
+    return real(p, o);
+  }) as typeof fs.readdirSync);
+  t.mock.method(fs, "accessSync", ((p: fs.PathLike) => {
+    if (denied(path.dirname(String(p))) || denied(p)) throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+  }) as typeof fs.accessSync);
+  await syncLibrary(true);
+  assert.ok(partsRecord(1));
+});
+
+test("a part really deleted (its folder readable) or the whole movie folder deleted (root reachable) drops the record", async () => {
+  const { root, folder, parts } = partsUnder("share-real");
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(parts[0], "x"); // cd2 is gone
+  await syncLibrary(true);
+  assert.ok(!partsRecord(1), "one part gone");
+
+  const again = partsUnder("share-real");
+  fs.rmSync(again.folder, { recursive: true }); // the whole movie folder is gone, the root still has other content
+  fs.mkdirSync(path.join(root, "Movies", "Another (2002)"), { recursive: true });
+  await syncLibrary(true);
+  assert.ok(!partsRecord(1), "movie folder gone");
 });

@@ -1,5 +1,4 @@
-import fs from "node:fs";
-import { localPath } from "../system/paths.js";
+import { fileSurelyGone } from "../system/paths.js";
 /**
  * Import / sync of the existing Sonarr and Radarr libraries into cache.db (companion mode: Sonarr stays the source of
  * truth for files). Read-only towards Sonarr/Radarr: nothing here changes their settings or data.
@@ -407,11 +406,12 @@ async function syncRadarr(full: boolean, res: SyncResult) {
   });
   // Multi-part movies AnimeArr imported: Radarr doesn't see stacked parts, so its "no file" doesn't count.
   for (const r of db.prepare("SELECT movie_id, file FROM movie_parts").all() as { movie_id: number; file: string }[]) {
-    const parts = ((JSON.parse(r.file) as { parts?: string[] }).parts ?? []).map((p) => localPath(p));
+    const parts = (JSON.parse(r.file) as { parts?: string[] }).parts ?? [];
     // Parts deleted or replaced (or Radarr has its own file now): the record goes, but only after an answer the sync
-    // accepted. A held (suspect) answer never deletes it: the record is AnimeArr's own and can't be rebuilt.
+    // accepted. A held (suspect) answer never deletes it: the record is AnimeArr's own and can't be rebuilt. A part
+    // counts as deleted only when that's certain: an unmounted or unreadable share keeps the record (and the file).
     const has = cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(r.movie_id) as { has_file: number } | undefined;
-    if (has?.has_file || !parts.length || parts.some((p) => !p || !fs.existsSync(p))) {
+    if (has?.has_file || !parts.length || parts.some((p) => fileSurelyGone(p))) {
       if (!held) db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
       continue;
     }
