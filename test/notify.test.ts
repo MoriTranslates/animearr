@@ -9,7 +9,7 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings, updateSettings, getSettings } = await import("../server/system/settings.js");
-const { eventOf, send, bell } = await import("../server/notify.js");
+const { eventOf, send, bell } = await import("../server/notify/notify.js");
 const { logDecision } = await import("../server/system/activity.js");
 
 test("which activity entries notify", () => {

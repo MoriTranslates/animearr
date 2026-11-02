@@ -9,8 +9,8 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings, getSettings, publicSettings, MASK } = await import("../server/system/settings.js");
-const { send, testChannel, channelStatus } = await import("../server/notify.js");
-const { newChannel, cleanChannels, maskChannel, buildRequest, deliver } = await import("../server/notifyChannels.js");
+const { send, testChannel, channelStatus } = await import("../server/notify/notify.js");
+const { newChannel, cleanChannels, maskChannel, buildRequest, deliver } = await import("../server/notify/notifyChannels.js");
 
 const note = {
   event: "grabbed",

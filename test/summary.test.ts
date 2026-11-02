@@ -15,7 +15,7 @@ const { db } = await import("../server/system/db.js");
 const { summarize, plainReason, queueSummary } = await import("../server/system/summary.js");
 const { logDecision, listDecisions } = await import("../server/system/activity.js");
 const { fixesFor, liveFixesFor } = await import("../server/system/fixes.js");
-const { bell, markRead } = await import("../server/notify.js");
+const { bell, markRead } = await import("../server/notify/notify.js");
 
 const noJargon = (s: string | null) => {
   assert.ok(s, "a summary");

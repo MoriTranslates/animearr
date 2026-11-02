@@ -4,7 +4,7 @@ import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
 import type { GoalId } from "../core/quality.js";
 import { open, seal } from "./secretbox.js";
-import type { NotifyChannel } from "../notifyChannels.js";
+import type { NotifyChannel } from "../notify/notifyChannels.js";
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 

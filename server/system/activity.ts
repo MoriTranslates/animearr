@@ -1,6 +1,6 @@
 import { db, dbState } from "./db.js";
 import { liveFixesFor } from "./fixes.js";
-import { onDecision } from "../notify.js";
+import { onDecision } from "../notify/notify.js";
 
 /**
  * Activity log: every action and decision with a plain-language "why" (design principle: helpful but transparent,

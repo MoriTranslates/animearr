@@ -1,7 +1,7 @@
 /** Routes: Notifications: the bell, setup problems and the extra channels. */
 import { setupProblems, withSetupProblems } from "../system/setupHealth.js";
-import { bell, channelStatus, markRead, send, testChannel } from "../notify.js";
-import { cleanChannels, maskChannel, CHANNEL_TYPES } from "../notifyChannels.js";
+import { bell, channelStatus, markRead, send, testChannel } from "../notify/notify.js";
+import { cleanChannels, maskChannel, CHANNEL_TYPES } from "../notify/notifyChannels.js";
 import { getTags, sonarrConfigured } from "../arr/sonarr.js";
 
 import { getSettings, patchSettings } from "../system/settings.js";

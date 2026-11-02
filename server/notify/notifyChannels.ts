@@ -4,9 +4,9 @@
  * encrypted settings row, are masked on their way to the browser, and are scrubbed from every error text.
  * Discord and ntfy stay as the two original fields in notify.ts; this file only builds and sends the new ones.
  */
-import { MASK, isMasked } from "./system/settings.js";
-import { VERSION } from "./system/version.js";
-import { redactText } from "./system/redact.js";
+import { MASK, isMasked } from "../system/settings.js";
+import { VERSION } from "../system/version.js";
+import { redactText } from "../system/redact.js";
 
 export type ChannelType = "webhook" | "telegram" | "pushover" | "email";
 export const CHANNEL_TYPES: ChannelType[] = ["webhook", "telegram", "pushover", "email"];

@@ -4,12 +4,12 @@
  * in-app bell. Fed from the activity log, so every notification is also an activity entry.
  * Secrets (webhook URLs, tokens, passwords) are stored encrypted and never logged.
  */
-import { liveFixesFor, linkFor, type FixContext } from "./system/fixes.js";
-import { cache, db, dbState } from "./system/db.js";
-import { getSettings } from "./system/settings.js";
-import { summarize } from "./system/summary.js";
+import { liveFixesFor, linkFor, type FixContext } from "../system/fixes.js";
+import { cache, db, dbState } from "../system/db.js";
+import { getSettings } from "../system/settings.js";
+import { summarize } from "../system/summary.js";
 import { channelProblem, deliver, type ChannelDeps, type Note, type NotifyChannel, type NotifyMeta } from "./notifyChannels.js";
-import { redactText } from "./system/redact.js";
+import { redactText } from "../system/redact.js";
 
 export type NotifyEvent = "grabbed" | "imported" | "failed" | "paused" | "indexer";
 export const NOTIFY_EVENTS: NotifyEvent[] = ["grabbed", "imported", "failed", "paused", "indexer"];
