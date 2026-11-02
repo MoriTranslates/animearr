@@ -4,7 +4,7 @@ import { api, fmtSize } from "../api";
 import { query } from "../App";
 import { ShowLink } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, useToast, Why, ReleaseName } from "../ui";
+import { Chip, Confirm, dateTime, Empty, ErrorBox, Menu, Spinner, thumbUrl, useLoad, usePageTitle, usePoll, useToast, Why, ReleaseName } from "../ui";
 import { SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
 import { FileX } from "lucide-react";
@@ -87,11 +87,7 @@ function Downloading({ onHistory }: { onHistory: () => void }) {
   const d = useLoad(() => api<{ items: Item[] }>("/queue"), []);
   const [remove, setRemove] = useState<Item | null>(null);
   const [opts, setOpts] = useState({ blocklist: true, searchNext: true });
-  useEffect(() => {
-    const id = setInterval(() => void d.reload(), 5000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePoll(d.reload, 5000);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return <Spinner label={t("app.loading")} />;
   return (
@@ -268,11 +264,7 @@ function SonarrProblems() {
   const d = useLoad(() => api<{ items: Problem[] }>("/queue/sonarr"), []);
   const [remove, setRemove] = useState<Problem | null>(null);
   const [blocklist, setBlocklist] = useState(true);
-  useEffect(() => {
-    const id = setInterval(() => void d.reload(), 30_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePoll(d.reload, 30_000);
   if (!d.error && (!d.data || !d.data.items.length)) return null;
   return (
     <div className="stack" style={{ marginTop: "var(--space-6, 24px)" }}>

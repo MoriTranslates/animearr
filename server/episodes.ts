@@ -575,7 +575,7 @@ export function replaceSeasonPreview(tvdbId: number, season: number) {
   const quality = new Map<string, { source: string | null; resolution: string | null; remux: boolean; n: number }>();
   for (const e of withFile) {
     const f = e.file!;
-    const q = { source: f.source, resolution: f.resolution ?? f.quality, remux: /remux/i.test(`${f.sceneName ?? ""} ${f.quality ?? ""}`) };
+    const q = { source: f.source, resolution: f.resolution ?? f.quality, remux: /\bremux\b/i.test(`${f.sceneName ?? ""} ${f.quality ?? ""}`) };
     const k = `${q.source}|${q.resolution}|${q.remux}`;
     quality.set(k, { ...q, n: (quality.get(k)?.n ?? 0) + 1 });
   }

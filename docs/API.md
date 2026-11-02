@@ -401,7 +401,8 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 |  | `GET /api/system/updates` | Newest release on GitHub |
 |  | `POST /api/system/backup` | Create a backup now |
 |  | `POST /api/system/restore` | Restore a backup by name (session or password only) |
-|  | `GET /api/system/backup/download` | Download a whole backup (database + secret key) (session or password only) |
+|  | `GET /api/system/backup/download` | Download a whole backup (database + secret key) (a logged-in session only; the home-network bypass isn't enough) |
+|  | `POST /api/system/backup/download` | The same, with `{ password }` (what the UI sends; never with the API key) |
 |  | `POST /api/system/backup/upload` | Stage an uploaded backup for restore (session or password only) |
 |  | `POST /api/system/backup/restore-upload` | Restore a staged backup (session or password only) |
 |  | `POST /api/system/cache/reset` | Rebuild the library cache from Sonarr (session or password only) |
@@ -657,7 +658,8 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 |  | `POST /api/downloads/rules/disable` | Switch off a folder rule |
 |  | `GET /api/recycle` | Recycle-bin status |
 |  | `GET /api/recycle/animearr` | AnimeArr's own recycle bin |
-|  | `POST /api/recycle/animearr/empty` | Empty AnimeArr's recycle bin |
+|  | `POST /api/recycle/animearr/empty` | Empty AnimeArr's recycle bin (pinned files stay) |
+|  | `POST /api/recycle/animearr/unpin` | `{ path }`: release a file pinned after an import couldn't put it back |
 |  | `GET /api/recycle/setting` | Recycle-bin setting |
 
 ### Indexers & clients
@@ -736,7 +738,7 @@ Endpoints present (all under `/api/v3`):
 | System | `GET system/status`, `GET health`, `GET diskspace` |
 | Profiles and folders | `GET qualityprofile`, `GET qualityprofile/{id}`, `GET languageprofile`, `GET language`, `GET language/{id}`, `GET rootfolder`, `GET qualitydefinition` |
 | Tags | `GET tag`, `GET tag/{id}`, `POST tag`, `PUT tag/{id}`, `DELETE tag/{id}` |
-| Series | `GET series` (`?tvdbId=`), `GET series/lookup`, `GET series/{id}`, `POST series`, `PUT series`, `PUT series/{id}`, `DELETE series/{id}` |
+| Series | `GET series` (`?tvdbId=`), `GET series/lookup`, `GET series/{id}`, `POST series`, `PUT series`, `PUT series/{id}`, `PUT series/editor` (bulk monitored / quality profile / tags; `deleteFiles`, `moveFiles` and a different `rootFolderPath` are refused), `DELETE series/{id}` |
 | Episodes | `GET episode`, `GET episode/{id}`, `PUT episode/monitor` |
 | Files | `GET episodefile`, `GET episodefile/{id}` (deleting a file is refused with 405), `GET mediacover/{id}/{file}` |
 | Commands | `POST command`, `GET command`, `GET command/{id}` (supports `SeriesSearch`, `MissingEpisodeSearch`, `SeasonSearch`, `EpisodeSearch`, `RescanSeries`, `RefreshSeries`, `RssSync`, `Backup`; others are refused) |
@@ -745,6 +747,8 @@ Endpoints present (all under `/api/v3`):
 | History | `GET history`, `GET history/since`, `GET history/series`, `POST history/failed/{id}` |
 | Wanted | `GET wanted/missing`, `GET wanted/cutoff` |
 | Releases | `GET release` (interactive search for an episode), `POST release` (grab one) |
+
+Query parameter names are matched in any case, as Sonarr does (`seriesId`, `seriesID` and `SERIESID` are the same).
 
 There is no Radarr-side API (so movie requests are not possible).
 

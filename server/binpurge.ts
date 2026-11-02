@@ -37,6 +37,24 @@ export function noteBinned(localTarget: string, size: number, now = Date.now()) 
   db.prepare("INSERT OR REPLACE INTO recycle_log (path, at, size) VALUES (?, ?, ?)").run(path.resolve(localTarget), now, size);
 }
 
+/**
+ * Keeps a file in the bin for good (also through "Empty bin now"): an import moved it there to replace it and then
+ * couldn't put it back. `why` says what happened; it shows in Audit → Recycle until the user unpins it.
+ */
+export function pinBinned(localTarget: string, why: string, now = Date.now()) {
+  const p = path.resolve(localTarget);
+  db.prepare("INSERT INTO recycle_log (path, at, size, pinned) VALUES (?, ?, 0, ?) ON CONFLICT (path) DO UPDATE SET pinned = excluded.pinned").run(p, now, why);
+}
+
+/** The user dealt with it (moved it back or doesn't want it): the normal retention applies again, counted from now. */
+export function unpinBinned(localTarget: string, now = Date.now()) {
+  return db.prepare("UPDATE recycle_log SET pinned = NULL, at = ? WHERE path = ? AND pinned IS NOT NULL").run(now, path.resolve(localTarget)).changes > 0;
+}
+
+export function pinnedInBin(): { path: string; why: string; at: number; exists: boolean }[] {
+  return (db.prepare("SELECT path, pinned AS why, at FROM recycle_log WHERE pinned IS NOT NULL ORDER BY at").all() as { path: string; why: string; at: number }[]).map((r) => ({ ...r, exists: fs.existsSync(r.path) }));
+}
+
 function filesIn(dir: string, out: string[] = [], depth = 0): string[] {
   if (depth > 8) return out;
   let names: fs.Dirent[] = [];
@@ -67,12 +85,19 @@ export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
   if ("error" in bin) return { deleted: 0, bytes: 0, skipped: bin.error };
   if (!opts.all && days <= 0) return { deleted: 0, bytes: 0, skipped: "kept forever (cleanup days = 0)" };
   if (!fs.existsSync(bin.local)) return { deleted: 0, bytes: 0, skipped: null };
-  const known = new Map((db.prepare("SELECT path, at FROM recycle_log").all() as { path: string; at: number }[]).map((r) => [r.path, r.at]));
+  const rows = db.prepare("SELECT path, at, pinned FROM recycle_log").all() as { path: string; at: number; pinned: string | null }[];
+  const known = new Map(rows.map((r) => [r.path, r.at]));
+  const pinned = new Set(rows.filter((r) => r.pinned !== null).map((r) => r.path));
+  let kept = 0;
   let deleted = 0;
   let bytes = 0;
   for (const f of filesIn(bin.local)) {
     const p = path.resolve(f);
     if (!p.startsWith(bin.local + path.sep)) continue;
+    if (pinned.has(p)) {
+      kept++; // an import couldn't put it back: never purged, not even by "Empty bin now"
+      continue;
+    }
     let at = known.get(p);
     if (at === undefined) {
       // In the bin before moves were recorded: its clock starts now.
@@ -99,7 +124,7 @@ export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
   }
   db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('binPurgedAt', ?)").run(String(now));
   if (deleted) logDecision("info", { why: `${opts.all ? "Emptied" : "Cleaned"} AnimeArr's recycling bin: deleted ${deleted} file${deleted === 1 ? "" : "s"} (${(bytes / 1e9).toFixed(1)} GB)${opts.all ? " (you asked)" : `, older than ${days} days`}` });
-  return { deleted, bytes, skipped: null };
+  return { deleted, bytes, skipped: null, pinned: kept };
 }
 
 /** For Audit → Maintenance → Recycle: AnimeArr's own bin. */
@@ -108,7 +133,7 @@ export function binStatus(now = Date.now()) {
   const bin = binFolder();
   const days = m.recycleBinCleanupDays ?? 0;
   const last = Number((db.prepare("SELECT value FROM kv WHERE key = 'binPurgedAt'").get() as { value: string } | undefined)?.value ?? 0);
-  if ("error" in bin) return { path: m.recycleBin, days, error: bin.error, files: 0, bytes: 0, nextPurge: null, oldest: null };
+  if ("error" in bin) return { path: m.recycleBin, days, error: bin.error, files: 0, bytes: 0, nextPurge: null, oldest: null, pinned: pinnedInBin() };
   const files = filesIn(bin.local);
   let bytes = 0;
   for (const f of files)
@@ -118,7 +143,7 @@ export function binStatus(now = Date.now()) {
       /* gone */
     }
   const oldest = (db.prepare("SELECT MIN(at) AS at FROM recycle_log").get() as { at: number | null }).at;
-  return { path: m.recycleBin, days, error: null, files: files.length, bytes, nextPurge: days > 0 ? Math.max(now, (last || now) + DAY) : null, oldest };
+  return { path: m.recycleBin, days, error: null, files: files.length, bytes, nextPurge: days > 0 ? Math.max(now, (last || now) + DAY) : null, oldest, pinned: pinnedInBin() };
 }
 
 let lastRun = 0;

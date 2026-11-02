@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
 import { BACKUP_DIR, backupNow, db, dbState, quickCheck, USER_DB, userSchemaVersion } from "./db.js";
@@ -29,6 +30,8 @@ export interface BackupManifest {
 export interface ParsedBackup { manifest: BackupManifest; db: Buffer; key: Buffer }
 
 const refuse = (msg: string) => Object.assign(new Error(msg), { statusCode: 400 });
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 const sha = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
 
 // ---------------------------------------------------------------- a minimal tar (regular files only)
@@ -79,13 +82,13 @@ export function tarUnpack(tar: Buffer): Map<string, Buffer> {
 // ---------------------------------------------------------------- download
 
 /** A fresh backup as bytes: the database via VACUUM INTO (consistent while the app runs), the key, a manifest. */
-export function createBackup(): { name: string; data: Buffer } {
+export async function createBackup(): Promise<{ name: string; data: Buffer }> {
   if (dbState.corrupt) throw Object.assign(new Error("The database failed its integrity check, so it can't be exported. Restore a backup first."), { statusCode: 409 });
   const tmp = path.join(BACKUP_DIR, `.export-${crypto.randomBytes(4).toString("hex")}.tmp`);
   let dbBytes: Buffer;
   try {
     db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-    dbBytes = fs.readFileSync(tmp);
+    dbBytes = await fs.promises.readFile(tmp);
   } finally {
     fs.rmSync(tmp, { force: true });
   }
@@ -104,16 +107,16 @@ export function createBackup(): { name: string; data: Buffer } {
     { name: DB_NAME, data: dbBytes },
     { name: KEY_NAME, data: key },
   ]);
-  return { name: `animearr-backup-${manifest.createdAt.replace(/[:.]/g, "-").slice(0, 19)}.tar.gz`, data: zlib.gzipSync(tar) };
+  return { name: `animearr-backup-${manifest.createdAt.replace(/[:.]/g, "-").slice(0, 19)}.tar.gz`, data: await gzip(tar) }; // off the event loop: a big library's backup takes a moment
 }
 
 // ---------------------------------------------------------------- upload: validate
 
 /** Checks an uploaded file is a whole, readable AnimeArr backup this version can take. Throws a plain-words 400. */
-export function parseBackup(data: Buffer, schemaNow = userSchemaVersion()): ParsedBackup {
+export async function parseBackup(data: Buffer, schemaNow = userSchemaVersion()): Promise<ParsedBackup> {
   let files: Map<string, Buffer>;
   try {
-    files = tarUnpack(zlib.gunzipSync(data, { maxOutputLength: MAX_BACKUP_BYTES * 2 }));
+    files = tarUnpack(await gunzip(data, { maxOutputLength: MAX_BACKUP_BYTES * 2 }));
   } catch (e) {
     if ((e as { statusCode?: number }).statusCode) throw e;
     throw refuse("That isn't an AnimeArr backup file (use one from Settings → System → Download backup)");
@@ -180,10 +183,21 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
   hooks.safety();
   const tmpDb = `${paths.db}.restore-tmp`;
   const tmpKey = `${paths.key}.restore-tmp`;
-  fs.writeFileSync(tmpDb, b.db);
-  fs.writeFileSync(tmpKey, b.key.toString("utf8").trim(), { mode: 0o600 });
+  try {
+    fs.writeFileSync(tmpDb, b.db);
+    fs.writeFileSync(tmpKey, b.key.toString("utf8").trim(), { mode: 0o600 });
+    // Checked where it landed (a full disk can leave a short file without an error on some filesystems).
+    const d = new DatabaseSync(tmpDb, { readOnly: true });
+    const r = quickCheck(d);
+    d.close();
+    if (r !== "ok") throw new Error(`the copy failed its check (${r})`);
+  } catch (e) {
+    for (const f of [tmpDb, tmpKey]) fs.rmSync(f, { force: true });
+    throw Object.assign(new Error(`Couldn't restore that backup: ${(e as Error).message}; nothing was changed`, { cause: e }), { statusCode: 500 });
+  }
   hooks.closeDb();
-  for (const f of [paths.db, `${paths.db}-wal`, `${paths.db}-shm`]) fs.rmSync(f, { force: true });
+  // The rename replaces the live file in one step; deleting it first would only open a window with no database.
+  for (const f of [`${paths.db}-wal`, `${paths.db}-shm`]) fs.rmSync(f, { force: true });
   fs.renameSync(tmpDb, paths.db);
   fs.renameSync(tmpKey, paths.key);
 }

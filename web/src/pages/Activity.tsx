@@ -5,7 +5,7 @@ import { api, type Decision } from "../api";
 import { Link, query } from "../App";
 import { t, type I18nKey } from "../i18n";
 import { Blocklist } from "./Blocklist";
-import { Chip, Confirm, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, useToast, ReleaseName } from "../ui";
+import { Chip, Confirm, Empty, ErrorBox, relTime, Spinner, thumbUrl, useLoad, usePageTitle, usePoll, useToast, ReleaseName } from "../ui";
 
 /** What an Undo will do, in words ("Frieren stops being managed by AnimeArr"). */
 function undoText(x: Decision) {
@@ -320,11 +320,7 @@ function ActivityLog({ tabs }: { tabs: React.ReactNode }) {
     return [...map].sort((a, b) => b[0] - a[0]);
   }, [all, hiddenByDay]);
   // Refresh while the page is open, so grabs and imports move on by themselves.
-  useEffect(() => {
-    const id = setInterval(() => void list.reload(), 15_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePoll(list.reload, 15_000);
   async function more() {
     const last = all[all.length - 1];
     if (!last) return;

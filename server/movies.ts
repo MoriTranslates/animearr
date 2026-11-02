@@ -10,7 +10,7 @@
 import { animeTiers } from "./seadex.js";
 import { seedLimitsFor } from "./indexers.js";
 import { grabGate, GrabsPausedError } from "./downloads.js";
-import { executeMovieImport, listVideos, planMovieImport } from "./importer.js";
+import { executeMovieImport, listVideos, planMovieImport, type SpaceLedger } from "./importer.js";
 import { isNativeMovieId } from "./native.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,7 +20,7 @@ import { searchAll } from "./indexers.js";
 import { langList } from "./core/langs.js";
 import { parseRelease, type ParsedRelease } from "./core/parser.js";
 import { compareRanked, rankRelease } from "./core/rank.js";
-import { cache, db, dbState } from "./db.js";
+import { allRows, cache, db, dbState } from "./db.js";
 import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
 import { ACTIVE, blocklist, fetchOrNote, importModeFor, isBlocked, isFetchFailure, MAX_ATTEMPTS, remainingFallbacks, realDeps, rejectUnsafe, runTimeSec, selectAfterAdd, setState, unsafeDownload, VIDEO, type Candidate, type GrabRow, type PipelineDeps } from "./pipeline.js";
 import type { BatchInfo, FileMapOpts } from "./batch.js";
@@ -36,7 +36,7 @@ import { getSettings, underAllowedRoot } from "./settings.js";
 import { judge } from "./verify.js";
 import { fileForMovie, looksLikeEpisodes, MARKER, movieSubtitles, namesSubtitle, normTitle } from "./core/movieTitle.js";
 import { indexerHealth } from "./health.js";
-import { ownFile, probeOf } from "./mediafiles.js";
+import { ownFile, probeFile, probeOf } from "./mediafiles.js";
 
 export interface MovieRow {
   id: number;
@@ -136,7 +136,7 @@ const activeGrab = (movieId: number) =>
 
 /** Anime movies from the last Radarr sync, with status and language verdict. */
 export function listMovies() {
-  const rows = cache.prepare("SELECT * FROM movies WHERE is_anime = 1 ORDER BY title").all() as unknown as MovieRow[];
+  const rows = allRows<MovieRow>(cache.prepare("SELECT * FROM movies WHERE is_anime = 1 ORDER BY title"));
   return rows.map((m) => {
     const f = movieFileOf(m);
     const g = activeGrab(m.id);
@@ -546,7 +546,8 @@ async function importParts(
   try {
     const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
     const plans = [];
-    for (const [i, p] of parts.entries()) plans.push(await planMovieImport({ movieId: m.id, path: p.path, release: row.release, client: row.client, automatic: true, trusted, part: i + 1, live: native ? undefined : { path: live.path, currentFile: liveFile } }));
+    const space: SpaceLedger = new Map(); // the parts land together: free space is checked for all of them
+    for (const [i, p] of parts.entries()) plans.push(await planMovieImport({ movieId: m.id, path: p.path, release: row.release, client: row.client, automatic: true, trusted, part: i + 1, live: native ? undefined : { path: live.path, currentFile: liveFile } }, { probe: probeFile, space }));
     const items = plans.flatMap((x) => x.items);
     // A retry after the parts were already placed (e.g. Radarr didn't pick them up): same name and size = done.
     const placed = (it: (typeof items)[number]) => {
@@ -732,9 +733,10 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
 
 /** Movie release dates in a range, for the calendar (in cinemas, digital, physical). */
 export function movieCalendar(fromMs: number, toMs: number, wantedOnly: boolean) {
-  const rows = cache
-    .prepare("SELECT * FROM movies WHERE is_anime = 1 AND ((in_cinemas BETWEEN ? AND ?) OR (digital_release BETWEEN ? AND ?) OR (physical_release BETWEEN ? AND ?))")
-    .all(fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000) as unknown as MovieRow[];
+  const rows = allRows<MovieRow>(
+    cache.prepare("SELECT * FROM movies WHERE is_anime = 1 AND ((in_cinemas BETWEEN ? AND ?) OR (digital_release BETWEEN ? AND ?) OR (physical_release BETWEEN ? AND ?))"),
+    ...[fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000, fromMs - 86_400_000, toMs + 86_400_000],
+  );
   const out: { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }[] = [];
   for (const m of rows) {
     if (wantedOnly && (!isWanted(m.id) || !underAllowedRoot(m.path))) continue;

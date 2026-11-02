@@ -19,7 +19,7 @@ import { mediaByIds, searchMedia, type AniMedia } from "./anilist.js";
 import { applyOverrides, remapNow, upsertMedia } from "./catalog.js";
 import { compactKey } from "./core/normalize.js";
 import { fribb } from "./covers.js";
-import { cache, db, dbState, setJob, tx } from "./db.js";
+import { allRows, cache, db, dbState, setJob, tx } from "./db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
 import { ACTIVE } from "./pipeline.js";
 import { getSettings, patchSettings } from "./settings.js";
@@ -295,8 +295,66 @@ export interface SwitchDeps {
   removeMovie: typeof radarr.removeMovieKeepFiles;
   sonarrQueue: typeof sonarr.getQueue;
   radarrQueue: typeof radarr.radarrQueueFor;
+  /** Whether Sonarr still has the series (false only on a clear "not found"; throws when Sonarr can't be asked). */
+  sonarrHasSeries?: (id: number) => Promise<boolean>;
 }
-const realSwitch: SwitchDeps = { removeSeries: sonarr.removeSeriesKeepFiles, removeMovie: radarr.removeMovieKeepFiles, sonarrQueue: sonarr.getQueue, radarrQueue: radarr.radarrQueueFor };
+async function sonarrHasSeries(id: number) {
+  try {
+    await sonarr.getOneSeries(id);
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return false;
+    throw e;
+  }
+}
+const realSwitch: SwitchDeps = { removeSeries: sonarr.removeSeriesKeepFiles, removeMovie: radarr.removeMovieKeepFiles, sonarrQueue: sonarr.getQueue, radarrQueue: radarr.radarrQueueFor, sonarrHasSeries };
+
+// ---------------------------------------------------------------- the cutover journal
+// Written before Sonarr is asked to delete a show; cleared in the same transaction that moves AnimeArr's state. If
+// Sonarr deleted the show but its answer never arrived (a timeout), or AnimeArr stopped in between, the row is still
+// here and the switch is finished on the next start or the next switch, once Sonarr confirms the show is gone.
+
+interface PendingSwitch { tvdb_id: number; sonarr_id: number; native_id: number; id_map: string; at: number }
+
+/** Moves the state and drops Sonarr's cached rows. Safe to run twice (every step is idempotent). */
+function finishShowSwitch(p: PendingSwitch) {
+  const idMap = new Map(JSON.parse(p.id_map) as [number, number][]);
+  tx(db, () => {
+    moveShowState(p.tvdb_id, p.sonarr_id, NATIVE_BASE + p.native_id, idMap);
+    db.prepare("DELETE FROM cutover_pending WHERE tvdb_id = ?").run(p.tvdb_id);
+  });
+  tx(cache, () => {
+    for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id", "alt_titles WHERE series_id"]) cache.prepare(`DELETE FROM ${t} = ?`).run(p.sonarr_id);
+  });
+  const nr = db.prepare("SELECT * FROM native_series WHERE id = ?").get(p.native_id);
+  if (nr) materialize(nr as never);
+}
+
+/**
+ * Finishes switches that were cut off: Sonarr no longer has the show → AnimeArr's state moves now; Sonarr still has it
+ * → the DELETE never happened, the journal row goes and the show can be switched again. Sonarr unreachable → later.
+ */
+export async function resumeCutovers(deps: Pick<SwitchDeps, "sonarrHasSeries"> = realSwitch) {
+  const rows = allRows<PendingSwitch>(db.prepare("SELECT * FROM cutover_pending"));
+  const out: { tvdbId: number; finished: boolean }[] = [];
+  for (const p of rows) {
+    let has: boolean;
+    try {
+      has = await (deps.sonarrHasSeries ?? sonarrHasSeries)(p.sonarr_id);
+    } catch {
+      continue; // can't tell yet
+    }
+    if (has) {
+      db.prepare("DELETE FROM cutover_pending WHERE tvdb_id = ?").run(p.tvdb_id);
+      out.push({ tvdbId: p.tvdb_id, finished: false });
+      continue;
+    }
+    finishShowSwitch(p);
+    logDecision("info", { tvdbId: p.tvdb_id, why: "Cutover: finished switching a show that Sonarr had removed but whose answer didn't arrive; AnimeArr's copy is live" });
+    out.push({ tvdbId: p.tvdb_id, finished: true });
+  }
+  return out;
+}
 
 /** Rewrites every id-keyed piece of AnimeArr state from a Sonarr show's episode ids to AnimeArr's (one transaction). */
 function moveShowState(tvdbId: number, sonarrSeriesId: number, nativeSeriesId: number, idMap: Map<number, number>) {
@@ -331,7 +389,12 @@ export async function switchToAnimeArr(input: { tvdbIds?: number[]; movieIds?: n
   if (!(s.importer.engine === "animearr" && s.importer.allowReal)) throw err("Switch AnimeArr's own importer on first (Settings → Media management → Importer); after the switch only AnimeArr imports these", 409);
   const out: { id: number; kind: "show" | "movie"; ok: boolean; why: string }[] = [];
   let sQueue: Awaited<ReturnType<typeof sonarr.getQueue>> | null = null;
+  // A switch cut off earlier is finished (or cleared) first, so a retry doesn't stop at "adopt it in AnimeArr first".
+  if ((input.tvdbIds ?? []).length) {
+    for (const r of await resumeCutovers(deps)) if (r.finished && input.tvdbIds!.includes(r.tvdbId)) out.push({ id: r.tvdbId, kind: "show", ok: true, why: `TVDB ${r.tvdbId}: Sonarr had already removed it (files kept); AnimeArr's copy is live` });
+  }
   for (const tvdbId of input.tvdbIds ?? []) {
+    if (out.some((x) => x.id === tvdbId && x.kind === "show")) continue;
     const sr = cache.prepare(`SELECT id, tvdb_id, title, path FROM series WHERE tvdb_id = ? AND id < ${NATIVE_BASE}`).get(tvdbId) as { id: number; tvdb_id: number; title: string; path: string } | undefined;
     const nr = db.prepare("SELECT * FROM native_series WHERE tvdb_id = ?").get(tvdbId) as { id: number; anilist_id: number } | undefined;
     const fail = (why: string) => out.push({ id: tvdbId, kind: "show", ok: false, why });
@@ -365,17 +428,17 @@ export async function switchToAnimeArr(input: { tvdbIds?: number[]; movieIds?: n
       const n = built.byKey.get(`${e.season}x${e.episode}`);
       if (n) idMap.set(e.id, n.id);
     }
+    const pending: PendingSwitch = { tvdb_id: tvdbId, sonarr_id: sr.id, native_id: nr.id, id_map: JSON.stringify([...idMap]), at: Date.now() };
+    db.prepare("INSERT OR REPLACE INTO cutover_pending (tvdb_id, sonarr_id, native_id, id_map, at) VALUES (?, ?, ?, ?, ?)").run(pending.tvdb_id, pending.sonarr_id, pending.native_id, pending.id_map, pending.at);
     try {
       await deps.removeSeries(sr.id);
     } catch (e) {
-      fail((e as Error).message);
+      // The DELETE may still have happened (a timeout after Sonarr acted): the journal row stays, and the next start
+      // or switch asks Sonarr and finishes (or clears) it.
+      fail(`${(e as Error).message} (if Sonarr did remove it, AnimeArr finishes the switch on its next start or when you switch it again)`);
       continue;
     }
-    tx(db, () => moveShowState(tvdbId, sr.id, NATIVE_BASE + nr.id, idMap));
-    tx(cache, () => {
-      for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id", "alt_titles WHERE series_id"]) cache.prepare(`DELETE FROM ${t} = ?`).run(sr.id);
-    });
-    materialize(db.prepare("SELECT * FROM native_series WHERE id = ?").get(nr.id) as never);
+    finishShowSwitch(pending);
     out.push({ id: tvdbId, kind: "show", ok: true, why: `${sr.title}: removed from Sonarr (files kept); AnimeArr's copy is live` });
   }
   if ((input.movieIds ?? []).length && !s.importer.movies) throw err("Switch movie imports by AnimeArr's own importer on first", 409);

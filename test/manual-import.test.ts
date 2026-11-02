@@ -155,16 +155,16 @@ test("manual movie plan of a batch folder picks the special; the episodes are le
   assert.match(plan.notes.join(" "), /picked .*Date to Date/);
 });
 
-test("browse: only inside the download roots, newest first, sizes and videos flagged", () => {
+test("browse: only inside the download roots, newest first, sizes and videos flagged", async () => {
   const now = Date.now();
   write(path.join(DL, "old", "a.mkv"), "a".repeat(100), now - 86_400_000);
   fs.utimesSync(path.join(DL, "old"), (now - 86_400_000) / 1000, (now - 86_400_000) / 1000);
   write(path.join(DL, "new", "b.mkv"), "b".repeat(30));
   write(path.join(DL, "new", "b.nfo"), "n");
   write(path.join(OTHER, "secret.mkv"), "s");
-  const roots = browseImport({});
+  const roots = await browseImport({});
   assert.deepEqual(roots.entries.map((e) => e.path), ["/data/completed/animearr"]);
-  const top = browseImport({ path: "/data/completed/animearr" });
+  const top = await browseImport({ path: "/data/completed/animearr" });
   assert.equal(top.parent, null);
   const names = top.entries.map((e) => e.name);
   assert.ok(names.indexOf("new") < names.indexOf("old"), "newest first");
@@ -172,37 +172,41 @@ test("browse: only inside the download roots, newest first, sizes and videos fla
   assert.equal(nw.dir, true);
   assert.equal(nw.videos, 1);
   assert.equal(nw.size, 31);
-  const inside = browseImport({ path: "/data/completed/animearr/new" });
+  const inside = await browseImport({ path: "/data/completed/animearr/new" });
   assert.equal(inside.parent, "/data/completed/animearr");
   assert.deepEqual(inside.entries.map((e) => [e.name, e.video]).sort(), [["b.mkv", true], ["b.nfo", false]]);
-  assert.throws(() => browseImport({ path: "/data/completed/animearr/../other" }), /isn't allowed/);
-  assert.throws(() => browseImport({ path: "/data/other" }), /only browses/);
-  assert.throws(() => browseImport({ path: "/etc" }), /only browses/);
+  await assert.rejects(() => browseImport({ path: "/data/completed/animearr/../other" }), /isn't allowed/);
+  await assert.rejects(() => browseImport({ path: "/data/other" }), /only browses/);
+  await assert.rejects(() => browseImport({ path: "/etc" }), /only browses/);
   // A symlink pointing out of the root is neither listed nor followed.
   try {
     fs.symlinkSync(OTHER, path.join(DL, "escape"), "dir");
-    assert.ok(!browseImport({ path: "/data/completed/animearr" }).entries.some((e) => e.name === "escape"));
-    assert.throws(() => browseImport({ path: "/data/completed/animearr/escape" }), /only browses/);
+    assert.ok(!(await browseImport({ path: "/data/completed/animearr" })).entries.some((e) => e.name === "escape"));
+    await assert.rejects(() => browseImport({ path: "/data/completed/animearr/escape" }), /only browses/);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "EPERM") throw e; // Windows without symlink rights
   }
+  // Each request has a budget of file-system calls (a huge folder over SMB can't stall the app): sizes are then partial.
+  const small = await browseImport({ path: "/data/completed/animearr", budget: 3 });
+  assert.equal(small.capped, true);
+  assert.equal(top.capped, undefined);
   // The grab's own download folder (resolved by the server) is browsable too.
-  assert.equal(browseImport({ path: "/data/other", extra: ["/data/other"] }).entries[0].name, "secret.mkv");
+  assert.equal((await browseImport({ path: "/data/other", extra: ["/data/other"] })).entries[0].name, "secret.mkv");
 });
 
-test("browse: a grab whose download is one file outside the roots shows that file, and nothing beside it", () => {
+test("browse: a grab whose download is one file outside the roots shows that file, and nothing beside it", async () => {
   write(path.join(OTHER, "single", "[RUDY] Quints - 01.mkv"), "x".repeat(10));
   write(path.join(OTHER, "single", "neighbour.mkv"), "y");
   const grab = "/data/other/single/[RUDY] Quints - 01.mkv";
-  const r = browseImport({ path: grab, extra: [grab] });
+  const r = await browseImport({ path: grab, extra: [grab] });
   assert.equal(r.path, grab);
   assert.equal(r.parent, null, "no way up out of a single-file download");
   assert.deepEqual(r.entries.map((e) => [e.name, e.dir, e.video]), [["[RUDY] Quints - 01.mkv", false, true]]);
-  assert.ok(browseImport({ extra: [grab] }).entries.some((e) => e.path === grab), "listed among the roots");
-  assert.throws(() => browseImport({ path: "/data/other/single", extra: [grab] }), /only browses/);
-  assert.throws(() => browseImport({ path: "/data/other/single/neighbour.mkv", extra: [grab] }), /only browses/);
+  assert.ok((await browseImport({ extra: [grab] })).entries.some((e) => e.path === grab), "listed among the roots");
+  await assert.rejects(() => browseImport({ path: "/data/other/single", extra: [grab] }), /only browses/);
+  await assert.rejects(() => browseImport({ path: "/data/other/single/neighbour.mkv", extra: [grab] }), /only browses/);
   // Without the grab, the same file stays off limits (a typed path can't reach it).
-  assert.throws(() => browseImport({ path: grab }), /only browses/);
+  await assert.rejects(() => browseImport({ path: grab }), /only browses/);
 });
 
 test("a leftover .animearr-part from a cut-off import is cleared before the retry (only while the source exists)", () => {

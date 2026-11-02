@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -200,14 +200,31 @@ export function restoreBackup(name: string) {
   const r = quickCheck(check);
   check.close();
   if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
+  // The current database is kept first; without that copy nothing is replaced (unless it's the damaged one).
+  if (!dbState.corrupt) {
+    try {
+      backupNow("prerestore");
+    } catch (e) {
+      throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
+    }
+  }
+  // Copied next to the live file and checked there, then renamed over it in one step: a crash or a full disk mid-copy
+  // leaves the old database as it was, never a half-written or missing one.
+  const tmp = `${USER_DB}.restore-tmp`;
+  fs.rmSync(tmp, { force: true });
   try {
-    backupNow("prerestore");
-  } catch {
-    /* best effort */
+    fs.copyFileSync(src, tmp);
+    const t = new DatabaseSync(tmp, { readOnly: true });
+    const tr = quickCheck(t);
+    t.close();
+    if (tr !== "ok") throw new Error(`the copy failed its check (${tr})`);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
   }
   db.close();
-  for (const f of [USER_DB, `${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
-  fs.copyFileSync(src, USER_DB);
+  for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
+  fs.renameSync(tmp, USER_DB);
 }
 
 // ---------------------------------------------------------------- migrations (transactional; backup first)
@@ -415,7 +432,18 @@ const USER_MIGRATIONS: string[] = [
   // 40: a file the user marked as having burned-in subtitles in a language (e.g. a hardsubbed release with no subtitle
   // tracks): it counts as having that language, like the per-season burned-in fact but for this one file (by its path)
   `CREATE TABLE file_marks (path TEXT PRIMARY KEY, tvdb_id INTEGER, burned_lang TEXT NOT NULL, at INTEGER NOT NULL);`,
+  // ---- safety ----
+  // 41: a file in the recycling bin that must stay (an import couldn't put the old file back after a failed replace):
+  // pinned holds why, and the purge (also "Empty bin now") never deletes it until the user unpins it
+  `ALTER TABLE recycle_log ADD COLUMN pinned TEXT;`,
+  // 42: cutover journal: written before Sonarr is asked to delete a show, cleared once AnimeArr's state has moved to the
+  // native IDs. A row left over (the DELETE answered too late, or a crash) is finished on the next start or retry.
+  // id_map is the Sonarr → AnimeArr episode id map as JSON pairs (Sonarr's rows are gone from the cache after a sync).
+  `CREATE TABLE cutover_pending (tvdb_id INTEGER PRIMARY KEY, sonarr_id INTEGER NOT NULL, native_id INTEGER NOT NULL, id_map TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL);`,
 ];
+
+/** Exported for tests: the user-DB steps, in order. */
+export const userMigrations = (): readonly string[] => USER_MIGRATIONS;
 
 /** REBUILDABLE schema. Bumping CACHE_VERSION drops and recreates it (the next sync refills it). */
 const CACHE_VERSION = 2;
@@ -447,22 +475,32 @@ const CACHE_SCHEMA = `
 /** The newest schema this build knows (PRAGMA user_version of a fully migrated animearr.db). */
 export const userSchemaVersion = () => USER_MIGRATIONS.length;
 
-function migrateUser() {
-  if (dbState.corrupt) return;
-  const current = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  if (current >= USER_MIGRATIONS.length) return;
-  if (current > 0) backupNow("premigration", `v${current}`);
-  for (let v = current; v < USER_MIGRATIONS.length; v++) {
-    db.exec("BEGIN IMMEDIATE");
+/**
+ * Brings a user database up to `steps.length`, one transaction per step (user_version is set inside it, so a failing
+ * step leaves the version where it was and nothing half-applied). `before` runs once when there is anything to do on a
+ * database that already has data (the pre-migration backup). Exported for tests.
+ */
+export function migrateUserDb(d: DatabaseSync, steps: readonly string[] = USER_MIGRATIONS, before?: (from: number) => void) {
+  const current = (d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (current >= steps.length) return current;
+  if (current > 0) before?.(current);
+  for (let v = current; v < steps.length; v++) {
+    d.exec("BEGIN IMMEDIATE");
     try {
-      db.exec(USER_MIGRATIONS[v]);
-      db.exec(`PRAGMA user_version = ${v + 1}`);
-      db.exec("COMMIT");
+      d.exec(steps[v]);
+      d.exec(`PRAGMA user_version = ${v + 1}`);
+      d.exec("COMMIT");
     } catch (e) {
-      db.exec("ROLLBACK");
-      throw e;
+      d.exec("ROLLBACK");
+      throw new Error(`Database upgrade step ${v + 1} failed: ${(e as Error).message}`, { cause: e });
     }
   }
+  return steps.length;
+}
+
+function migrateUser() {
+  if (dbState.corrupt) return;
+  migrateUserDb(db, USER_MIGRATIONS, (v) => backupNow("premigration", `v${v}`));
 }
 
 function migrateCache() {
@@ -500,6 +538,13 @@ migrateCache();
   const fcols = new Set((cache.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name));
   if (!fcols.has("revision")) cache.exec("ALTER TABLE files ADD COLUMN revision TEXT");
 }
+
+/**
+ * Typed rows. node:sqlite types every row as a plain record, so callers cast; these keep that cast in one place
+ * (instead of `as unknown as Row[]` at each query). The caller still names the columns it selected.
+ */
+export const allRows = <T>(stmt: StatementSync, ...params: SQLInputValue[]) => stmt.all(...params) as unknown as T[];
+export const oneRow = <T>(stmt: StatementSync, ...params: SQLInputValue[]) => stmt.get(...params) as unknown as T | undefined;
 
 /** Runs fn in one write transaction on the given database. */
 export function tx<T>(d: { exec(sql: string): void }, fn: () => T): T {

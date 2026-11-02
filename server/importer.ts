@@ -16,7 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
-import { noteBinned } from "./binpurge.js";
+import { noteBinned, pinBinned } from "./binpurge.js";
 import { inExtrasFolder, isCreditlessTitle } from "./core/resolver.js";
 import { isTorrentClient } from "./arr/clients.js";
 import fs from "node:fs";
@@ -28,7 +28,7 @@ import { identify } from "./core/identify.js";
 import { parseRelease } from "./core/parser.js";
 import { sonarrQualityName } from "./core/quality.js";
 import { keepTagFor } from "./qualityLocks.js";
-import { cache, CONFIG_DIR, db } from "./db.js";
+import { allRows, cache, CONFIG_DIR, db } from "./db.js";
 import { catalogLookup } from "./catalog.js";
 import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
@@ -252,7 +252,7 @@ function videosIn(dir: string, minBytes: number) {
  * Plans an import of a folder (or single file) for a show: which file is which episode (explicit ids when given, else
  * identified from the names), where it goes, how, and what it replaces. Nothing is changed.
  */
-export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; only?: string[]; assign?: Record<string, number[]> }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<ImportPlan> {
+export async function planImport(input: { tvdbId: number; path: string; episodeIds?: number[]; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; only?: string[]; assign?: Record<string, number[]> }, deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile }): Promise<ImportPlan> {
   const series = seriesByTvdb(input.tvdbId);
   if (!series) throw err("Unknown series", 404);
   const minBytes = deps.minBytes ?? 30e6;
@@ -278,7 +278,7 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     if (st.size < minBytes) throw err("That file is too small to be an episode (a sample?)");
     files = [real];
   }
-  const eps = cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.title, e.air_date, e.file_id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?").all(input.tvdbId) as unknown as Ep[];
+  const eps = allRows<Ep>(cache.prepare("SELECT e.id, e.season, e.episode, e.absolute, e.title, e.air_date, e.file_id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.tvdb_id = ?"), input.tvdbId);
   const byId = new Map(eps.map((e) => [e.id, e]));
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
@@ -288,6 +288,7 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
   const taken = new Set<string>();
   // Files the user picked (the hand import): only those count for "two files would get the same name".
   const picked = (f: string) => !input.only || input.only.includes(f);
+  const space: SpaceLedger = deps.space ?? new Map();
   for (const f of files) {
     let ids: number[] = [];
     const assigned = input.assign?.[f];
@@ -338,7 +339,7 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
     else if (currentLocal && !binSet) problem = "no recycling bin is set, so the current file can't be replaced safely";
     else if (picked(f) && taken.has(dest)) problem = "two files would get the same name";
     else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
-    else if (!freeSpaceOk(dest, size)) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
+    else if (!freeSpaceOk(dest, size, { source: f, action: base.action, ledger: picked(f) ? space : undefined })) problem = `not enough free space at the library for this file together with the others in this import (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
     if (picked(f)) taken.add(dest);
     items.push({
       ...base,
@@ -354,14 +355,33 @@ export async function planImport(input: { tvdbId: number; path: string; episodeI
 }
 
 /** Minimum Free Space: the library disk keeps that much after the file lands (unless the check is skipped). */
-function freeSpaceOk(dest: string, size: number) {
+/**
+ * The bytes a plan has already promised per destination filesystem (by device id), so a batch is checked as a whole:
+ * 26 copies that each fit on their own can't eat through the Minimum Free Space together.
+ */
+export type SpaceLedger = Map<string, number>;
+
+function freeSpaceOk(dest: string, size: number, opts: { source?: string; action?: PlanItem["action"]; ledger?: SpaceLedger } = {}) {
   const m = getSettings().media;
   if (m.skipFreeSpaceCheck) return true;
   let dir = path.dirname(dest);
   while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
   try {
+    const dev = fs.statSync(dir).dev;
+    // A hardlink or a move within one disk takes no new space (a hardlink across disks falls back to a copy).
+    if (opts.source && opts.action !== "copy") {
+      try {
+        if (fs.statSync(opts.source).dev === dev) return true;
+      } catch {
+        /* unreadable source: count it */
+      }
+    }
+    const key = String(dev);
+    const planned = opts.ledger?.get(key) ?? 0;
     const s = fs.statfsSync(dir);
-    return s.bavail * s.bsize - size > m.minimumFreeSpaceMb * 1024 * 1024;
+    const ok = s.bavail * s.bsize - planned - size > m.minimumFreeSpaceMb * 1024 * 1024;
+    if (ok) opts.ledger?.set(key, planned + size);
+    return ok;
   } catch {
     return true;
   }
@@ -530,6 +550,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
     }
     const tmp = it.dest + PART;
     let binned: { from: string; to: string }[] = [];
+    let stranded: { from: string; to: string; why: string }[] = []; // old files the rollback couldn't put back
     let did: PlanItem["action"] | null = null;
     if (inFlight.has(tmp)) {
       out.push({ label: it.label, done: false, why: "this file is being imported right now" });
@@ -547,8 +568,8 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
         for (const b of binned.reverse()) {
           try {
             await moveNoClobber(b.to, b.from);
-          } catch {
-            /* reported below */
+          } catch (re) {
+            stranded.push({ ...b, why: (re as Error).message });
           }
         }
         binned = [];
@@ -584,7 +605,23 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
           /* left as *.animearr-part for a look */
         }
       }
-      out.push({ label: it.label, done: false, why: (e as Error).message });
+      let why = (e as Error).message;
+      if (stranded.length) {
+        // The old file is in the bin and not back in the library: say where both files are, and keep the old one out of
+        // the bin's purge until the user has dealt with it.
+        const newAt = fs.existsSync(tmp) ? tmp : fs.existsSync(it.source) ? it.source : null;
+        const olds = stranded.map((b) => b.to).join(", ");
+        why = `${why}. The old file couldn't be put back (${stranded[0].why}): it is kept in the recycling bin at ${olds} (pinned, never purged), and the new file is ${newAt ? `at ${newAt}` : "not in place"}. Move the old file back to ${stranded[0].from} by hand, or import the new one again`;
+        for (const b of stranded) {
+          try {
+            pinBinned(b.to, `An import of ${it.label} couldn't put this file back to ${b.from}${newAt ? `; the new file is at ${newAt}` : ""}`);
+          } catch {
+            /* the message above still says where it is */
+          }
+        }
+        logDecision("fail", { tvdbId: target.tvdbId ?? null, title: target.title, episodeIds: it.episodeIds, why: `Import of ${it.label} failed and ${why}`, detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) } });
+      }
+      out.push({ label: it.label, done: false, why });
     } finally {
       inFlight.delete(tmp);
     }
@@ -598,7 +635,7 @@ async function placeItems(items: PlanItem[], target: { arrRoot: string; title: s
 export interface MoviePlan { movieId: number; title: string; items: PlanItem[]; notes: string[] }
 
 /** Plans a movie import: the biggest video is the movie (two big ones = ask), named with the movie format. */
-export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null }; part?: number }, deps: { probe: typeof probeFile; minBytes?: number } = { probe: probeFile }): Promise<MoviePlan> {
+export async function planMovieImport(input: { movieId: number; path: string; release?: string; client?: string | null; automatic?: boolean; trusted?: string | null; live?: { path: string; currentFile: string | null }; part?: number }, deps: { probe: typeof probeFile; minBytes?: number; space?: SpaceLedger } = { probe: probeFile }): Promise<MoviePlan> {
   const mv = cache.prepare("SELECT id, tmdb_id, imdb_id, title, original_title, alt_titles, year, path, file FROM movies WHERE id = ?").get(input.movieId) as { id: number; tmdb_id: number | null; imdb_id: string | null; title: string; original_title: string | null; alt_titles: string | null; year: number | null; path: string; file: string | null } | undefined;
   if (!mv) throw err("Unknown movie", 404);
   const m = getSettings().media;
@@ -665,7 +702,7 @@ export async function planMovieImport(input: { movieId: number; path: string; re
   else if (currentLocal && input.part) problem = "the movie already has a file: replacing it with a multi-part release is done by hand";
   else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
   else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? "")) problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
-  else if (!freeSpaceOk(dest, main.size)) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
+  else if (!freeSpaceOk(dest, main.size, { source: main.f, action: base.action, ledger: deps.space })) problem = `not enough free space at the library (Minimum Free Space ${m.minimumFreeSpaceMb} MB)`;
   return {
     movieId: mv.id,
     title: label,
@@ -718,7 +755,7 @@ export function planRename(tvdbId: number): { items: RenameItem[] } {
   const epsOf = cache.prepare("SELECT id, season, episode, absolute, title, air_date, file_id FROM episodes WHERE file_id = ? ORDER BY season, episode");
   const recOf = db.prepare("SELECT video, audio, subs FROM media_files WHERE path = ?");
   for (const f of files) {
-    const eps = epsOf.all(f.id) as unknown as Ep[];
+    const eps = allRows<Ep>(epsOf, f.id);
     if (!eps.length) continue;
     const rec = (recOf.get(f.path) as { video: string; audio: string; subs: string } | undefined) ?? null;
     const probe: Probe | null = rec ? { video: JSON.parse(rec.video), audio: JSON.parse(rec.audio), subs: JSON.parse(rec.subs) } : null;
@@ -870,7 +907,7 @@ export async function renameBack(args: { tvdbId?: number; from: string; to: stri
 // ---------------------------------------------------------------- manual import: browse the download folders
 
 export interface BrowseEntry { name: string; path: string; dir: boolean; size: number; mtime: number; video: boolean; videos: number }
-export interface BrowseResult { roots: { path: string; label: string }[]; path: string | null; parent: string | null; entries: BrowseEntry[]; truncated: boolean }
+export interface BrowseResult { roots: { path: string; label: string }[]; path: string | null; parent: string | null; entries: BrowseEntry[]; truncated: boolean; capped?: true }
 
 /** Where a manual import may browse: the importer's source roots, plus a grab's own download folder (resolved by the server). */
 export function browseRoots(extra: (string | null | undefined)[] = []) {
@@ -901,51 +938,83 @@ export function browseRoots(extra: (string | null | undefined)[] = []) {
 }
 
 /** A folder's size and video count: no symlinks, at most 4 levels and 2000 entries. */
-function folderStats(dir: string) {
+/** File-system calls one browse request may make in total (a 500-folder download dir over SMB must not stall the app). */
+const BROWSE_BUDGET = 20_000;
+type Budget = { left: number };
+
+/** Size and video count of a folder (4 levels, 2,000 entries at most), asynchronous, within the request's budget. */
+async function folderStats(dir: string, budget: Budget) {
   let size = 0;
   let videos = 0;
   let seen = 0;
-  const walk = (d: string, depth: number) => {
-    let names: string[] = [];
+  const walk = async (d: string, depth: number) => {
+    if (budget.left-- <= 0) return;
+    let ents: fs.Dirent[] = [];
     try {
-      names = fs.readdirSync(d);
+      ents = await fs.promises.readdir(d, { withFileTypes: true });
     } catch {
       return;
     }
-    for (const n of names) {
-      if (++seen > 2000) return;
-      const f = path.join(d, n);
-      try {
-        const st = fs.lstatSync(f);
-        if (st.isSymbolicLink()) continue;
-        if (st.isDirectory()) {
-          if (depth < 4) walk(f, depth + 1);
-        } else if (st.isFile()) {
-          size += st.size;
-          if (VIDEO.test(n) && !/\bsample\b/i.test(n)) videos++;
+    for (const e of ents) {
+      if (++seen > 2000 || budget.left <= 0) return;
+      const f = path.join(d, e.name);
+      let kind: "dir" | "file" | "other" = e.isSymbolicLink() ? "other" : e.isDirectory() ? "dir" : e.isFile() ? "file" : "other";
+      if (!e.isSymbolicLink() && !e.isDirectory() && !e.isFile()) {
+        // A filesystem that doesn't report the type in the listing: ask.
+        budget.left--;
+        try {
+          const st = await fs.promises.lstat(f);
+          kind = st.isSymbolicLink() ? "other" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other";
+        } catch {
+          continue;
         }
-      } catch {
-        /* skip */
+      }
+      if (kind === "dir") {
+        if (depth < 4) await walk(f, depth + 1);
+      } else if (kind === "file") {
+        budget.left--;
+        try {
+          size += (await fs.promises.lstat(f)).size;
+          if (VIDEO.test(e.name) && !/\bsample\b/i.test(e.name)) videos++;
+        } catch {
+          /* skip */
+        }
       }
     }
   };
-  walk(dir, 0);
+  await walk(dir, 0);
   return { size, videos };
+}
+
+/** Runs fn over items, `n` at a time, keeping the order. */
+async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  }));
+  return out;
 }
 
 /**
  * Lists a folder for the manual-import picker. Read-only; only inside the allowed roots (no "..", no symlinks out,
- * never the library/bin/config); newest first; video files flagged. No path = the roots themselves.
+ * never the library/bin/config); newest first; video files flagged. No path = the roots themselves. Asynchronous and
+ * capped at BROWSE_BUDGET file-system calls (folder sizes are then partial: `capped`).
  */
-export function browseImport(input: { path?: string | null; extra?: (string | null | undefined)[] }): BrowseResult {
+export async function browseImport(input: { path?: string | null; extra?: (string | null | undefined)[]; budget?: number }): Promise<BrowseResult> {
   const roots = browseRoots(input.extra);
   const rootsOut = roots.map((r) => ({ path: r.path, label: r.label }));
-  const entryOf = (name: string, arr: string, local: string): BrowseEntry | null => {
+  const budget: Budget = { left: input.budget ?? BROWSE_BUDGET };
+  const entryOf = async (name: string, arr: string, local: string): Promise<BrowseEntry | null> => {
     try {
-      const st = fs.lstatSync(local);
+      budget.left--;
+      const st = await fs.promises.lstat(local);
       if (st.isSymbolicLink()) return null;
       if (st.isDirectory()) {
-        const s = folderStats(local);
+        const s = await folderStats(local, budget);
         return { name, path: arr, dir: true, size: s.size, mtime: st.mtimeMs, video: false, videos: s.videos };
       }
       if (!st.isFile()) return null;
@@ -955,8 +1024,13 @@ export function browseImport(input: { path?: string | null; extra?: (string | nu
       return null;
     }
   };
+  const done = (entries: (BrowseEntry | null)[]) => entries.filter((x): x is BrowseEntry => !!x).sort((a, b) => b.mtime - a.mtime);
+  const capped = () => (budget.left <= 0 ? { capped: true as const } : {});
   const want = (input.path ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!want) return { roots: rootsOut, path: null, parent: null, entries: roots.map((r) => entryOf(r.path, r.path, r.local)).filter((x): x is BrowseEntry => !!x).sort((a, b) => b.mtime - a.mtime), truncated: false };
+  if (!want) {
+    const entries = done(await mapLimit(roots, 8, (r) => entryOf(r.path, r.path, r.local)));
+    return { roots: rootsOut, path: null, parent: null, entries, truncated: false, ...capped() };
+  }
   if (want.includes("\0") || want.split("/").some((s) => s === ".." || s === ".")) throw err("That path isn't allowed", 400);
   // The most specific root that holds the path.
   const root = [...roots].sort((a, b) => b.path.length - a.path.length).find((r) => want === r.path || want.startsWith(`${r.path}/`));
@@ -964,27 +1038,23 @@ export function browseImport(input: { path?: string | null; extra?: (string | nu
   const rel = want.slice(root.path.length).replace(/^\/+/, "");
   let real: string;
   try {
-    real = fs.realpathSync(path.join(root.local, ...rel.split("/").filter(Boolean)));
+    real = await fs.promises.realpath(path.join(root.local, ...rel.split("/").filter(Boolean)));
   } catch {
     throw err(`AnimeArr can't read ${want}`, 404);
   }
   if (!under(real, root.local) || forbiddenSource(real)) throw err("Manual import only browses AnimeArr's download folders", 403);
   const parentOf = (p: string) => (p === root.path ? null : p.slice(0, p.lastIndexOf("/")) || null);
-  if (!fs.statSync(real).isDirectory()) {
-    const e = entryOf(path.basename(real), want, real);
+  if (!(await fs.promises.stat(real)).isDirectory()) {
+    const e = await entryOf(path.basename(real), want, real);
     return { roots: rootsOut, path: want, parent: parentOf(want), entries: e ? [e] : [], truncated: false };
   }
   let names: string[] = [];
   try {
-    names = fs.readdirSync(real);
+    names = await fs.promises.readdir(real);
   } catch {
     throw err(`AnimeArr can't read ${want}`, 404);
   }
   const truncated = names.length > 500;
-  const entries = names
-    .slice(0, 500)
-    .map((n) => entryOf(n, `${want}/${n}`, path.join(real, n)))
-    .filter((x): x is BrowseEntry => !!x)
-    .sort((a, b) => b.mtime - a.mtime);
-  return { roots: rootsOut, path: want, parent: parentOf(want), entries, truncated };
+  const entries = done(await mapLimit(names.slice(0, 500), 8, (n) => entryOf(n, `${want}/${n}`, path.join(real, n))));
+  return { roots: rootsOut, path: want, parent: parentOf(want), entries, truncated, ...capped() };
 }

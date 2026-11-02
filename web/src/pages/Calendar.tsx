@@ -7,7 +7,7 @@ import { navigate, Link } from "../App";
 import { IcalLink } from "../icalLink";
 import { EpisodeSheet, StatusPill, type EpisodeStatus } from "../episodes";
 import { t, type I18nKey } from "../i18n";
-import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle } from "../ui";
+import { Chip, Cover, Empty, ErrorBox, Spinner, useLoad, usePageTitle, usePoll } from "../ui";
 
 interface EpEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; stage?: string | null; ahead?: number | null; managed: boolean }
 interface MovieEntry { movieId: number; title: string; year: number | null; cover: string | null; kind: "cinema" | "digital" | "physical"; at: number; status: string; monitored: boolean }
@@ -91,11 +91,7 @@ export function Calendar({ compact = false }: { compact?: boolean }) {
   }, [entries]);
   // Keep "downloading" moving.
   const busy = entries.some((e) => e.status === "downloading");
-  useEffect(() => {
-    if (!busy) return;
-    const id = setInterval(() => void d.reload(), 15_000);
-    return () => clearInterval(id);
-  }, [busy, d.reload]);
+  usePoll(d.reload, 15_000, busy);
 
   const pick = (v: View) => {
     setView(v);

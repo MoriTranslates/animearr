@@ -5,7 +5,7 @@ import { api, fmtSize, sxe, type Fix } from "./api";
 import { FixButtons } from "./fixes";
 import { Link, navigate } from "./App";
 import { t, type I18nKey } from "./i18n";
-import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, useToast, Why, ReleaseName } from "./ui";
+import { Chip, Confirm, dateTime, Spinner, SplitButton, thumbUrl, useLoad, usePoll, useToast, Why, ReleaseName } from "./ui";
 import { showVars } from "./season";
 import { languageList, languageName } from "./lang";
 import { kindLabel } from "./pages/Activity";
@@ -389,12 +389,7 @@ export function EpisodeSheet({ episodeId, onClose, onChanged, managedLive = fals
     return () => (window.removeEventListener("keydown", onKey), prev?.focus());
   }, []);
   // While this episode downloads (and loads fine), refresh every few seconds.
-  useEffect(() => {
-    if (d?.status !== "downloading" || err) return;
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d?.status, err]);
+  usePoll(load, 5000, d?.status === "downloading" && !err);
   const label = d ? sxe(d.season, d.episode) : "";
   // The release group: the file's own, else the release it came from (never "—" next to a grab history that names it).
   const group = d?.file ? (d.file.group ?? groupOf(d.currentRelease) ?? groupOf(d.grabs.find((g) => g.state === "done")?.release)) : null;

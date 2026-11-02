@@ -341,6 +341,36 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         default:
           "$ref": "#/components/responses/Error"
+    post:
+      operationId: postSystemBackupDownload
+      tags:
+        - System
+      summary: "Download a whole backup with the account password (also needed on the home network)"
+      x-stability: internal
+      x-refused-for-api-key: true
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: "A gzip archive."
+          content:
+            "application/gzip":
+              schema:
+                type: string
+                format: binary
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        "403":
+          "$ref": "#/components/responses/Forbidden"
+        default:
+          "$ref": "#/components/responses/Error"
   "/api/system/backup/upload":
     post:
       operationId: postSystemBackupUpload
@@ -5418,6 +5448,34 @@ paths:
         - Downloads
       summary: "AnimeArr's own recycle bin"
       x-stability: internal
+      responses:
+        "200":
+          description: OK
+          content:
+            "application/json":
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          "$ref": "#/components/responses/Unauthorized"
+        default:
+          "$ref": "#/components/responses/Error"
+  "/api/recycle/animearr/unpin":
+    post:
+      operationId: postRecycleAnimearrUnpin
+      tags:
+        - Downloads
+      summary: "Release a file pinned in AnimeArr's recycle bin after an import couldn't put it back"
+      x-stability: internal
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
       responses:
         "200":
           description: OK

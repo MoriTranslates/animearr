@@ -77,4 +77,5 @@ export const notifyStrings = {
   "bt.confirm": "Restoring replaces your current settings, history and library data with this backup, and the saved passwords with the ones in it. A safety copy of what is here now is kept in the backups folder first. AnimeArr then restarts.",
   "bt.restore": "Restore this backup",
   "bt.pw": "Your AnimeArr password",
+  "bt.downloadPw": "The backup file holds the key to your saved passwords, so AnimeArr asks for your password first.",
 } as const;

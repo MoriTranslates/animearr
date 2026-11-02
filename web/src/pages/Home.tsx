@@ -10,7 +10,7 @@ import { InstallCard } from "../phone";
 import { QualityGoalNudge } from "../quality";
 import { Pill, SeasonHeader } from "../seasonal";
 import { seasonOf, showVars } from "../season";
-import { Cover, Empty, ErrorBox, Skeleton, thumbUrl, useLoad, usePageTitle } from "../ui";
+import { Cover, Empty, ErrorBox, Skeleton, thumbUrl, useLoad, usePageTitle, usePoll } from "../ui";
 
 interface CalEntry { episodeId: number; tvdbId: number; series: string; cover: string | null; color?: string | null; season: number; episode: number; title: string | null; airUtc: number; status: EpisodeStatus; progress: number | null; managed: boolean }
 interface HomeData {
@@ -37,11 +37,7 @@ export function Home({ status }: { status: Status; onChanged: () => void }) {
   }, []);
   const [open, setOpen] = useState<number | null>(null);
   // Downloads and today's statuses move on by themselves.
-  useEffect(() => {
-    const id = setInterval(() => document.visibilityState === "visible" && void d.reload(), 30_000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  usePoll(d.reload, 30_000);
   const c = status.connected!;
   const steps = [
     { done: (c.sabnzbd || c.qbittorrent) && (c.prowlarr || c.sonarr), label: t("home.step.connect"), to: "/settings?tab=clients" },

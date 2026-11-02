@@ -21,7 +21,7 @@ import { MediaManagement } from "../media";
 import { ProfilesEditor } from "../profiles";
 import { RulesEditor, TagsEditor } from "../rules";
 import { ScopeFields } from "../scope";
-import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, useToast } from "../ui";
+import { Chip, Confirm, dateTime, ErrorBox, ErrorText, ListInput, NumberInput, relTime, SecretInput, Spinner, Toggle, useLoad, usePageTitle, usePoll, useToast } from "../ui";
 
 type Tab = "indexers" | "clients" | "mediaservers" | "notifications" | "migration" | "profile" | "rules" | "tags" | "lists" | "media" | "paths" | "metadata" | "downloads" | "safety" | "appearance" | "security" | "system";
 
@@ -890,11 +890,7 @@ function ImportFoldersCard() {
 function LibraryFiles() {
   const toast = useToast();
   const d = useLoad(() => api<{ roots: string[]; byRoot: { root: string; n: number; bytes: number }[]; total: number; probed: number; errors: number; errorSamples: { path: string; error: string }[]; forcedOnlyEnglish: number; forcedSamples: string[]; lastScan: { state: string; detail: string } | null; progress: { phase: string; done: number; total: number; running: boolean } }>("/files/summary"), []);
-  useEffect(() => {
-    if (!d.data?.progress.running) return;
-    const id = setInterval(() => void d.reload(), 5000);
-    return () => clearInterval(id);
-  }, [d.data?.progress.running, d.reload]);
+  usePoll(d.reload, 5000, !!d.data?.progress.running);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
   if (!d.data) return null;
   const x = d.data;
