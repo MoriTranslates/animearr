@@ -367,6 +367,8 @@ interface Marker {
   fan?: boolean;
   /** Weak markers (bare trailing numbers) only count when no strong marker exists. */
   weak?: boolean;
+  /** An "NxM" season-episode marker ("10x14"), the only form an absolute number may directly precede. */
+  cross?: boolean;
 }
 
 const range = (a: number, b: number) => (b >= a && b - a < 2000 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]);
@@ -487,7 +489,8 @@ export function parseRelease(input: string): ParsedRelease {
     push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;
-  while ((m = reX.exec(work))) if (!(Number(m[1]) > 99 || /\d{3,4}x\d{3,4}/.test(m[0]))) push(m, { season: +m[1], episodes: [+m[2]] });
+  while ((m = reX.exec(work)))
+    if (!(Number(m[1]) > 99 || /\d{3,4}x\d{3,4}/.test(m[0]))) push(m, { season: +m[1], episodes: [+m[2]], cross: true });
   // Multi-season pack: S01-S03 / Season 1-3 (the second S is REQUIRED, unlike Sonarr's regex).
   const reMS = /\bS(\d{1,2})\s*[-~]\s*S(\d{1,2})\b|\bSeasons?\s*(\d{1,2})\s*[-~]\s*(\d{1,2})\b/gi;
   while ((m = reMS.exec(work))) push(m, { season: +(m[1] ?? m[3]), seasonsTo: +(m[2] ?? m[4]), batch: true, fullSeason: true });
@@ -669,10 +672,11 @@ export function parseRelease(input: string): ParsedRelease {
     if (absAfter) absolute = absAfter.absolute!;
     else if (after && after.absolute![0] > 0 && after.at - (chosen.find((c) => c.episodes)?.end ?? 0) <= 3) absolute = after.absolute!;
   }
-  // "[K-F] Some Anime Show 214 10x14": absolute before the SxE.
+  // "[K-F] Some Anime Show 214 10x14": absolute before the SxE. Only before "NxM": a number right before SxxEyy ends
+  // the title ("Mob Psycho 100 S03E05", "Kaiju No. 8 S01E05", "Golgo 13 S01E05").
   if (episodes.length && !absolute.length) {
     const epMk = chosen.find((c) => c.episodes);
-    const before = epMk && !epMk.fan ? weak.find((w) => w.end >= epMk.at - 1 && w.end <= epMk.at + 1) : undefined;
+    const before = epMk?.cross ? weak.find((w) => w.end >= epMk.at - 1 && w.end <= epMk.at + 1) : undefined;
     if (before) {
       absolute = before.absolute!;
       titleEnd = Math.min(titleEnd, before.at);

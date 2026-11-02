@@ -81,6 +81,76 @@ test("a spaced ' / ' between two titles keeps the last one as the title (as befo
   check([{ name: "[Group] Shingeki no Kyojin / Attack on Titan - 05 [1080p]", title: "Attack on Titan", group: "Group", absolute: [5] }]);
 });
 
+test("a number ending the title before SxxEyy stays in the title (Mob Psycho 100, Kaiju No. 8)", () => {
+  check([
+    { name: "Mob.Psycho.100.S03E05.1080p.WEB.H264-GRP", title: "Mob Psycho 100", group: "GRP", season: 3, episodes: [5] },
+    { name: "Mob Psycho 100 S03E01", title: "Mob Psycho 100", group: null, season: 3, episodes: [1] },
+    { name: "[Group] Mob Psycho 100 S03E05 [1080p]", title: "Mob Psycho 100", group: "Group", season: 3, episodes: [5] },
+    { name: "Kaiju.No.8.S01E05.1080p.WEB.H264-GRP", title: "Kaiju No 8", group: "GRP", season: 1, episodes: [5] },
+    { name: "Kaiju No. 8 S01E05", title: "Kaiju No. 8", group: null, season: 1, episodes: [5] },
+    { name: "Golgo.13.S01E05.720p.HDTV.x264-GRP", title: "Golgo 13", group: "GRP", season: 1, episodes: [5] },
+    { name: "Cyborg 009 S01E03 1080p WEB", title: "Cyborg 009", group: null, season: 1, episodes: [3] },
+    {
+      name: "Space Battleship Yamato 2199 S01E10 1080p BluRay x264-GRP",
+      title: "Space Battleship Yamato 2199",
+      group: "GRP",
+      season: 1,
+      episodes: [10],
+    },
+  ]);
+});
+
+test("numbers at the end of a title: rows that must not change", () => {
+  check([
+    { name: "Mob Psycho 100 III - 01", title: "Mob Psycho 100 III", group: null, absolute: [1] },
+    { name: "[Erai-raws] Mob Psycho 100 III - 01 [1080p]", title: "Mob Psycho 100 III", group: "Erai-raws", absolute: [1] },
+    { name: "[SubsPlease] Kaiju No. 8 - 05 (1080p) [ABCD1234].mkv", title: "Kaiju No. 8", group: "SubsPlease", absolute: [5] },
+    { name: "86 S01E05 1080p WEB H264-GRP", title: "86", group: "GRP", season: 1, episodes: [5] },
+    { name: "Show - 100", title: "Show", group: null, absolute: [100] },
+    { name: "Show 100", title: "Show", group: null, absolute: [100] },
+    { name: "[Group] Show 100 [1080p]", title: "Show", group: "Group", absolute: [100] },
+    { name: "[SubsPlease] One Piece - 1080 (1080p) [ABCD1234].mkv", title: "One Piece", group: "SubsPlease", absolute: [1080] },
+    { name: "[Erai-raws] One Piece - 1080 [1080p][Multiple Subtitle]", title: "One Piece", group: "Erai-raws", absolute: [1080] },
+    // The anime "absolute then SxE" form (Sonarr's K-F fixture) and SxxEyy with a trailing absolute keep both numbers.
+    { name: "[K-F] Some Anime Show 214 10x14", title: "Some Anime Show", group: "K-F", season: 10, episodes: [14], absolute: [214] },
+    { name: "[K-F] Some Anime Show S10E14 214", title: "Some Anime Show", group: "K-F", season: 10, episodes: [14], absolute: [214] },
+    {
+      name: "[Dae-P9] Anime Series - 05 - S01E05 - Title",
+      title: "Anime Series",
+      group: "Dae-P9",
+      season: 1,
+      episodes: [5],
+      absolute: [5],
+    },
+  ]);
+});
+
+test("a trailing-number title identifies its own show, not the show named by the shorter title", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const eps = (t: number) =>
+    [1, 2, 3].flatMap((season) =>
+      Array.from({ length: 13 }, (_, i) => ({
+        id: t * 1000 + season * 100 + i + 1,
+        season,
+        episode: i + 1,
+        absolute: (season - 1) * 13 + i + 1,
+        sceneSeason: null,
+        sceneEpisode: null,
+        sceneAbsolute: null,
+        airUtc: 0,
+      })),
+    );
+  const index = new AliasIndex({ library: [lib(1, "Mob Psycho 100"), lib(2, "Mob Psycho"), lib(3, "Kaiju No. 8"), lib(4, "Kaiju No")] });
+  const ctx = { index, now: Date.parse("2026-11-02T00:00:00Z"), episodesFor: (t: number) => eps(t) };
+  const mob = identify("Mob.Psycho.100.S03E05.1080p.WEB.H264-GRP", ctx);
+  assert.equal(mob.candidate?.tvdbId, 1, mob.summary);
+  assert.deepEqual(
+    mob.resolution?.episodes.map((e) => [e.season, e.episode]),
+    [[3, 5]],
+  );
+  assert.equal(identify("Kaiju.No.8.S01E05.1080p.WEB.H264-GRP", ctx).candidate?.tvdbId, 3);
+});
+
 test("real paths still reduce to the file name (unchanged)", () => {
   check([
     { name: "/downloads/complete/[SubsPlease] Show Name - 03 (1080p).mkv", title: "Show Name", group: "SubsPlease", absolute: [3] },
