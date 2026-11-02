@@ -557,10 +557,20 @@ function recycleBinProblem() {
   return "error" in bin ? bin.error : null;
 }
 
+/** A recycle that failed part-way: what it had moved went back, except `stranded` (still in the bin). */
+export class RecycleFailed extends Error {
+  stranded: { from: string; to: string; why: string }[];
+  constructor(message: string, stranded: { from: string; to: string; why: string }[]) {
+    super(message);
+    this.stranded = stranded;
+  }
+}
+
 /**
  * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set or the bin
  * is unsafe (in or holding a library folder, relative, too near the disk root): then nothing moves. Never deletes.
- * Returns where each file went, so it can be put back.
+ * Returns where each file went, so it can be put back. If one of the files can't be moved, the ones already moved go
+ * back first; any that can't go back are in the RecycleFailed's `stranded`.
  */
 export async function recycle(localFile: string, seriesLocal: string) {
   const bin = binFolder();
@@ -574,7 +584,21 @@ export async function recycle(localFile: string, seriesLocal: string) {
     const r = f === localFile ? rel : path.join(path.dirname(rel), path.basename(f));
     let target = path.join(binLocal, r);
     if (fs.existsSync(target)) target = target.replace(/(\.[^.]+)$/, `.${stamp}$1`);
-    await moveNoClobber(f, target);
+    try {
+      await moveNoClobber(f, target);
+    } catch (e) {
+      // Part-way (a locked subtitle, no permission, disk full): put back what already went, newest first.
+      const stranded: { from: string; to: string; why: string }[] = [];
+      for (const b of [...moved].reverse()) {
+        try {
+          await moveNoClobber(b.to, b.from);
+        } catch (re) {
+          stranded.push({ ...b, why: (re as Error).message });
+        }
+      }
+      const cause = `couldn't move ${path.basename(f)} to the recycling bin (${(e as Error).message})`;
+      throw new RecycleFailed(stranded.length ? cause : `${cause}; nothing was replaced, the old file is where it was`, stranded);
+    }
     try {
       noteBinned(target, fs.statSync(target).size); // the bin's retention counts from now
     } catch {
@@ -664,7 +688,8 @@ async function placeItems(
   if (real && (getSettings().importer.realBudget ?? 0) === 0)
     throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
   const rootLocal = mappedPath(target.arrRoot);
-  const out: { label: string; done: boolean; why: string }[] = [];
+  // stranded: the item failed AND part of its old file is stuck in the recycling bin (not back in the library).
+  const out: { label: string; done: boolean; why: string; stranded?: boolean }[] = [];
   for (const it of items) {
     if (opts.only && !opts.only.includes(it.source)) continue;
     if (it.problem) {
@@ -768,6 +793,7 @@ async function placeItems(
           /* left as *.animearr-part for a look */
         }
       }
+      if (e instanceof RecycleFailed) stranded.push(...e.stranded); // part of the old file went to the bin and stuck
       let why = (e as Error).message;
       if (stranded.length) {
         // The old file is in the bin and not back in the library: say where both files are, and keep the old one out of
@@ -792,8 +818,16 @@ async function placeItems(
           why: `Import of ${it.label} failed and ${why}`,
           detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
         });
-      }
-      out.push({ label: it.label, done: false, why });
+      } else if (!opts.grabId)
+        // A manual import that failed while moving files: in Activity too (a grab's import reports its own outcome).
+        logDecision("fail", {
+          tvdbId: target.tvdbId ?? null,
+          title: target.title,
+          episodeIds: it.episodeIds,
+          why: `Import of ${it.label} failed: ${why}`,
+          detail: target.movieId ? { movieId: target.movieId } : {},
+        });
+      out.push({ label: it.label, done: false, why, ...(stranded.length ? { stranded: true } : {}) });
     } finally {
       inFlight.delete(tmp);
     }

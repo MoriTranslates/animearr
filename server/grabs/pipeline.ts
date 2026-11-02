@@ -850,8 +850,11 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       `${replaceLabel} stopped: the download was only ${n ? `episode ${n}` : "one episode"}, not the whole season. Nothing in your library changed.`,
     );
   }
-  /** Replace season: episodes that keep their old file (new one failed its check, or isn't in the pack). */
-  const kept: { id: number; why: string }[] = replacing
+  /**
+   * Replace season: episodes that weren't swapped (new one failed its check, or isn't in the pack). `lost`: the import
+   * failed AND the old file couldn't be put back from the recycling bin, so it did NOT keep its old file.
+   */
+  const kept: { id: number; why: string; lost?: boolean }[] = replacing
     ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" }))
     : [];
 
@@ -972,7 +975,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         if (bad || !res.length) {
           // Replace season: one episode that can't be placed keeps its old file; the others carry on.
           if (replacing) {
-            for (const id of p.episodeIds) kept.push({ id, why: bad?.why ?? "nothing to import" });
+            for (const id of p.episodeIds) kept.push({ id, why: bad?.why ?? "nothing to import", lost: !!bad?.stranded });
             continue;
           }
           return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
@@ -992,23 +995,33 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
     }
+    const label = (id: number) => {
+      const e = eps.find((x) => x.id === id);
+      return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
+    };
+    // Never "kept the old file" for an episode whose old file is stuck in the bin (its import logged where it is).
+    const keptOld = kept.filter((k) => !k.lost);
+    const lost = kept.filter((k) => k.lost);
+    const lostNote = lost.length
+      ? `the old file of ${lost.map((k) => label(k.id)).join(", ")} couldn't be put back: it is pinned in the recycling bin (see Activity)`
+      : "";
     if (replacing && !swapped && !done.length)
       return attention(
-        `${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`,
+        `${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). ${lost.length ? `Not everything is as it was: ${lostNote}.` : "Nothing in your library changed."}`,
       );
     if (replacing) {
       db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
       if (kept.length) {
-        const label = (id: number) => {
-          const e = eps.find((x) => x.id === id);
-          return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
-        };
+        const parts = [
+          keptOld.length ? `kept the old file for ${keptOld.map((k) => `${label(k.id)} (${k.why})`).join(", ")}` : "",
+          lost.length ? `the old file of ${lost.map((k) => `${label(k.id)} couldn't be put back (${k.why})`).join(", ")}` : "",
+        ].filter(Boolean);
         logDecision("fail", {
           tvdbId: row.tvdb_id,
           title: series.title,
           episodeIds: kept.map((k) => k.id),
           release: row.release,
-          why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`,
+          why: `Replace season: ${parts.join("; ")}; needs a look`,
           detail: { grabId: row.id },
         });
       }
@@ -1029,7 +1042,14 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         setState(
           row.id,
           "needs-attention",
-          `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`,
+          `${replaceLabel}: ${[
+            keptOld.length
+              ? `${keptOld.length} episode${keptOld.length === 1 ? " kept its" : "s kept their"} old file (${[...new Set(keptOld.map((k) => k.why))].join("; ")})`
+              : "",
+            lostNote,
+          ]
+            .filter(Boolean)
+            .join("; ")}. The others were replaced. Fix the cause, then press Retry import`,
         );
       return;
     }
