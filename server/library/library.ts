@@ -17,9 +17,9 @@ import { logDecision } from "../system/activity.js";
 import { langList } from "../core/langs.js";
 import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
-import { cache, db, dbState, setJob, tx } from "../system/db.js";
+import { cache, db, dbState, setJob, setMeta, tx } from "../system/db.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
-import { materializeAll, rematerializeSeries } from "./native.js";
+import { materializeAll, rematerializeSeries, SONARR_LIST_READ } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 import { getSettings } from "../system/settings.js";
 
@@ -99,9 +99,18 @@ async function doSync(full: boolean): Promise<SyncResult> {
 async function syncSonarr(full: boolean, res: SyncResult) {
   const s = getSettings();
   const all = await getSeries();
+  // A malformed answer (a proxy's HTML page, an error object, records without fields) fails the sync: the cache stays.
+  if (!Array.isArray(all) || all.some((x) => !x || typeof x.id !== "number" || !Array.isArray(x.seasons)))
+    throw new Error("Sonarr's series list came back malformed; kept the shows AnimeArr already had");
   let animeTagId: number | null = null;
-  if (s.sonarr.animeTag) animeTagId = (await getTags()).find((t) => t.label.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
-  const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && x.tags.includes(animeTagId)));
+  let tagMissing = false;
+  if (s.sonarr.animeTag) {
+    const tags = await getTags();
+    if (!Array.isArray(tags)) throw new Error("Sonarr's tag list came back malformed; kept the shows AnimeArr already had");
+    animeTagId = tags.find((t) => t.label?.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
+    tagMissing = animeTagId === null;
+  }
+  const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId)));
   res.series = anime.length;
   const prev = new Map(
     (
@@ -187,14 +196,27 @@ async function syncSonarr(full: boolean, res: SyncResult) {
           .run(x.id, a.title, compactKey(a.title), a.seasonNumber ?? null, season);
       }
     }
-    // Series no longer in Sonarr (or no longer anime).
+    // Series no longer in Sonarr (or no longer anime). An empty or half answer (Sonarr starting up, a restored or wrong
+    // instance, the anime tag renamed) looks the same as a mass removal, and acting on it would close managed searches
+    // and let import lists add Sonarr's shows again as native duplicates. So a plain sync only drops a few shows; more
+    // than half of them (or all) waits for a full sync, which the user starts on purpose (Rebuild cache).
     const keep = new Set(anime.map((x) => x.id));
-    for (const id of prev.keys())
-      if (!keep.has(id)) {
+    const gone = [...prev.keys()].filter((id) => !keep.has(id));
+    const held = !full && gone.length > 0 && (tagMissing || !anime.length || (gone.length >= 2 && gone.length * 2 > prev.size));
+    if (held)
+      res.errors.push(
+        tagMissing
+          ? `Sonarr has no tag named "${s.sonarr.animeTag}" (Settings → Sonarr → anime tag); kept the ${gone.length} cached shows it no longer lists`
+          : `Sonarr's answer lacks ${gone.length} of the ${prev.size} anime shows AnimeArr knows; kept them, in case Sonarr only half-answered. If you really removed them from Sonarr, use Settings → System → Rebuild cache`,
+      );
+    else {
+      for (const id of gone) {
         res.removed++;
         for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id", "alt_titles WHERE series_id"])
           cache.prepare(`DELETE FROM ${t} = ?`).run(id);
       }
+      setMeta(SONARR_LIST_READ, { fetchedAt: now, info: { series: anime.length } });
+    }
   });
 
   let done = 0;
@@ -213,6 +235,11 @@ async function syncSonarr(full: boolean, res: SyncResult) {
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   if (isNativeSeriesId(seriesId)) return rematerializeSeries(seriesId);
   const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
+  // Keep the cached episodes over a malformed or empty answer: a Sonarr show always has episodes, so none means Sonarr
+  // half-answered, and an emptied list would close the show's managed searches (the files list may be empty).
+  if (!Array.isArray(eps) || !Array.isArray(files)) throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
+  if (!eps.length && cache.prepare("SELECT 1 FROM episodes WHERE series_id = ? LIMIT 1").get(seriesId))
+    throw new Error("Sonarr answered with no episodes for this show; kept the cached ones");
   tx(cache, () => {
     cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);
     cache.prepare("DELETE FROM files WHERE series_id = ?").run(seriesId);

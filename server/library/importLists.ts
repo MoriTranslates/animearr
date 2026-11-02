@@ -17,7 +17,7 @@ import { droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
 import { animeListEntries, USER_AGENT } from "../metadata/metadata.js";
-import { addMovie, addShow, isNativeTvdb, NATIVE_BASE } from "./native.js";
+import { addMovie, addShow, isNativeTvdb, NATIVE_BASE, SONARR_UNKNOWN, sonarrLibraryKnown } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";
 import { getSettings } from "../system/settings.js";
@@ -514,6 +514,9 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
   const deps = opts.deps ?? realListDeps;
   const l = getList(id);
   if (running.has(id)) throw fail("This list is syncing already", 409);
+  // "Not in the cache" only means "not in the library" once Sonarr's list was read; until then every entry would look
+  // new and be added as a native duplicate of a Sonarr show. The list stays due and runs after a good sync.
+  if (!sonarrLibraryKnown()) throw fail(SONARR_UNKNOWN, 503);
   running.add(id);
   try {
     let plan: Plan;

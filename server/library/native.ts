@@ -21,7 +21,8 @@ import { rebuildFranchises, trailerOf, upsertMedia } from "../metadata/catalog.j
 import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
 import { fribb } from "../metadata/covers.js";
-import { cache, db, dbState, tx } from "../system/db.js";
+import { cache, db, dbState, getMeta, tx } from "../system/db.js";
+import { sonarrConfigured } from "../arr/sonarr.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
 import { renderMovie, renderSeriesFolder } from "../import/naming.js";
 import { localPath, mappedPath } from "../system/paths.js";
@@ -70,6 +71,21 @@ interface EntryRow {
 
 export const nativeShows = () => db.prepare("SELECT * FROM native_series ORDER BY id").all() as unknown as NativeRow[];
 export const isNativeTvdb = (tvdbId: number) => !!db.prepare("SELECT 1 FROM native_series WHERE tvdb_id = ?").get(tvdbId);
+
+/** Cache marker (meta table): one complete series list from Sonarr was stored, even one with no anime in it. */
+export const SONARR_LIST_READ = "sonarr-series";
+/**
+ * Can the cache say "Sonarr doesn't have this show"? Only once a complete answer from Sonarr was stored. Before that (a
+ * fresh install, or a rebuilt cache while Sonarr is down) "not in the cache" means "unknown", and adding the show
+ * natively would duplicate one Sonarr already has (review 2026-11-02, H12).
+ */
+export function sonarrLibraryKnown(): boolean {
+  if (!sonarrConfigured()) return true;
+  if (cache.prepare(`SELECT 1 FROM series WHERE id < ${NATIVE_BASE} LIMIT 1`).get()) return true;
+  return !!getMeta(SONARR_LIST_READ);
+}
+export const SONARR_UNKNOWN =
+  "AnimeArr hasn't read Sonarr's library yet (Sonarr unreachable since the cache was built), so it can't tell whether Sonarr already has this show. Nothing was added; it works again after the next successful library sync";
 
 const LANG: Record<string, string> = { JP: "Japanese", CN: "Chinese", KR: "Korean", TW: "Chinese" };
 const STATUS: Record<string, string> = {
@@ -644,6 +660,7 @@ async function ensureEntries(anilistId: number, deps: { media: typeof mediaByIds
  */
 export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb }) {
   if (dbState.corrupt) throw err("The database failed its integrity check; restore a backup first", 503);
+  if (!sonarrLibraryKnown()) throw err(SONARR_UNKNOWN, 503);
   const root = path.posix.normalize(String(input.rootFolder ?? "").replace(/\\/g, "/")).replace(/\/+$/, "");
   if (!root || !getSettings().allowedRoots.some((a) => a.replace(/\\/g, "/").replace(/\/+$/, "") === root))
     throw err("Pick one of the allowed root folders");
