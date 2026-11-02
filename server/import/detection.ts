@@ -141,27 +141,53 @@ export async function setTrackLanguage(input: {
     tvdbId: input.tvdbId ?? null,
     title: input.title,
     why: `You marked subtitle track ${input.trackIndex} as ${what} in ${marked} file${marked === 1 ? "" : "s"} (${scope === "file" ? path.posix.basename(input.path) : scope === "season" ? `season ${input.season}` : `release group ${input.group}`})${tagged.length ? `; the tag was also written into ${tagged.length} file${tagged.length === 1 ? "" : "s"}` : ""}`,
-    undo: { action: "delete-overrides", args: { ids: created.join(","), restore } },
+    undo: {
+      action: "delete-overrides",
+      args: { ids: created.join(","), restore, wrote: { trackIndex: input.trackIndex, lang, forced: input.forced ? 1 : 0 } },
+    },
   });
   return { files: marked, tagged: tagged.length };
 }
 
 /**
- * The undo of a track-language mark: the rows it created go, the corrections it changed come back as they were.
- * (Entries logged before `restore` was kept only list ids, which may include changed corrections: those are deleted.)
+ * The undo of a track-language mark: the rows it created go, the corrections it changed come back as they were, but
+ * only where the row still holds what that mark wrote (`wrote`): a track the user changed again since is left as it
+ * is, and its file is returned so the undo can say so. (Entries logged before `restore`/`wrote` were kept only list
+ * ids, which may include changed corrections: those are deleted, as before.)
  */
 export function deleteOverrides(
   ids: number[],
   restore: { path: string; trackIndex: number; lang: string | null; forced: number; at: number }[] = [],
-) {
+  wrote?: { trackIndex: number; lang: string | null; forced: number },
+): string[] {
+  const left: string[] = [];
+  const still = (cur: { lang: string | null; forced: number } | undefined) =>
+    !wrote || (!!cur && cur.lang === wrote.lang && !!cur.forced === !!wrote.forced);
   tx(db, () => {
-    for (const id of ids) db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
-    for (const r of restore)
+    for (const id of ids) {
+      const cur = db.prepare("SELECT path, lang, forced FROM track_overrides WHERE id = ?").get(id) as
+        { path: string; lang: string | null; forced: number } | undefined;
+      if (!cur) continue; // already gone
+      if (!still(cur)) {
+        left.push(cur.path);
+        continue;
+      }
+      db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
+    }
+    for (const r of restore) {
+      const cur = db.prepare("SELECT lang, forced FROM track_overrides WHERE path = ? AND track_index = ?").get(r.path, r.trackIndex) as
+        { lang: string | null; forced: number } | undefined;
+      if (!still(cur)) {
+        left.push(r.path);
+        continue;
+      }
       db.prepare(
         "INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path, track_index) DO UPDATE SET lang = excluded.lang, forced = excluded.forced, at = excluded.at",
       ).run(r.path, r.trackIndex, r.lang, r.forced, r.at);
+    }
   });
   invalidateOverrides();
+  return left;
 }
 
 /** Writes the language (and forced flag) into the MKV header in place (mkvpropedit; no remux). MKV only. */

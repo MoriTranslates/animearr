@@ -64,3 +64,34 @@ test("a season-wide correction's undo leaves files it didn't change as they were
   assert.deepEqual(at(A), [{ track: 2, lang: "en", forced: false }], "A's earlier correction stays");
   assert.deepEqual(at(C), [], "C had none: it has none again");
 });
+
+/** Undoes one given track-language decision (by the order they were made: 0 = the newest). */
+async function undoNth(n: number) {
+  const d = db
+    .prepare("SELECT id FROM decisions WHERE undo LIKE '%overrides%' AND undone_at IS NULL ORDER BY id DESC LIMIT 1 OFFSET ?")
+    .get(n) as {
+    id: number;
+  };
+  const r = await app.inject({ method: "POST", url: `/api/activity/${d.id}/undo`, headers: { "x-animearr": "1" } });
+  assert.equal(r.statusCode, 200, r.body);
+  return JSON.parse(r.body) as { ok: boolean; note?: string };
+}
+
+test("an older mark's undo leaves a track the user changed again since, and says so", async () => {
+  const D = `${SEASON}/Show - S01E04.mkv`;
+  const E = `${SEASON}/Show - S01E05.mkv`;
+  await setTrackLanguage({ path: E, trackIndex: 2, lang: "en", tvdbId: 555 }); // E's own earlier correction
+  // The older mark: D gets "ja" (new), E changes en → ja.
+  await setTrackLanguage({ path: D, trackIndex: 2, lang: "ja", scope: "file", tvdbId: 555 });
+  await setTrackLanguage({ path: E, trackIndex: 2, lang: "ja", scope: "file", tvdbId: 555 });
+  // Then the user changes both again.
+  await setTrackLanguage({ path: D, trackIndex: 2, lang: "fr", tvdbId: 555 });
+  await setTrackLanguage({ path: E, trackIndex: 2, lang: "de", tvdbId: 555 });
+  // Undo the older marks (D → ja, E → ja): both were changed since, so both stay.
+  const r1 = await undoNth(2); // E → ja
+  const r2 = await undoNth(2); // D → ja
+  assert.deepEqual(at(D), [{ track: 2, lang: "fr", forced: false }], "D keeps the user's later fr");
+  assert.deepEqual(at(E), [{ track: 2, lang: "de", forced: false }], "E keeps the user's later de");
+  assert.match(r1.note ?? "", /Show - S01E05\.mkv was changed again after this; left as it is/);
+  assert.match(r2.note ?? "", /Show - S01E04\.mkv was changed again after this; left as it is/);
+});
