@@ -14,7 +14,7 @@ function v4Blocked(ip: string) {
 }
 
 /** The eight 16-bit groups of an IPv6 address (a dotted IPv4 tail included), or null. */
-function hextets(ip: string): number[] | null {
+export function hextets(ip: string): number[] | null {
   let s = ip;
   const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(s);
   if (tail) {

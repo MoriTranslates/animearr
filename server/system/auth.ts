@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { getSettings, safeEqual } from "./settings.js";
+import { hextets } from "./outbound.js";
 
 export const COOKIE = "animearr_session";
 const TTL_MS = 30 * 86_400_000;
@@ -96,19 +97,40 @@ export function isLocalRequest(req: FastifyRequest) {
   return isHomeNetwork(peer) && !isProxyPeer(peer);
 }
 
-const v4 = (ip: string) => (ip.startsWith("::ffff:") ? ip.slice(7) : ip);
+/** The IPv6 groups of an address without its zone (fe80::1%eth0), or null. */
+const groups6 = (ip: string) => (net.isIPv6(ip.replace(/%.*$/, "")) ? hextets(ip.replace(/%.*$/, "")) : null);
+/** IPv4 for an IPv4 address or an IPv4-mapped IPv6 one (::ffff:a.b.c.d, in either spelling), else the input. */
+const v4 = (ip: string) => {
+  if (ip.toLowerCase().startsWith("::ffff:") && net.isIPv4(ip.slice(7))) return ip.slice(7);
+  const g = groups6(ip);
+  if (g && g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return [g[6] >> 8, g[6] & 255, g[7] >> 8, g[7] & 255].join(".");
+  return ip;
+};
 const inCidr = (ip: string, cidr: string) => {
   const [base, bits] = cidr.split("/");
   const a = v4(ip);
-  if (!net.isIPv4(a) || !net.isIPv4(base)) return false;
-  const n = (x: string) => x.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
-  const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
-  return (n(a) & mask) === (n(base) & mask);
+  if (net.isIPv4(base)) {
+    if (!net.isIPv4(a)) return false;
+    const n = (x: string) => x.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
+    const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+    return (n(a) & mask) === (n(base) & mask);
+  }
+  // An IPv6 range (ANIMEARR_LOCAL_NETWORKS may list e.g. a home ULA prefix or Tailscale's fd7a:115c:a1e0::/48).
+  const g = groups6(ip);
+  const b = groups6(base);
+  const len = bits === undefined ? 128 : Number(bits);
+  if (!g || !b || !Number.isInteger(len) || len < 0 || len > 128) return false;
+  for (let i = 0, left = len; left > 0; i++, left -= 16) {
+    const m = left >= 16 ? 0xffff : (0xffff << (16 - left)) & 0xffff;
+    if ((g[i] & m) !== (b[i] & m)) return false;
+  }
+  return true;
 };
 /**
- * The home network, for the "no password on my local network" bypass: 10/8, 192.168/16 and IPv6 ULA/link-local by
+ * The home network, for the "no password on my local network" bypass: 10/8, 192.168/16 and IPv6 link-local by
  * default. 172.16/12 (Docker's own networks, where a reverse proxy or Docker's NAT gateway would make every request
- * look local) and loopback never count, unless ANIMEARR_LOCAL_NETWORKS lists them (comma-separated CIDRs).
+ * look local), IPv6 ULA fc00::/7 (for the same reason: Docker's IPv6 networks are ULA; review L4) and loopback never
+ * count, unless ANIMEARR_LOCAL_NETWORKS lists them (comma-separated IPv4 or IPv6 CIDRs, replacing the defaults).
  */
 export function isHomeNetwork(ip: string) {
   const custom = (process.env.ANIMEARR_LOCAL_NETWORKS ?? "")
@@ -118,7 +140,22 @@ export function isHomeNetwork(ip: string) {
   if (custom.length) return custom.some((c) => inCidr(ip, c));
   const a = v4(ip);
   if (net.isIPv4(a)) return inCidr(a, "10.0.0.0/8") || inCidr(a, "192.168.0.0/16");
-  return /^f[cd]/i.test(ip) || /^fe80:/i.test(ip);
+  return /^fe80:/i.test(ip);
+}
+/**
+ * Who a login-throttle entry is kept for: an IPv4 address (IPv4-mapped IPv6 included) as it is, an IPv6 one by its
+ * /64, since one home or one server is handed a whole /64 and could otherwise rotate through it.
+ */
+export function throttleAddr(ip: string) {
+  const a = v4(ip);
+  if (net.isIPv4(a)) return a;
+  const g = groups6(ip);
+  return g
+    ? `${g
+        .slice(0, 4)
+        .map((x) => x.toString(16))
+        .join(":")}::/64`
+    : ip;
 }
 /** The socket peer is a loopback or a trusted proxy: then it isn't the user's device. */
 function isProxyPeer(peer: string) {
@@ -264,7 +301,8 @@ function makeRoom(now: number) {
   drop(victim);
   return true;
 }
-export function loginAllowed(ip: string, user: string) {
+export function loginAllowed(rawIp: string, user: string) {
+  const ip = throttleAddr(rawIp);
   const now = Date.now();
   if (now - swept > 60_000) sweep(now);
   let key = throttleKey(ip, user);
@@ -285,7 +323,7 @@ export function loginAllowed(ip: string, user: string) {
   return true;
 }
 export function loginSucceeded(ip: string, user: string) {
-  drop(throttleKey(ip, user));
+  drop(throttleKey(throttleAddr(ip), user));
 }
 /** For tests: how many throttle entries are held. */
 export const throttleSize = () => attempts.size;

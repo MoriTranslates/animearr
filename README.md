@@ -144,8 +144,8 @@ Then open `http://<server>:8484`, log in, and follow the setup wizard ("I'm new"
 > proxy, a tunnel) are refused. The wizard's first step offers to change it ("Later" is fine), and a banner reminds you
 > until you do (Settings → Security). Installs that already have an account keep it.
 >
-> "Home network" is judged by the address a connection comes from (10.x, 192.168.x, private IPv6 including Tailscale,
-> so shared Tailscale nodes count too). Internet traffic that reaches AnimeArr *from* a LAN address looks local: a
+> "Home network" is judged by the address a connection comes from (10.x, 192.168.x and IPv6 link-local; private IPv6
+> such as Tailscale's only when listed in `ANIMEARR_LOCAL_NETWORKS`, see SECURITY.md). Internet traffic that reaches AnimeArr *from* a LAN address looks local: a
 > router port-forward with NAT/masquerade, or a plain TCP forwarder (nginx `stream`, HAProxy tcp mode, frp, `ssh -R`,
 > socat). So **change the password on first run**, don't port-forward AnimeArr directly, and expose it only through an
 > HTTP reverse proxy (which adds `X-Forwarded-For`) or a VPN. Details in [SECURITY.md](SECURITY.md).

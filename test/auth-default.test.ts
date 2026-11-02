@@ -43,9 +43,10 @@ test("existing installs: an account that already exists is never reset or altere
 });
 
 test("safety rule: while the password is the default, logins are refused from outside the home network", () => {
-  for (const ip of ["192.168.1.20", "10.0.0.5", "::ffff:192.168.1.9", "fd00::1234", "fe80::1"])
+  for (const ip of ["192.168.1.20", "10.0.0.5", "::ffff:192.168.1.9", "fe80::1"])
     assert.equal(defaultLoginRefusal(req(ip), true), null, `${ip} is home`);
-  for (const ip of ["8.8.8.8", "203.0.113.7", "::ffff:1.2.3.4", "2001:db8::1", "100.64.0.1"])
+  // IPv6 ULA is Docker's IPv6 range too, so it isn't home by default (review L4); ANIMEARR_LOCAL_NETWORKS can list it.
+  for (const ip of ["8.8.8.8", "203.0.113.7", "::ffff:1.2.3.4", "2001:db8::1", "100.64.0.1", "fd00::1234", "fc00::1"])
     assert.equal(defaultLoginRefusal(req(ip), true), DEFAULT_REMOTE_REFUSED, `${ip} is not home`);
   assert.equal(DEFAULT_REMOTE_REFUSED, "The default password only works from your home network. Log in from home and change it first.");
   // Docker's 172.16/12 and loopback don't count by default (a reverse proxy or tunnel would look local).

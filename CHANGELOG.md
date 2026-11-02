@@ -36,6 +36,13 @@ All notable changes, newest first. The commit history has the crew's version of 
 - **The login page can't be used to tie up the server.** It reads at most 8 KB per request (before, anyone could make
   AnimeArr hold up to 256 MB in memory per request), and the record of failed logins is capped: one address trying
   many user names, or a flood of addresses, can't grow it without limit or wipe the back-off of a real guesser.
+  IPv6 clients are counted per /64 (one home or server), so rotating through their own addresses doesn't help.
+- **Private IPv6 (ULA, `fd…`/`fc…`) no longer counts as your home network by default**, just like Docker's 172.16/12:
+  Docker's own IPv6 networks use it, so traffic through a Docker gateway could look local. **If you reach AnimeArr
+  over Tailscale or a ULA address** and use "No password on my local network" (or still have the default password),
+  list the range in `ANIMEARR_LOCAL_NETWORKS`, which now takes IPv6 too, e.g.
+  `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`. Plain IPv4 home networks and IPv6
+  link-local are unchanged.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers

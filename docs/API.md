@@ -69,7 +69,7 @@ origin, use the API key from a server-side component rather than a session cooki
 ### "No password on my local network"
 
 AnimeArr has an optional setting that lets devices on the home network in without logging in. When it is on, a request
-from a private address (`10.0.0.0/8`, `192.168.0.0/16`, IPv6 ULA/link-local, or the networks listed in
+from a private address (`10.0.0.0/8`, `192.168.0.0/16`, IPv6 link-local, or exactly the IPv4/IPv6 networks listed in
 `ANIMEARR_LOCAL_NETWORKS`) is accepted without a key, as long as it did not pass through a reverse proxy and addressed
 AnimeArr by IP or a LAN name. `via` in `/api/status` then says `"local"`.
 
