@@ -39,6 +39,9 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   `X-Forwarded-For`) with `TRUST_PROXY` set.
 - Logins from home work. A banner ("You're still using the default password (morebooty). Change it, Captain.") stays
   until you change the password in Settings → Security; once you do, the rule and the banner are gone.
+- Deliberate (won't fix): a remote login with the default password gets its own "only works from your home network"
+  message instead of "wrong password", so an outsider can tell the install still uses the default. That message is how
+  you find out why your own remote login fails, and the default password can't be used remotely anyway.
 - Only a salted scrypt hash is stored; "still the default" is a comparison against that hash. The plaintext is never
   saved.
 - The default is only created when there is no account. Updating an install that already has an account never resets

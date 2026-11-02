@@ -66,15 +66,6 @@ export function verifyAction(action: string, id: number, exp: number, sig: strin
   return exp > Date.now() && safeEqual(sig, hmac(`action:${action}:${id}:${exp}`));
 }
 
-export function isPrivateIp(ip: string) {
-  const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
-  if (net.isIPv4(v4)) {
-    const [a, b] = v4.split(".").map(Number);
-    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-  }
-  return ip === "::1" || /^f[cd]/i.test(ip) || /^fe80:/i.test(ip);
-}
-
 const FORWARD_HEADERS = [
   "x-forwarded-for",
   "forwarded",
