@@ -3,8 +3,10 @@
  * and fetching a release. A leaf under pipeline.ts, movies.ts and downloads.ts, so those modules share it without
  * importing each other.
  */
-import type { DownloadClients } from "../arr/clients.js";
-import { isTorrentClient } from "../arr/clients.js";
+import type { ClientJob, DownloadClients } from "../arr/clients.js";
+import { clientName, isTorrentClient } from "../arr/clients.js";
+import { logDecision } from "../system/activity.js";
+import { torrentHash } from "../arr/torrentClients.js";
 import type { ProwlarrRelease } from "../arr/prowlarr.js";
 import type * as radarr from "../arr/radarr.js";
 import type * as sonarr from "../arr/sonarr.js";
@@ -108,6 +110,41 @@ export interface GrabRow {
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
 export const ACTIVE = ["sending", "downloading", "importing"];
+
+/**
+ * Grabs this process is sending to a client right now. A 'sending' row not in here was cut off by a restart: the
+ * pipeline asks the client whether it arrived (review 2026-11-02, H9).
+ */
+export const sendingNow = new Set<number>();
+/** client_ref of a cut-off 'sending' row that was handed to a client without an id to look it up by (an NZB). */
+export const SENT_UNKNOWN = "?";
+/**
+ * Records, just before the release is handed to a client, how to find it there after a restart: a torrent's
+ * info-hash, else SENT_UNKNOWN. A row without it was cut off before anything reached a client.
+ */
+export function markHandingOver(id: number, protocol: string, file: { data?: Buffer; magnet?: string }) {
+  const ref = protocol === "torrent" ? (torrentHash(file) ?? SENT_UNKNOWN) : SENT_UNKNOWN;
+  db.prepare("UPDATE grabs SET client_ref = ? WHERE id = ? AND state = 'sending'").run(ref, id);
+}
+
+/** The user removed this grab while it was being sent (removeGrab claims it, then closes it as "removed by you"). */
+export function removedByYou(id: number): boolean {
+  const r = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null } | undefined;
+  return !!r && (r.state === "removing" || (r.state === "failed" && /^removed by you/.test(r.error ?? "")));
+}
+
+/** A send that finished after the user removed it: out of the client again, or a clear note when that fails. */
+export async function takeBackOut(deps: PipelineDeps, job: ClientJob, release: string, tvdbId: number | null) {
+  try {
+    await deps.clients.remove(job);
+  } catch (e) {
+    logDecision("fail", {
+      tvdbId,
+      release,
+      why: `You removed ${release} while it was being sent, but taking it back out of ${clientName(job.client)} failed (${(e as Error).message}); remove it there by hand`,
+    });
+  }
+}
 /** Default stall time (tests); the live value is Settings → queueHealth.stallHours. */
 export const STALL_MS = 6 * 3_600_000;
 export const MAX_ATTEMPTS = 3;

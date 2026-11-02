@@ -277,7 +277,7 @@ test("queue: remove a download (deletes it from the client), blocklist it with u
   assert.ok(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 04 [slow]'").get());
   assert.deepEqual(calls.fetched.slice(-1), ["Test Show - 04 [next]"]);
   assert.ok(grabHistory().some((h) => h.id === r.id && h.error === "removed by you"));
-  await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /only downloading or needs-attention/);
+  await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /only sending, downloading or needs-attention/);
 });
 
 test("queue: if the client refuses (not AnimeArr's category, or unreachable) the row is restored and nothing else happens", async () => {
@@ -302,8 +302,7 @@ test("queue: if the client refuses (not AnimeArr's category, or unreachable) the
   assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "downloading");
   assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Test Show - 05 [x]'").get(), undefined);
   assert.equal(calls.fetched.length, fetched, "no next candidate grabbed");
-  db.prepare("UPDATE grabs SET state = 'sending' WHERE id = ?").run(r.id);
-  await assert.rejects(removeGrab(r.id, { blocklist: false, searchNext: false }, d), /still being sent/);
+  // ('sending' grabs are removable since review 2026-11-02, H9: grab-restart.test.ts.)
   db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(r.id);
 });
 

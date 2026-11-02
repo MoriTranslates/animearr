@@ -29,10 +29,14 @@ import {
   importModeFor,
   isBlocked,
   isFetchFailure,
+  markHandingOver,
   MAX_ATTEMPTS,
   remainingFallbacks,
+  removedByYou,
   runTimeSec,
+  sendingNow,
   setState,
+  takeBackOut,
   VIDEO,
   type Candidate,
   type GrabRow,
@@ -629,9 +633,11 @@ export async function startMovieGrab(
     logDecision("would-grab", { title: label, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, movieId: m.id } });
     return { id, dryRun: true, message: `Practice mode: would download ${label}. Nothing was downloaded (details in Activity).` };
   }
+  sendingNow.add(id);
   try {
     const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
+    markHandingOver(id, c.protocol, file);
     const job =
       c.protocol === "usenet"
         ? await deps.clients.addNzb(file.data!, c.title)
@@ -643,7 +649,8 @@ export async function startMovieGrab(
         )
         .run(Date.now(), job.client, job.ref, id).changes
     ) {
-      await deps.clients.remove(job).catch(() => undefined);
+      // Closed (removed by you) while it was being sent: take it back out of the client.
+      await takeBackOut(deps, job, c.title, null);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
     logDecision("grab", {
@@ -664,6 +671,8 @@ export async function startMovieGrab(
       );
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
+    // Removed by you while it was being sent: the removal stands, no next candidate.
+    if (removedByYou(id)) return { id, dryRun: false, message: "Cancelled", failed: true };
     setState(id, "failed", (e as Error).message);
     logDecision("fail", {
       title: label,
@@ -673,6 +682,8 @@ export async function startMovieGrab(
     });
     const next = await movieNext({ ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
+  } finally {
+    sendingNow.delete(id);
   }
 }
 

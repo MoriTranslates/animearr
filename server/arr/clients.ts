@@ -150,6 +150,12 @@ export interface DownloadClients {
   selectFiles?(job: ClientJob, wanted: number[], skipped: number[]): Promise<void>;
   /** Starts a job that was added stopped. */
   start?(job: ClientJob): Promise<void>;
+  /**
+   * Which torrent client holds this info-hash (a send cut off by a restart: did it arrive?). null = every torrent client
+   * answered and none has it; throws when one couldn't be asked (down, or a blackhole folder), so "unknown" never reads
+   * as "not there".
+   */
+  findTorrent?(hash: string): Promise<ClientJob | null>;
 }
 
 // ---------------------------------------------------------------- SABnzbd
@@ -540,6 +546,23 @@ export const realClients: DownloadClients = {
     if (job.client === "qbittorrent") return qbitFiles.start(job.ref);
     const f = fileDriver(job);
     if (f) await f.d.start(f.cfg, job.ref);
+  },
+  async findTorrent(hash) {
+    let unsure: Error | null = null;
+    for (const c of clientsFor("torrent")) {
+      if (isBlackhole(c.type)) {
+        unsure ??= new Error(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
+        continue;
+      }
+      const job = { client: c.id, ref: hash.toLowerCase() };
+      try {
+        if ((await realClients.status(job)).state !== "missing") return job;
+      } catch (e) {
+        unsure ??= e as Error;
+      }
+    }
+    if (unsure) throw unsure;
+    return null;
   },
 };
 

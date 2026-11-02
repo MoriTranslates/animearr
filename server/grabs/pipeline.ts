@@ -46,10 +46,15 @@ import {
   fetchOrNote,
   importModeFor,
   isFetchFailure,
+  markHandingOver,
   MAX_ATTEMPTS,
   remainingFallbacks,
   runTimeSec,
+  removedByYou,
+  SENT_UNKNOWN,
+  sendingNow,
   setState,
+  takeBackOut,
   VIDEO,
   type Candidate,
   type GrabRequest,
@@ -251,12 +256,14 @@ export async function startGrab(
       message: `Practice mode: would download ${series.title} ${c.label}. Nothing was downloaded (details in Activity).`,
     };
   }
+  sendingNow.add(id);
   try {
     const file = await fetchOrNote(deps, c);
     let job: ClientJob;
+    if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
+    markHandingOver(id, c.protocol, file);
     if (c.protocol === "usenet") {
-      if (!file.data) throw new Error("No NZB data");
-      job = await deps.clients.addNzb(file.data, c.title);
+      job = await deps.clients.addNzb(file.data!, c.title);
     } else job = await deps.clients.addTorrent(file, c.title, { ...seedLimitsFor(c.indexerId), ...(select ? { paused: true } : {}) });
     if (
       !db
@@ -265,8 +272,8 @@ export async function startGrab(
         )
         .run(Date.now(), job.client, job.ref, id).changes
     ) {
-      // Closed while it was being sent: take it back out of the client.
-      await deps.clients.remove(job).catch(() => undefined);
+      // Closed (removed by you) while it was being sent: take it back out of the client.
+      await takeBackOut(deps, job, c.title, req.tvdbId);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
     logDecision("grab", {
@@ -288,6 +295,8 @@ export async function startGrab(
       );
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
+    // Removed by you while it was being sent: the removal stands, no next candidate.
+    if (removedByYou(id)) return { id, dryRun: false, message: "Cancelled", failed: true };
     setState(id, "failed", (e as Error).message);
     logDecision("fail", {
       tvdbId: req.tvdbId,
@@ -306,6 +315,8 @@ export async function startGrab(
       e,
     );
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
+  } finally {
+    sendingNow.delete(id);
   }
 }
 
@@ -354,15 +365,84 @@ async function tryNext(
   }
 }
 
-/** After a restart: grabs caught mid-import need a look; grabs caught mid-send never reached a client. */
+/**
+ * After a restart: grabs caught mid-import need a look. Grabs caught mid-send are left 'sending' for the pipeline tick
+ * to resolve against the download client (resolveCutOffSends): failing them blindly could grab a second copy of one
+ * that did arrive, and leaving a fresh one alone left it stuck for good (review 2026-11-02, H9).
+ */
 export function recoverGrabs() {
   if (dbState.corrupt) return;
   db.prepare(
     "UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check the show folder, then retry the import' WHERE state = 'importing'",
   ).run();
-  db.prepare(
-    "UPDATE grabs SET state = 'failed', error = 'AnimeArr restarted while sending to the download client' WHERE state = 'sending' AND updated_at < ?",
-  ).run(Date.now() - 10 * 60_000);
+}
+
+/**
+ * 'sending' rows this process isn't sending (cut off by a restart): did the release reach a client?
+ * - nothing was handed over yet: failed, the next candidate is tried;
+ * - a torrent: the clients are asked for its info-hash. There: it moves on to downloading. No client has it: failed,
+ *   the next candidate is tried. A client couldn't be asked: it stays 'sending' and is asked again next tick (never
+ *   failed, never sent twice);
+ * - an NZB (no id to ask for): needs a look; the user checks the client and removes it here to search again.
+ */
+async function resolveCutOffSends(deps: PipelineDeps) {
+  const rows = (db.prepare("SELECT * FROM grabs WHERE state = 'sending' AND dry_run = 0 ORDER BY id").all() as unknown as GrabRow[]).filter(
+    (r) => !sendingNow.has(r.id),
+  );
+  for (const row of rows) {
+    const title = rowTitle(row);
+    const retry = async (why: string) => {
+      if (
+        !db
+          .prepare("UPDATE grabs SET state = 'failed', error = ?, updated_at = ? WHERE id = ? AND state = 'sending'")
+          .run(why, Date.now(), row.id).changes
+      )
+        return;
+      logDecision("fail", { tvdbId: row.tvdb_id, title, release: row.release, why: `${row.release}: ${why}`, detail: { grabId: row.id } });
+      if (row.movie_id) await movieNextForRow(row, deps, why);
+      else await tryNext(row.id, rowRequest(row), deps, why);
+    };
+    if (!row.client_ref) {
+      await retry("AnimeArr restarted before it was handed to the download client; trying the next candidate");
+      continue;
+    }
+    if (row.protocol !== "torrent" || row.client_ref === SENT_UNKNOWN || !deps.clients.findTorrent) {
+      setState(
+        row.id,
+        "needs-attention",
+        "AnimeArr restarted while handing this to the download client and can't tell whether it arrived. Check the client: if it's there, let it finish there; remove it here to search again",
+      );
+      continue;
+    }
+    let job: ClientJob | null;
+    try {
+      job = await deps.clients.findTorrent(row.client_ref);
+    } catch (e) {
+      db.prepare("UPDATE grabs SET error = ? WHERE id = ? AND state = 'sending'").run(
+        `AnimeArr restarted while sending this; the download client couldn't be asked whether it arrived (${(e as Error).message}). Asking again shortly`,
+        row.id,
+      );
+      continue;
+    }
+    if (!job) {
+      await retry("AnimeArr restarted while sending it, and no download client has it; trying the next candidate");
+      continue;
+    }
+    if (
+      db
+        .prepare(
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+        )
+        .run(Date.now(), Date.now(), job.client, job.ref, row.id).changes
+    )
+      logDecision("grab", {
+        tvdbId: row.tvdb_id,
+        title,
+        release: row.release,
+        why: `${row.release} reached ${clientName(job.client)} before AnimeArr restarted; following it from here`,
+        detail: { grabId: row.id },
+      });
+  }
 }
 
 /** Health checks that count as separate strikes are at least this far apart (the tick itself runs every 30 s). */
@@ -425,6 +505,9 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
   if (dbState.corrupt || ticking) return;
   ticking = true;
   try {
+    await resolveCutOffSends(deps).catch((e) =>
+      logDecision("fail", { why: `Couldn't check the downloads a restart cut off: ${(e as Error).message}; trying again next round` }),
+    );
     const rows = db.prepare("SELECT * FROM grabs WHERE state = 'downloading' ORDER BY id").all() as unknown as GrabRow[];
     const ready: { row: GrabRow; path: string }[] = [];
     for (const row of rows) {
@@ -1152,24 +1235,36 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
     throw Object.assign(new Error("The database failed its integrity check; restore a backup first"), { statusCode: 503 });
   const row = db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as GrabRow | undefined;
   if (!row) throw Object.assign(new Error("Unknown download"), { statusCode: 404 });
-  // Claim it atomically, so the pipeline can't start importing it meanwhile ("sending" rows are not removable yet).
+  // Claim it atomically, so the pipeline can't start importing it meanwhile. A 'sending' row this process is sending
+  // right now is taken back out of the client by the send itself once the client accepts it (it finds the row closed).
   if (
     !db
-      .prepare("UPDATE grabs SET state = 'removing', updated_at = ? WHERE id = ? AND state IN ('downloading', 'needs-attention')")
+      .prepare(
+        "UPDATE grabs SET state = 'removing', updated_at = ? WHERE id = ? AND state IN ('sending', 'downloading', 'needs-attention')",
+      )
       .run(Date.now(), id).changes
   )
-    throw Object.assign(
-      new Error(
-        `This download is ${row.state === "sending" ? "still being sent to the client; try again in a moment" : row.state}; only downloading or needs-attention ones can be removed`,
-      ),
-      { statusCode: 409 },
-    );
+    throw Object.assign(new Error(`This download is ${row.state}; only sending, downloading or needs-attention ones can be removed`), {
+      statusCode: 409,
+    });
   // A row that may have been mid-import keeps its files (Sonarr could be moving them right now).
   const mayBeImporting =
     row.state === "needs-attention" && /^((Sonarr|Radarr) import|AnimeArr restarted during the import|import error)/.test(row.error ?? "");
-  if (row.client && row.client_ref && !mayBeImporting) {
+  let job = row.client && row.client_ref ? { client: row.client as ClientJob["client"], ref: row.client_ref } : null;
+  // Cut off mid-send by a restart: a torrent is looked up by its info-hash (an NZB has no id to look up by).
+  const cutOffTorrent =
+    row.state === "sending" && !sendingNow.has(id) && row.protocol === "torrent" && !!row.client_ref && row.client_ref !== SENT_UNKNOWN;
+  if (cutOffTorrent && deps.clients.findTorrent) {
     try {
-      await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
+      job = await deps.clients.findTorrent(row.client_ref!);
+    } catch (e) {
+      db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
+      throw Object.assign(new Error(`Couldn't check the download client for it: ${(e as Error).message}`), { statusCode: 502 });
+    }
+  }
+  if (job && !mayBeImporting) {
+    try {
+      await deps.clients.remove(job);
     } catch (e) {
       // The download is still there (client unreachable, or it isn't AnimeArr's): put the row back and say so.
       db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
@@ -1179,7 +1274,11 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
   setState(
     row.id,
     "failed",
-    mayBeImporting ? "closed by you (downloaded files kept: an import may have been in progress)" : "removed by you",
+    mayBeImporting
+      ? "closed by you (downloaded files kept: an import may have been in progress)"
+      : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
+        ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
+        : "removed by you",
   );
   const eps = JSON.parse(row.episode_ids) as number[];
   let undo = null;
