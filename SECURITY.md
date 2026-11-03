@@ -59,7 +59,10 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   8 and at most 15 seconds between tries. Guesses at your real user name are also limited across **all** addresses
   together: bursts of 60, then 30 a minute (about 43,000 a day at most), however many addresses an attacker uses. A
   strong password is what makes that number harmless. While such a flood lasts, a browser AnimeArr hasn't seen before
-  gets "too many attempts"; a known-device browser and an already signed-in session are not affected.
+  gets "too many attempts"; a known-device browser and an already signed-in session are not affected. That includes
+  the steps that ask a signed-in session for the password again (changing it, restoring a backup, downloading one):
+  they are throttled on the browser's device, or on one shared "signed-in" entry, never on the anonymous entry a
+  flood from your proxy's address uses up.
 - Only a salted scrypt hash is stored; "still the default" is a comparison against that hash. The plaintext is never
   saved.
 - The default is only created when there is no account. Updating an install that already has an account never resets

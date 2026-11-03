@@ -3,8 +3,8 @@ import { humanizeError } from "../system/errors.js";
 import { checkForUpdates } from "../system/releases.js";
 import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "../system/backupTransfer.js";
 import { getLogs, logText } from "../system/logs.js";
-import { type FastifyReply } from "fastify";
-import { authState, loginAllowed } from "../system/auth.js";
+import { type FastifyReply, type FastifyRequest } from "fastify";
+import { authState, DEVICE_COOKIE, loginAllowed, validDevice } from "../system/auth.js";
 import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
@@ -21,6 +21,16 @@ import { STARTED, fail, writable } from "./common.js";
  * fails, nothing is replaced. Once it is written the swap follows, so a partly applied restore still can't bring
  * logged-out sessions back.
  */
+
+/*
+ * The password-checked backup routes are called by someone already let in, so they are throttled like the signed-in
+ * password change: on this browser's device, or on one "signed-in" entry, never on the anonymous real-name entry for
+ * the address. Behind a proxy everyone shares that address, and a flood guessing the user name kept it in back-off, so
+ * the owner got 429 on restore exactly when they might need it (blind review round 2, R4). A stolen session guessing
+ * the password still backs off on its own entry.
+ */
+const signedInAllowed = (req: FastifyRequest) =>
+  loginAllowed(req.ip, getSettings().auth.username, validDevice(req.cookies[DEVICE_COOKIE]) ?? "signed-in");
 
 export function registerSystemRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- system: jobs, metadata, backups
@@ -61,7 +71,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
   });
   app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", async (req) => {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
-    if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+    if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     restoreBackup(String(req.body?.name ?? ""), keepSessionsEndedAcrossRestore);
     app.log.warn("Backup restored; exiting so the app restarts with it.");
@@ -91,7 +101,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
   });
   app.post<{ Body: { password?: string } }>("/api/system/backup/download", async (req, reply) => {
     if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
-    if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+    if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     return sendBackup(reply);
   });
@@ -107,7 +117,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
   });
   app.post<{ Body: { token?: string; password?: string } }>("/api/system/backup/restore-upload", async (req) => {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
-    if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
+    if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     const staged = takeStaged(String(req.body?.token ?? ""));
     restoreUploaded(staged, keepSessionsEndedAcrossRestore);
