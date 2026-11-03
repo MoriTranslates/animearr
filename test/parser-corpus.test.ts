@@ -755,6 +755,19 @@ test("a version after the episode, spaced or in brackets, is read (05 v2, 05 [v2
   assert.deepEqual(v("[Group] Show - 05 - Title v2"), ["Show", [5], [], 1]);
 });
 
+test("a bracketed '(v2)' inside an episode title is not the version (review #8)", () => {
+  const ver = (name: string) => parseRelease(name).version;
+  // The reviewer's repro (was 2).
+  assert.equal(ver("[Group] Show - 05 - The (v2) Mission [1080p]"), 1);
+  assert.equal(ver("Show S01E05 - Plan [v2] Begins"), 1);
+  // Must not change: right after the episode, or among the tags after it.
+  assert.equal(ver("Show - 05 (v2)"), 2);
+  assert.equal(ver("[Group] Show - 05 [v2] [1080p]"), 2);
+  assert.equal(ver("[Group] Show - 05 [1080p][v2]"), 2);
+  assert.equal(ver("[Group] Show - 05 (1080p) [v2] [ABCD1234].mkv"), 2);
+  assert.equal(ver("Show S01E05 [v2]"), 2);
+});
+
 test("an 'Ep' marker is not left in the title (Show Ep 05)", () => {
   check([
     // Was title "Show Ep" / "Show Ep.05" / "Show - Ep".
