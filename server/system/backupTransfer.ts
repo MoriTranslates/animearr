@@ -360,7 +360,7 @@ export function safetyBackup(label: string): string {
   try {
     let base: string;
     if (!dbState.corrupt) {
-      const dbName = backupNow("prerestore", label, false); // pruned below, once the key is saved too
+      const dbName = backupNow("prerestore", label, false); // pruned only after a restore succeeds (pruneSafetyCopies)
       if (!dbName) throw new Error("the database was flagged damaged while it was being copied"); // backupNow's only null
       made.push(dbName);
       base = dbName.replace(/\.db$/, "");
@@ -397,11 +397,24 @@ export function safetyBackup(label: string): string {
       { statusCode: 500, safetyCopyFailed: true as const },
     );
   }
-  // Only now, with the new copy and its key both saved and checked, are older ones pruned: a copy that failed above
-  // left them as they were (blind review round 6, L).
-  pruneBackups("prerestore");
-  pruneSafetyKeys();
+  // Nothing is pruned here: this runs before the restore, which may still fail (see pruneSafetyCopies).
   return made.join(", ");
+}
+
+/**
+ * Prunes the safety copies beyond the newest three, and their saved keys, but never `keep` (the backup just restored)
+ * or its key. Called only once a restore has succeeded (blind review round 7, M1): pruned before, a restore of the
+ * oldest copy that then failed had already deleted that copy and its only key, so the retry got "Unknown backup".
+ * Pruning is housekeeping, not a safety step: the restore has already succeeded and nothing depends on the deletes, so
+ * an error is logged and never fails or aborts it (L1). The cost is a few extra copies, pruned after the next restore.
+ */
+export function pruneSafetyCopies(keep?: string) {
+  try {
+    pruneBackups("prerestore", keep);
+    pruneSafetyKeys(keep);
+  } catch (e) {
+    console.warn(`Pruning old safety copies failed (${(e as Error).message}); they are kept until the next restore.`);
+  }
 }
 
 /**
@@ -411,7 +424,8 @@ export function safetyBackup(label: string): string {
  * none is opened by it. If any backup can't be read, or a key can't be, it is kept: "couldn't check" never means "not
  * needed". Keys are tiny, so keeping extra ones costs nothing.
  */
-function pruneSafetyKeys() {
+function pruneSafetyKeys(keep?: string) {
+  const keepKey = keep?.replace(/\.db$/, ".secret.key");
   const read = (f: string) => {
     try {
       return fs.readFileSync(path.join(BACKUP_DIR, f));
@@ -444,6 +458,7 @@ function pruneSafetyKeys() {
     }
   }
   for (const f of keys.slice(3)) {
+    if (f === keepKey) continue;
     const k = read(f);
     if (!k) continue;
     const copyOfNewest = newest.some((x) => x !== null && x.equals(k));
@@ -515,6 +530,7 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
       retry: "Then retry the restore.",
     },
   );
+  pruneSafetyCopies(name); // the swap has committed
 }
 
 /**
@@ -525,6 +541,7 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
  */
 export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void) {
   applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: () => safetyBackup("upload"), beforeSwap, closeDb: () => db.close() });
+  pruneSafetyCopies(); // the swap has committed
 }
 
 // ---------------------------------------------------------------- staging between "upload" and "confirm with password"

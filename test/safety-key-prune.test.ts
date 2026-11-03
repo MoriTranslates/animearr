@@ -16,7 +16,7 @@ const { setAccount } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1"); // a sealed settings row, so backups need their key
 const { BACKUP_DIR, backupNow, listBackups } = await import("../server/system/db.js");
 const { KEY_FILE } = await import("../server/system/secretbox.js");
-const { safetyBackup, restoreBackup } = await import("../server/system/backupTransfer.js");
+const { safetyBackup, restoreBackup, pruneSafetyCopies } = await import("../server/system/backupTransfer.js");
 
 // Safety copies are named to the second, so each one needs a fresh second.
 const nextSecond = () => new Promise((r) => setTimeout(r, 1100));
@@ -37,6 +37,7 @@ test("M: three more safety copies never prune the only key a listed manual backu
     await nextSecond();
     safetyBackup(""); // what each further named restore attempt does first
   }
+  pruneSafetyCopies(); // what a restore that succeeded does last (round 7)
   assert.ok(holds(k0), "the key the manual backup needs is still in the backups folder");
   assert.ok(!holds(orphan), "a key no listed backup needs is still pruned");
   assert.ok(listBackups().some((b) => b.name === manual));

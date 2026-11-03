@@ -190,17 +190,17 @@ export function listBackups() {
     .sort((a, b) => b.at - a.at);
 }
 
-/** Removes the oldest copies of one kind beyond how many are kept. */
-export function pruneBackups(kind: BackupKind) {
+/** Removes the oldest copies of one kind beyond how many are kept, never `keep` (a backup just restored). */
+export function pruneBackups(kind: BackupKind, keep?: string) {
   for (const old of listBackups()
-    .filter((b) => b.kind === kind)
+    .filter((b) => b.kind === kind && b.name !== keep)
     .slice(KEEP[kind]))
     fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
 }
 
 /**
  * Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind unless `prune` is false:
- * the safety copy prunes only once its key is saved too, so a copy that fails never costs an older one (round 6).
+ * safety copies are pruned only after a restore has succeeded (rounds 6 and 7, see pruneSafetyCopies).
  */
 export function backupNow(kind: BackupKind, label = "", prune = true): string | null {
   if (dbState.corrupt) return null;
