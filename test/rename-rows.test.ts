@@ -355,3 +355,24 @@ test("Unraid /mnt/user (shfs): a different inode number for the same file (same 
   assert.ok(fs.existsSync(args.to), "renamed back");
   assert.equal(fs.existsSync(args.from), false);
 });
+
+test("L2: stale rows already at the new name are replaced, not merged into the renamed file's", async () => {
+  cache
+    .prepare(
+      "INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file) VALUES (110, 10, 1, 10, 10, 'Ep 10', 1, 0)",
+    )
+    .run();
+  libraryFile(516, "frieren 16.mkv", [110]);
+  const it = planFor(516);
+  // Left at the new name by a file replaced outside AnimeArr: a correction for track 7 (the renamed file has none).
+  db.prepare("INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, 7, 'de', 0, 1)").run(it.to);
+  const res = await applyRename(424536, [516]);
+  assert.equal(res[0].done, true, res[0].why);
+  assert.deepEqual(
+    overridesFor(it.to)
+      .map((o) => o.trackIndex)
+      .sort(),
+    [2, 3],
+    "the renamed file's own corrections (tracks 2 and 3), not the stale track 7",
+  );
+});

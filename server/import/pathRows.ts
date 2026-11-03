@@ -11,7 +11,9 @@ const TABLES = ["file_links", "file_meta", "track_overrides", "file_marks"] as c
 
 /**
  * Moves every per-file row from one path to another (arr or local path; compared as record keys). Rows already at the
- * new path belong to a file that isn't there any more and are replaced. Returns how many rows moved.
+ * new path belong to a file that isn't there any more (nothing is ever moved onto an existing file): they are removed
+ * first, all of them, so none merges into the moved file's (a stale correction for another track would). Returns how
+ * many rows moved.
  */
 export function movePathRows(from: string, to: string) {
   const a = keyOf(from);
@@ -19,7 +21,10 @@ export function movePathRows(from: string, to: string) {
   if (a === b) return 0;
   let moved = 0;
   tx(db, () => {
-    for (const t of TABLES) moved += Number(db.prepare(`UPDATE OR REPLACE ${t} SET path = ? WHERE path = ?`).run(b, a).changes);
+    for (const t of TABLES) {
+      db.prepare(`DELETE FROM ${t} WHERE path = ?`).run(b);
+      moved += Number(db.prepare(`UPDATE ${t} SET path = ? WHERE path = ?`).run(b, a).changes);
+    }
   });
   invalidateOverrides();
   return moved;
