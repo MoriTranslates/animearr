@@ -29,7 +29,7 @@ export function localPath(p: string): string | null {
 }
 
 /**
- * Is this file (a Sonarr/library path) certainly gone? Only when its folder can be read and doesn't hold it, or the
+ * Is this file (a Sonarr/library path) certainly gone? Only when its folder lists something and not it, or the
  * folder is missing and the nearest folder above it that exists (at or inside its library root) answers with content.
  * An unmounted share (a missing or empty mount point, also one mounted below the root), a permission error or any
  * other read error means "can't tell", never "gone".
@@ -37,7 +37,9 @@ export function localPath(p: string): string | null {
 export function fileSurelyGone(p: string): boolean {
   const local = mappedPath(p);
   try {
-    return !fs.readdirSync(path.dirname(local)).includes(path.basename(local));
+    const names = fs.readdirSync(path.dirname(local));
+    if (!names.length) return false; // an empty folder may be an unmounted mount point: can't tell
+    return !names.includes(path.basename(local));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") return false; // EACCES, EIO, a dead mount: can't tell
   }

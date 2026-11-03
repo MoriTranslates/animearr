@@ -134,7 +134,8 @@ test("a refused or malformed Radarr answer never deletes a multi-part movie reco
   await syncLibrary(true);
   // Movie 1: parts AnimeArr imported that are now gone from disk (an accepted sync drops this record).
   const gone = path.join(process.env.ANIMEARR_CONFIG!, "gone");
-  fs.mkdirSync(gone); // the folder is readable and the parts aren't in it: really gone
+  fs.mkdirSync(gone); // the folder is readable and lists something, but not the parts: really gone
+  fs.writeFileSync(path.join(gone, "other.nfo"), "x");
   db.prepare("INSERT OR REPLACE INTO movie_parts (movie_id, file, at) VALUES (?, ?, ?)").run(
     1,
     JSON.stringify({ parts: [`${gone}/cd1.mkv`, `${gone}/cd2.mkv`] }),
@@ -193,6 +194,14 @@ test("an empty mount point (the root is there but empty) keeps the multi-part re
 test("a share mounted below the root (its empty mount point inside a root with content) keeps the record", async () => {
   const { root } = partsUnder("share-nested");
   fs.mkdirSync(path.join(root, "Movies"), { recursive: true }); // the share's mount point, empty: not mounted
+  fs.writeFileSync(path.join(root, "other.txt"), "x");
+  await syncLibrary(true);
+  assert.ok(partsRecord(1));
+});
+
+test("an empty movie folder (a bind mount made empty, not mounted) keeps the multi-part record", async () => {
+  const { root, folder } = partsUnder("share-empty-folder");
+  fs.mkdirSync(folder, { recursive: true }); // the movie's own folder exists but is empty
   fs.writeFileSync(path.join(root, "other.txt"), "x");
   await syncLibrary(true);
   assert.ok(partsRecord(1));
