@@ -531,13 +531,15 @@ test("a long SxxEyy range stays a range when it says E or Batch; only a bare unm
 
 test("a Batch word or an explicit E cannot turn a resolution or an absurd range end into a range (blind round-3 M1)", () => {
   const p = (name: string) => parseRelease(name);
-  // The range end looks like a resolution, so it is the first episode only, Batch word or not.
-  assert.deepEqual(p("Show S01E05-720 Batch 1080p").episodes, [5]);
-  assert.deepEqual(p("Show S01E05-1080 Complete").episodes, [5]);
+  // The range end looks like a resolution, so it is never 5..720. With a Batch word it is a pack of unknown size (M5:
+  // no episode list, never "episode 5"); without one it is the first episode only.
+  assert.deepEqual(p("Show S01E05-720 Batch 1080p").episodes, []);
+  assert.deepEqual(p("Show S01E05-1080 Complete").episodes, []);
+  assert.deepEqual(p("Show S01E05-720 1080p").episodes, [5]);
   // Hard ceiling of 2000 episodes even with an explicit E.
   assert.equal(p("Show S01E01-E2000 [Batch]").episodes.length, 2000);
   assert.deepEqual(p("Show S01E01-E2001").episodes, [1]);
-  assert.deepEqual(p("Show S01E01-E9999 [Batch]").episodes, [1]);
+  assert.deepEqual(p("Show S01E01-E9999 [Batch]").episodes, []);
   // Real long packs stay ranges.
   assert.equal(p("Pokemon S01E01-276 [Batch]").episodes.length, 276);
   assert.equal(p("Show S01E01-E250 [Batch]").episodes.length, 250);
@@ -1238,4 +1240,29 @@ test("an all-bracket name gives a title only in the one [Group][Title][EP][tags]
       .title,
     "",
   );
+});
+
+test("a Batch or Complete pack with an untrustworthy E-range end is never one episode (blind round-4 M5)", () => {
+  const p = (name: string) => parseRelease(name);
+  // The end looks like a resolution (or is absurd), so the range is unknown: a whole-season pack with no episode list,
+  // never "episode 1" (which would import the pack as E1).
+  for (const name of [
+    "Show S01E01-720 Batch",
+    "Show S01E01-480 Complete",
+    "Show S01E01-576 Complete",
+    "Show S01E05-720 Batch 1080p",
+    "Show S01E01-E9999 [Batch]",
+  ]) {
+    const r = p(name);
+    assert.deepEqual(r.episodes, [], name);
+    assert.equal(r.batch, true, name);
+    assert.equal(r.fullSeason, true, name);
+    assert.equal(r.season, 1, name);
+  }
+  // No Batch word: still the first episode only, as before.
+  assert.deepEqual(p("Show S01E01-720").episodes, [1]);
+  assert.equal(p("Show S01E01-720").batch, false);
+  // Real packs stay ranges.
+  assert.equal(p("Pokemon S01E01-276 [Batch]").episodes.length, 276);
+  assert.equal(p("Show S01E01-E250 [Batch]").episodes.length, 250);
 });

@@ -634,7 +634,11 @@ export function parseRelease(input: string): ParsedRelease {
     const endsExplicitE = !!m[4] && /E\d+$/i.test(m[4]);
     const explicit = endsExplicitE || (!!m[4] && /\b(batch|complete)\b/i.test(s));
     const resLike = last !== undefined && !endsExplicitE && [480, 576, 720, 1080, 2160].includes(last);
-    const eps = last !== undefined && !resLike && last - +m[2] < 2000 && (explicit || last - +m[2] <= 200) ? range(+m[2], last) : [+m[2]];
+    const trusted = last !== undefined && !resLike && last - +m[2] < 2000 && (explicit || last - +m[2] <= 200);
+    // A Batch/Complete name whose range end can't be trusted is a pack of unknown size: no episode list (a whole-season
+    // pack), never "episode 1", which would import or grab the pack as one episode.
+    const untrustedPack = last !== undefined && !trusted && /\b(batch|complete)\b/i.test(s);
+    const eps = trusted ? range(+m[2], last!) : untrustedPack ? [] : [+m[2]];
     push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1) });
   }
   // 10x14
