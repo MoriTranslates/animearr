@@ -16,8 +16,8 @@ const { patchSettings } = await import("../server/system/settings.js");
 const { realClients } = await import("../server/arr/clients.js");
 
 const NAME = "[Grp] Show - 05 (1080p) [ABCD1234]";
-type Job = { name: string; cat?: string; id?: string; doneSec?: number };
-const sab = { queue: [] as Job[], history: [] as Job[], down: false };
+type Job = { name: string; cat?: string; id?: string; doneSec?: number; nzbName?: string };
+const sab = { queue: [] as Job[], history: [] as Job[], down: false, rawQueue: undefined as unknown };
 const nzbget = { queue: [] as Job[], history: [] as Job[], down: false };
 
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json" } });
@@ -48,16 +48,22 @@ before(() => {
       if (sab.down) throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED") });
       const mode = url.searchParams.get("mode");
       if (mode === "queue")
-        return json({
-          queue: { slots: sab.queue.map((j, i) => ({ nzo_id: j.id ?? `SABnzbd_nzo_q${i}`, filename: j.name, cat: j.cat ?? "animearr" })) },
-        });
+        return json(
+          sab.rawQueue ?? {
+            queue: {
+              slots: sab.queue.map((j, i) => ({ nzo_id: j.id ?? `SABnzbd_nzo_q${i}`, filename: j.name, cat: j.cat ?? "animearr" })),
+            },
+          },
+        );
       if (mode === "history")
         return json({
           history: {
             slots: sab.history.map((j, i) => ({
               nzo_id: j.id ?? `SABnzbd_nzo_h${i}`,
               name: j.name,
+              ...(j.nzbName ? { nzb_name: j.nzbName } : {}),
               category: j.cat ?? "animearr",
+              status: "Completed",
               completed: j.doneSec ?? Math.floor(Date.now() / 1000),
             })),
           },
@@ -88,7 +94,7 @@ before(() => {
 after(() => void (globalThis.fetch = realFetch));
 
 const reset = () => {
-  Object.assign(sab, { queue: [], history: [], down: false });
+  Object.assign(sab, { queue: [], history: [], down: false, rawQueue: undefined });
   Object.assign(nzbget, { queue: [], history: [], down: false });
 };
 const find = () => realClients.findNzb!(NAME, Date.now() - 60_000); // the grab was made a minute ago
@@ -144,4 +150,36 @@ test("two matches, or only a near match: can't tell", async () => {
   nzbget.queue = [{ name: "[Grp] Show - 05 (1080p) [ABCD1234].1" }];
   sab.queue = [{ name: "[grp] show - 05 (1080p) [abcd1234]" }];
   await assert.rejects(find(), /similar name/);
+});
+
+test("SABnzbd renamed the job: its history's nzb_name (the uploaded file, .nzb removed) still finds it", async () => {
+  reset();
+  sab.history = [{ name: "Show.S01E05.1080p", nzbName: `${NAME}.nzb`, id: "SABnzbd_nzo_ren" }];
+  assert.deepEqual(await find(), { client: "sabnzbd", ref: "SABnzbd_nzo_ren" });
+});
+
+test("SABnzbd's 'completed' is epoch seconds: a job finished after the grab counts, one finished before doesn't", async () => {
+  reset();
+  const grabAt = Date.UTC(2026, 10, 2, 12, 0, 0); // the grab, in ms
+  const sec = (ms: number) => Math.floor(ms / 1000);
+  sab.history = [{ name: NAME, id: "after", doneSec: sec(grabAt) + 90 }]; // a realistic SAB value, e.g. 1793448090
+  assert.ok((sab.history[0].doneSec ?? 0) < 1e11, "the fake sends seconds, as SABnzbd does");
+  assert.deepEqual(await realClients.findNzb!(NAME, grabAt), { client: "sabnzbd", ref: "after" });
+  sab.history = [{ name: NAME, id: "before", doneSec: sec(grabAt) - 90 }];
+  assert.equal(await realClients.findNzb!(NAME, grabAt), null);
+});
+
+test("SABnzbd's queue answer without the expected fields (or without a slot list) is 'can't tell', never 'absent'", async () => {
+  for (const raw of [
+    { queue: { slots: [{ nzo_id: "SABnzbd_nzo_1", name: NAME }] } }, // no filename / cat
+    { queue: {} }, // no slot list at all
+    {},
+  ]) {
+    reset();
+    sab.rawQueue = raw;
+    await assert.rejects(find(), /can't tell/, JSON.stringify(raw));
+  }
+  reset();
+  sab.rawQueue = { queue: { slots: [] } }; // an empty queue is a real answer
+  assert.equal(await find(), null);
 });

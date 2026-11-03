@@ -169,6 +169,8 @@ export interface DownloadClients {
 export interface NamedJob {
   ref: string;
   name: string;
+  /** Other exact names it may go by (SABnzbd's history keeps the uploaded file name when it renamed the job). */
+  altNames?: string[];
   category: string;
   /** When a history entry finished (ms); unknown or still queued = null. */
   doneAt: number | null;
@@ -378,18 +380,27 @@ const primary = {
   },
   /** SABnzbd's queue and (recent) history, by job name (for findNzb). */
   async sabJobs(): Promise<NamedJob[]> {
-    const q = await sab<{ queue: { slots: { nzo_id: string; filename: string; cat: string }[] } }>({ mode: "queue", limit: "1000" });
-    const h = await sab<{ history: { slots: { nzo_id: string; name: string; category: string; completed?: number }[] } }>({
-      mode: "history",
-      limit: "1000",
-    });
+    const q = await sab<{ queue?: { slots?: Record<string, unknown>[] } }>({ mode: "queue", limit: "1000" });
+    const h = await sab<{ history?: { slots?: Record<string, unknown>[] } }>({ mode: "history", limit: "1000" });
+    // A missing list, or a job without its id, name or category, is "can't tell", never "not there" (the queue's
+    // field names weren't seen on a live SABnzbd yet; the history's were: name, nzb_name, category, completed).
+    const has = (s: Record<string, unknown>, ...keys: string[]) => keys.every((k) => typeof s[k] === "string");
+    const qs = q.queue?.slots;
+    const hs = h.history?.slots;
+    if (!Array.isArray(qs) || qs.some((s) => !has(s, "nzo_id", "filename", "cat")))
+      throw new Error("SABnzbd's queue answer doesn't list job names as expected; can't tell what it has");
+    if (!Array.isArray(hs) || hs.some((s) => !has(s, "nzo_id", "name", "category")))
+      throw new Error("SABnzbd's history answer doesn't list job names as expected; can't tell what it has");
     return [
-      ...(q.queue?.slots ?? []).map((s) => ({ ref: s.nzo_id, name: s.filename, category: s.cat, doneAt: null })),
-      ...(h.history?.slots ?? []).map((s) => ({
-        ref: s.nzo_id,
-        name: s.name,
-        category: s.category,
-        doneAt: s.completed ? s.completed * 1000 : null,
+      ...qs.map((s) => ({ ref: String(s.nzo_id), name: String(s.filename), category: String(s.cat), doneAt: null })),
+      ...hs.map((s) => ({
+        ref: String(s.nzo_id),
+        name: String(s.name),
+        // The uploaded file name: the job's name as sent, even when SABnzbd renamed the job.
+        altNames: typeof s.nzb_name === "string" ? [s.nzb_name.replace(/\.nzb$/i, "")] : [],
+        category: String(s.category),
+        // SABnzbd gives epoch seconds.
+        doneAt: typeof s.completed === "number" && s.completed > 0 ? s.completed * 1000 : null,
       })),
     ];
   },
@@ -614,8 +625,9 @@ export const realClients: DownloadClients = {
         for (const j of jobs) {
           if (c.category && j.category !== c.category) continue; // not AnimeArr's
           if (j.doneAt !== null && j.doneAt < since) continue; // an earlier grab of the same release, finished before this one
-          if (exact.has(j.name)) hits.push({ client: c.id, ref: j.ref });
-          else if (loose(j.name) === loose(name)) near = true;
+          const names = [j.name, ...(j.altNames ?? [])];
+          if (names.some((n) => exact.has(n))) hits.push({ client: c.id, ref: j.ref });
+          else if (names.some((n) => loose(n) === loose(name))) near = true;
         }
       } catch (e) {
         unsure ??= e as Error;

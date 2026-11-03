@@ -104,6 +104,14 @@ export const nzbgetDriver = {
     const hist = await nzbget<{ NZBID: number; Name: string; NZBName?: string; Category: string; HistoryTime?: number }[]>(c, "history", [
       false,
     ]);
+    // A missing list, or a job without its name or category, is "can't tell", never "not there".
+    if (
+      !Array.isArray(groups) ||
+      !Array.isArray(hist) ||
+      groups.some((g) => typeof g.NZBName !== "string" || typeof g.Category !== "string") ||
+      hist.some((h) => typeof (h.NZBName ?? h.Name) !== "string" || typeof h.Category !== "string")
+    )
+      throw new Error(`${c.name}'s answer doesn't list job names as expected; can't tell what it has`);
     return [
       ...groups.map((g) => ({ ref: String(g.NZBID), name: g.NZBName, category: g.Category, doneAt: null })),
       ...hist.map((h) => ({
