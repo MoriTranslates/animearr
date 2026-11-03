@@ -206,3 +206,14 @@ test("a backup from an older AnimeArr restores and is brought up to date; one fr
   assert.match(r.error ?? "", /newer AnimeArr.*nothing was changed/i);
   assert.ok(fs.readFileSync(path.join(dir, "animearr.db")).equals(before));
 });
+
+test("L6: while a backup's settings stand in, the no-password home-network login is off, and it says which backup", () => {
+  const dir = newDir("standin");
+  const nightly = setup(dir, "one"); // that backup had the no-password home-network login on
+  corrupt(dir);
+  const s = start(dir, "status", "pw-one") as Result & { bypassLocal?: boolean; standIn?: { backup: string } | null };
+  assert.equal(s.corrupt, true);
+  assert.equal(s.passwordOk, true);
+  assert.equal(s.bypassLocal, false, "the password is always asked while stand-in settings are used");
+  assert.equal(s.standIn?.backup, nightly, "which backup stands in is known (for the warning)");
+});

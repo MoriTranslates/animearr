@@ -17,6 +17,7 @@ import {
   safeEqual,
   setAccount,
   setBypassLocal,
+  settingsStandIn,
 } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
@@ -76,6 +77,12 @@ export function registerAccountRoutes(app: FastifyInstance) {
             ]
           : []),
         ...binWarnings(),
+        ...((st) =>
+          st
+            ? [
+                `While the database is damaged, AnimeArr uses the settings of the backup ${st.backup} (${new Date(st.at).toISOString().slice(0, 16).replace("T", " ")}): its password and options, which may be older than your latest changes. The no-password home-network login is off until you restore a backup.`,
+              ]
+            : [])(settingsStandIn()),
       ],
       uiLanguage: s.ui.language,
       textScale: s.ui.textScale ?? null,

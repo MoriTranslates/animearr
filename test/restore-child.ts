@@ -10,21 +10,25 @@ const out = (v: unknown) => {
 };
 try {
   const { db, dbState, backupNow } = await import("../server/system/db.js");
-  const { getSettings, patchSettings, setAccount, checkPassword } = await import("../server/system/settings.js");
+  const settings = await import("../server/system/settings.js");
+  const { getSettings, patchSettings, setAccount, checkPassword } = settings;
   const bt = await import("../server/system/backupTransfer.js");
   const fs = await import("node:fs");
   if (action === "setup") {
     // arg: a marker that identifies this state after a restore.
     await setAccount("captain", "pw-" + arg);
-    patchSettings((s) => ({ ...s, externalUrl: `http://${arg}.lan` }));
+    patchSettings((s) => ({ ...s, externalUrl: `http://${arg}.lan`, auth: { ...s.auth, bypassLocal: true } }));
     out({ backup: backupNow("nightly") });
   } else if (action === "status") {
     const s = getSettings();
+    const standIn = (settings as { settingsStandIn?: () => unknown }).settingsStandIn?.() ?? null;
     out({
       corrupt: dbState.corrupt,
       marker: s.externalUrl,
       passwordOk: await checkPassword(arg, s.auth.passwordHash),
       hasHash: !!s.auth.passwordHash,
+      bypassLocal: s.auth.bypassLocal,
+      standIn,
     });
   } else if (action === "restore") {
     try {

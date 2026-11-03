@@ -800,6 +800,10 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
 
 let cache: Settings | null = null;
 
+/** Set while a backup's settings stand in for the damaged database's own: which backup, and when it was made. */
+let standIn: { backup: string; at: number } | null = null;
+export const settingsStandIn = () => standIn;
+
 /**
  * The settings of the newest backup the live key opens. Only used while animearr.db is damaged and its own settings
  * can't be read: without them there is no account, so nobody could log in to restore a backup (and a new account
@@ -815,6 +819,7 @@ function settingsFromBackup(): Record<string, unknown> | null {
         if (!row) continue;
         const stored = JSON.parse(open(row.value)) as Record<string, unknown>;
         console.warn(`animearr.db is damaged and its settings can't be read: using the settings of ${b.name} until a backup is restored.`);
+        standIn = { backup: b.name, at: b.at };
         return stored;
       } finally {
         d.close();
@@ -841,6 +846,9 @@ export function getSettings(): Settings {
     stored = settingsFromBackup() ?? {};
   }
   let s = merge(DEFAULTS, stored);
+  // Stand-in settings may be older than the user's last change (a new password, the no-password home login switched
+  // off after a leak): the password is always asked while they are used.
+  if (standIn) s = { ...s, auth: { ...s.auth, bypassLocal: false } };
   // Migration: the single 0.1 "profile" becomes the seeded default profile.
   const old = stored.profile as
     | { subLangs?: string[]; softOnly?: boolean; preferUncensored?: boolean; protocolOrder?: ("usenet" | "torrent")[]; resolution?: number }
