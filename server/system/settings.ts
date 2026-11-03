@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
@@ -798,6 +800,32 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
 }
 
 let cache: Settings | null = null;
+/** For tests: the next getSettings() reads the database again (as after a restart). */
+export function forgetSettingsCache() {
+  cache = null;
+}
+
+/*
+ * A backup restore brings back the backup's settings, including the signing secret and the session generation, so a
+ * session ended by "Log out" after the backup was taken (say, to kill a stolen cookie) would be valid again (blind
+ * review A9). Before a restore the restore routes write a floor (the current generation + 1) to a small file; the next
+ * settings load raises the restored generation to it, which ends every session from before the restore.
+ */
+const SESSION_FLOOR_FILE = path.join(CONFIG_DIR, "session-floor");
+function sessionFloor() {
+  try {
+    return Math.max(0, Number(fs.readFileSync(SESSION_FLOOR_FILE, "utf8").trim()) || 0);
+  } catch (e) {
+    // No floor file is the normal case (no restore pending); any other read error is reported, not swallowed.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw e;
+  }
+}
+/** Call right before restoring a backup. Throws if the floor can't be written (the restore must then not go ahead). */
+export function keepSessionsEndedAcrossRestore() {
+  const floor = Math.max(sessionFloor(), Number(getSettings().auth.sessionGen) || 0) + 1;
+  fs.writeFileSync(SESSION_FLOOR_FILE, String(floor));
+}
 
 export function getSettings(): Settings {
   if (cache) return cache;
@@ -840,7 +868,13 @@ export function getSettings(): Settings {
   if (!s.profiles.some((p) => p.id === s.defaultProfileId)) s = { ...s, defaultProfileId: s.profiles[0].id };
   const missing = !s.apiKey || !s.secret || migrated;
   if (missing) s = { ...s, apiKey: s.apiKey || rand(16), secret: s.secret || rand(32) };
-  if (missing && !dbState.corrupt) write(s);
+  // After a restore: sessions ended before it stay ended (see keepSessionsEndedAcrossRestore).
+  const floor = sessionFloor();
+  const raised = floor > (Number(s.auth.sessionGen) || 0);
+  if (raised) s = { ...s, auth: { ...s.auth, sessionGen: floor } };
+  if ((missing || raised) && !dbState.corrupt) write(s);
+  // Only once it is saved; on a database that can't be written the floor file stays and applies at the next load.
+  if (raised && !dbState.corrupt) fs.rmSync(SESSION_FLOOR_FILE, { force: true });
   cache = s;
   return s;
 }

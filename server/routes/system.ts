@@ -9,10 +9,21 @@ import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, rese
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
 
-import { checkPassword, getSettings } from "../system/settings.js";
+import { checkPassword, getSettings, keepSessionsEndedAcrossRestore } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
 import { STARTED, fail, writable } from "./common.js";
+
+/**
+ * Runs a restore so that sessions ended before it stay ended (the restored settings bring back an older session
+ * generation and signing secret; blind review A9). The floor is written first: if that fails, nothing is restored.
+ * It is left in place even if the restore throws (a partly applied restore must not bring old sessions back); the
+ * cost is that everyone signs in again after the next restart.
+ */
+function restoreKeepingSessionsEnded(restore: () => void) {
+  keepSessionsEndedAcrossRestore();
+  restore();
+}
 
 export function registerSystemRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- system: jobs, metadata, backups
@@ -55,7 +66,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    restoreBackup(String(req.body?.name ?? ""));
+    restoreKeepingSessionsEnded(() => restoreBackup(String(req.body?.name ?? "")));
     app.log.warn("Backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {
@@ -101,7 +112,8 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    restoreUploaded(takeStaged(String(req.body?.token ?? "")));
+    const staged = takeStaged(String(req.body?.token ?? ""));
+    restoreKeepingSessionsEnded(() => restoreUploaded(staged));
     app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {

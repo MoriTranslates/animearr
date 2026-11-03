@@ -96,3 +96,49 @@ test("review A11: with the database flagged corrupt, logout still logs this brow
     dbState.corrupt = false;
   }
 });
+
+test("review A9: a backup restore doesn't bring back sessions that were logged out", async () => {
+  const { db, CONFIG_DIR } = await import("../server/system/db.js");
+  const { forgetSettingsCache, keepSessionsEndedAcrossRestore } = await import("../server/system/settings.js");
+  const row = () => (db.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string }).value;
+  // What a restore does to settings: the backup's row (older generation, its secret) comes back, then a restart.
+  const restore = (value: string) => {
+    db.prepare("UPDATE settings SET value = ? WHERE key = 'settings'").run(value);
+    forgetSettingsCache();
+  };
+  const logout = (cookie: string) => app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie, "x-animearr": "1" } });
+
+  // The hole: a token logged out after the backup was taken is valid again once the backup is back.
+  const stolen = await login();
+  const backup = row();
+  await logout(stolen);
+  assert.equal(await get(stolen), 401);
+  restore(backup);
+  assert.equal(await get(stolen), 200, "this is what a restore did without the floor");
+
+  // The restore routes write a floor first: the restored generation is raised past it.
+  const stolen2 = await login();
+  const backup2 = row();
+  await logout(stolen2);
+  keepSessionsEndedAcrossRestore();
+  restore(backup2);
+  assert.equal(await get(stolen2), 401, "still logged out after the restore");
+  assert.equal(await get(stolen), 401, "and so is every older session");
+  assert.equal(fs.existsSync(path.join(CONFIG_DIR, "session-floor")), false, "the floor is used up once saved");
+  assert.equal(await get(await login()), 200, "a new login works");
+});
+
+test("the restore routes write the floor before restoring", async () => {
+  const { CONFIG_DIR } = await import("../server/system/db.js");
+  const r = await app.inject({
+    method: "POST",
+    url: "/api/system/restore",
+    headers: { cookie: await login(), "x-animearr": "1" },
+    payload: { name: "no-such-backup.db", password: "pw-test-1" },
+  });
+  assert.notEqual(r.statusCode, 200);
+  // A failed restore leaves the floor (a partly applied restore must not bring sessions back): the next load uses it.
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  assert.equal(fs.existsSync(floorFile), true);
+  fs.rmSync(floorFile, { force: true });
+});
