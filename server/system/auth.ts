@@ -362,7 +362,10 @@ export function loginAllowed(rawIp: string, user: string, device: string | null 
   return true;
 }
 export function loginSucceeded(ip: string, user: string, device: string | null = null) {
-  drop(throttleKey(throttleAddr(ip), user));
+  const g = throttleAddr(ip);
+  drop(throttleKey(g, user));
+  // The address's shared bucket too (blind review A4): after a real login there, others behind it start fresh.
+  drop(sharedKey(g));
   if (device) deviceAttempts.delete(device);
 }
 /** For tests: how many throttle entries are held. */

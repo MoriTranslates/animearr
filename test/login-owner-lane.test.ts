@@ -42,6 +42,14 @@ test("junk user names from one address can't lock the owner out", async () => {
   assert.equal(await login(proxy, "captain", "pw-test-1"), 200, "the owner still gets in from the same address");
 });
 
+test("review A4: a successful login clears the address's shared back-off", async () => {
+  const proxy = "198.51.100.42";
+  for (let i = 0; i < 20; i++) await login(proxy, `junk${i}`, "nope");
+  assert.equal(await login(proxy, "someone-new", "nope"), 429, "new names from the address are in back-off");
+  assert.equal(await login(proxy, "captain", "pw-test-1"), 200);
+  assert.equal(await login(proxy, "someone-else", "nope"), 401, "after a real login the address starts fresh");
+});
+
 test("control: guessing the real user name is still throttled on its own entry", async () => {
   const attacker = "198.51.100.41";
   const codes: number[] = [];
