@@ -51,12 +51,13 @@ What you get without a valid credential:
 
 To check that a key works, call `GET /api/status` and read `loggedIn` and `via` (`"apikey"` when your key was used).
 
-Some operations are refused when called with an API key and need a signed-in browser session (or the account password):
-changing settings, the account, notification channels, indexers, download clients or the setup wizard; deleting episode
-files or a season's files and emptying the recycling bin; regenerating the API key, turning the local-network mode on or
-off, backup download, upload and restore, and the cache rebuild. They answer `403`. None of them is a stable operation. In `openapi.yaml` they carry `x-refused-for-api-key: true`. (`GET /api/settings/apikey`
-answers `{ "apiKey": null }` to an API-key caller: the key is only shown to a browser session.) Likewise `POST
-/api/system/restore` and `/api/system/backup/restore-upload` always need the account password in the body.
+**What the API key can call:** the Sonarr-compatible API (`/api/v3`, see below) and the **stable** operations, the ones
+marked `*` in the endpoint index (`x-stability: stable` in `openapi.yaml`). Every other operation answers `403` to the
+API key and needs a signed-in browser session: settings, the account, profiles, rules, notification channels, indexers,
+download clients, the wizard, cutover, renames, file deletes, backups and the rest of the internal API. Operations
+marked `x-refused-for-api-key: true` in `openapi.yaml` are a few of these, called out because they change settings or
+delete files. `POST /api/system/restore` and `/api/system/backup/restore-upload` also always need the account
+password in the body.
 
 ### Browser sessions and CSRF
 

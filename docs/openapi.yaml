@@ -9,7 +9,7 @@ info:
 
     **Stability.** Every operation carries `x-stability`. `stable` operations are the ones meant for integrations: their documented fields will not be removed or change meaning within 1.x without notice (new fields can appear). `internal` operations are what the web UI needs; they can change or disappear in any release. Most operations are internal today.
 
-    **Authentication.** Send your API key as the `X-Api-Key` header or the `apikey` query parameter. Find it in Settings -> Security -> API key for other apps. Browser sessions (cookie) also work and must send `X-AnimeArr: 1` on writes; API-key requests are exempt from that rule.
+    **Authentication.** Send your API key as the `X-Api-Key` header or the `apikey` query parameter. Find it in Settings -> Security -> API key for other apps. Browser sessions (cookie) also work and must send `X-AnimeArr: 1` on writes; API-key requests are exempt from that rule. The API key only works on operations marked `x-stability: stable` (and the Sonarr-compatible `/api/v3`); every other operation answers 403 to it and needs a browser session.
 
     **Errors.** Failures return an HTTP status of 400 or above and a JSON body `{ "error": "..." }`.
 

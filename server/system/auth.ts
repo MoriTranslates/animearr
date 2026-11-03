@@ -232,30 +232,41 @@ export function authState(req: FastifyRequest) {
 }
 
 /**
- * Browser-only routes the API key may not call (403): they change settings, sign-in or connection secrets, or delete
- * files. The key is for the Sonarr-compatible API and automation (docs/API.md marks those routes stable); none of these
- * are, so a leaked or over-shared key can't rewire AnimeArr or delete a library. A few more routes refuse it in their
- * own handler (API key regenerate, local-network mode, backups, cache rebuild). Keyed by method + route pattern.
+ * What the API key may call besides the Sonarr-compatible API (/api/v3/*, which refuses file deletes itself): exactly
+ * the operations docs/openapi.yaml marks `x-stability: stable`, the documented automation contract (a test keeps the
+ * two equal). Everything else needs a browser session (403), so a key shared with a request app can't change settings,
+ * profiles, rules or the cutover switch, rename or delete files (blind review A2: a denylist kept missing routes).
+ * Keyed by method + route pattern; HEAD counts as GET.
  */
-export const API_KEY_REFUSED: ReadonlySet<string> = new Set([
-  "PUT /api/settings",
-  "PUT /api/auth/account",
-  "PUT /api/notify/channels",
-  "POST /api/indexers",
-  "PUT /api/indexers/:id",
-  "DELETE /api/indexers/:id",
-  "POST /api/jackett/add",
-  "POST /api/clients",
-  "PUT /api/clients/:id",
-  "DELETE /api/clients/:id",
-  "PUT /api/clients/:id/prefs",
-  "PUT /api/wizard",
-  "POST /api/wizard/arr-apply",
-  "PUT /api/downloads/allow-delete",
-  "POST /api/episodes/delete",
-  "POST /api/series/:tvdbId/seasons/:season/delete",
-  "POST /api/recycle/animearr/empty",
+export const API_KEY_ALLOWED: ReadonlySet<string> = new Set([
+  "GET /api/status",
+  "GET /api/connections",
+  "GET /api/rootfolders",
+  "GET /api/shows",
+  "GET /api/series",
+  "GET /api/series/:tvdbId",
+  "GET /api/add/search",
+  "POST /api/add",
+  "POST /api/autosearch",
+  "GET /api/autosearch/jobs",
+  "POST /api/search",
+  "POST /api/grab",
+  "GET /api/queue",
+  "GET /api/history",
+  "POST /api/queue/:id/remove",
+  "GET /api/calendar",
+  "GET /api/wanted",
+  "GET /api/activity",
+  "GET /api/blocklist",
+  "DELETE /api/blocklist/:id",
+  "GET /api/tags",
+  "POST /api/tags",
+  "PUT /api/series/:tvdbId/tags",
 ]);
+function apiKeyMayCall(method: string, route: string) {
+  if (route === "/api/v3" || route.startsWith("/api/v3/")) return true;
+  return API_KEY_ALLOWED.has(`${method === "HEAD" ? "GET" : method} ${route}`);
+}
 
 /** onRequest hook. Decides on the matched route pattern, never the raw URL, and denies /api by default. */
 export async function guard(req: FastifyRequest, reply: FastifyReply) {
@@ -267,8 +278,10 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
   const st = authState(req);
   if (st.setupRequired) return reply.code(401).send({ error: "Create an account first", setupRequired: true });
   if (!st.ok) return reply.code(401).send({ error: "Login required" });
-  if (st.via === "apikey" && API_KEY_REFUSED.has(`${req.method} ${route}`))
-    return reply.code(403).send({ error: "Log in to do this: the API key can't change settings or delete files" });
+  if (st.via === "apikey" && !apiKeyMayCall(req.method, route))
+    return reply.code(403).send({
+      error: "Log in to do this: the API key only works for the Sonarr-compatible API and the stable automation routes",
+    });
   if (st.via !== "apikey" && !csrfOk(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
   // The home-network bypass has no cookie for SameSite to hold back, so a page elsewhere could make the browser send
   // requests that count as "local" (GETs included: e.g. an indexer search through GET /api/v3/release).

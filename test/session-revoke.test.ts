@@ -73,6 +73,6 @@ test("a password change ends the other sessions; the browser that changed it sta
 test("the API key can't log the owner out", async () => {
   const s = await login();
   const r = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { "x-api-key": getSettings().apiKey } });
-  assert.equal(r.statusCode, 200);
+  assert.equal(r.statusCode, 403, "logout isn't an API-key route");
   assert.equal(await get(s), 200);
 });

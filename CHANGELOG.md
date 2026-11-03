@@ -25,9 +25,10 @@ All notable changes, newest first. The commit history has the crew's version of 
   else. **Re-subscribe once:** copy the new link from Calendar → iCal link into Google, Apple or Outlook; old links with
   `?apikey=` stop working. Making a new API key also changes the calendar link. If you shared an old calendar link,
   make a new API key (Settings → Security), since the old one was in it.
-- **The API key can't change settings or delete files.** It still works for the Sonarr-compatible API and the
-  documented automation routes, but changing settings, the account, notification channels, indexers, download clients
-  or the setup wizard, deleting episode or season files and emptying the recycling bin now need a signed-in browser.
+- **The API key only works where integrations need it.** It works for the Sonarr-compatible API (`/api/v3`) and the
+  stable automation routes in `docs/API.md` (search, grab, add, queue, calendar, tags and their reads). Everything
+  else, including settings, profiles, rules, cutover, renames, file deletes and the internal API, now needs a
+  signed-in browser. **If you script against an internal route with the API key, it now gets 403.**
 - **Notification secrets don't follow a new address.** Pointing a webhook at a new URL, or an email channel at a new
   server, port or security setting, drops the saved header values or SMTP password unless you type them again.
 - **"No password on my local network" ignores forwarded traffic with a `TRUST_PROXY` list too.** Before, setting

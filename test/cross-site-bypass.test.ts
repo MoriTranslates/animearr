@@ -46,7 +46,7 @@ test("DNS rebinding stays refused, and the API key and sessions are unaffected",
   assert.equal(await lan("/api/settings", { host: "rebind.evil.example" }), 401, "a foreign Host gets no bypass");
   const key = await app.inject({
     method: "GET",
-    url: "/api/settings",
+    url: "/api/queue", // a route the API key may call (stable)
     remoteAddress: "203.0.113.9",
     headers: { "x-api-key": getSettings().apiKey, "sec-fetch-site": "cross-site" },
   });

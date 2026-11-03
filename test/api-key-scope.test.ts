@@ -1,8 +1,8 @@
 /**
  * What the API key and the calendar token can do, over HTTP against the real app (review H4).
  * - The iCal feed takes its own read-only token, never the API key, and that token opens nothing else.
- * - The API key keeps the Sonarr-compatible API and the documented automation routes, but is refused (403) on the
- *   browser-only routes that change settings, sign-in or connection secrets, or delete files.
+ * - The API key works on the Sonarr-compatible API (/api/v3) and the operations openapi.yaml marks stable (the
+ *   documented automation routes), and nowhere else (blind review A2: a denylist kept missing routes).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ process.env.LOG_LEVEL = "silent";
 const { setAccount, getSettings, regenerateApiKey } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1");
 const { app, registeredRoutes } = await import("../server/index.js");
-const { API_KEY_REFUSED } = await import("../server/system/auth.js");
+const { API_KEY_ALLOWED } = await import("../server/system/auth.js");
 
 const FEED = "/feed/calendar/animearr.ics";
 const concrete = (url: string) => url.replace(/:[A-Za-z_]+/g, "1");
@@ -92,33 +92,48 @@ test("a new API key also replaces the calendar token (the way to revoke a shared
   assert.equal((await app.inject({ method: "GET", url: `${FEED}?token=${after}` })).statusCode, 200);
 });
 
-test("the API key is refused on settings, sign-in, connection secrets and file deletes", async () => {
+/** The operations docs/openapi.yaml marks `x-stability: stable` (the documented automation contract), as routes. */
+function stableOperations() {
+  const yaml = fs.readFileSync(new URL("../docs/openapi.yaml", import.meta.url), "utf8");
+  const out = new Set<string>();
+  let p = "";
+  let m = "";
+  for (const line of yaml.split("\n")) {
+    const path_ = /^ {2}"(\/[^"]+)":/.exec(line);
+    if (path_) p = path_[1];
+    const method = /^ {4}(get|put|post|delete|patch):/.exec(line);
+    if (method) m = method[1].toUpperCase();
+    if (/^ {6}x-stability: stable/.test(line) && p.startsWith("/api/")) out.add(`${m} ${p.replace(/\{(\w+)\}/g, ":$1")}`);
+  }
+  return out;
+}
+
+test("review A2: the API key's allowlist is exactly the stable operations in openapi.yaml (plus /api/v3)", () => {
+  assert.deepEqual([...API_KEY_ALLOWED].sort(), [...stableOperations()].sort());
   const routes = new Set(registeredRoutes.map((r) => `${r.method} ${r.url}`));
-  for (const r of API_KEY_REFUSED) assert.ok(routes.has(r), `${r} is a real route`);
-  for (const must of [
-    "PUT /api/settings",
-    "PUT /api/auth/account",
-    "PUT /api/notify/channels",
-    "POST /api/indexers",
-    "PUT /api/clients/:id",
-    "POST /api/episodes/delete",
-    "POST /api/series/:tvdbId/seasons/:season/delete",
-    "POST /api/recycle/animearr/empty",
-  ])
-    assert.ok(API_KEY_REFUSED.has(must), `${must} is refused for the API key`);
+  for (const r of API_KEY_ALLOWED) assert.ok(routes.has(r), `${r} is a real route`);
+});
+
+test("review A2: every other native route refuses the API key", async () => {
   const open: string[] = [];
-  for (const r of API_KEY_REFUSED) {
-    const [method, url] = r.split(" ");
+  for (const r of registeredRoutes) {
+    if (!r.url.startsWith("/api/") || r.url.startsWith("/api/v3") || r.config.public || r.config.setup) continue;
+    if (r.method === "HEAD" || r.method === "OPTIONS" || API_KEY_ALLOWED.has(`${r.method} ${r.url}`)) continue;
     const res = await app.inject({
-      method: method as never,
-      url: concrete(url),
+      method: r.method as never,
+      url: concrete(r.url),
       headers: { ...key(), "content-type": "application/json" },
-      payload: JSON.stringify({ confirm: true, episodeIds: [1], tvdbId: 1 }),
+      payload: r.method === "GET" ? undefined : JSON.stringify({ confirm: true, episodeIds: [1], tvdbId: 1 }),
     });
-    if (res.statusCode !== 403) open.push(`${r} → ${res.statusCode}`);
+    if (res.statusCode !== 403) open.push(`${r.method} ${r.url} → ${res.statusCode}`);
   }
   assert.deepEqual(open, []);
-  // Through ?apikey= too.
+  // The reviewer's confirmed cases, and ?apikey= too.
+  const allow = await app.inject({ method: "PUT", url: "/api/cutover/allow", headers: key(), payload: { allowArrWrites: true } });
+  assert.equal(allow.statusCode, 403);
+  assert.equal(getSettings().cutover.allowArrWrites, false, "the safety switch didn't move");
+  assert.equal((await app.inject({ method: "PUT", url: "/api/quality/upgrades", headers: key(), payload: {} })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/profiles", headers: key(), payload: {} })).statusCode, 403);
   const q = await app.inject({ method: "PUT", url: `/api/settings?apikey=${getSettings().apiKey}`, payload: {} });
   assert.equal(q.statusCode, 403);
 });
@@ -137,7 +152,7 @@ test("a browser session can still use those routes", async () => {
 test("integrations keep working with the API key", async () => {
   const st = await app.inject({ method: "GET", url: "/api/status", headers: key() });
   assert.equal((st.json() as { via: string }).via, "apikey");
-  for (const url of ["/api/v3/system/status", "/api/v3/series", "/api/calendar", "/api/connections", "/api/settings"]) {
+  for (const url of ["/api/v3/system/status", "/api/v3/series", "/api/calendar", "/api/connections", "/api/queue"]) {
     const r = await app.inject({ method: "GET", url, headers: key() });
     assert.equal(r.statusCode, 200, `${url}: ${r.body.slice(0, 200)}`);
   }
