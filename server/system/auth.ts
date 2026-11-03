@@ -388,6 +388,7 @@ const sweep = (now: number) => {
   swept = now;
   for (const [k, v] of attempts) if (now - v.seen > FORGET_MS) drop(k);
   for (const [k, v] of ownerAttempts) if (now - v.seen > FORGET_MS) ownerAttempts.delete(k);
+  for (const [k, v] of deviceAttempts) if (now - v.seen > FORGET_MS) deviceAttempts.delete(k);
 };
 
 /*
@@ -531,7 +532,9 @@ export function validDevice(token: string | undefined): string | null {
 }
 /** The login throttle for a known device: its own entry, the same back-off as a user name. */
 function deviceAllowed(device: string, now: number) {
-  const a = deviceAttempts.get(device) ?? { n: 0, until: 0, seen: now };
+  let a = deviceAttempts.get(device);
+  if (a && now - a.seen > FORGET_MS) a = undefined; // idle long enough: forgotten, like the login lanes' entries
+  a ??= { n: 0, until: 0, seen: now };
   if (a.until > now) return false;
   a.n++;
   a.seen = now;

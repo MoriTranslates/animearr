@@ -12,7 +12,7 @@ import {
 } from "../system/backupTransfer.js";
 import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
-import { authState, DEVICE_COOKIE, loginAllowed, validDevice } from "../system/auth.js";
+import { authState, DEVICE_COOKIE, loginAllowed, loginSucceeded, validDevice } from "../system/auth.js";
 import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
@@ -39,6 +39,10 @@ import { STARTED, fail, writable } from "./common.js";
  */
 const signedInAllowed = (req: FastifyRequest) =>
   loginAllowed(req.ip, getSettings().auth.username, validDevice(req.cookies[DEVICE_COOKIE]) ?? "signed-in");
+
+/** A correct password clears the lane signedInAllowed counted it in (the login route does the same), so the owner starts fresh. */
+const signedInPassed = (req: FastifyRequest) =>
+  loginSucceeded(req.ip, getSettings().auth.username, validDevice(req.cookies[DEVICE_COOKIE]) ?? "signed-in");
 
 export function registerSystemRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- system: jobs, metadata, backups
@@ -81,6 +85,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+    signedInPassed(req);
     restoreBackup(String(req.body?.name ?? ""), keepSessionsEndedAcrossRestore);
     app.log.warn("Backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
@@ -111,6 +116,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Log in to download a backup", 403);
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+    signedInPassed(req);
     return sendBackup(reply);
   });
   // No bodyLimit on the parser itself: it is registered app-wide, so a limit here would let every route (the public
@@ -127,6 +133,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
+    signedInPassed(req);
     const token = String(req.body?.token ?? "");
     const staged = peekStaged(token);
     try {
