@@ -454,7 +454,9 @@ export function parseRelease(input: string): ParsedRelease {
     const lead2 = s.match(/^\s*\[([A-Za-z][\w.& -]{0,20})\]\s*[._ ]?/);
     // A tag bracket followed by another bracket ("[Group][CHT][Show][01]") goes to the all-bracket branch below.
     const tagThenBracket = lead2 && isTagBracket(lead2[1]) && /^\[/.test(s.slice(lead2[0].length));
-    if (lead2 && !tagThenBracket && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
+    // A bracket followed by an episode bracket ("[Group][Gleipnir][01]") is the all-bracket title, short or long.
+    const titleThenEpisode = lead2 && /^\[\s*\d/.test(s.slice(lead2[0].length));
+    if (lead2 && !tagThenBracket && !titleThenEpisode && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
       const rest = s.slice(lead2[0].length);
       const titleLike = /\s/.test(lead2[1].trim()) && lead2[1] !== lead2[1].toUpperCase();
       // A multi-word mixed-case bracket is the title when a marker follows. Any other bracket is, only when nothing

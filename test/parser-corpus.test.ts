@@ -1126,3 +1126,27 @@ test("an all-bracket name never takes a tag bracket as the title; the next brack
     "Mobile Suit Gundam THE WITCH FROM MERCURY",
   );
 });
+
+test("a short all-bracket title (21 characters or fewer) is the title, like a long one (round-3 M4)", () => {
+  // The review input and the same shape with other short titles.
+  for (const [name, title] of [
+    ["[Group][Gleipnir][01][1080p]", "Gleipnir"],
+    ["[Group][Kemurikusa][01][BDRip][1080p]", "Kemurikusa"],
+    ["[Group][Show Name][12][BDRip]", "Show Name"],
+    ["[Group][Show Name][01-13][BDRip][1080p][Multi-Sub]", "Show Name"],
+  ]) {
+    assert.equal(parseRelease(name).title, title, name);
+  }
+  // Real names from the corpus, with short titles.
+  assert.equal(parseRelease("[SubsWhen][Isekai Ojisan][09][1080p][NF][766FC386]").title, "Isekai Ojisan");
+  assert.equal(parseRelease("[Nekomoe kissaten][Hataraku Saibou Black][01][1080p][CHT][v2]").title, "Hataraku Saibou Black");
+  assert.equal(parseRelease("[XKsub][SSSS.DYNAZENON][01][CHS JAP][1080p][WEBRip][MP4].mp4-xpost").title, "SSSS.DYNAZENON");
+  assert.equal(parseRelease("[Nekomoe.kissaten][Isekai.Ojisan][13][720p][JPSC].mp4-xpost").title, "Isekai.Ojisan");
+  // Must not change: the guards and rules from the earlier fixes.
+  assert.equal(parseRelease("[Group][Gleipnir][S2][01][1080p]").title, "");
+  assert.equal(parseRelease("[Group][CHT][Gleipnir][01]").title, "Gleipnir");
+  assert.equal(parseRelease("[Group][CHT][01][1080p]").title, "");
+  assert.equal(parseRelease("[Group][Show] - 05").title, "Show");
+  assert.equal(parseRelease("[Group][F-B] 86 - 05").title, "86");
+  assert.equal(parseRelease("[Group][Frieren] S01E05 [1080p]").title, "Frieren");
+});
