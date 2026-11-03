@@ -1,7 +1,8 @@
 /**
  * Indexer outage vs refused query (blind review of fix/blind-c2-jobs, 2026-11-03). An indexer's error must never hide
- * a real outage, and a dead indexer must still trip its breaker. Repro C (one flaky indexer) still happens: it comes
- * from the "any failed query keeps the search from counting" rule (de8de87) and is kept here as a todo.
+ * a real outage, and a dead indexer must still trip its breaker. Repro C (one flaky indexer): a search that missed an
+ * indexer still never counts (de8de87), but it backs off (30 min … a day) instead of re-searching every 30 min forever,
+ * and the managed job shows a warning, not "error" (R3).
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +17,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { clearQueryCache } = await import("../server/search/searchQueue.js");
 const { deepSearch } = await import("../server/search/search.js");
-const { decideEpisode } = await import("../server/library/managed.js");
+const { decideEpisode, managedTick } = await import("../server/library/managed.js");
 const { indexerNumId } = await import("../server/search/indexers.js");
 
 const TVDB = 800800;
@@ -115,14 +116,55 @@ test("an indexer that answers 404 to every query trips its breaker", async () =>
   assert.ok(br && br.state !== "on", `breaker: ${JSON.stringify(br)}`);
 });
 
-test(
-  "one timed-out query from a flaky indexer still lets the search count (backoff applies)",
-  { todo: "known: any failed query keeps a search from counting (de8de87); not fixed on this branch" },
-  async () => {
-    const now = Date.now();
-    set("ok", "flaky", "ok"); // o2 times out on its first query only
-    await decideEpisode(row(8004, 2), now);
-    const s = state(8004);
-    assert.ok(s.attempts > 2 || s.next_at - now > 30 * 60_000, `never counted: ${JSON.stringify(s)}`);
-  },
-);
+const MIN = 60_000;
+const current = (id: number) => db.prepare("SELECT * FROM search_state WHERE episode_id = ?").get(id) as never;
+/** One flaky search of `id` at `at` (o2 times out on its first query only); returns the wait it scheduled, in minutes. */
+const flakyPass = async (id: number, at: number) => {
+  set("ok", "flaky", "ok");
+  await decideEpisode(current(id), at);
+  return Math.round((state(id).next_at - at) / MIN);
+};
+
+test("a flaky indexer that keeps a search from counting backs off (30 min up to a day), never using an attempt", async () => {
+  row(8004, 2);
+  let at = Date.now();
+  const waits: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    waits.push(await flakyPass(8004, at));
+    at = state(8004).next_at;
+  }
+  assert.deepEqual(waits, [30, 60, 120, 240, 480, 1440, 1440]);
+  const s = state(8004);
+  assert.equal(s.attempts, 2, "an outage uses up no attempt");
+  assert.notEqual(s.state, "gave-up");
+});
+
+test("the outage backoff resets once a search for that episode counts", async () => {
+  row(8005, 0);
+  let at = Date.now();
+  for (let i = 0; i < 3; i++) {
+    await flakyPass(8005, at);
+    at = state(8005).next_at;
+  }
+  assert.equal(await flakyPass(8005, at), 240, "backing off before the counted search");
+  at = state(8005).next_at;
+  set("ok", "ok", "ok"); // every indexer answers: the search counts (nothing found, attempt 1)
+  await decideEpisode(current(8005), at);
+  assert.equal(state(8005).attempts, 1);
+  at = state(8005).next_at;
+  assert.equal(await flakyPass(8005, at), 30, "the next outage starts from 30 min again");
+});
+
+test("the managed job shows a partial outage as a warning, and 'error' only when no indexer answered", async () => {
+  const job = () => cache.prepare("SELECT state, detail FROM jobs WHERE name = 'managed'").get() as { state: string; detail: string };
+  db.prepare("UPDATE search_state SET next_at = ? WHERE next_at <= ?").run(Date.now() + 365 * 86_400_000, Date.now() + 365 * 86_400_000);
+  row(8006, 0);
+  set("ok", "flaky", "ok");
+  await managedTick(Date.now());
+  assert.equal(job().state, "done", JSON.stringify(job()));
+  assert.match(job().detail, /Warning: 1 couldn't reach every indexer/);
+  row(8006, 0);
+  set("timeout", "timeout", "timeout");
+  await managedTick(Date.now());
+  assert.equal(job().state, "error", JSON.stringify(job()));
+});

@@ -198,7 +198,13 @@ interface StateRow {
   state: string;
   last_why: string;
   kind?: string;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
+
+/** Wait after the 1st, 2nd, … search in a row that couldn't ask every indexer: never an attempt, but not every 30 min forever. */
+const OUTAGE_BACKOFF_MIN = [OUTAGE_RETRY_MS / 60_000, 60, 120, 240, 480, 1440];
+const outageBackoffMs = (streak: number) => OUTAGE_BACKOFF_MIN[Math.min(Math.max(streak, 0), OUTAGE_BACKOFF_MIN.length - 1)] * 60_000;
 
 /** Creates/updates search_state rows for aired-or-airing episodes of managed shows that have no file. */
 export function planSchedule(now = Date.now()) {
@@ -357,11 +363,17 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
   // Nothing to grab, but not every indexer answered: not an attempt (no give-up, no backoff, no retryDays), asked
   // again soon, and the reason is on the schedule (review 2026-11-02, M4).
+  // Each such search in a row waits longer (30 min … a day), so one flaky indexer doesn't cost a full search every
+  // 30 min forever (blind review 2026-11-03, R3); the streak resets once a search counts.
   if (gap && !(best && ok.includes(best))) {
     outagesThisRound++;
-    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(
-      now + OUTAGE_RETRY_MS,
-      `Couldn't search fully: ${gap.why}; ${res.found} releases seen, trying again in ${OUTAGE_RETRY_MS / 60_000} min`,
+    if (gap.kind === "all") allDownThisRound++;
+    const streak = st.outage_streak ?? 0;
+    const wait = outageBackoffMs(streak);
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, outage_streak = ? WHERE episode_id = ?").run(
+      now + wait,
+      `Couldn't search fully: ${gap.why}; ${res.found} releases seen, trying again in ${Math.round(wait / 60_000)} min`,
+      streak + 1,
       st.episode_id,
     );
     return;
@@ -379,7 +391,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     const failedState = backlog ? "backlog" : "retry";
     const state = out.dryRun ? "would-grab" : out.failed ? failedState : "grabbed";
     db.prepare(
-      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ? WHERE episode_id = ?",
+      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ?, outage_streak = 0 WHERE episode_id = ?",
     ).run(attempts, now, out.failed ? now + (backlog ? DAY : backoff) : now, state, out.message, out.id, st.episode_id);
     return;
   }
@@ -387,13 +399,9 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   if (backlog) {
     // Missing-episode search: no give-up, just try again in retryDays (RSS can still bring it forward).
     const days = getSettings().backlog.retryDays;
-    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ? WHERE episode_id = ?").run(
-      attempts,
-      now,
-      now + days * DAY,
-      `${why} (${res.found} releases seen)`,
-      st.episode_id,
-    );
+    db.prepare(
+      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ?, outage_streak = 0 WHERE episode_id = ?",
+    ).run(attempts, now, now + days * DAY, `${why} (${res.found} releases seen)`, st.episode_id);
     logDecision("skip", {
       tvdbId: st.tvdb_id,
       title: m.title,
@@ -403,14 +411,9 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const gaveUp = attempts >= s.maxAttempts;
-  db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ? WHERE episode_id = ?").run(
-    attempts,
-    now,
-    now + backoff,
-    gaveUp ? "gave-up" : "retry",
-    `${why} (${res.found} releases seen)`,
-    st.episode_id,
-  );
+  db.prepare(
+    "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, outage_streak = 0 WHERE episode_id = ?",
+  ).run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why} (${res.found} releases seen)`, st.episode_id);
   logDecision("skip", {
     tvdbId: st.tvdb_id,
     title: m.title,
@@ -622,11 +625,14 @@ export function backlogSummary(now = Date.now()) {
 let ticking = false;
 /** Searches this round that couldn't ask every indexer (the job's status says so instead of "done" alone). */
 let outagesThisRound = 0;
+/** Of those, searches where no indexer answered at all (a real outage: the job shows "error"). */
+let allDownThisRound = 0;
 /** Scheduler tick: plan, then search episodes that are due (a few per tick, to be gentle on indexers). */
 export async function managedTick(now = Date.now()) {
   if (ticking || dbState.corrupt || !searchConfigured() || !listManaged().length) return;
   ticking = true;
   outagesThisRound = 0;
+  allDownThisRound = 0;
   try {
     planSchedule(now);
     const due = db
@@ -637,11 +643,13 @@ export async function managedTick(now = Date.now()) {
     for (const st of due) await decideSafely(st, now);
     const backlog = await backlogPass(now);
     const detail = `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`;
+    // Some indexer missing on a few searches is a warning (those episodes back off), not a failed job; "error" only
+    // when a search got no answer from any indexer.
     setJob(
       "managed",
-      outagesThisRound ? "error" : "done",
+      allDownThisRound ? "error" : "done",
       outagesThisRound
-        ? `${detail}. ${outagesThisRound} couldn't reach every indexer: tried again in ${OUTAGE_RETRY_MS / 60_000} min`
+        ? `${detail}. Warning: ${outagesThisRound} couldn't reach every indexer (each tries again later, backing off)`
         : detail,
     );
   } finally {

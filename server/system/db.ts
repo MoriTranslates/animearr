@@ -477,6 +477,9 @@ const USER_MIGRATIONS: string[] = [
   // 45: the movie half of the cutover journal (review L21): written before Radarr is asked to delete a movie, cleared once
   // AnimeArr's movie_* state has moved to the native id.
   `CREATE TABLE cutover_pending_movies (movie_id INTEGER PRIMARY KEY, native_id INTEGER NOT NULL, at INTEGER NOT NULL);`,
+  // 46: managed searches in a row that couldn't count because an indexer didn't answer: their own backoff (30 min up to
+  // a day) instead of every 30 min forever; back to 0 once a search counts (blind review 2026-11-03, R3).
+  `ALTER TABLE search_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */
