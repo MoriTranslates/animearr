@@ -290,6 +290,14 @@ export interface SearchOutage {
 }
 /** The next try after a search the indexers didn't (fully) answer, instead of the job's usual wait. */
 export const OUTAGE_RETRY_MS = 30 * 60_000;
+/** Wait after the 1st, 2nd, … search in a row that couldn't ask every indexer: 30 min, 1 h, 2 h, 4 h, 8 h, then a day at most. */
+const OUTAGE_BACKOFF_MIN = [OUTAGE_RETRY_MS / 60_000, 60, 120, 240, 480, 1440];
+/** `streak` = searches in a row that didn't count before this one (0 = the first outage). Never an attempt, never a give-up. */
+export const outageBackoffMs = (streak: number) =>
+  OUTAGE_BACKOFF_MIN[Math.min(Math.max(streak, 0), OUTAGE_BACKOFF_MIN.length - 1)] * 60_000;
+/** Whether a row whose last `streak` searches hit an outage (row last written at `updatedAt`) is still waiting out its backoff. */
+export const outageHeld = (streak: number | null | undefined, updatedAt: number | null | undefined, now: number) =>
+  (streak ?? 0) > 0 && now - (updatedAt ?? 0) < outageBackoffMs((streak ?? 0) - 1);
 /** The outage when a search's "nothing found" must not count (it couldn't ask every indexer), else null. */
 export const couldntSearch = (r: { outage?: SearchOutage }) => (r.outage && !r.outage.counts ? r.outage : null);
 export function searchOutage(asked: number, failedQueries: string[], failed: IndexerFailure[], startedAt: number): SearchOutage {

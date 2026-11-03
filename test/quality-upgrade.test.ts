@@ -340,3 +340,44 @@ test("SeaDex: parsed from releases.moe, cached per AniList entry, merged per TVD
   assert.ok(urls.every((u) => u.startsWith("https://releases.moe/api/collections/entries/records?") && u.includes("alID%3D")));
   assert.ok(seadexForSeason(700002, 1));
 });
+
+test("quality upgrades: indexers that keep a search from counting back it off (30 min up to a day), and a counted search resets it", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 500, seasonsPerDay: 500 } }));
+  db.prepare(
+    "UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = 0, no_bd = 0, attempts = 0, outage_streak = 0",
+  ).run();
+  let outage: unknown = { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false };
+  let calls = 0;
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (tvdbId === 700003 && calls++, { results: [], outage })) as never,
+  };
+  const MIN = 60_000;
+  const searchedAt = async (t: number) => {
+    db.prepare("DELETE FROM quality_upgrade_log").run();
+    const before = calls;
+    await qualityUpgradePass(d, t);
+    return calls > before;
+  };
+  let t = now + 10 * DAY;
+  for (const wait of [30, 60, 120, 240, 480, 1440, 1440]) {
+    assert.equal(await searchedAt(t), true, `searched at ${wait}-min step`);
+    assert.equal(await searchedAt(t + (wait - 1) * MIN), false, `still waiting 1 min before ${wait} min`);
+    t += wait * MIN;
+  }
+  const st = () =>
+    db.prepare("SELECT attempts, last_at FROM quality_upgrade WHERE tvdb_id = 700003 AND season = 1").get() as {
+      attempts: number;
+      last_at: number | null;
+    };
+  assert.equal(st().attempts, 0, "an outage uses up no attempt");
+  assert.equal(st().last_at, null);
+  outage = undefined; // every indexer answers: the search counts
+  assert.equal(await searchedAt(t), true);
+  assert.equal(st().attempts, 1);
+  t += 400 * DAY; // past any recheck wait
+  outage = { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false };
+  assert.equal(await searchedAt(t), true);
+  assert.equal(await searchedAt(t + 29 * MIN), false);
+  assert.equal(await searchedAt(t + 30 * MIN), true, "the next outage starts from 30 min again");
+});

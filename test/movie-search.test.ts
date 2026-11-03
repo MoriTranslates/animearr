@@ -219,3 +219,75 @@ test("movie dual upgrades: a standing partial outage still rotates through the m
   assert.equal(searched.length, 2, JSON.stringify(searched));
   assert.notEqual(searched[0], searched[1], `the same movie twice: ${JSON.stringify(searched)}`);
 });
+
+const MIN = 60_000;
+const partial = { kind: "partial", why: "O1 didn't answer (timed out)", counts: false };
+
+test("movie search: indexers that keep a search from counting back it off (30 min up to a day), never using an attempt, and a counted search resets it", async () => {
+  db.prepare("UPDATE movie_search SET next_at = ? WHERE movie_id != 1").run(now + 900 * DAY); // only movie 1 is due
+  db.prepare("UPDATE movie_search SET state = 'retry', attempts = 2, next_at = 0, outage_streak = 0 WHERE movie_id = 1").run();
+  let outage: unknown = partial;
+  const deps = {
+    search: (async () => ({ results: [], matched: 0, found: 0, outage })) as never,
+    grab: (async () => assert.fail("no grab")) as never,
+    radarrQueue: async () => [],
+  };
+  const pass = async (t: number) => {
+    db.prepare("DELETE FROM movie_searches").run();
+    await moviePass(deps, t);
+    return Math.round((st(1)!.next_at - t) / MIN);
+  };
+  let t = now + 100 * DAY;
+  const waits: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    waits.push(await pass(t));
+    t = st(1)!.next_at;
+  }
+  assert.deepEqual(waits, [30, 60, 120, 240, 480, 1440, 1440]);
+  assert.equal(st(1)!.attempts, 2, "an outage uses up no attempt");
+  assert.equal(st(1)!.state, "retry");
+  outage = undefined; // every indexer answers: the search counts
+  await pass(t);
+  assert.equal(st(1)!.attempts, 3);
+  t = st(1)!.next_at;
+  outage = partial;
+  assert.equal(await pass(t), 30, "the next outage starts from 30 min again");
+});
+
+test("movie dual upgrades: indexers that keep a search from counting back it off, and a counted search resets it", async () => {
+  setMoviePrefs(5, null, "dual");
+  patchSettings((s) => ({ ...s, dualUpgrade: { mode: "auto", perHour: 500, recheckDays: 3, maxAgeDays: 365 } }));
+  db.prepare("DELETE FROM movie_upgrade").run();
+  let outage: unknown = { kind: "partial", why: "O1 didn't answer (timed out)", counts: false };
+  let calls = 0;
+  const d = {
+    search: (async () => ({ results: [] })) as never,
+    grab: (async () => ({})) as never,
+    searchMovie: (async (id: number) => (id === 5 && calls++, { results: [], matched: 0, outage })) as never,
+    grabMovie: (async () => assert.fail("no grab")) as never,
+  };
+  const MIN = 60_000;
+  const searchedAt = async (t: number) => {
+    db.prepare("DELETE FROM upgrade_searches").run();
+    const before = calls;
+    await upgradePass(d, t);
+    return calls > before;
+  };
+  let t = now + 60 * DAY;
+  for (const wait of [30, 60, 120, 240, 480, 1440, 1440]) {
+    assert.equal(await searchedAt(t), true, `searched at ${wait}-min step`);
+    assert.equal(await searchedAt(t + (wait - 1) * MIN), false, `still waiting 1 min before ${wait} min`);
+    t += wait * MIN;
+  }
+  const st = () =>
+    db.prepare("SELECT attempts, last_at FROM movie_upgrade WHERE movie_id = 5").get() as { attempts: number; last_at: number | null };
+  assert.equal(st().attempts, 0, "an outage uses up no attempt");
+  outage = undefined;
+  assert.equal(await searchedAt(t), true);
+  assert.equal(st().attempts, 1);
+  t += 4 * DAY;
+  outage = { kind: "partial", why: "O1 didn't answer (timed out)", counts: false };
+  assert.equal(await searchedAt(t), true);
+  assert.equal(await searchedAt(t + 29 * MIN), false);
+  assert.equal(await searchedAt(t + 30 * MIN), true, "the next outage starts from 30 min again");
+});

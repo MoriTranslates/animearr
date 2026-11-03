@@ -480,6 +480,12 @@ const USER_MIGRATIONS: string[] = [
   // 46: managed searches in a row that couldn't count because an indexer didn't answer: their own backoff (30 min up to
   // a day) instead of every 30 min forever; back to 0 once a search counts (blind review 2026-11-03, R3).
   `ALTER TABLE search_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
+  // 47: the same outage streak for the other three search jobs (movie search, dual upgrades for episodes and movies,
+  // quality upgrades): these tables had no column to count it in.
+  `ALTER TABLE movie_search ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE upgrade_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE movie_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE quality_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */

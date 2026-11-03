@@ -15,7 +15,7 @@ import { episodesAreNew, grabGate, GrabsPausedError } from "../grabs/downloads.j
 import { NATIVE_BASE } from "./nativeIds.js";
 import { listManaged, type ManagedRow } from "./managedList.js";
 import { logDecision } from "../system/activity.js";
-import { couldntSearch, OUTAGE_RETRY_MS, searchConfigured } from "../search/indexers.js";
+import { couldntSearch, outageBackoffMs, searchConfigured } from "../search/indexers.js";
 import { searchAll } from "../search/indexers.js";
 import { setSeriesMonitored } from "../arr/sonarr.js";
 import { identify } from "../core/identify.js";
@@ -201,10 +201,6 @@ interface StateRow {
   /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
   outage_streak?: number;
 }
-
-/** Wait after the 1st, 2nd, … search in a row that couldn't ask every indexer: never an attempt, but not every 30 min forever. */
-const OUTAGE_BACKOFF_MIN = [OUTAGE_RETRY_MS / 60_000, 60, 120, 240, 480, 1440];
-const outageBackoffMs = (streak: number) => OUTAGE_BACKOFF_MIN[Math.min(Math.max(streak, 0), OUTAGE_BACKOFF_MIN.length - 1)] * 60_000;
 
 /** Creates/updates search_state rows for aired-or-airing episodes of managed shows that have no file. */
 export function planSchedule(now = Date.now()) {

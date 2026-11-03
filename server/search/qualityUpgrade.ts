@@ -38,7 +38,7 @@ import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
 import { ownedElsewhere } from "../library/duplicates.js";
 import { wantedEpisodeIds } from "../library/scope.js";
-import { couldntSearch, searchConfigured, type SearchOutage } from "./indexers.js";
+import { couldntSearch, outageHeld, searchConfigured, type SearchOutage } from "./indexers.js";
 import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
@@ -102,6 +102,8 @@ interface StateRow {
   best_seen: string | null;
   no_bd: number;
   updated_at: number;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
 /** When the pass last tried this season, fully answered or not (every save moves updated_at). */
 const tried = (st: StateRow | undefined) => Math.max(st?.last_at ?? 0, st?.updated_at ?? 0);
@@ -115,6 +117,8 @@ function save(
     why: string;
     now: number;
     searched?: boolean;
+    /** The indexers didn't all answer: the search doesn't count, and the next one waits longer (30 min … a day). */
+    outage?: boolean;
     release?: string | null;
     grabId?: number | null;
     bestSeen?: string | null;
@@ -123,7 +127,7 @@ function save(
 ) {
   const prev = stateOf(tvdbId, season);
   db.prepare(
-    "INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, attempts, why, release, grab_id, best_seen, no_bd, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, attempts, why, release, grab_id, best_seen, no_bd, updated_at, outage_streak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     tvdbId,
     season,
@@ -136,6 +140,7 @@ function save(
     v.bestSeen === undefined ? (prev?.best_seen ?? null) : v.bestSeen,
     v.noBd ?? prev?.no_bd ?? 0,
     v.now,
+    v.searched ? 0 : v.outage ? (prev?.outage_streak ?? 0) + 1 : (prev?.outage_streak ?? 0),
   );
 }
 
@@ -532,6 +537,8 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     .filter(
       ({ u, st }) =>
         st?.state !== "grabbed" &&
+        // Searches in a row that couldn't ask every indexer: each waits longer than the last, never an attempt.
+        !outageHeld(st?.outage_streak, st?.updated_at, now) &&
         (!st?.last_at ||
           now - st.last_at >=
             (st.state === "budget"
@@ -574,8 +581,9 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     if (!pick && gap) {
       save(u.tvdbId, u.season, {
         state: "waiting",
-        why: `couldn't search fully: ${gap.why}; looking again on the next pass`,
+        why: `couldn't search fully: ${gap.why}; looking again soon`,
         now,
+        outage: true,
         release: null,
       });
       continue;
