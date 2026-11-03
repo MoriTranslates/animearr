@@ -57,11 +57,31 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   );
 }
 
+/**
+ * One sync at a time. A full sync (Rebuild cache) asked for while a plain one runs is queued behind it, not swallowed:
+ * held removals are only applied by a full sync (review L2). Later callers share the queued run.
+ */
+let runningFull = false;
+let queuedFull: Promise<SyncResult> | null = null;
 export function syncLibrary(full = false): Promise<SyncResult> {
-  running ??= doSync(full).finally(() => (running = null));
-  return running;
+  if (queuedFull) return queuedFull;
+  if (!running) {
+    runningFull = full;
+    running = doSync(full).finally(() => (running = null));
+    return running;
+  }
+  if (!full || runningFull) return running;
+  queuedFull = running
+    .catch(() => undefined) // the plain run's own failure is its caller's to see; the full run goes ahead either way
+    .then(() => {
+      queuedFull = null;
+      runningFull = true;
+      running = doSync(true).finally(() => (running = null));
+      return running;
+    });
+  return queuedFull;
 }
-export const syncRunning = () => !!running;
+export const syncRunning = () => !!running || !!queuedFull;
 
 async function doSync(full: boolean): Promise<SyncResult> {
   const res: SyncResult = { series: 0, refreshed: 0, removed: 0, movies: 0, unmatched: 0, errors: [], at: Date.now() };
