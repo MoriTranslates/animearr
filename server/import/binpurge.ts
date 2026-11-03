@@ -33,6 +33,20 @@ export function binFolder(): { local: string } | { error: string } {
   return { local };
 }
 
+/**
+ * For the status warnings: a recycling bin that is set but refused (e.g. inside a library folder, which earlier
+ * versions accepted). No bin, or a library not synced yet, isn't a warning.
+ */
+export function binWarnings(): string[] {
+  if (!getSettings().media.recycleBin.trim() || !libraryRoots().length) return [];
+  const bin = binFolder();
+  return "error" in bin
+    ? [
+        `AnimeArr's recycling bin can't be used: ${bin.error}. Upgrades and Replace season keep the old files until it's changed (Settings → Media management).`,
+      ]
+    : [];
+}
+
 /** Called by the importer for every file it moves into the bin. */
 export function noteBinned(localTarget: string, size: number, now = Date.now()) {
   db.prepare("INSERT OR REPLACE INTO recycle_log (path, at, size) VALUES (?, ?, ?)").run(path.resolve(localTarget), now, size);

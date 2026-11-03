@@ -6,6 +6,7 @@ import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucc
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
+import { binWarnings } from "../import/binpurge.js";
 
 import {
   checkPassword,
@@ -74,6 +75,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
               `The database failed its integrity check (${dbState.detail}). AnimeArr is read-only until you restore a backup (System → Backups).`,
             ]
           : []),
+        ...binWarnings(),
       ],
       uiLanguage: s.ui.language,
       textScale: s.ui.textScale ?? null,

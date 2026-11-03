@@ -38,6 +38,7 @@ import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
 import { importMovie, movieFileOpts, movieNextForRow } from "../library/movies.js";
 import { scanFolder } from "../import/mediafiles.js";
+import { binFolder } from "../import/binpurge.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "../library/franchise.js";
 import { inspectFiles } from "./safety.js";
 import {
@@ -737,6 +738,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     });
   };
   if (!series || !underAllowedRoot(series.path)) return attention("the series is outside the allowed root folders");
+  // Replace season swaps the old files into AnimeArr's bin: a bin it can't use (none, or one in or holding a library
+  // folder) stops it here with that reason, before anything is listed or touched (the per-file check would refuse each).
+  if (row.purpose === "replace") {
+    const bin = binFolder();
+    if ("error" in bin)
+      return attention(
+        `Replace season needs a usable recycling bin (Settings → Media management): ${bin.error}. Nothing in your library changed`,
+      );
+  }
   const sonarrPath0 = clientToSonarr(clientPath);
   const singleArchive = /\.(rar|zip|7z)$/i.test(sonarrPath0);
   // A single-file torrent that is an archive: its folder is the shared category folder.
@@ -957,8 +967,6 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
     if (replacing && !toPlace.length && !done.length)
       return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
-    if (replacing && !getSettings().media.recycleBin.trim())
-      return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
     let swapped = 0;
     for (const p of toPlace) {
       try {
