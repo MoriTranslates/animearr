@@ -653,9 +653,9 @@ export async function startMovieGrab(
     if (
       !db
         .prepare(
-          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ?, not_ours = ? WHERE id = ? AND state = 'sending'",
         )
-        .run(Date.now(), job.client, job.ref, id).changes
+        .run(Date.now(), job.client, job.ref, job.duplicate ? 1 : 0, id).changes
     ) {
       // Closed (removed by you) while it was being sent: take it back out of the client.
       await takeBackOut(deps, job, c.title, null);

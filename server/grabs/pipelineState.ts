@@ -106,6 +106,8 @@ export interface GrabRow {
   strike_why?: string | null;
   /** The indexer's name (blocklist page). */
   indexer?: string | null;
+  /** 1 = the torrent was in the client before AnimeArr's add (or adopted after a restart): never removed or deleted. */
+  not_ours?: number;
 }
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */

@@ -644,8 +644,10 @@ export async function runCleanup(
       const viaClient = a.step === "leftover" && a.client === "qbittorrent" && !!a.ref && !inProtected(local);
       if (a.step !== "retry" && !viaClient && !inside(local)) throw new Error("outside AnimeArr's own download folders");
       if (a.grabId && a.step !== "retry") {
-        const g = db.prepare("SELECT state FROM grabs WHERE id = ?").get(a.grabId) as { state: string } | undefined;
+        const g = db.prepare("SELECT state, not_ours FROM grabs WHERE id = ?").get(a.grabId) as
+          { state: string; not_ours: number } | undefined;
         if (g?.state !== "done" && g?.state !== "failed") throw new Error("its grab isn't finished any more; left alone");
+        if (g.not_ours) throw new Error("the client had it before AnimeArr's grab; not AnimeArr's to delete");
       }
       if (a.step === "retry") {
         retried.add(a.grabId!);
@@ -794,10 +796,21 @@ export async function cleanupGrab(
 ): Promise<string | null> {
   const s = getSettings().downloads;
   if (dbState.corrupt) return null;
-  const g = db.prepare("SELECT id, client, client_ref, release, tvdb_id, movie_id FROM grabs WHERE id = ? AND dry_run = 0").get(grabId) as
-    | { id: number; client: string | null; client_ref: string | null; release: string; tvdb_id: number | null; movie_id: number | null }
+  const g = db
+    .prepare("SELECT id, client, client_ref, release, tvdb_id, movie_id, not_ours FROM grabs WHERE id = ? AND dry_run = 0")
+    .get(grabId) as
+    | {
+        id: number;
+        client: string | null;
+        client_ref: string | null;
+        release: string;
+        tvdb_id: number | null;
+        movie_id: number | null;
+        not_ours: number;
+      }
     | undefined;
   if (!g?.client || !g.client_ref) return null;
+  if (g.not_ours) return null; // the client had it before AnimeArr's grab: never AnimeArr's to remove or delete
   const extra: ClientCfg | undefined = getSettings().extraClients?.find((x) => x.id === g.client);
   const deleteOk = s.cleanup === "auto" && s.allowDelete;
   // Without deleting switched on, only an NZBGet job its client was told to drop after import is touched.

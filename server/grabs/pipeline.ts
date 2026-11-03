@@ -271,9 +271,9 @@ export async function startGrab(
     if (
       !db
         .prepare(
-          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ?, not_ours = ? WHERE id = ? AND state = 'sending'",
         )
-        .run(Date.now(), job.client, job.ref, id).changes
+        .run(Date.now(), job.client, job.ref, job.duplicate ? 1 : 0, id).changes
     ) {
       // Closed (removed by you) while it was being sent: take it back out of the client.
       await takeBackOut(deps, job, c.title, req.tvdbId);
@@ -466,7 +466,8 @@ async function resolveCutOffSends(deps: PipelineDeps, now = Date.now()) {
     if (
       db
         .prepare(
-          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+          // Adopted as "not ours": AnimeArr can't tell whether it sent this or the client had it before (L6).
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ?, client = ?, client_ref = ?, not_ours = 1 WHERE id = ? AND state = 'sending'",
         )
         .run(Date.now(), Date.now(), job.client, job.ref, row.id).changes
     )
@@ -610,7 +611,8 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
           if (!setState(row.id, "failed", why, {}, ["downloading"])) continue;
           blocklist(row, why);
           let removed = "";
-          if (qh.removeFailed) {
+          if (qh.removeFailed && row.not_ours) removed = "; left it in the download client (it was there before AnimeArr's grab)";
+          else if (qh.removeFailed) {
             try {
               await deps.clients.remove(job);
               removed = `; removed it from ${clientName(job.client) || job.client}`;
@@ -1331,7 +1333,9 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
       unchecked = `couldn't check the download client: ${(e as Error).message}`;
     }
   }
-  if (job && !mayBeImporting) {
+  // A torrent the client had before AnimeArr's add (or adopted after a restart) is never AnimeArr's to remove.
+  const notOurs = !!row.not_ours;
+  if (job && !mayBeImporting && !notOurs) {
     try {
       await deps.clients.remove(job);
     } catch (e) {
@@ -1348,11 +1352,13 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
     "failed",
     mayBeImporting
       ? "closed by you (downloaded files kept: an import may have been in progress)"
-      : unchecked
-        ? `removed by you (${unchecked}; check the client yourself and remove it there if it arrived)`
-        : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
-          ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
-          : "removed by you",
+      : notOurs
+        ? "removed by you (left in the download client: the client had that torrent before AnimeArr's grab)"
+        : unchecked
+          ? `removed by you (${unchecked}; check the client yourself and remove it there if it arrived)`
+          : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
+            ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
+            : "removed by you",
     {},
     ["removing"], // the claim made above (after the client calls it's still ours alone)
   );

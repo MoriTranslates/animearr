@@ -1,7 +1,7 @@
 import { getSettings, type ClientCfg, type Settings } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
-import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
+import { delugeDriver, rtorrentDriver, torrentHash } from "./torrentClients.js";
 import { blackholeDriver, isBlackhole } from "./blackhole.js";
 import { mappedPath } from "../system/paths.js";
 
@@ -262,6 +262,14 @@ const primary = {
   },
   async addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts: AddTorrentOpts = {}): Promise<ClientJob> {
     const s = getSettings().qbittorrent;
+    // qBittorrent doesn't say whether an add was a duplicate: asked first, by the info-hash (one call). A torrent it
+    // already has is left as it is and tracked as "not ours" (never removed or deleted by AnimeArr). A source whose
+    // hash can't be read here isn't checked (review of the jobs branch, M4/L6).
+    const pre = torrentHash(src);
+    if (pre) {
+      const have = (await (await qbit(`/torrents/info?hashes=${pre}`)).json()) as { hash: string }[];
+      if (have.some((t) => t.hash.toLowerCase() === pre)) return { client: "qbittorrent", ref: pre, duplicate: true };
+    }
     const tag = `animearr-${Date.now().toString(36)}`;
     const form = new FormData();
     form.append("category", s.category);

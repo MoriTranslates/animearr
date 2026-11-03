@@ -457,6 +457,9 @@ const USER_MIGRATIONS: string[] = [
   // client_ref" can't mean "never sent" for them. '?' = handed over, id unknown (pipelineState SENT_UNKNOWN): the
   // restart resolution looks an NZB up by name and gives a torrent to the user, never re-sends blind (review M5).
   `UPDATE grabs SET client_ref = '?' WHERE state = 'sending' AND client_ref IS NULL;`,
+  // 44: a torrent the client already had before AnimeArr's add (a duplicate), or one a restart's lookup adopted: tracked
+  // as usual, but never AnimeArr's to remove or delete (Remove, clean-ups, sweeps). Review of the jobs branch, M4/L6.
+  `ALTER TABLE grabs ADD COLUMN not_ours INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */

@@ -97,7 +97,9 @@ export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: P
     return false;
   }
   let removed = "";
-  if (row.client && row.client_ref) {
+  // A torrent the client had before AnimeArr's grab isn't AnimeArr's to delete, even an unsafe one: you decide there.
+  if (row.not_ours) removed = "; it was in the download client before AnimeArr's grab, so it was left there for you to delete";
+  else if (row.client && row.client_ref) {
     try {
       await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
       removed = `; removed it from ${clientName(row.client) || row.client}`;
