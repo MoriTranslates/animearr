@@ -1,8 +1,10 @@
 /**
  * Junk logins can't lock the owner out (follow-up to review M3, found while porting the scheme to Tastearr). Behind a
  * proxy every client can share one address; junk user names from it used to take the 10 own-entry slots, so the real
- * user name landed in the address's throttled shared bucket. Now the account's own name always keeps its own entry,
- * and its password check has its own lane, so a burst of junk logins can't queue in front of it.
+ * user name landed in the address's throttled shared bucket. Now the account's own name always keeps its own entry.
+ * Password checks run a few at a time, shared fairly between addresses (blind review B4: a lane picked by the user
+ * name in the request was easy to fill, since the name isn't secret), with addresses the owner logged in from served
+ * first and signed-in requests never queued behind anonymous ones (B7).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,6 +21,7 @@ delete process.env.TRUST_PROXY;
 const { setAccount } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1");
 const { app } = await import("../server/index.js");
+const { DEVICE_COOKIE, validDevice } = await import("../server/system/auth.js");
 
 const login = (peer: string, username: string, password: string) =>
   app
@@ -48,11 +51,90 @@ test("control: guessing the real user name is still throttled on its own entry",
   assert.equal(await login(attacker, "captain", "pw-test-1"), 429, "even the right password waits while throttled");
 });
 
-test("a burst of junk logins is capped, and the owner's check has its own lane", async () => {
-  const junk = Array.from({ length: 60 }, (_, i) => login(`203.0.113.${i + 1}`, `burst${i}`, "nope"));
-  const owner = login("203.0.113.200", "captain", "pw-test-1");
-  const [codes, own] = await Promise.all([Promise.all(junk), owner]);
-  assert.ok(codes.includes(429), "past the queue, junk checks are refused instead of piling up");
-  assert.ok(codes.every((c) => c === 401 || c === 429));
-  assert.equal(own, 200, "the owner isn't stuck behind the junk queue");
+test("review B4: a flood naming the real user from 30 addresses can't refuse the owner", async () => {
+  // The reviewer's repro: 30 concurrent logins as captain/<random> from 30 addresses, then the owner from a fresh one.
+  const flood = Array.from({ length: 30 }, (_, i) => login(`192.0.2.${i + 1}`, "captain", `random${i}`));
+  const owner = login("192.0.2.200", "captain", "pw-test-1");
+  const [codes, own] = await Promise.all([Promise.all(flood), owner]);
+  assert.ok(
+    codes.every((c) => c === 401),
+    `the flood is answered, not refused: ${[...new Set(codes)]}`,
+  );
+  assert.equal(own, 200, "the owner gets in");
+});
+
+test("a browser the owner logged in with before (device cookie) is served ahead of a flood, from any address", async () => {
+  const first = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    remoteAddress: "198.18.0.7",
+    headers: { "x-animearr": "1" },
+    payload: { username: "captain", password: "pw-test-1" },
+  });
+  const device = [first.headers["set-cookie"]]
+    .flat()
+    .map((c) => String(c).split(";")[0])
+    .find((c) => c.startsWith(`${DEVICE_COOKIE}=`));
+  assert.ok(device, "a device cookie is set on login");
+  const done: string[] = [];
+  // Records finished password checks only (401 = checked and wrong, 200 = the owner); instant 429 refusals don't count.
+  const track = (p: Promise<number>, tag: string) => p.then((c) => (c !== 429 && done.push(tag), c));
+  // The flood names the real user, from 30 addresses and from the very address the owner is now behind.
+  const shared = "198.18.1.250";
+  const flood = [
+    ...Array.from({ length: 30 }, (_, i) => login(`198.18.1.${i + 1}`, "captain", `x${i}`)),
+    ...Array.from({ length: 12 }, (_, i) => login(shared, "captain", `z${i}`)),
+  ].map((p) => track(p, "flood"));
+  await new Promise((r) => setImmediate(r)); // the flood is queued first
+  const owner = track(
+    app
+      .inject({
+        method: "POST",
+        url: "/api/auth/login",
+        remoteAddress: shared,
+        headers: { "x-animearr": "1", cookie: device },
+        payload: { username: "captain", password: "pw-test-1" },
+      })
+      .then((r) => r.statusCode),
+    "owner",
+  );
+  const [, own] = await Promise.all([Promise.all(flood), owner]);
+  assert.equal(own, 200, "throttled and queued on its own, not with the address it shares");
+  // Its own lane: at most the checks already running when it arrived finish first, not the ~34 queued ones.
+  assert.ok(done.indexOf("owner") <= 4, `served after ${done.indexOf("owner")} of ${done.length - 1} flood checks`);
+  // A password change voids every device cookie (it is signed with the settings secret).
+  const id = validDevice(device.split("=")[1]);
+  assert.ok(id);
+  await setAccount("captain", "pw-test-1");
+  assert.equal(validDevice(device.split("=")[1]), null);
+});
+
+test("one address can't queue without limit: its extra checks are refused, other addresses aren't", async () => {
+  const many = Array.from({ length: 20 }, (_, i) => login("198.18.2.9", `name${i}`, "nope"));
+  const other = login("198.18.2.10", "captain", "pw-test-1");
+  const [codes, own] = await Promise.all([Promise.all(many), other]);
+  assert.ok(codes.includes(429), "past its share, one address gets 'too many at once'");
+  assert.equal(own, 200);
+});
+
+test("review B7: a signed-in password change isn't queued behind anonymous logins", async () => {
+  const cookieRes = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    remoteAddress: "198.18.3.1",
+    headers: { "x-animearr": "1" },
+    payload: { username: "captain", password: "pw-test-1" },
+  });
+  const cookie = String([cookieRes.headers["set-cookie"]].flat()[0]).split(";")[0];
+  const flood = Array.from({ length: 30 }, (_, i) => login(`198.18.4.${i + 1}`, "captain", `y${i}`));
+  const change = app.inject({
+    method: "PUT",
+    url: "/api/auth/account",
+    remoteAddress: "198.18.3.1",
+    headers: { cookie, "x-animearr": "1" },
+    payload: { currentPassword: "pw-test-1", password: "pw-test-9-xx" },
+  });
+  const [, r] = await Promise.all([Promise.all(flood), change]);
+  assert.equal(r.statusCode, 200, r.body);
+  await setAccount("captain", "pw-test-1");
 });

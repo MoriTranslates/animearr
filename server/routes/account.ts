@@ -2,7 +2,17 @@
 import { wizardState } from "../system/wizard.js";
 import { airingShowCount } from "../library/home.js";
 import { downloadsStatus } from "../grabs/downloads.js";
-import { authState, checkPasswordLimited, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
+import {
+  authState,
+  checkPasswordLimited,
+  COOKIE,
+  csrfOk,
+  defaultLoginRefusal,
+  DEVICE_COOKIE,
+  loginAllowed,
+  loginSucceeded,
+  validDevice,
+} from "../system/auth.js";
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
@@ -19,7 +29,7 @@ import {
 } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
-import { fail, writable, sessionCookie, webBuild } from "./common.js";
+import { deviceCookie, fail, writable, sessionCookie, webBuild } from "./common.js";
 
 export function registerAccountRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- status & account
@@ -111,16 +121,20 @@ export function registerAccountRoutes(app: FastifyInstance) {
     { config: { setup: true }, bodyLimit: 8 * 1024 },
     async (req, reply) => {
       if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
-      if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
+      // A browser the owner logged in with before has its own throttle entry and password lane (review B4).
+      const device = validDevice(req.cookies[DEVICE_COOKIE]);
+      if (!loginAllowed(req.ip, String(req.body?.username ?? ""), device))
+        throw fail("Too many attempts, wait a few seconds and try again", 429);
       const a = getSettings().auth;
       const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
-      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", okUser);
+      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", req.ip, { device });
       if (!okUser || !okPass) throw fail("Wrong username or password", 401);
       // Safety rule: the default password only works from the home network, until it's changed.
       const refused = defaultLoginRefusal(req, await usingDefaultPassword());
       if (refused) throw fail(refused, 403);
-      loginSucceeded(req.ip, a.username);
+      loginSucceeded(req.ip, a.username, device);
       sessionCookie(req, reply, a.username);
+      deviceCookie(req, reply, device);
       return { ok: true };
     },
   );
@@ -136,10 +150,12 @@ export function registerAccountRoutes(app: FastifyInstance) {
   app.put<{ Body: { currentPassword?: string; username?: string; password?: string } }>("/api/auth/account", async (req, reply) => {
     writable();
     const a = getSettings().auth;
-    if (!loginAllowed(req.ip, a.username)) throw fail("Too many attempts, wait a few seconds and try again", 429);
-    if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, true)))
+    const device = validDevice(req.cookies[DEVICE_COOKIE]);
+    if (!loginAllowed(req.ip, a.username, device)) throw fail("Too many attempts, wait a few seconds and try again", 429);
+    // Signed in already: never queued behind anonymous logins (review B7).
+    if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, req.ip, { signedIn: true })))
       throw fail("Current password is wrong", 403);
-    loginSucceeded(req.ip, a.username);
+    loginSucceeded(req.ip, a.username, device);
     const username = String(req.body?.username ?? a.username).trim() || a.username;
     const password = String(req.body?.password ?? "");
     if (password && password.length < 8) throw fail("New password must be at least 8 characters");
@@ -147,6 +163,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
     if (password) await setAccount(username, password);
     else patchSettings((s) => ({ ...s, auth: { ...s.auth, username } }));
     sessionCookie(req, reply, username);
+    deviceCookie(req, reply, device); // a new password voids old device cookies; this browser stays known
     return { ok: true };
   });
 

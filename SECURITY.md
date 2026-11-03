@@ -47,7 +47,13 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
 - Deliberate trade-off in the login throttle: your real user name always keeps its own back-off, so junk logins from
   the same address (everyone behind one proxy) can't lock you out. While an address floods made-up names, those get
   "too many attempts" (429) but the real name still answers "wrong password" (401), which can reveal the user name to
-  that flooder. The password is still needed, and guessing it is throttled on its own.
+  that flooder. The password is still needed, and guessing it is throttled on its own. **The user name is not treated
+  as a secret** (a fresh install's is the published `captain`).
+- Login floods: password checks run a few at a time, shared fairly between addresses, so a flood from many addresses
+  delays a login but doesn't refuse it. A browser you have logged in with before carries a signed "known device"
+  cookie (a year, httpOnly, kept after logout, void after a password change). It grants nothing by itself, but its
+  logins get their own back-off and their own password-check lane, so floods that name your user name, or come from
+  the address you share, can't lock that browser out.
 - Only a salted scrypt hash is stored; "still the default" is a comparison against that hash. The plaintext is never
   saved.
 - The default is only created when there is no account. Updating an install that already has an account never resets

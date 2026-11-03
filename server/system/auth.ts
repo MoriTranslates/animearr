@@ -318,9 +318,10 @@ function makeRoom(now: number) {
   drop(victim);
   return true;
 }
-export function loginAllowed(rawIp: string, user: string) {
-  const ip = throttleAddr(rawIp);
+export function loginAllowed(rawIp: string, user: string, device: string | null = null) {
   const now = Date.now();
+  if (device) return deviceAllowed(device, now); // a known device: its own entry, outside the main table
+  const ip = throttleAddr(rawIp);
   if (now - swept > 60_000) sweep(now);
   let key = throttleKey(ip, user);
   // The account's own user name always keeps its own entry: junk names from a shared address (everyone behind one
@@ -343,32 +344,108 @@ export function loginAllowed(rawIp: string, user: string) {
   attempts.set(key, a);
   return true;
 }
-export function loginSucceeded(ip: string, user: string) {
+export function loginSucceeded(ip: string, user: string, device: string | null = null) {
   drop(throttleKey(throttleAddr(ip), user));
+  if (device) deviceAttempts.delete(device);
 }
 /** For tests: how many throttle entries are held. */
 export const throttleSize = () => attempts.size;
 
-// scrypt is deliberately slow; unbounded parallel checks let a burst of logins tie up the thread pool. Checks run in a
-// limited lane with a bounded queue (more are refused with 429). A login for the account's own user name has its own
-// one-slot lane and queue, so junk logins filling the shared queue can't refuse or delay it.
+/*
+ * Known devices (blind review B4, the design Tastearr uses too): every successful login sets a signed, httpOnly
+ * device cookie for a year. It grants nothing (the password is still needed) and survives logout, but it is signed
+ * with the settings secret, so a password change voids it. A login carrying a valid one is throttled on that device's
+ * own entry in a small separate table and checks its password in its own lane. An attacker can't make one without
+ * logging in, so floods naming the real user, junk from a shared address and a full main table can't refuse a
+ * browser the owner has used before, whatever its address.
+ */
+export const DEVICE_COOKIE = "animearr_device";
+const DEVICE_TTL_MS = 365 * 86_400_000;
+const DEVICE_TABLE_MAX = 256;
+const deviceAttempts = new Map<string, { n: number; until: number; seen: number }>();
+export function makeDevice(id: string | null = null) {
+  const payload = `${id ?? crypto.randomBytes(12).toString("base64url")}.${Date.now() + DEVICE_TTL_MS}`;
+  return `${payload}.${hmac(`device:${payload}`)}`;
+}
+/** The device id of a valid device cookie, or null. */
+export function validDevice(token: string | undefined): string | null {
+  if (!token) return null;
+  const i = token.lastIndexOf(".");
+  if (i < 0) return null;
+  const payload = token.slice(0, i);
+  if (!safeEqual(token.slice(i + 1), hmac(`device:${payload}`))) return null;
+  const [id, exp] = payload.split(".");
+  return id && Number(exp) > Date.now() ? id : null;
+}
+/** The login throttle for a known device: its own entry, the same back-off as a user name. */
+function deviceAllowed(device: string, now: number) {
+  const a = deviceAttempts.get(device) ?? { n: 0, until: 0, seen: now };
+  if (a.until > now) return false;
+  a.n++;
+  a.seen = now;
+  if (a.n > FREE_TRIES) a.until = now + Math.min(15_000, 1000 * 2 ** (a.n - FREE_TRIES));
+  deviceAttempts.delete(device);
+  deviceAttempts.set(device, a);
+  // Only the owner's own browsers can be in here; past the cap the least recently used one is forgotten.
+  if (deviceAttempts.size > DEVICE_TABLE_MAX) deviceAttempts.delete(deviceAttempts.keys().next().value as string);
+  return true;
+}
+
+/*
+ * Password checks (scrypt) are deliberately slow; unbounded parallel checks let a burst of logins tie up the thread
+ * pool. At most SCRYPT_SLOTS anonymous checks run at once. Waiting ones are served fairly between address groups
+ * (round-robin; IPv6 by /64), each group waiting at most PER_GROUP_WAITING (more get 429), so a flood from many
+ * addresses only delays a newcomer by about one round instead of refusing it. Nothing here depends on the user name
+ * in the request: it isn't secret, and a lane picked by it was easy to fill (blind review B4). A known device has its
+ * own one-slot lane; signed-in requests (the password change) skip the queue entirely (B7).
+ */
 const SCRYPT_SLOTS = 2;
-const SCRYPT_QUEUE = 16;
-const lanes = { shared: { active: 0, waiting: [] as (() => void)[] }, owner: { active: 0, waiting: [] as (() => void)[] } };
-export async function checkPasswordLimited(pw: string, stored: string, owner: boolean) {
-  const lane = owner ? lanes.owner : lanes.shared;
-  if (lane.active < (owner ? 1 : SCRYPT_SLOTS)) lane.active++;
+const PER_GROUP_WAITING = 4;
+const MAX_WAITING_GROUPS = 4096;
+const DEVICE_LANE_WAITING = 8;
+type Lane = { running: number; slots: number; waiting: Map<string, (() => void)[]> }; // insertion order = round-robin
+const anonLane: Lane = { running: 0, slots: SCRYPT_SLOTS, waiting: new Map() };
+const deviceLane: Lane = { running: 0, slots: 1, waiting: new Map() };
+const tooMany = () => Object.assign(new Error("Too many login attempts at once, wait a few seconds and try again"), { statusCode: 429 });
+
+/** Hands a finished check's slot to the next group in turn (which then moves to the back of the round). */
+function handOver(lane: Lane) {
+  const pick = lane.waiting.keys().next().value;
+  if (pick === undefined) {
+    lane.running--;
+    return;
+  }
+  const q = lane.waiting.get(pick)!;
+  const next = q.shift()!;
+  lane.waiting.delete(pick);
+  if (q.length) lane.waiting.set(pick, q);
+  next();
+}
+
+export async function checkPasswordLimited(
+  pw: string,
+  stored: string,
+  rawIp: string,
+  opts: { signedIn?: boolean; device?: string | null } = {},
+) {
+  if (opts.signedIn) return checkPassword(pw, stored); // already authenticated: never queued behind anonymous logins
+  const lane = opts.device ? deviceLane : anonLane;
+  const g = opts.device ? "device" : throttleAddr(rawIp);
+  if (lane.running < lane.slots) lane.running++;
   else {
-    if (lane.waiting.length >= SCRYPT_QUEUE)
-      throw Object.assign(new Error("Too many login attempts at once, wait a few seconds and try again"), { statusCode: 429 });
-    await new Promise<void>((r) => lane.waiting.push(r)); // the finishing check hands its slot over
+    let q = lane.waiting.get(g);
+    if (!q) {
+      if (lane.waiting.size >= MAX_WAITING_GROUPS) throw tooMany();
+      q = [];
+      lane.waiting.set(g, q);
+    }
+    if (q.length >= (opts.device ? DEVICE_LANE_WAITING : PER_GROUP_WAITING)) throw tooMany();
+    await new Promise<void>((r) => q.push(r)); // a finishing check hands its slot over
   }
   try {
     return await checkPassword(pw, stored);
   } finally {
-    const next = lane.waiting.shift();
-    if (next) next();
-    else lane.active--;
+    handOver(lane);
   }
 }
 

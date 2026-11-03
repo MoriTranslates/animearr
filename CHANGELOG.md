@@ -37,8 +37,10 @@ All notable changes, newest first. The commit history has the crew's version of 
   AnimeArr hold up to 256 MB in memory per request), and the record of failed logins is capped: one address trying
   many user names, or a flood of addresses, can't grow it without limit or wipe the back-off of a real guesser.
   IPv6 clients are counted per /64 (one home or server), so rotating through their own addresses doesn't help.
-  Junk logins can't lock you out: your own user name keeps its own back-off, password checks run a few at a time
-  (a burst beyond that gets "too many attempts"), and yours has its own lane.
+  Junk logins can't lock you out: your own user name keeps its own back-off, password checks run a few at a time and
+  are shared fairly between addresses (one address queuing too many gets "too many attempts"), and a browser you have
+  logged in with before (a signed "known device" cookie) has its own back-off and lane, so even a flood that uses your
+  user name can't refuse it. A signed-in password change never waits behind anonymous logins.
 - **Private IPv6 (ULA, `fd…`/`fc…`) no longer counts as your home network by default**, just like Docker's 172.16/12:
   Docker's own IPv6 networks use it, so traffic through a Docker gateway could look local. **If you reach AnimeArr
   over Tailscale or a ULA address** and use "No password on my local network" (or still have the default password),
