@@ -977,3 +977,30 @@ test("a trailing [Group] tag is never promoted to the title when the name starts
     },
   ]);
 });
+
+test("'Title N SxxEyy' fallback: a sequel whose N equals the episode number is not season 1 of the shorter title (Kaiju No 8, Macross 7)", () => {
+  const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
+  const eps = Array.from({ length: 13 }, (_, i) => ({
+    id: i + 1,
+    season: 1,
+    episode: i + 1,
+    absolute: i + 1,
+    sceneSeason: null,
+    sceneEpisode: null,
+    sceneAbsolute: null,
+    airUtc: 0,
+  }));
+  const ctx = {
+    index: new AliasIndex({ library: [lib(1, "Kaiju No"), lib(2, "Macross")] }),
+    now: Date.parse("2026-11-02T00:00:00Z"),
+    episodesFor: () => eps,
+  };
+  // Real corpus names: the number is the sequel's own, and it just happens to equal the episode.
+  for (const name of [
+    "Kaiju.No.8.S01E08.1080p.BluRay.EAC3.AV1-TiZU",
+    "Macross.7.S01E07.Summer.Accident.1080p.DSNP.WEB-DL.AAC2.0.H.264-NTb",
+  ]) {
+    const r = identify(name, ctx);
+    assert.equal(r.candidate, null, `${name}: ${r.summary}`);
+  }
+});

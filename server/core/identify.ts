@@ -54,8 +54,16 @@ export function identify(
     !cands.length && parsed.episodes.length === 1 && !parsed.absolute.length ? /^(.*\S)\s+(\d{1,4})$/.exec(parsed.title) : null;
   if (numbered) {
     const n = Number(numbered[2]);
+    // A name whose N is also its own SxxEyy episode ("Golden Kamuy 4 S01E04") is a sequel, not an absolute number: only
+    // a remapped episode (scene numbering) can prove the number.
+    const season = parsed.season;
+    const ep = parsed.episodes[0];
     retry({ ...parsed, title: numbered[1], absolute: [n] }, (r) =>
-      r.episodes.length === 1 && r.episodes[0].absolute === n ? null : `${n} isn't the absolute number of ${r.label}`,
+      r.episodes.length !== 1 || r.episodes[0].absolute !== n
+        ? `${n} isn't the absolute number of ${r.label}`
+        : r.episodes[0].season === season && r.episodes[0].episode === ep
+          ? `"${numbered[1]} ${n}" is likely a sequel, not "${numbered[1]}" episode ${n}`
+          : null,
     );
   }
   // "Show 0 - 12" with no batch word: the parser reads "Show 0", episode 12 ("Steins;Gate 0 - 05"). Try "Show",
