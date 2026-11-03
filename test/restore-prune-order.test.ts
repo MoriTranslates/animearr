@@ -25,7 +25,9 @@ const oldestSafety = () =>
     .sort((a, b) => a.at - b.at)[0].name;
 
 test("M1: a failed restore of the oldest of three safety copies keeps it and its key, so a retry still finds it", async () => {
-  for (let i = 0; i < 3; i++) {
+  // Five, not three: a failed attempt now removes its own copy (blind review round 9, H2), so the two failed attempts
+  // below add none, and pruning still needs more than three others to have something to prune.
+  for (let i = 0; i < 5; i++) {
     safetyBackup("");
     await nextSecond();
   }

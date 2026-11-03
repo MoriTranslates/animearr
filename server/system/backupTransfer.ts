@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   BACKUP_DIR,
   backupNow,
+  CONFIG_DIR,
   db,
   dbState,
   listBackups,
@@ -215,6 +216,11 @@ export interface ApplyPaths {
 export interface ApplyHooks {
   /** Saves the current state first; throwing aborts before anything is touched. May return the copy's name for messages. */
   safety: () => string | void;
+  /**
+   * Removes the copy `safety` made, called only when the attempt fails before the swap began (nothing live touched, so
+   * that copy duplicates what is still in place). Returns what it couldn't remove. Never called once the swap began.
+   */
+  discardSafety?: () => string[];
   /** Runs once the copies are written and checked, before the live database is closed; throwing changes nothing. */
   beforeSwap: () => void;
   /** Releases the live database before its file is replaced. */
@@ -249,10 +255,17 @@ export function applyBackup(b: Pick<ParsedBackup, "db" | "key">, paths: ApplyPat
     if (r !== "ok") throw new Error(`the copy failed its check (${r})`);
     hooks.beforeSwap();
   } catch (e) {
+    const left = hooks.discardSafety?.() ?? []; // before the swap: the live files are untouched (blind review round 9, H2)
     for (const f of [tmpDb, tmpKey]) fs.rmSync(f, { force: true });
-    throw Object.assign(new Error(`Couldn't restore ${what}: ${(e as Error).message}; nothing was changed`, { cause: e }), {
-      statusCode: 500,
-    });
+    throw Object.assign(
+      new Error(
+        `Couldn't restore ${what}: ${(e as Error).message}; nothing was changed${
+          left.length ? `. Leftover safety copy files that are safe to delete: ${left.join(", ")}` : ""
+        }`,
+        { cause: e },
+      ),
+      { statusCode: 500 },
+    );
   }
   let keySwapped = false;
   try {
@@ -346,29 +359,97 @@ function copyIntoBackups(from: string, name: string, made: string[]) {
   if (fs.statSync(to).size !== fs.statSync(from).size) throw new Error(`the copy of ${path.basename(from)} came out short`);
 }
 
-/** Unpruned prerestore copies allowed before a restore is refused (failed restores never prune; blind review round 8, M1). */
-export const MAX_SAFETY_COPIES = 10;
-const SAFETY_MARGIN_BYTES = 16 * 1024 * 1024;
+const MB = 1024 * 1024;
+const MIN_MARGIN_BYTES = 64 * MB;
+
+/** Free bytes in `dir`'s filesystem, or null when that can't be measured (statfs unsupported or giving nonsense). */
+function freeBytes(dir: string): number | null {
+  let s: fs.StatsFs;
+  try {
+    s = fs.statfsSync(dir);
+  } catch (e) {
+    console.warn(`Couldn't measure free space in ${dir} (${(e as Error).message}); restoring without that check.`);
+    return null;
+  }
+  const bavail = Number(s.bavail);
+  const bsize = Number(s.bsize);
+  if (!Number.isFinite(bavail) || bavail < 0 || !Number.isFinite(bsize) || bsize <= 0) {
+    console.warn(
+      `Free space in ${dir} reads as nonsense (bavail ${String(s.bavail)}, bsize ${String(s.bsize)}); restoring without that check.`,
+    );
+    return null;
+  }
+  return bavail * bsize;
+}
+
+/** The filesystem `dir` is on, so folders sharing one disk are checked against their combined need. */
+function deviceOf(dir: string): string {
+  try {
+    return `dev:${fs.statSync(dir).dev}`;
+  } catch {
+    // Unknown device: the folder is checked on its own need only. A missing folder fails the write that follows anyway.
+    return `dir:${dir}`;
+  }
+}
 
 /**
- * Refuses, before anything is written or changed, when the backups folder already holds MAX_SAFETY_COPIES prerestore
- * copies or lacks room for another (database plus its wal, key and a margin). Never deletes anything: the user clears
- * space or old copies, or a successful restore prunes them.
+ * Refuses, before anything is written or changed, when a folder the restore writes to lacks room (blind review round 9,
+ * M1): BACKUP_DIR takes the safety copy (database, wal, key), CONFIG_DIR takes the restore's temp database and key
+ * (`incoming` bytes, when known). Folders on one filesystem are checked against their combined need, plus a margin of
+ * 64 MB or 10% of the database, whichever is larger. A folder whose free space can't be measured is skipped (M2):
+ * "couldn't check" is not "no room", and a write to a disk that really is full fails safely on its own.
+ * Never deletes anything, and there is no cap on how many copies may exist (H1).
  */
-function checkSafetyRoom() {
-  const copies = listBackups().filter((b) => b.kind === "prerestore").length;
-  if (copies >= MAX_SAFETY_COPIES)
-    throw new Error(
-      `${copies} safety copies from earlier restores are already in ${BACKUP_DIR} (the limit is ${MAX_SAFETY_COPIES}). Delete old prerestore copies from the backups list, or complete a restore, which prunes them`,
-    );
-  let need = SAFETY_MARGIN_BYTES;
-  for (const f of [USER_DB, `${USER_DB}-wal`, KEY_FILE]) if (fs.existsSync(f)) need += fs.statSync(f).size;
-  const s = fs.statfsSync(BACKUP_DIR);
-  const free = Number(s.bavail) * Number(s.bsize);
-  if (free < need)
-    throw new Error(
-      `not enough free disk space in ${BACKUP_DIR}: about ${Math.ceil(need / 1048576)} MB is needed for a safety copy but only ${Math.floor(free / 1048576)} MB is free`,
-    );
+function checkSafetyRoom(incoming: number) {
+  const size = (f: string) => (fs.existsSync(f) ? fs.statSync(f).size : 0);
+  const dbBytes = size(USER_DB) + size(`${USER_DB}-wal`);
+  const keyBytes = size(KEY_FILE);
+  const targets = [
+    { dir: BACKUP_DIR, need: dbBytes + keyBytes },
+    { dir: CONFIG_DIR, need: incoming + keyBytes },
+  ];
+  const margin = Math.max(MIN_MARGIN_BYTES, Math.ceil(dbBytes / 10));
+  const devs = targets.map((t) => deviceOf(t.dir));
+  for (const [i, t] of targets.entries()) {
+    const need = margin + targets.reduce((sum, o, j) => sum + (devs[j] === devs[i] ? o.need : 0), 0);
+    const free = freeBytes(t.dir);
+    if (free !== null && free < need)
+      throw new Error(
+        `not enough free disk space in ${t.dir}: about ${Math.ceil(need / MB)} MB is needed for the safety copy and the restore but only ${Math.floor(free / MB)} MB is free`,
+      );
+  }
+}
+
+/**
+ * Removes the safety copy a restore attempt just made, for a failure BEFORE the swap began (blind review round 9, H2):
+ * the live database and key were never touched, so that copy only duplicates them and nothing is lost. Only the names
+ * this attempt wrote are touched, never any other copy. Returns what couldn't be removed, for the error message.
+ */
+function discardSafetyCopy(made: readonly string[]): string[] {
+  const left: string[] = [];
+  for (const f of made)
+    try {
+      fs.rmSync(path.join(BACKUP_DIR, f), { force: true });
+    } catch (e) {
+      left.push(`${f} (${(e as Error).message})`);
+    }
+  return left;
+}
+
+/** The safety hooks for one restore attempt: make the copy, and discard exactly that copy if the attempt fails pre-swap. */
+function safetyHooks(label: string, incoming: number): Pick<ApplyHooks, "safety" | "discardSafety"> {
+  let made: string[] = [];
+  return {
+    safety: () => {
+      made = writeSafetyCopy(label, incoming);
+      return made.join(", ");
+    },
+    discardSafety: () => {
+      const left = discardSafetyCopy(made);
+      made = [];
+      return left;
+    },
+  };
 }
 
 /**
@@ -377,13 +458,19 @@ function checkSafetyRoom() {
  * round 5, M2). A healthy database is copied with VACUUM INTO. One flagged corrupt can't be, and that is exactly when a
  * restore is needed (round 5, M1): its raw files are copied byte for byte as animearr-damaged-*, kept out of the restore
  * list (they would fail its check) and never pruned. If the copy can't be made, what it wrote is removed and a
- * safetyCopyFailed error is thrown; nothing live has been touched. Returns the file names, for messages.
+ * safetyCopyFailed error is thrown; nothing live has been touched. Returns the file names, for messages. `incoming` is
+ * the size of the database about to be restored, when known, for the free-space check.
  */
-export function safetyBackup(label: string): string {
+export function safetyBackup(label: string, incoming = 0): string {
+  return writeSafetyCopy(label, incoming).join(", ");
+}
+
+/** safetyBackup, returning the names of the files it wrote. */
+function writeSafetyCopy(label: string, incoming: number): string[] {
   const made: string[] = [];
   let keyName: string;
   try {
-    checkSafetyRoom();
+    checkSafetyRoom(incoming);
     let base: string;
     if (!dbState.corrupt) {
       const dbName = backupNow("prerestore", label, false); // pruned only after a restore succeeds (pruneSafetyCopies)
@@ -424,7 +511,7 @@ export function safetyBackup(label: string): string {
     );
   }
   // Nothing is pruned here: this runs before the restore, which may still fail (see pruneSafetyCopies).
-  return made.join(", ");
+  return made;
 }
 
 /**
@@ -549,7 +636,7 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
     { db: bytes, key },
     { db: USER_DB, key: KEY_FILE },
     {
-      safety: () => safetyBackup(""),
+      ...safetyHooks("", bytes.length),
       beforeSwap,
       closeDb: () => db.close(),
       what: name,
@@ -566,7 +653,7 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
  * drop that protection silently. A failure once the database is closed is a restoreStopped (see applyBackup).
  */
 export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void) {
-  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: () => safetyBackup("upload"), beforeSwap, closeDb: () => db.close() });
+  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { ...safetyHooks("upload", b.db.length), beforeSwap, closeDb: () => db.close() });
   pruneSafetyCopies(); // the swap has committed
 }
 
