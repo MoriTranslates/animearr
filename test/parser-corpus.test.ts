@@ -1086,3 +1086,23 @@ test("language and dub words in a parenthesised group are not alternate titles (
   assert.deepEqual(parseRelease("Show S01E01 (German Teacher Show, Dual-Audio)").altTitles, ["German Teacher Show"]);
   assert.deepEqual(parseRelease("Show S01E01 (Japanese Ghost Story, Dual-Audio)").altTitles, ["Japanese Ghost Story"]);
 });
+
+test("an all-bracket name with a season bracket after the title never reads as season 1 (round-3 M2)", () => {
+  const title = "Show Name That Is Long Enough";
+  const seasonBrackets = ["S2", "S02", "Season 2", "2nd Season", "Part 2", "第二季"];
+  for (const sb of seasonBrackets) {
+    for (const tail of ["[01]", "[01][1080p]", "[01-12][BDRip]"]) {
+      const n = `[Group][${title}][${sb}]${tail}`;
+      const p = parseRelease(n);
+      // Unknown (no title) rather than a title with the season dropped; never season null with a title.
+      assert.equal(p.title, "", n);
+    }
+  }
+  // Must not change: the same all-bracket names without a season bracket still find the title.
+  assert.equal(parseRelease(`[Group][${title}][01][1080p]`).title, title);
+  assert.equal(parseRelease(`[Group][${title}][01-13][BDRip][1080p][Multi-Sub]`).title, title);
+  assert.equal(
+    parseRelease("[喵萌奶茶屋][工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]").title,
+    "Hataraku Saibou Black",
+  );
+});

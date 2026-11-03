@@ -454,7 +454,17 @@ export function parseRelease(input: string): ParsedRelease {
       // An all-bracket name, "[Group][Title][01-13][BDRip]...": the bracket right after the group, followed straight
       // by another bracket, is the title ("[工作細胞BLACK / Hataraku Saibou Black]"), not a tag to drop.
       const titleBr = s.match(/^\s*\[([^\]]{1,100})\]\s*(?=\[)/);
-      if (titleBr && /\p{L}/u.test(titleBr[1]) && !META_TOKEN.test(titleBr[1]) && !/^\d/.test(titleBr[1]) && !RES_RE.test(titleBr[1]))
+      // A later season bracket ("[S2]", "[Season 2]", "[2nd Season]", "[Part 2]") would be lost with the title found,
+      // and the name would match season 1 by absolute number. Leave such a name unknown instead.
+      const seasonBr = /\[\s*(?:S\d{1,2}|Season\s*\d+|\d{1,2}(?:st|nd|rd|th)\s+Season|Part\s*\d+|第[^\]]{1,3}[季期部])\s*\]/i;
+      if (
+        titleBr &&
+        /\p{L}/u.test(titleBr[1]) &&
+        !META_TOKEN.test(titleBr[1]) &&
+        !/^\d/.test(titleBr[1]) &&
+        !RES_RE.test(titleBr[1]) &&
+        !seasonBr.test(s.slice(titleBr[0].length))
+      )
         s = `${titleBr[1]} ${s.slice(titleBr[0].length)}`;
     }
   }
