@@ -174,7 +174,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
     // Signed in already: never queued behind anonymous logins (review B7).
     if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, req.ip, { signedIn: true })))
       throw fail("Current password is wrong", 403);
-    loginSucceeded(req.ip, a.username, device);
+    loginSucceeded(req.ip, a.username, device ?? "signed-in"); // clear the lane loginAllowed counted it in
     const username = String(req.body?.username ?? a.username).trim() || a.username;
     const password = String(req.body?.password ?? "");
     if (password && password.length < 8) throw fail("New password must be at least 8 characters");
