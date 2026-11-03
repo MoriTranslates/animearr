@@ -70,6 +70,54 @@ test("plainText strips the other tags AniList/TMDB send: tables, details, boolea
   assert.equal(plainText("a <b and c> d"), "a <b and c> d");
 });
 
+test("plainText is linear: unclosed tags and other hostile plots finish fast (blind review misc H1)", () => {
+  // The old tag regex took about 22 s on the n=18 input and more than 30 s on n=22. Tolerance, not exact numbers.
+  const KB100 = 100 * 1024;
+  const fill = (unit: string) => unit.repeat(Math.ceil(KB100 / unit.length));
+  const inputs = [
+    "<a x=" + "aaaa=".repeat(18) + "zzzz",
+    "<a x=" + "aaaa=".repeat(22) + "zzzz",
+    "<a x=" + fill("aaaa="),
+    fill("<a x=aaaa "),
+    fill('<a x="'),
+    fill("<a x='y' "),
+    fill("<!--"),
+    fill("<"),
+    fill("<script>"),
+    fill("<b open "),
+    fill("<spoiler>"),
+    fill("</x>"),
+  ];
+  for (const s of inputs) {
+    const t0 = performance.now();
+    const out = plainText(s);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 1000, `${s.slice(0, 20)}... (${s.length} chars) took ${ms.toFixed(0)} ms`);
+    assert.equal(typeof out, "string");
+  }
+});
+
+test("plainText removes unknown tags only when they clearly are tags; script and style lose their contents", () => {
+  assert.equal(plainText("<spoiler>x</spoiler>"), "x");
+  assert.equal(plainText("<section>hi</section>"), "hi");
+  assert.equal(plainText("<video src=x></video>after"), "after");
+  assert.equal(plainText("<ruby>x</ruby>"), "x");
+  assert.equal(plainText("a<script>alert(1)</script>b"), "ab");
+  assert.equal(plainText('a<style type="text/css">p { color: red }</style>b'), "ab");
+  assert.equal(plainText("a<script>never closed"), "anever closed", "an unclosed script loses only its tag");
+  assert.equal(plainText("a<custom-tag/>b"), "ab", "self-closing is clearly a tag");
+  assert.equal(plainText("x<br/ >y"), "x\ny", "space after the slash");
+  // Still text: lone unknown names, tag-like words, comparisons, an unclosed comment.
+  assert.equal(plainText("1 <foo> 2"), "1 <foo> 2");
+  assert.equal(plainText("a </foo> b"), "a </foo> b");
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+  assert.equal(plainText("a <spoiler and c> d </spoiler>"), "a <spoiler and c> d </spoiler>");
+  assert.equal(plainText("x<3 and y>2"), "x<3 and y>2");
+  assert.equal(plainText("a <!-- open"), "a <!-- open");
+  // A failed tag does not hide a real one after it.
+  assert.equal(plainText('<a x="never closed <i>ok</i>'), '<a x="never closed ok');
+});
+
 test("stripXmlIllegal drops exactly the characters XML 1.0 forbids (code points as numbers)", () => {
   const ch = (cp: number) => String.fromCharCode(cp);
   const dropped = [0x00, 0x01, 0x08, 0x0b, 0x0c, 0x0e, 0x1b, 0x1f, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];

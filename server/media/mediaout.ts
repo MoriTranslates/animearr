@@ -25,6 +25,7 @@ import { allowedImage } from "../metadata/img.js";
 import { notifyMediaServers } from "./mediaservers.js";
 import { mappedPath } from "../system/paths.js";
 import { stripXmlIllegal } from "../core/xml.js";
+import { stripTags } from "./htmltext.js";
 import { notifyPlex } from "./plex.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
@@ -66,20 +67,11 @@ const esc = (s: string) => stripXmlIllegal(s).replace(/&/g, "&amp;").replace(/</
 const el = (name: string, v: string | number | null | undefined, attrs = "") =>
   v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
 /**
- * A real HTML tag: a known element name, then only name=value attributes (value quoted, so a ">" inside it is part of
- * the value, or unquoted), then ">" or "/>". "a <b and c> d", "x<3" and "1 <foo> 2" don't fit and stay text.
+ * AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)", comments): plain text for the NFO. Tags and
+ * comments are removed by a linear-time scanner (htmltext.ts), never a regex: "a <b and c> d" and "x<3" stay text.
  */
-const TAG_NAMES =
-  "a|abbr|b|big|blockquote|br|center|cite|code|dd|del|details|div|dl|dt|em|font|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|pre|q|s|small|span|strike|strong|sub|summary|sup|table|tbody|td|tfoot|th|thead|tr|tt|u|ul|wbr";
-// Valueless attributes are only the HTML boolean ones, so "a <b and c> d" stays text.
-const BOOL_ATTRS = "noshade|ismap|hidden|nowrap|open|compact|disabled|checked|selected|async|controls|loop";
-const ATTR = `(?:\\s*[A-Za-z_:][\\w:.-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'<>=\`]+)|\\s+(?:${BOOL_ATTRS}))`;
-const TAG = new RegExp(`<\\/?(${TAG_NAMES})(${ATTR}*)\\s*\\/?>`, "gi");
-/** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)", comments): plain text for the NFO. */
 export const plainText = (html: string | null | undefined) =>
-  (html ?? "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(TAG, (_m, name: string) => (name.toLowerCase() === "br" ? "\n" : ""))
+  stripTags(html ?? "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
