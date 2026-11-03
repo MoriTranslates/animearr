@@ -141,8 +141,9 @@ All notable changes, newest first. The commit history has the crew's version of 
 ### Known limits
 - **An indexer that always refuses one odd title keeps that episode retrying.** If an indexer answers a query with an
   error every time (for example HTTP 400 on a title with "[", "&" or a very long alias), AnimeArr can't tell that apart
-  from the indexer being down, so the search doesn't count: the episode is tried again every 30 minutes, never backs
-  off and never gives up, but it doesn't use up its attempts either. Disabling that indexer stops it.
+  from the indexer being down, so the search counts as an outage: it retries on the backoff ladder (30 minutes, up to
+  1 day), never uses up an attempt and never gives up. Repeated refusals still count toward that indexer's circuit
+  breaker. Disabling that indexer stops it.
 
 ## 0.10.0-beta (2026-10-31): works with your apps, aims for the best
 

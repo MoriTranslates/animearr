@@ -796,7 +796,7 @@ export function planWrongLanguage(now = Date.now()) {
         added += Number(
           db
             .prepare(
-              "UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, next_at = ?, last_why = ? WHERE episode_id = ?",
+              "UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, outage_streak = 0, next_at = ?, last_why = ? WHERE episode_id = ?",
             )
             .run(now, lastWhy, id).changes,
         );
@@ -829,7 +829,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const state = opts.replace ? "replace" : "waiting";
   for (const e of ids)
     db.prepare(
-      "INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, last_why = ?",
+      "INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, outage_streak = 0, last_why = ?",
     ).run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
 }
 

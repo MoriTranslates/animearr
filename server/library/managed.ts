@@ -481,7 +481,7 @@ function reopenReturned(episodeId: number, kind: "new" | "backlog", nextAt: numb
   return Number(
     db
       .prepare(
-        "UPDATE search_state SET state = ?, kind = ?, attempts = 0, next_at = ?, last_why = 'back in Sonarr' WHERE episode_id = ? AND state = 'done' AND last_why = ?",
+        "UPDATE search_state SET state = ?, kind = ?, attempts = 0, outage_streak = 0, next_at = ?, last_why = 'back in Sonarr' WHERE episode_id = ? AND state = 'done' AND last_why = ?",
       )
       .run(kind === "new" ? "waiting" : "backlog", kind, nextAt, episodeId, LEFT_SONARR).changes,
   );
@@ -526,7 +526,7 @@ export function planBacklog(now = Date.now()) {
   const b = getSettings().backlog;
   if (b.enabled)
     db.prepare(
-      "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?",
+      "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?",
     ).run(now, now - b.retryDays * DAY);
   closeFound(now);
   if (!b.enabled) return 0;
@@ -537,7 +537,7 @@ export function planBacklog(now = Date.now()) {
   // A 'done' episode that is missing again (file deleted) rejoins, but never right after AnimeArr imported it
   // (the cache can lag behind the import until the next refresh).
   const reopen = db.prepare(
-    "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
+    "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
   );
   const listEps = cache.prepare(
     "SELECT id, air_utc FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?",

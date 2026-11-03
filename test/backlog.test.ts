@@ -108,3 +108,19 @@ test("an episode AnimeArr just imported isn't reopened while the cache lags behi
   planBacklog(t0 + 30 * DAY);
   assert.equal(state(2001)!.state, "backlog", "missing again long after the import");
 });
+
+test("a search that reopens (missing again, or back from gave-up) clears its stale outage streak", () => {
+  const streak = (id: number) =>
+    (db.prepare("SELECT outage_streak AS s FROM search_state WHERE episode_id = ?").get(id) as { s: number }).s;
+  patchSettings((s) => ({ ...s, backlog: { ...s.backlog, enabled: true } }));
+  const t0 = now + 400 * DAY;
+  cache.prepare("UPDATE episodes SET has_file = 0 WHERE id = 2001").run();
+  db.prepare("UPDATE search_state SET state = 'done', last_at = 0, grab_id = NULL, outage_streak = 3 WHERE episode_id = 2001").run();
+  planBacklog(t0);
+  assert.equal(state(2001)!.state, "backlog");
+  assert.equal(streak(2001), 0, "missing again");
+  db.prepare("UPDATE search_state SET state = 'gave-up', last_at = 0, outage_streak = 4 WHERE episode_id = 2001").run();
+  planBacklog(t0 + 400 * DAY);
+  assert.equal(state(2001)!.state, "backlog");
+  assert.equal(streak(2001), 0, "back from gave-up");
+});

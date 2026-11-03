@@ -291,3 +291,14 @@ test("movie dual upgrades: indexers that keep a search from counting back it off
   assert.equal(await searchedAt(t + 29 * MIN), false);
   assert.equal(await searchedAt(t + 30 * MIN), true, "the next outage starts from 30 min again");
 });
+
+test("a movie that is wanted again starts its outage backoff from 30 min: the stale outage streak is cleared", () => {
+  db.prepare("UPDATE movie_search SET state = 'done', attempts = 2, outage_streak = 3 WHERE movie_id = 1").run();
+  planMovies(now);
+  const row = db.prepare("SELECT state, outage_streak FROM movie_search WHERE movie_id = 1").get() as {
+    state: string;
+    outage_streak: number;
+  };
+  assert.equal(row.state, "waiting");
+  assert.equal(row.outage_streak, 0);
+});

@@ -90,7 +90,7 @@ export function planMovies(now = Date.now()) {
       // A movie that is wanted again (file deleted) or whose release date moved.
       if (row.state === "done")
         db.prepare(
-          "UPDATE movie_search SET state = 'waiting', attempts = 0, next_at = ?, last_why = 'wanted again' WHERE movie_id = ?",
+          "UPDATE movie_search SET state = 'waiting', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'wanted again' WHERE movie_id = ?",
         ).run(now, m.id);
       else if (row.state === "unreleased" && due !== null)
         db.prepare("UPDATE movie_search SET state = ?, next_at = ?, release_at = ?, last_why = ? WHERE movie_id = ?").run(
