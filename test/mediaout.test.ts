@@ -15,6 +15,7 @@ const { tvshowNfo, episodeNfo, seasonNfo, plexmatch, plainText, syncSeriesFiles,
 const { embyRequest, kodiRequest, testEmbyLike, testKodi, notifyMediaServers, flushMediaServers } =
   await import("../server/media/mediaservers.js");
 const { renderSeriesFolder, serverIdHint } = await import("../server/import/naming.js");
+const { stripXmlIllegal } = await import("../server/core/xml.js");
 
 const show = {
   title: "Frieren: Beyond Journey's End",
@@ -59,15 +60,28 @@ test("episode NFO: one block per episode (multi-episode files), season.nfo, .ple
   assert.match(pm, /\ntitle: Frieren: Beyond Journey's End\nyear: 2023\ntvdbid: 424536\ntmdbid: 209867\n$/);
 });
 
+test("stripXmlIllegal drops exactly the characters XML 1.0 forbids (code points as numbers)", () => {
+  const ch = (cp: number) => String.fromCharCode(cp);
+  const dropped = [0x00, 0x01, 0x08, 0x0b, 0x0c, 0x0e, 0x1b, 0x1f, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
+  for (const cp of dropped) assert.equal(stripXmlIllegal("a" + ch(cp) + "b"), "ab", `U+${cp.toString(16)}`);
+  const kept = [0x09, 0x0a, 0x0d, 0x20, 0x7f, 0xe9, 0x2028, 0xfeff, 0xfffd];
+  for (const cp of kept) assert.equal(stripXmlIllegal("a" + ch(cp) + "b"), "a" + ch(cp) + "b", `U+${cp.toString(16)}`);
+  // A surrogate pair (an emoji) is one valid character; a high half at the very end is not.
+  const emoji = String.fromCodePoint(0x1f389);
+  assert.equal(stripXmlIllegal("x" + emoji + "y"), "x" + emoji + "y");
+  assert.equal(stripXmlIllegal("x" + ch(0xd83c)), "x");
+  assert.equal(stripXmlIllegal(ch(0xdf89) + ch(0xd83c) + "z"), "z", "halves in the wrong order are two lone surrogates");
+  const plain = "no change";
+  assert.equal(stripXmlIllegal(plain), plain);
+});
+
 test("NFO and .plexmatch writers: control bytes, '<' in plain text and newlines in titles (review L15)", () => {
-  const illegal =
-    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
   // A stray control byte (or a lone surrogate) makes the whole NFO unparseable: it is dropped.
   const nfo = tvshowNfo({ ...show, title: "Bad\u0001Title\u0000", plot: "Plot\u000Bwith\u001Fbytes \uD800 end" });
-  assert.ok(!illegal.test(nfo), JSON.stringify(nfo));
+  assert.equal(stripXmlIllegal(nfo), nfo, JSON.stringify(nfo));
   assert.match(nfo, /<title>BadTitle<\/title>/);
   const ep = episodeNfo("Show\u0007", [{ season: 1, episode: 1, title: "Ep\u0002 one", plot: "x\u0008y" }]);
-  assert.ok(!illegal.test(ep), JSON.stringify(ep));
+  assert.equal(stripXmlIllegal(ep), ep, JSON.stringify(ep));
   // Tabs, newlines and ordinary Unicode survive.
   assert.match(tvshowNfo({ ...show, plot: "Line one\nLine two\tend 葬送 🎉" }), /<plot>Line one\nLine two\tend 葬送 🎉<\/plot>/);
   // plainText only removes real tags: "a < b and c > d" is text.

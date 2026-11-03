@@ -24,6 +24,7 @@ import { enrichEpisodes, ffmpegFrame, type MetaDeps } from "../metadata/episodem
 import { allowedImage } from "../metadata/img.js";
 import { notifyMediaServers } from "./mediaservers.js";
 import { mappedPath } from "../system/paths.js";
+import { stripXmlIllegal } from "../core/xml.js";
 import { notifyPlex } from "./plex.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
@@ -61,11 +62,7 @@ export interface EpisodeMeta {
   stillSource?: "tmdb" | "sonarr";
 }
 
-/** Characters XML 1.0 forbids (C0 controls except tab/newline/CR, U+FFFE/U+FFFF, lone surrogates): one makes the file unparseable. */
-const XML_ILLEGAL =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-const esc = (s: string) =>
-  s.replace(XML_ILLEGAL, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s: string) => stripXmlIllegal(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const el = (name: string, v: string | number | null | undefined, attrs = "") =>
   v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
 /**
