@@ -448,7 +448,7 @@ test("R1: a late reconcile never touches a new file that already has rows at the
   };
   const FROM = `${SEASON_ARR}/frieren 19 old.mkv`;
   const TO = `${SEASON_ARR}/Frieren S01E19.mkv`;
-  // Sonarr's rename was still running when AnimeArr stopped waiting (an entry from before sizes were kept).
+  // Sonarr's rename was still running when AnimeArr stopped waiting.
   db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('pendingRenames', ?)").run(
     JSON.stringify([{ from: FROM, to: TO, at: Date.now() }]),
   );
@@ -471,35 +471,81 @@ test("R1: a late reconcile never touches a new file that already has rows at the
   assert.ok(!left || !left.value.includes("frieren 19"), "the entry is dropped: a newer import owns the path");
 });
 
-test("R1: a late reconcile leaves the rows when the file at the new name isn't the renamed one (size differs)", async () => {
-  const { reconcilePendingRenames } = (await import("../server/import/importer.js")) as unknown as {
-    reconcilePendingRenames: (now?: number) => void;
-  };
-  const from = libraryFile(520, "frieren 20.mkv", [103]);
-  const to = `${SEASON_ARR}/Frieren S01E20.mkv`;
-  await applyRenameRouted(424536, [520], {
+/** Leaves a Sonarr rename of file `id` pending (still running when AnimeArr stops waiting). */
+async function pendingSonarrRename(id: number, name: string, newName: string, ep: number) {
+  await applyRenameRouted(424536, [id], {
     sonarrOn: () => true,
     preview: async () => [
       {
         seriesId: 10,
         seasonNumber: 1,
-        episodeNumbers: [20],
-        episodeFileId: 520,
-        existingPath: "Season 01/frieren 20.mkv",
-        newPath: "Season 01/Frieren S01E20.mkv",
+        episodeNumbers: [ep],
+        episodeFileId: id,
+        existingPath: `Season 01/${name}`,
+        newPath: `Season 01/${newName}`,
       },
     ],
-    renameFiles: async () => ({ id: 11 }),
-    getCommand: async () => ({ id: 11, status: "started" }),
+    renameFiles: async () => ({ id: id + 1000 }),
+    getCommand: async () => ({ id: id + 1000, status: "started" }),
     sleep: async () => undefined,
   });
-  // Sonarr's rename never happened; the old file went away and a different (bigger) file landed at the new name, with
-  // no rows of its own yet.
-  fs.rmSync(path.join(SEASON, "frieren 20.mkv"));
-  write(path.join(SEASON, "Frieren S01E20.mkv"), "a different, bigger release");
+}
+
+test("R2: a re-encode (Tdarr, subtitle muxing) between the rename and the reconcile: the rows still follow the file", async () => {
+  const { reconcilePendingRenames } = (await import("../server/import/importer.js")) as unknown as {
+    reconcilePendingRenames: (now?: number) => void;
+  };
+  const from = libraryFile(520, "frieren 20.mkv", [103]);
+  const to = `${SEASON_ARR}/Frieren S01E20.mkv`;
+  await pendingSonarrRename(520, "frieren 20.mkv", "Frieren S01E20.mkv", 20);
+  // Sonarr renames the file late, and Tdarr re-encodes it before the reconcile runs: a different size.
+  fs.renameSync(path.join(SEASON, "frieren 20.mkv"), path.join(SEASON, "Frieren S01E20.mkv"));
+  write(path.join(SEASON, "Frieren S01E20.mkv"), "the same episode, re-encoded to a different size");
   reconcilePendingRenames();
-  assert.deepEqual(rowsAt(to), NONE, "nothing from the old file lands on a different file");
-  assert.deepEqual(rowsAt(from), ALL, "the old rows are left alone, never deleted");
+  assert.deepEqual(rowsAt(to), ALL, "the rows followed the re-encoded file");
+  assert.deepEqual(rowsAt(from), NONE);
   const left = db.prepare("SELECT value FROM kv WHERE key = 'pendingRenames'").get() as { value: string } | undefined;
-  assert.ok(!left || !left.value.includes("frieren 20"), "the entry is dropped");
+  assert.ok(!left || !left.value.includes("frieren 20"), "the entry is done");
+});
+
+test("R2: a failed stat or unreadable new name means 'can't tell yet': the entry stays and a later run moves the rows", async () => {
+  const { reconcilePendingRenames } = (await import("../server/import/importer.js")) as unknown as {
+    reconcilePendingRenames: (now?: number) => void;
+  };
+  const from = libraryFile(521, "frieren 21.mkv", [104]);
+  const to = `${SEASON_ARR}/Frieren S01E21.mkv`;
+  await pendingSonarrRename(521, "frieren 21.mkv", "Frieren S01E21.mkv", 21);
+  fs.renameSync(path.join(SEASON, "frieren 21.mkv"), path.join(SEASON, "Frieren S01E21.mkv"));
+  const target = path.resolve(path.join(SEASON, "Frieren S01E21.mkv"));
+  const realStat = fs.statSync;
+  const realAccess = fs.accessSync;
+  const eio = () => Object.assign(new Error("EIO: simulated"), { code: "EIO" });
+  const hit = (p: fs.PathLike) => path.resolve(String(p)) === target;
+  let accessFails = true;
+  (fs as { statSync: unknown }).statSync = (p: fs.PathLike, ...rest: unknown[]) => {
+    if (hit(p)) throw eio();
+    return (realStat as (...a: unknown[]) => unknown)(p, ...rest);
+  };
+  (fs as { accessSync: unknown }).accessSync = (p: fs.PathLike, ...rest: unknown[]) => {
+    if (accessFails && hit(p)) throw eio();
+    return (realAccess as (...a: unknown[]) => unknown)(p, ...rest);
+  };
+  try {
+    // Run 1: the new name can't be read at all (a share hiccup): nothing moves, and the entry waits.
+    reconcilePendingRenames();
+    assert.deepEqual(rowsAt(from), ALL, "can't tell yet: the rows stay");
+    const kept = db.prepare("SELECT value FROM kv WHERE key = 'pendingRenames'").get() as { value: string } | undefined;
+    assert.ok(kept?.value.includes("frieren 21"), "the entry is kept for the next run");
+    // Run 2: the name is reachable again but a stat of it still fails: never read as 'a different file'.
+    accessFails = false;
+    reconcilePendingRenames();
+  } finally {
+    (fs as { statSync: unknown }).statSync = realStat;
+    (fs as { accessSync: unknown }).accessSync = realAccess;
+  }
+  reconcilePendingRenames(); // a healthy run, in case run 2 waited
+  assert.deepEqual(rowsAt(to), ALL, "the rows followed the file, never stranded");
+  assert.deepEqual(rowsAt(from), NONE);
+  const left = db.prepare("SELECT value FROM kv WHERE key = 'pendingRenames'").get() as { value: string } | undefined;
+  assert.ok(!left || !left.value.includes("frieren 21"), "the entry is done");
 });

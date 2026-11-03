@@ -1146,8 +1146,7 @@ export async function renamePlan(
 
 // ---------------------------------------------------------------- Sonarr renames still running
 
-/** `size`: the renamed file's size when AnimeArr stopped waiting (absent in entries saved before it was kept). */
-type PendingRename = { from: string; to: string; at: number; size?: number };
+type PendingRename = { from: string; to: string; at: number };
 const PENDING_RENAMES = "pendingRenames";
 const WEEK = 7 * 86_400_000;
 
@@ -1164,23 +1163,15 @@ function savePendingRenames(list: PendingRename[]) {
 }
 function addPendingRenames(items: { from: string; to: string }[], now = Date.now()) {
   const list = pendingRenames().filter((p) => !items.some((i) => i.from === p.from));
-  savePendingRenames([...list, ...items.map((i) => ({ ...i, at: now, size: fileSize(localPath(i.from) ?? localPath(i.to)) }))]);
-}
-function fileSize(p: string | null) {
-  if (!p) return undefined;
-  try {
-    return fs.statSync(p).size;
-  } catch {
-    return undefined; // unreadable: the entry is kept without a size, and the empty-target rule still guards the move
-  }
+  savePendingRenames([...list, ...items.map((i) => ({ from: i.from, to: i.to, at: now }))]);
 }
 
 /**
  * Sonarr renames AnimeArr stopped waiting for: once the new name exists and the old one is gone, the file's per-file
- * rows follow it. One whose file still has its old name after a week is forgotten (its rows stay with the file).
- * A late reconcile never deletes rows: if the new name already has rows of its own (a newer import placed a file
- * there), or the file there isn't the renamed one (its size differs from the one recorded), the entry is dropped and
- * nothing is touched.
+ * rows follow it. One whose file still has its old name (or whose new name can't be read) after a week is forgotten
+ * (its rows stay with the file). A late reconcile never deletes rows: rows move only into a new name with no rows of
+ * its own, in one transaction; if a newer import already owns that name, the entry is dropped and nothing is touched.
+ * The file's size is not compared: Tdarr re-encodes and subtitle muxing change it, and the rows must still follow.
  */
 export function reconcilePendingRenames(now = Date.now()) {
   const list = pendingRenames();
@@ -1190,12 +1181,6 @@ export function reconcilePendingRenames(now = Date.now()) {
     const to = localPath(p.to);
     if (to && !localPath(p.from)) {
       const name = path.posix.basename(p.to);
-      if (p.size !== undefined && fileSize(to) !== p.size) {
-        logDecision("info", {
-          why: `${name}: a different file now has this name, so the renamed file's track corrections stay where they were`,
-        });
-        continue;
-      }
       try {
         if (movePathRowsIntoEmpty(p.from, p.to) === null)
           logDecision("info", {
