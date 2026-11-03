@@ -38,8 +38,65 @@ const REGEX_LIMIT_MS = 50;
 const regexRun = new vm.Script("re.test(title)");
 const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
 const runaway = new Set<string>();
+let guardedRuns = 0;
+/** How many regex tests went through the time-limited path (for tests: safe terms must not). */
+export const guardedRegexRuns = () => guardedRuns;
+
+/**
+ * The vm watchdog costs far more than the match itself (a thread per call), so a term that clearly can't run away is
+ * tested directly. "Clearly safe": no backreference, no repeated group that holds a repeat or an alternation
+ * ("(a+)+", "(a|a)*", "(a?)+"), and at most two unbounded repeats in all (".*.*.*a" is polynomial). Anything else, or
+ * anything this small scanner doesn't understand, stays on the guarded path.
+ */
+export function isClearlySafeRegex(src: string): boolean {
+  const frames: { quant: boolean; alt: boolean }[] = [{ quant: false, alt: false }];
+  let closed: { quant: boolean; alt: boolean } | null = null; // the group that just ended, if the last token was ")"
+  let unbounded = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const top = frames[frames.length - 1];
+    let quant: "bounded" | "unbounded" | null = null;
+    if (c === "\\") {
+      if (/[1-9k]/.test(src[i + 1] ?? "")) return false; // backreference
+      i++;
+    } else if (c === "[") {
+      for (i++; i < src.length && src[i] !== "]"; i++) if (src[i] === "\\") i++;
+    } else if (c === "(") {
+      frames.push({ quant: false, alt: false });
+    } else if (c === ")") {
+      if (frames.length < 2) return false;
+      closed = frames.pop()!;
+      const parent = frames[frames.length - 1];
+      parent.quant ||= closed.quant;
+      parent.alt ||= closed.alt;
+      continue;
+    } else if (c === "|") {
+      top.alt = true;
+    } else if (c === "*" || c === "+") {
+      quant = "unbounded";
+    } else if (c === "?") {
+      // "(?:", "(?=" and a lazy "*?" are not repeats of their own.
+      if (src[i - 1] !== "(" && !/[*+?}]/.test(src[i - 1] ?? "")) quant = "bounded";
+    } else if (c === "{") {
+      const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i));
+      if (m) {
+        quant = m[2] && !m[3] ? "unbounded" : "bounded";
+        i += m[0].length - 1;
+      }
+    }
+    if (quant) {
+      if (closed && (closed.quant || closed.alt)) return false; // a repeated group holding a repeat or an alternation
+      top.quant = true;
+      if (quant === "unbounded" && ++unbounded > 2) return false;
+    }
+    closed = null;
+  }
+  return frames.length === 1;
+}
+
 function guardedTest(term: string, re: RegExp, title: string): boolean | null {
   if (runaway.has(term)) return null;
+  guardedRuns++;
   regexCtx.re = re;
   regexCtx.title = title;
   try {
@@ -60,8 +117,19 @@ export function setRunawayReporter(fn: (rule: string, term: string) => void) {
 }
 const reported = new Set<string>();
 
+type Compiled = { test: (title: string) => boolean | null } | { error: string };
+const compiled = new Map<string, Compiled>();
 /** A term as a matcher (true / false, or null when it took too long to check), or an error message in plain words. */
-export function compileTerm(raw: string): { test: (title: string) => boolean | null } | { error: string } {
+export function compileTerm(raw: string): Compiled {
+  let c = compiled.get(raw);
+  if (!c) {
+    if (compiled.size >= 1000) compiled.clear(); // terms come from the user's rules: a handful in practice
+    c = compileUncached(raw);
+    compiled.set(raw, c);
+  }
+  return c;
+}
+function compileUncached(raw: string): Compiled {
   const term = raw.trim();
   if (!term) return { error: "A term can't be empty" };
   if (term.length > MAX_TERM) return { error: `A term can be at most ${MAX_TERM} characters` };
@@ -74,6 +142,7 @@ export function compileTerm(raw: string): { test: (title: string) => boolean | n
   if (/\([^)]*[+*][^)]*\)[+*{]/.test(m[1])) return { error: `The regular expression ${term} is too complex (nested repeats); simplify it` };
   try {
     const re = new RegExp(m[1], "i");
+    if (isClearlySafeRegex(m[1])) return { test: (title) => re.test(title) };
     return { test: (title) => guardedTest(term, re, title) };
   } catch (e) {
     return { error: `${term} isn't a valid regular expression: ${(e as Error).message.replace(/^Invalid regular expression: /, "")}` };
