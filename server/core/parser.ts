@@ -589,9 +589,13 @@ export function parseRelease(input: string): ParsedRelease {
   const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d|x\d|END|FIN))*)(?:v(\d))?/gi;
   while ((m = reSE.exec(work))) {
     const last = m[4] ? Number(m[4].match(/\d+/g)!.at(-1)) : undefined;
-    // The 200 cap only guards a bare "-NNN" (could be a resolution); an explicit "E" or a batch word is a real range.
-    const explicit = !!m[4] && (/E\d+$/i.test(m[4]) || /\b(batch|complete)\b/i.test(s));
-    const eps = last !== undefined && (explicit || last - +m[2] <= 200) ? range(+m[2], last) : [+m[2]];
+    // The 200 cap only guards a bare "-NNN" (could be a resolution); an explicit "E" or a batch word is a real range,
+    // but never 2000 or more episodes past the start (no real pack is that long; it is a typo or a bitrate), and a
+    // bare end that looks like a resolution (480, 576, 720, 1080, 2160) is never a range end, Batch word or not.
+    const endsExplicitE = !!m[4] && /E\d+$/i.test(m[4]);
+    const explicit = endsExplicitE || (!!m[4] && /\b(batch|complete)\b/i.test(s));
+    const resLike = last !== undefined && !endsExplicitE && [480, 576, 720, 1080, 2160].includes(last);
+    const eps = last !== undefined && !resLike && last - +m[2] < 2000 && (explicit || last - +m[2] <= 200) ? range(+m[2], last) : [+m[2]];
     push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1) });
   }
   // 10x14

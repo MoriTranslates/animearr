@@ -529,6 +529,20 @@ test("a long SxxEyy range stays a range when it says E or Batch; only a bare unm
   assert.deepEqual(p("Show S01E01-276").episodes, [1]);
 });
 
+test("a Batch word or an explicit E cannot turn a resolution or an absurd range end into a range (blind round-3 M1)", () => {
+  const p = (name: string) => parseRelease(name);
+  // The range end looks like a resolution, so it is the first episode only, Batch word or not.
+  assert.deepEqual(p("Show S01E05-720 Batch 1080p").episodes, [5]);
+  assert.deepEqual(p("Show S01E05-1080 Complete").episodes, [5]);
+  // Hard ceiling of 2000 episodes even with an explicit E.
+  assert.equal(p("Show S01E01-E2000 [Batch]").episodes.length, 2000);
+  assert.deepEqual(p("Show S01E01-E2001").episodes, [1]);
+  assert.deepEqual(p("Show S01E01-E9999 [Batch]").episodes, [1]);
+  // Real long packs stay ranges.
+  assert.equal(p("Pokemon S01E01-276 [Batch]").episodes.length, 276);
+  assert.equal(p("Show S01E01-E250 [Batch]").episodes.length, 250);
+});
+
 test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
   const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
   // Two seasons of 12: absolute 13 is S02E01.
