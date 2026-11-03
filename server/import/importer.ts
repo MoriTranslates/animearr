@@ -1276,7 +1276,6 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
             toArr: it.from,
             size: st.size,
             mtime: st.mtimeMs,
-            ino: st.ino,
             sidecars: sides,
           },
         },
@@ -1303,7 +1302,7 @@ export async function renameBack(args: {
   toArr?: string;
   size?: number;
   mtime?: number;
-  ino?: number;
+  ino?: number; // recorded by an earlier build; not compared (unstable on shfs)
   sidecars?: { from: string; to: string }[];
 }) {
   const s = args.tvdbId ? seriesRow(args.tvdbId) : undefined;
@@ -1311,10 +1310,9 @@ export async function renameBack(args: {
   const root = mappedPath(s.path);
   const all = [args, ...(args.sidecars ?? [])];
   if (all.some((x) => !under(x.from, root) || !under(x.to, root))) throw new Error("outside the show's folder; not renamed back");
-  // Only the very file AnimeArr renamed goes back: same size, same time, and (when recorded) the same file on disk.
+  // Only the file AnimeArr renamed goes back: same size and same time. Not the inode: Unraid's /mnt/user (shfs) and
+  // other FUSE/network filesystems may give the same file another inode number later, which would block every undo.
   const st = fs.statSync(args.from);
-  if (args.ino !== undefined && st.ino !== args.ino)
-    throw new Error(`the file now called ${path.basename(args.from)} isn't the file AnimeArr renamed; not renamed back`);
   if (args.size !== undefined && st.size !== args.size) throw new Error("the file changed since the rename; not renamed back");
   if (args.mtime !== undefined && Math.abs(st.mtimeMs - args.mtime) > 1)
     throw new Error("the file changed since the rename (its date is different); not renamed back");

@@ -334,3 +334,11 @@ test("L9: an undo logged before mtime was kept still works by size, and says so"
     { why: string } | undefined;
   assert.ok(note, "a note says it was checked by size only");
 });
+
+test("Unraid /mnt/user (shfs): a different inode number for the same file (same size and time) doesn't block the undo", async () => {
+  const args = await renamedWithUndo(515, "frieren 15.mkv", 107);
+  // shfs may hand out another inode number for the same file after an array stop/start or a restart.
+  await renameBack({ ...args, ino: (args.ino ?? 1) + 987_654 });
+  assert.ok(fs.existsSync(args.to), "renamed back");
+  assert.equal(fs.existsSync(args.from), false);
+});
