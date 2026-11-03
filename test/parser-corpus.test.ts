@@ -843,3 +843,20 @@ test("real paths still reduce to the file name (unchanged)", () => {
     { name: "./Show Name - 04.mkv", title: "Show Name", group: null, absolute: [4] },
   ]);
 });
+
+test("a relative path is reduced to the file name when it clearly is one (review #7)", () => {
+  check([
+    // The reviewer's repro (was title "Show Batch/ Show", no group): the part after the "/" starts a new [Group] name.
+    { name: "Show Batch/[Group] Show - 05 [1080p].mkv", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] Show Batch/[Group] Show - 05 [1080p]", title: "Show", group: "Group", absolute: [5] },
+    // Two or more "/" between words: folders.
+    { name: "Anime/Show Name/Show Name - 04.mkv", title: "Show Name", group: null, absolute: [4] },
+    { name: "Show/Season 1/Show.S01E05.1080p.WEB.x264-GRP.mkv", title: "Show", group: "GRP", season: 1, episodes: [5] },
+    // Must not change: one "/" inside a title.
+    { name: "[SubsPlease] Fate/strange Fake - 01 (1080p) [A1B2C3D4].mkv", title: "Fate/strange Fake", group: "SubsPlease", absolute: [1] },
+    { name: "[Group] 22/7 - 05", title: "22/7", group: "Group", absolute: [5] },
+    { name: "[Group] Show Name - 07 [1080p / HEVC]", title: "Show Name", group: "Group", absolute: [7] },
+    // Two "/" titles split by a spaced " / " are not folders.
+    { name: "[Group] Fate/Zero / Fate/stay night - 05", title: "Fate/stay night", group: "Group", absolute: [5] },
+  ]);
+});

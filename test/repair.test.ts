@@ -287,6 +287,14 @@ test("a Sonarr sourceTitle that is a relative path is reduced to the file name b
   );
   assert.equal(historyReleaseName("[SubsPlease] Fate/Zero - 01 (1080p)"), "[SubsPlease] Fate/Zero - 01 (1080p)");
   assert.equal(historyReleaseName("[SubsPlease] Show - 01 (1080p)", dropped), "[SubsPlease] Show - 01 (1080p)");
+  // Review #7: a codec suffix that looks like an extension (".x264") no longer defeats the droppedPath match...
+  assert.equal(
+    historyReleaseName("Show Batch/Show.S01E05.1080p.x264", "/downloads/Show Batch/Show.S01E05.1080p.x264.mkv"),
+    "Show.S01E05.1080p.x264",
+  );
+  // ...and without a droppedPath, a name that clearly is a path (a [Group] name after the "/", or 2+ folders) is reduced.
+  assert.equal(historyReleaseName("Show Batch/[Group] Show - 05 [1080p]"), "[Group] Show - 05 [1080p]");
+  assert.equal(historyReleaseName("dl/Show Batch/Show.S01E05.1080p.x264"), "Show.S01E05.1080p.x264");
 
   // End to end: the group learned from the import is the file's, not the folder's.
   patchSettings((s) => ({ ...s, repair: { mode: "log", maxPerDay: 10 } }));

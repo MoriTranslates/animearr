@@ -22,7 +22,7 @@ import { logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { burnedInFact } from "../library/audit.js";
 import { langList } from "../core/langs.js";
-import { parseRelease } from "../core/parser.js";
+import { fileNameOf, parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { searchAgainSoon } from "../library/episodes.js";
 import { radarrMovieSpecials } from "../library/franchise.js";
@@ -77,17 +77,20 @@ const kvSet = (k: string, v: string) =>
 
 /**
  * The release name to parse from a Sonarr import record. `sourceTitle` is normally the release title, which may itself
- * hold a "/" ("Fate/Zero - 01"); for some imports it is a file path. A backslash or a rooted path is always a path. An
- * unrooted "a/b" is a path only when the import's `droppedPath` ends with it; otherwise it is a title and kept whole.
+ * hold a "/" ("Fate/Zero - 01"); for some imports it is a file path. A name that clearly is a path (see `fileNameOf`)
+ * is reduced to its file name. Any other "a/b" is a path only when the import's `droppedPath` ends with it (with or
+ * without the file's extension); otherwise it is a title and kept whole.
  */
 export function historyReleaseName(sourceTitle: string, droppedPath?: string): string {
-  const slashed = sourceTitle.replace(/\\/g, "/");
-  if (!slashed.includes("/")) return sourceTitle;
-  const last = slashed.split("/").filter(Boolean).pop() ?? sourceTitle;
-  if (sourceTitle.includes("\\") || /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(slashed)) return last;
-  const noExt = (p: string) => p.replace(/\.[A-Za-z0-9]{2,4}$/, "").toLowerCase();
-  const dropped = noExt((droppedPath ?? "").replace(/\\/g, "/"));
-  return dropped && dropped.endsWith("/" + noExt(slashed.replace(/^\/+/, ""))) ? last : sourceTitle;
+  const reduced = fileNameOf(sourceTitle);
+  if (reduced !== sourceTitle || !sourceTitle.includes("/")) return reduced;
+  const title = sourceTitle.replace(/^\/+/, "").toLowerCase();
+  const dropped = (droppedPath ?? "").replace(/\\/g, "/").toLowerCase();
+  // Only the dropped file's own extension is removed: "Show.S01E05.1080p.x264" must still match "...x264.mkv".
+  const endsWith = (p: string) => p.endsWith("/" + title);
+  return dropped && (endsWith(dropped) || endsWith(dropped.replace(/\.[a-z0-9]{2,4}$/, "")))
+    ? (sourceTitle.split("/").pop() ?? sourceTitle)
+    : sourceTitle;
 }
 
 /** Is this import AnimeArr's own (already verified by the pipeline, or still being handled by it)? */

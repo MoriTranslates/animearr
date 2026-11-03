@@ -373,13 +373,29 @@ interface Marker {
 
 const range = (a: number, b: number) => (b >= a && b - a < 2000 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]);
 
+/**
+ * The file name when `name` clearly is a path, else `name` unchanged. A path: a backslash; a leading "/", "./", "../",
+ * "~/" or drive letter; two or more "/" between words ("Anime/Show/Show - 04.mkv"); or one whose last part starts a
+ * new "[Group]" name ("Show Batch/[Group] Show - 05"). A single "/" otherwise is part of the title ("Fate/Zero",
+ * "22/7"), and a spaced one is a separator ("[1080p / HEVC]").
+ */
+export function fileNameOf(name: string): string {
+  const inner = [...name.matchAll(/(?<=\S)\/(?=\S)/g)].length;
+  const lastPart = name.slice(name.lastIndexOf("/") + 1);
+  const path =
+    name.includes("\\") ||
+    /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(name) ||
+    (inner >= 2 && !/\s\/\s/.test(name)) || // not "Fate/Zero / Fate/stay night"
+    (inner === 1 && /(?<=\S)\/(?=\[)/.test(name) && /^\[/.test(lastPart));
+  return path ? (name.split(/[\\/]/).filter(Boolean).pop() ?? name) : name;
+}
+
 export function parseRelease(input: string): ParsedRelease {
   const raw = input;
   let s = stripDecorations(input);
 
-  // Path → last component (manual-import file names). Only a real path counts: a backslash, or a leading "/", "./",
-  // "../", "~/" or drive letter. A bare "/" is part of the title ("Fate/Zero", "22/7") or a bracket ("[1080p / HEVC]").
-  if (/\\/.test(s) || /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(s)) s = s.split(/[\\/]/).filter(Boolean).pop() ?? s;
+  // Path → last component (manual-import file names).
+  s = fileNameOf(s);
 
   // CJK brackets → square brackets; full-width spaces.
   s = s.replace(/【/g, "[").replace(/】/g, "]").replace(/　/g, " ");
