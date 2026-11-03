@@ -178,3 +178,44 @@ test("dual upgrades for movies: a Dual-mode movie with a sub-only file is a plac
   assert.equal(r.found, 1);
   assert.equal((db.prepare("SELECT state FROM movie_upgrade WHERE movie_id = 5").get() as { state: string }).state, "found");
 });
+
+test("movie dual upgrades: a standing partial outage still rotates through the movies (M2)", async () => {
+  // A second sub-only movie in Dual mode, next to movie 5.
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, monitored, has_file, is_anime, synced_at, is_available, digital_release, file) VALUES (8, 18, 'Other Movie', 2024, '/media/Movies/Anime/h', 1, 1, 1, 0, 1, ?, ?)",
+    )
+    .run(
+      now - 10 * DAY,
+      JSON.stringify({
+        path: "/m/h.mkv",
+        sceneName: null,
+        releaseGroup: null,
+        quality: null,
+        audio: ["ja"],
+        subs: ["en"],
+        runTime: null,
+        resolution: "1920x1080",
+      }),
+    );
+  db.prepare("INSERT OR REPLACE INTO movie_wanted (movie_id, wanted, at) VALUES (8, 1, 0)").run();
+  setMoviePrefs(8, null, "dual");
+  db.prepare("DELETE FROM movie_upgrade").run();
+  db.prepare("DELETE FROM upgrade_searches").run();
+  patchSettings((s) => ({ ...s, dualUpgrade: { mode: "auto", perHour: 1, recheckDays: 3, maxAgeDays: 365 } }));
+  const searched: number[] = [];
+  const deps = {
+    search: (async () => ({ results: [] })) as never,
+    grab: (async () => ({})) as never,
+    searchMovie: (async (id: number) => (
+      searched.push(id),
+      { results: [], matched: 0, outage: { kind: "partial", why: "O1 didn't answer (timed out)", counts: false } }
+    )) as never,
+    grabMovie: (async () => assert.fail("no grab")) as never,
+  };
+  const t0 = now + 40 * DAY;
+  await upgradePass(deps, t0);
+  await upgradePass(deps, t0 + 2 * HOUR); // the next hour's budget
+  assert.equal(searched.length, 2, JSON.stringify(searched));
+  assert.notEqual(searched[0], searched[1], `the same movie twice: ${JSON.stringify(searched)}`);
+});

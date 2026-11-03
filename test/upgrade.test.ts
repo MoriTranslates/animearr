@@ -236,3 +236,23 @@ test("indexers down (all or some): not recorded as 'no dual-audio release yet', 
     assert.doesNotMatch(st.why, /no dual-audio release yet/);
   }
 });
+
+test("a standing partial outage still rotates through the placeholders (not the same one every pass) (M2)", async () => {
+  patchSettings((s) => ({ ...s, dualUpgrade: { ...s.dualUpgrade, mode: "auto", perHour: 1 } }));
+  cache.prepare("UPDATE files SET audio_langs = 'jpn' WHERE id IN (?, ?)").run(3001 + 50000, 3003 + 50000);
+  db.prepare("DELETE FROM upgrade_state").run();
+  db.prepare("DELETE FROM upgrade_searches").run();
+  const searched: number[] = [];
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (_t: number, eps: number[]) => (
+      searched.push(eps[0]),
+      { results: [], outage: { kind: "partial", why: "O1 didn't answer (timed out)", counts: false } }
+    )) as never,
+  };
+  const t0 = now + 40 * DAY;
+  await upgradePass(d, t0);
+  await upgradePass(d, t0 + 2 * 3_600_000); // the next hour's budget
+  assert.equal(searched.length, 2);
+  assert.notEqual(searched[0], searched[1], `the same placeholder twice: ${JSON.stringify(searched)}`);
+});

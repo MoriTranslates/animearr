@@ -103,6 +103,8 @@ interface StateRow {
   no_bd: number;
   updated_at: number;
 }
+/** When the pass last tried this season, fully answered or not (every save moves updated_at). */
+const tried = (st: StateRow | undefined) => Math.max(st?.last_at ?? 0, st?.updated_at ?? 0);
 const stateOf = (tvdbId: number, season: number) =>
   db.prepare("SELECT * FROM quality_upgrade WHERE tvdb_id = ? AND season = ?").get(tvdbId, season) as StateRow | undefined;
 function save(
@@ -183,11 +185,13 @@ export function hintProper(episodeIds: number[], now = Date.now()) {
  * pause switch, the seasons-a-day and size budgets still decide what happens. True when it was waiting out a recheck.
  */
 export function recheckSoon(tvdbId: number, season: number) {
+  // updated_at goes to 0 too, so the pass takes it first (it orders by the last try). An upgraded row keeps its
+  // updated_at: that is when it was upgraded, which the recent-upgrades list shows.
   return (
     Number(
       db
         .prepare(
-          "UPDATE quality_upgrade SET last_at = NULL WHERE tvdb_id = ? AND season = ? AND last_at IS NOT NULL AND state <> 'grabbed'",
+          "UPDATE quality_upgrade SET last_at = NULL, updated_at = CASE WHEN state = 'upgraded' THEN updated_at ELSE 0 END WHERE tvdb_id = ? AND season = ? AND last_at IS NOT NULL AND state <> 'grabbed'",
         )
         .run(tvdbId, season).changes,
     ) > 0
@@ -534,7 +538,9 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
               ? BUDGET_RETRY_MS
               : recheckMs(u, u.target !== goalCategory(u.goal, profileFor(u.tvdbId).resolution), now))),
     )
-    .sort((a, b) => (a.st?.last_at ?? 0) - (b.st?.last_at ?? 0));
+    // Least recently tried first: a search the indexers didn't fully answer leaves last_at (so it isn't pushed back by the
+    // recheck wait) but moves updated_at, so a standing partial outage still rotates through the library (review M2).
+    .sort((a, b) => tried(a.st) - tried(b.st));
   for (const { u, st } of due) {
     if (count("grab", now - DAY) >= s.seasonsPerDay) break;
     if (count("search", now - HOUR) >= s.perHour) break;

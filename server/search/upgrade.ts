@@ -133,7 +133,16 @@ interface Row {
   grab_id: number | null;
   release: string | null;
   file_id: number | null;
+  /** Last time this row was written: also after a search the indexers didn't fully answer (last_at isn't). */
+  updated_at: number | null;
 }
+/**
+ * The order the passes take due items in: least recently looked at first. A search the indexers didn't fully answer
+ * doesn't move last_at (so it isn't pushed back by recheckDays) but does move updated_at, so a standing partial outage
+ * still rotates through the library instead of spending every hour's budget on the same items (review M2).
+ */
+const rotationKey = (r: { last_at: number | null; updated_at?: number | null } | undefined) =>
+  Math.max(r?.last_at ?? 0, r?.updated_at ?? 0);
 function save(
   episodeId: number,
   tvdbId: number,
@@ -215,7 +224,7 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
   let found = 0;
   const minConf = getSettings().managed.minConfidence;
   const rows = new Map((db.prepare("SELECT * FROM upgrade_state").all() as unknown as Row[]).map((r) => [r.episode_id, r]));
-  const due = [...waiting].sort((a, b) => (rows.get(a.episodeId)?.last_at ?? 0) - (rows.get(b.episodeId)?.last_at ?? 0));
+  const due = [...waiting].sort((a, b) => rotationKey(rows.get(a.episodeId)) - rotationKey(rows.get(b.episodeId)));
   for (const w of due) {
     const row = rows.get(w.episodeId);
     if (row?.state === "grabbed") continue;
@@ -425,7 +434,18 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
     if (!byId.has(r.movie_id)) save(r.movie_id, "done", "no longer a sub-only placeholder (has the dub now, or out of scope)");
   }
   const minConf = getSettings().managed.minConfidence;
-  for (const w of waiting) {
+  // Least recently tried first, like the episodes (review M2).
+  const tries = new Map(
+    (
+      db.prepare("SELECT movie_id, last_at, updated_at FROM movie_upgrade").all() as {
+        movie_id: number;
+        last_at: number | null;
+        updated_at: number;
+      }[]
+    ).map((r) => [r.movie_id, r]),
+  );
+  const due = [...waiting].sort((a, b) => rotationKey(tries.get(a.movieId)) - rotationKey(tries.get(b.movieId)));
+  for (const w of due) {
     const row = db.prepare("SELECT * FROM movie_upgrade WHERE movie_id = ?").get(w.movieId) as
       { state: string; last_at: number | null; file_path: string | null } | undefined;
     if (row?.state === "grabbed") continue;

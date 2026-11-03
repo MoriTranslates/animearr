@@ -11,7 +11,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { getSettings, patchSettings } = await import("../server/system/settings.js");
 const { profileFor, saveProfile, defaultProfile } = await import("../server/library/profiles.js");
-const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { capOf, pickUpgrade, planState, qualityUpgradePass, recheckSoon, startNow, upgradeUnits } =
+  await import("../server/search/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/search/qualityLocks.js");
 const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");
 const { setScope } = await import("../server/library/scope.js");
@@ -256,6 +257,47 @@ test("indexers down (all or some): not 'nothing better', no 'no Blu-ray' count, 
   }
 });
 const HOUR_MS = 3_600_000;
+
+test("a standing partial outage still rotates through the seasons (not the same one every pass) (M2)", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 1, seasonsPerDay: 10 } }));
+  // The two seasons below their goal (700002 is at its goal), both due.
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = 0 WHERE tvdb_id IN (700001, 700003)").run();
+  const searched: number[] = [];
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (
+      searched.push(tvdbId),
+      { results: [], outage: { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false } }
+    )) as never,
+  };
+  const t0 = now + 10 * DAY;
+  await qualityUpgradePass(d, t0);
+  await qualityUpgradePass(d, t0 + 2 * HOUR_MS); // the next hour's budget
+  assert.equal(searched.length, 2, JSON.stringify(searched));
+  assert.notEqual(searched[0], searched[1], `the same season twice: ${JSON.stringify(searched)}`);
+});
+
+test("the RSS watch's 'recheck soon' still goes first, ahead of seasons tried longer ago (M2)", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 1, seasonsPerDay: 10 } }));
+  const t0 = now + 20 * DAY;
+  // 700001: tried an hour ago and still due (a gap). 700003: fully searched more recently, so waiting out its recheck.
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = ? WHERE tvdb_id = 700001").run(t0 - HOUR_MS);
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = ?, updated_at = ? WHERE tvdb_id = 700003").run(
+    t0 - HOUR_MS / 2,
+    t0 - HOUR_MS / 2,
+  );
+  assert.equal(recheckSoon(700003, 1), true);
+  const searched: number[] = [];
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (
+      searched.push(tvdbId),
+      { results: [], outage: { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false } }
+    )) as never,
+  };
+  await qualityUpgradePass(d, t0);
+  assert.deepEqual(searched, [700003]);
+});
 
 test("SeaDex: parsed from releases.moe, cached per AniList entry, merged per TVDB season, fetched within a budget", async () => {
   const json = {
