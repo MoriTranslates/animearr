@@ -763,7 +763,13 @@ async function placeItems(
         title: target.title,
         episodeIds: it.episodeIds,
         why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`,
-        detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
+        // dest/source: a retry of a multi-part movie knows which parts this grab already placed (movies.ts).
+        detail: {
+          ...(target.movieId ? { movieId: target.movieId } : {}),
+          ...(opts.grabId ? { grabId: opts.grabId } : {}),
+          dest: it.destArr,
+          source: it.source,
+        },
       }); // a grab's import notifies once, at the end
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).

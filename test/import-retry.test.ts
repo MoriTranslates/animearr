@@ -179,3 +179,122 @@ test("a multi-part movie that failed part-way: Retry import places the missing p
   );
   assert.equal(fs.statSync(path.join(movieDir, pt1!)).ino, ino, "part 1 untouched");
 });
+
+test("M1: a usenet (moved) multi-part movie that failed part-way: Retry import places the rest, never fails or blocklists", async () => {
+  const MID = NATIVE_BASE + 4343;
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, root_folder, monitored, has_file, is_anime, runtime, synced_at, is_available) VALUES (?, 4343, 'Usenet Parted', 2021, '/media/Movies/Usenet Parted (2021)', '/media/Movies', 1, 0, 1, 96, 0, 1)",
+    )
+    .run(MID);
+  const dir = "Usenet.Parted.2021.1080p.BluRay-GRP";
+  for (const n of [1, 2]) sparseFile(path.join(DL, "completed", "animearr", dir, `Usenet.Parted.2021.Part.${n}.1080p.BluRay-GRP.mkv`), 2e9);
+  const folder = `/data/completed/animearr/${dir}`;
+  const id = Number(
+    db
+      .prepare(
+        "INSERT INTO grabs (at, updated_at, movie_id, episode_ids, release, guid, indexer_id, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (?, ?, ?, '[]', ?, 'g3', 9, 'usenet', 'sabnzbd', 'x3', 'importing', 0, 'manual', 'test', '[]')",
+      )
+      .run(Date.now(), Date.now(), MID, dir).lastInsertRowid,
+  );
+  const row = () => db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
+  const mdeps = { ...deps(folder), probe: async () => ({ ...(await probe()), durationSec: 48 * 60 }) } as unknown as Deps;
+  failDest = /Usenet Parted \(2021\) - pt2\.mkv$/;
+  await importMovie(row(), folder, mdeps);
+  assert.equal(stateOf(id).state, "needs-attention", JSON.stringify(stateOf(id)));
+  const movieDir = path.join(LIB, "movies", "Usenet Parted (2021)");
+  const pt1 = path.join(movieDir, "Usenet Parted (2021) - pt1.mkv");
+  assert.ok(fs.existsSync(pt1), `part 1 was placed: ${fs.readdirSync(movieDir).join(", ")}`);
+  assert.equal(fs.readdirSync(path.join(DL, "completed", "animearr", dir)).length, 1, "usenet: part 1 was moved out of the download");
+  const ino = fs.statSync(pt1).ino;
+  failDest = null;
+  db.prepare("UPDATE grabs SET state = 'importing' WHERE id = ?").run(id);
+  await importMovie(row(), folder, mdeps);
+  const s = stateOf(id);
+  assert.equal(s.state, "done", s.error ?? "");
+  assert.deepEqual(
+    fs
+      .readdirSync(movieDir)
+      .filter((f) => f.endsWith(".mkv"))
+      .sort(),
+    ["Usenet Parted (2021) - pt1.mkv", "Usenet Parted (2021) - pt2.mkv"],
+  );
+  assert.equal(fs.statSync(pt1).ino, ino, "part 1 untouched");
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM blocklist").get() as { n: number }).n, 0, "nothing blocklisted");
+});
+
+test("M1: a retry whose remaining part fails its check goes to needs-attention, never failed/blocklisted", async () => {
+  const MID = NATIVE_BASE + 4444;
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, root_folder, monitored, has_file, is_anime, runtime, synced_at, is_available) VALUES (?, 4444, 'Bad Part', 2022, '/media/Movies/Bad Part (2022)', '/media/Movies', 1, 0, 1, 96, 0, 1)",
+    )
+    .run(MID);
+  const dir = "Bad.Part.2022.1080p.BluRay-GRP";
+  for (const n of [1, 2]) sparseFile(path.join(DL, "completed", "animearr", dir, `Bad.Part.2022.Part.${n}.1080p.BluRay-GRP.mkv`), 2e9);
+  const folder = `/data/completed/animearr/${dir}`;
+  const id = Number(
+    db
+      .prepare(
+        "INSERT INTO grabs (at, updated_at, movie_id, episode_ids, release, guid, indexer_id, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (?, ?, ?, '[]', ?, 'g4', 9, 'usenet', 'sabnzbd', 'x4', 'importing', 0, 'manual', 'test', '[]')",
+      )
+      .run(Date.now(), Date.now(), MID, dir).lastInsertRowid,
+  );
+  const row = () => db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
+  let subs = ["en"];
+  const mdeps = { ...deps(folder), probe: async () => ({ ...(await probe()), subs, durationSec: 48 * 60 }) } as unknown as Deps;
+  failDest = /Bad Part \(2022\) - pt2\.mkv$/;
+  await importMovie(row(), folder, mdeps);
+  assert.equal(stateOf(id).state, "needs-attention");
+  failDest = null;
+  subs = []; // the remaining part now fails the language check
+  db.prepare("UPDATE grabs SET state = 'importing' WHERE id = ?").run(id);
+  await importMovie(row(), folder, mdeps);
+  assert.equal(stateOf(id).state, "needs-attention", JSON.stringify(stateOf(id)));
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM blocklist").get() as { n: number }).n, 0, "nothing blocklisted");
+});
+
+test("M1: a Radarr movie whose part 1 Radarr already picked up as its file: Retry import still finishes", async () => {
+  const MID = 4545;
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, root_folder, monitored, has_file, is_anime, runtime, synced_at, is_available) VALUES (?, 4545, 'Radarr Parted', 2023, '/media/Movies/Radarr Parted (2023)', '/media/Movies', 1, 0, 1, 96, 0, 1)",
+    )
+    .run(MID);
+  const dir = "Radarr.Parted.2023.1080p.BluRay-GRP";
+  for (const n of [1, 2]) sparseFile(path.join(DL, "completed", "animearr", dir, `Radarr.Parted.2023.Part.${n}.1080p.BluRay-GRP.mkv`), 2e9);
+  const folder = `/data/completed/animearr/${dir}`;
+  const id = Number(
+    db
+      .prepare(
+        "INSERT INTO grabs (at, updated_at, movie_id, episode_ids, release, guid, indexer_id, protocol, client, client_ref, state, dry_run, origin, why, candidates) VALUES (?, ?, ?, '[]', ?, 'g5', 9, 'usenet', 'sabnzbd', 'x5', 'importing', 0, 'manual', 'test', '[]')",
+      )
+      .run(Date.now(), Date.now(), MID, dir).lastInsertRowid,
+  );
+  const row = () => db.prepare("SELECT * FROM grabs WHERE id = ?").get(id) as unknown as Row;
+  const pt1Arr = "/media/Movies/Radarr Parted (2023)/Radarr Parted (2023) - pt1.mkv";
+  let radarrFile: string | null = null;
+  const mdeps = {
+    ...deps(folder),
+    probe: async () => ({ ...(await probe()), durationSec: 48 * 60 }),
+    radarr: {
+      movie: async () => ({
+        id: MID,
+        path: "/media/Movies/Radarr Parted (2023)",
+        hasFile: !!radarrFile,
+        runtime: 96,
+        movieFile: radarrFile ? { path: radarrFile } : undefined,
+      }),
+      preview: async (f: string) => fs.readdirSync(localOf(f)).map((x) => ({ path: `${f}/${x}`, size: 2e9, quality: {}, languages: [] })),
+    },
+  } as unknown as Deps;
+  failDest = /Radarr Parted \(2023\) - pt2\.mkv$/;
+  await importMovie(row(), folder, mdeps);
+  assert.equal(stateOf(id).state, "needs-attention", JSON.stringify(stateOf(id)));
+  radarrFile = pt1Arr; // Radarr picked up part 1 as the movie's file meanwhile
+  failDest = null;
+  db.prepare("UPDATE grabs SET state = 'importing' WHERE id = ?").run(id);
+  await importMovie(row(), folder, mdeps);
+  assert.equal(stateOf(id).state, "done", JSON.stringify(stateOf(id)));
+  assert.ok(fs.existsSync(path.join(LIB, "movies", "Radarr Parted (2023)", "Radarr Parted (2023) - pt2.mkv")));
+});
