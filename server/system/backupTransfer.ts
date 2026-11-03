@@ -346,6 +346,31 @@ function copyIntoBackups(from: string, name: string, made: string[]) {
   if (fs.statSync(to).size !== fs.statSync(from).size) throw new Error(`the copy of ${path.basename(from)} came out short`);
 }
 
+/** Unpruned prerestore copies allowed before a restore is refused (failed restores never prune; blind review round 8, M1). */
+export const MAX_SAFETY_COPIES = 10;
+const SAFETY_MARGIN_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Refuses, before anything is written or changed, when the backups folder already holds MAX_SAFETY_COPIES prerestore
+ * copies or lacks room for another (database plus its wal, key and a margin). Never deletes anything: the user clears
+ * space or old copies, or a successful restore prunes them.
+ */
+function checkSafetyRoom() {
+  const copies = listBackups().filter((b) => b.kind === "prerestore").length;
+  if (copies >= MAX_SAFETY_COPIES)
+    throw new Error(
+      `${copies} safety copies from earlier restores are already in ${BACKUP_DIR} (the limit is ${MAX_SAFETY_COPIES}). Delete old prerestore copies from the backups list, or complete a restore, which prunes them`,
+    );
+  let need = SAFETY_MARGIN_BYTES;
+  for (const f of [USER_DB, `${USER_DB}-wal`, KEY_FILE]) if (fs.existsSync(f)) need += fs.statSync(f).size;
+  const s = fs.statfsSync(BACKUP_DIR);
+  const free = Number(s.bavail) * Number(s.bsize);
+  if (free < need)
+    throw new Error(
+      `not enough free disk space in ${BACKUP_DIR}: about ${Math.ceil(need / 1048576)} MB is needed for a safety copy but only ${Math.floor(free / 1048576)} MB is free`,
+    );
+}
+
 /**
  * The safety copy before a restore: the database plus the current key, which that copy can't be opened without. Both
  * are saved under one name (`<name>.db` and `<name>.secret.key`) so restoring the copy later finds its key (blind review
@@ -358,6 +383,7 @@ export function safetyBackup(label: string): string {
   const made: string[] = [];
   let keyName: string;
   try {
+    checkSafetyRoom();
     let base: string;
     if (!dbState.corrupt) {
       const dbName = backupNow("prerestore", label, false); // pruned only after a restore succeeds (pruneSafetyCopies)
