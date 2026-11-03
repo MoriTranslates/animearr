@@ -50,6 +50,28 @@ test("an older database is brought up to date, keeping its data, with the backup
   d.close();
 });
 
+test("a 'sending' grab left by an earlier version is marked 'handed over, id unknown', never 'never sent' (M5)", () => {
+  const d = new DatabaseSync(":memory:");
+  const steps = userMigrations();
+  // The version before this release: up to the cutover journal.
+  const before = steps.findIndex((s) => s.includes("CREATE TABLE cutover_pending")) + 1;
+  assert.ok(before > 0 && before < steps.length, "a step after the cutover journal exists");
+  migrateUserDb(d, steps.slice(0, before));
+  const ins = d.prepare(
+    "INSERT INTO grabs (at, updated_at, episode_ids, release, guid, protocol, state, dry_run, client_ref) VALUES (0, 0, '[]', ?, ?, 'torrent', ?, 0, ?)",
+  );
+  ins.run("old send", "g1", "sending", null); // the old code never wrote client_ref before sending
+  ins.run("old done", "g2", "done", null);
+  ins.run("old dl", "g3", "downloading", "abc");
+  migrateUserDb(d, steps);
+  const ref = (guid: string) =>
+    (d.prepare("SELECT client_ref FROM grabs WHERE guid = ?").get(guid) as { client_ref: string | null }).client_ref;
+  assert.equal(ref("g1"), "?", "handed over, identity unknown: the restart resolution never re-sends it blind");
+  assert.equal(ref("g2"), null);
+  assert.equal(ref("g3"), "abc");
+  d.close();
+});
+
 test("a failing step is rolled back whole and leaves user_version where it was", () => {
   const d = new DatabaseSync(":memory:");
   const steps = userMigrations();

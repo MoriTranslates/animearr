@@ -453,6 +453,10 @@ const USER_MIGRATIONS: string[] = [
   // native IDs. A row left over (the DELETE answered too late, or a crash) is finished on the next start or retry.
   // id_map is the Sonarr → AnimeArr episode id map as JSON pairs (Sonarr's rows are gone from the cache after a sync).
   `CREATE TABLE cutover_pending (tvdb_id INTEGER PRIMARY KEY, sonarr_id INTEGER NOT NULL, native_id INTEGER NOT NULL, id_map TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL);`,
+  // 43: grabs left 'sending' by an earlier version: that code never recorded what it handed to a client, so "no
+  // client_ref" can't mean "never sent" for them. '?' = handed over, id unknown (pipelineState SENT_UNKNOWN): the
+  // restart resolution looks an NZB up by name and gives a torrent to the user, never re-sends blind (review M5).
+  `UPDATE grabs SET client_ref = '?' WHERE state = 'sending' AND client_ref IS NULL;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */
