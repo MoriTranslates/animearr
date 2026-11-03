@@ -101,21 +101,25 @@ test("the throttle stays bounded under a flood of addresses and never forgets an
   loginSucceeded("203.0.113.9", "captain");
 });
 
-test("when the map is full of throttled entries, new ones are refused rather than evicting them", (t) => {
+test("review A3: a map full of throttled entries neither refuses newcomers nor forgets the throttled", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 3, 12) });
   t.mock.timers.tick(31 * 60_000); // earlier entries expire
-  const ip = (i: number) => `10.99.${(i >> 8) & 255}.${i & 255}`;
-  // Fill the map with entries that are past their free tries.
-  for (let i = 0; i < LOGIN_THROTTLE_MAX; i++) for (let k = 0; k < 6; k++) loginAllowed(`a${i}`, "captain");
+  // The reviewer's repro: 10,000 IPv6 /64s (one tunnelbroker /48 has 65,536), each past its free tries.
+  const v6 = (i: number) => `2001:db8:${(i >> 16).toString(16)}:${(i & 0xffff).toString(16)}::1`;
+  for (let i = 0; i < LOGIN_THROTTLE_MAX; i++) for (let k = 0; k < 6; k++) loginAllowed(v6(i), "captain");
   assert.ok(throttleSize() <= LOGIN_THROTTLE_MAX);
-  assert.equal(loginAllowed(ip(1), "captain"), false, "a new key is refused while the map is full of throttled entries");
-  t.mock.timers.tick(16_000);
-  // Existing throttled entries are still there: their next try sets a back-off again.
-  assert.equal(loginAllowed("a0", "captain"), true);
-  assert.equal(loginAllowed("a0", "captain"), false);
-  // Once they expire, new keys are accepted again.
-  t.mock.timers.tick(31 * 60_000);
-  assert.equal(loginAllowed(ip(2), "captain"), true);
+  // The owner from a fresh address (a new phone, a hotel) still gets in.
+  const r = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    remoteAddress: "198.51.100.77",
+    headers: { "x-animearr": "1" },
+    payload: { username: "captain", password: "pw-test-1" },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  // The throttled entries were not evicted to make room: their back-off still holds.
+  assert.equal(loginAllowed(v6(0), "captain"), false, "still in back-off");
+  assert.ok(throttleSize() <= LOGIN_THROTTLE_MAX);
 });
 
 test("one address rotating user names gets a few entries, then shares one throttled bucket", (t) => {

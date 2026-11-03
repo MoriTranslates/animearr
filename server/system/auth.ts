@@ -305,7 +305,8 @@ const sweep = (now: number) => {
 /**
  * Room for a new entry when the map is full: forget expired ones, else the entry with the fewest failures, but only one
  * still within its free tries (it carries no back-off). An entry past them is never evicted, so a flood can't reset an
- * attacker's count; if every entry is past them, the new key is refused until some expire (fail closed).
+ * attacker's count. If every entry is past them, the new key is let through untracked (blind review A3: refusing it
+ * let anyone who filled the table, easy over IPv6, lock every newcomer out, the owner included).
  */
 function makeRoom(now: number) {
   sweep(now);
@@ -331,7 +332,10 @@ export function loginAllowed(rawIp: string, user: string, device: string | null 
   if (!own && !attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
   let a = attempts.get(key);
   if (!a) {
-    if (attempts.size >= LOGIN_THROTTLE_MAX && !makeRoom(now)) return false;
+    // Full of entries past their free tries: let this attempt through without tracking it. That costs nothing a
+    // distributed attacker didn't already have (each new address gets 5 free tries anyway); what bounds guessing is
+    // the password-check cap below (a few at a time, shared fairly), and nobody already throttled is forgotten.
+    if (attempts.size >= LOGIN_THROTTLE_MAX && !makeRoom(now)) return true;
     a = { n: 0, until: 0, seen: now, ip };
     if (key !== sharedKey(ip)) perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
   }

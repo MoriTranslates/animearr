@@ -40,7 +40,8 @@ All notable changes, newest first. The commit history has the crew's version of 
   Junk logins can't lock you out: your own user name keeps its own back-off, password checks run a few at a time and
   are shared fairly between addresses (one address queuing too many gets "too many attempts"), and a browser you have
   logged in with before (a signed "known device" cookie) has its own back-off and lane, so even a flood that uses your
-  user name can't refuse it. A signed-in password change never waits behind anonymous logins.
+  user name can't refuse it. A signed-in password change never waits behind anonymous logins. Filling the record of
+  failed logins (for example from thousands of IPv6 addresses) no longer refuses everyone new.
 - **Private IPv6 (ULA, `fd…`/`fc…`) no longer counts as your home network by default**, just like Docker's 172.16/12:
   Docker's own IPv6 networks use it, so traffic through a Docker gateway could look local. **If you reach AnimeArr
   over Tailscale or a ULA address** and use "No password on my local network" (or still have the default password),
