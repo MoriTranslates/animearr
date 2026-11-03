@@ -17,15 +17,25 @@ import v8 from "node:v8";
 v8.setFlagsFromString("--enable-experimental-regexp-engine");
 /** V8's linear-time flag. A variable, not a literal: linters don't know the flag and call the regex invalid. */
 export const LINEAR_FLAG: string = "l";
-const available = (() => {
+/**
+ * Startup self-test: the flag must make a plain pattern compile AND make a backreference throw (the linear engine
+ * has none). If the flag silently did nothing, `l` would be an ordinary backtracking regex, so report unavailable.
+ */
+export function checkLinearEngine(make: (source: string, flags: string) => RegExp): boolean {
   try {
-    new RegExp("a", LINEAR_FLAG);
-    return true;
+    make("a", LINEAR_FLAG);
   } catch {
     // Harmless to lose: the only thing this tells us is "not available", which is exactly what false reports.
     return false;
   }
-})();
+  try {
+    make("(a)\\1", LINEAR_FLAG);
+  } catch {
+    return true; // refused, as the linear engine must
+  }
+  return false; // compiled: the backtracking engine is running, not the linear one
+}
+const available = checkLinearEngine((s, f) => new RegExp(s, f));
 let forced: boolean | null = null;
 
 /** Whether the linear-time engine works in this process. */

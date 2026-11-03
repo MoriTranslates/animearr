@@ -13,7 +13,7 @@ const fail = (message: string, statusCode = 400) => Object.assign(new Error(mess
 
 // A stored term that can't be run is already handled safely by core/rules.ts (it fails closed); say so once.
 setUnusableTermReporter((rule, term, error) => {
-  const why = `Release rule "${rule}": the term ${term} is skipped, so it is treated as blocking (must not contain) or missing (must contain). ${error}. Edit the term to fix it.`;
+  const why = `Release rule "${rule}": the term ${term} is skipped and fails closed: a must-not term blocks, a must term counts as missing, a preferred term with a negative score still penalises (a positive one gives no bonus). ${error}. Edit the term in this rule to fix it.`;
   console.warn(why);
   try {
     logDecision("rule", { why });
@@ -55,11 +55,12 @@ export function listRules(): ReleaseRule[] {
   }));
 }
 
-function cleanPreferred(v: unknown): PreferredTerm[] {
+function cleanPreferred(v: unknown, stored: PreferredTerm[] = []): PreferredTerm[] {
   const list = Array.isArray(v) ? (v as Partial<PreferredTerm>[]) : [];
   const terms = cleanTerms(
     list.map((p) => p?.term),
     "Preferred",
+    stored.map((p) => p.term),
   );
   return terms.map((term) => {
     const p = list.find(
@@ -85,9 +86,9 @@ export function validateRule(input: Partial<ReleaseRule>, base: ReleaseRule): Re
     id: base.id,
     name,
     enabled: typeof input.enabled === "boolean" ? input.enabled : base.enabled,
-    must: input.must !== undefined ? cleanTerms(input.must, "Must contain") : base.must,
-    mustNot: input.mustNot !== undefined ? cleanTerms(input.mustNot, "Must not contain") : base.mustNot,
-    preferred: input.preferred !== undefined ? cleanPreferred(input.preferred) : base.preferred,
+    must: input.must !== undefined ? cleanTerms(input.must, "Must contain", base.must) : base.must,
+    mustNot: input.mustNot !== undefined ? cleanTerms(input.mustNot, "Must not contain", base.mustNot) : base.mustNot,
+    preferred: input.preferred !== undefined ? cleanPreferred(input.preferred, base.preferred) : base.preferred,
     tags:
       input.tags !== undefined
         ? [...new Set((Array.isArray(input.tags) ? input.tags : []).map(Number).filter((t) => known.has(t)))]

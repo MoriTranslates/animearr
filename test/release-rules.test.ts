@@ -325,3 +325,69 @@ test("rules are saved with trimmed, de-duplicated terms and survive a reload; de
   );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM release_rule_tags WHERE rule_id = ?").get(r.id) as { n: number }).n, 0);
 });
+
+test("a stored preferred term the engine refuses still penalises when its score is negative, and gives no bonus when positive (blind review round 4 Medium 1)", () => {
+  const term = "/^(?!.*dub)/";
+  const neg = applyRules("Show - 01 [1080p]", [rule({ name: "No dubs", preferred: [{ term, score: -100 }] })]);
+  assert.equal(neg.score, -PREFERRED_CAP, "the penalty applies");
+  assert.ok(
+    neg.why.some((w) => w.includes("No dubs")),
+    JSON.stringify(neg.why),
+  );
+  assert.equal(applyRules("Show - 01 [1080p]", [rule({ preferred: [{ term, score: 5 }] })]).score, 0, "a positive score gives no bonus");
+});
+
+test("a rule holding a stored refused term can still be toggled off, and only new or changed terms are validated (blind review round 4 Medium 2)", () => {
+  const term = "/(x26)\\1/";
+  const saved = saveRule(null, { name: "Stored bad", mustNot: ["x264"], preferred: [{ term: "dub", score: -3 }] });
+  db.prepare("UPDATE release_rules SET must_not = ?, preferred = ? WHERE id = ?").run(
+    JSON.stringify([term]),
+    JSON.stringify([{ term, score: -3 }]),
+    saved.id,
+  );
+  // The web UI sends the whole rule back.
+  const off = saveRule(saved.id, { ...listRules().find((x) => x.id === saved.id)!, enabled: false });
+  assert.equal(off.enabled, false);
+  assert.deepEqual(listRules().find((x) => x.id === saved.id)!.mustNot, [term], "the stored term passes through unchanged");
+  assert.equal(saveRule(saved.id, { enabled: true }).enabled, true);
+  assert.throws(
+    () => saveRule(saved.id, { mustNot: [term, "/(y)\\1/"] }),
+    /Must not contain: .*can't run safely/,
+    "a new bad term is refused",
+  );
+  assert.throws(() => saveRule(saved.id, { preferred: [{ term: "/(z)\\1/", score: 1 }] }), /Preferred: .*can't run safely/);
+  deleteRule(saved.id);
+});
+
+test("inline modifier groups such as (?-i:DUB) and (?s:x) are refused on save, so they can't silently undo case folding (blind review round 4 Low)", () => {
+  for (const src of ["/(?-i:DUB)/", "/(?s:x)/", "/a(?i:b)/", "/(?i-s:b)/"]) {
+    const c = compileTerm(src);
+    assert.ok("error" in c && /Inline modifier groups/.test(c.error), src + " " + JSON.stringify(c));
+    assert.throws(() => saveRule(null, { name: "Mod", mustNot: [src] }), /Must not contain: .*Inline modifier groups/);
+  }
+  // Escaped parens, classes and ordinary groups are not modifier groups.
+  for (const src of ["/\\(?a/", "/[(?i]/", "/(?:a|b)/", "/(?<n>a)/", "/(?<=a)b/"]) assert.ok("test" in compileTerm(src), src);
+  assert.ok(!listRules().some((x) => x.name === "Mod"), "nothing saved");
+});
+
+test("the startup self-test marks the linear engine unavailable when the flag has no effect (blind review round 4 Informational)", async () => {
+  const lin = await import("../server/core/linearRegex.js");
+  assert.equal(typeof lin.checkLinearEngine, "function");
+  assert.equal(
+    lin.checkLinearEngine((src, flags) => new RegExp(src, flags === LINEAR_FLAG ? "" : flags)),
+    false,
+    "flag ignored: backreference compiles",
+  );
+  assert.equal(
+    lin.checkLinearEngine(() => {
+      throw new Error("no engine");
+    }),
+    false,
+    "flag refused",
+  );
+  assert.equal(
+    lin.checkLinearEngine((src, flags) => new RegExp(src, flags)),
+    true,
+    "real engine passes",
+  );
+});

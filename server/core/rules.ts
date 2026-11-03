@@ -57,6 +57,18 @@ export function clearCompiledTerms() {
   compiled.clear();
   reported.clear();
 }
+/** True when the pattern has an inline modifier group: "(?" then a letter or "-" (outside escapes and classes). */
+function hasModifierGroup(src: string): boolean {
+  let inClass = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === "\\") i++;
+    else if (inClass) inClass = ch !== "]";
+    else if (ch === "[") inClass = true;
+    else if (ch === "(" && src[i + 1] === "?" && /[a-zA-Z-]/.test(src[i + 2] ?? "")) return true;
+  }
+  return false;
+}
 function compileUncached(raw: string): Compiled {
   const term = raw.trim();
   if (!term) return { error: "A term can't be empty" };
@@ -76,6 +88,10 @@ function compileUncached(raw: string): Compiled {
     return {
       error: `${term} can't be used: AnimeArr's safe regular-expression engine isn't available in this Node.js, so regex terms are off`,
     };
+  if (hasModifierGroup(m[1]))
+    return {
+      error: `${term}: this pattern uses features AnimeArr can't run safely (backreferences/lookarounds); rewrite it without them. Inline modifier groups such as (?i:...) and (?-i:...) aren't allowed: remove them (matching is already case-insensitive)`,
+    };
   try {
     const re = linearCaseInsensitive(m[1]);
     return { test: (title) => re.test(title) };
@@ -86,15 +102,19 @@ function compileUncached(raw: string): Compiled {
     };
   }
 }
-/** Trims, drops blanks and duplicates, and refuses invalid terms with a clear message. */
-export function cleanTerms(v: unknown, what: string): string[] {
+/**
+ * Trims, drops blanks and duplicates, and refuses invalid terms with a clear message. Terms in `stored` (already in
+ * the saved rule, unchanged) pass through unchecked, so a rule holding an old refused term can still be edited or
+ * switched off; they stay unusable and fail closed when applied.
+ */
+export function cleanTerms(v: unknown, what: string, stored: string[] = []): string[] {
   const list = Array.isArray(v) ? v : String(v ?? "").split(/\r?\n/);
   const out: string[] = [];
   for (const x of list) {
     const term = String(x ?? "").trim();
     if (!term || out.some((o) => o.toLowerCase() === term.toLowerCase())) continue;
-    const c = compileTerm(term);
-    if ("error" in c) throw Object.assign(new Error(`${what}: ${c.error}`), { statusCode: 400 });
+    const c = stored.includes(term) ? null : compileTerm(term);
+    if (c && "error" in c) throw Object.assign(new Error(`${what}: ${c.error}`), { statusCode: 400 });
     out.push(term);
   }
   if (out.length > 100) throw Object.assign(new Error(`${what}: up to 100 terms per rule`), { statusCode: 400 });
@@ -145,7 +165,12 @@ export function applyRules(title: string, rules: ReleaseRule[]): RuleVerdict {
       });
       if (bad) blocked = `contains '${bad}'${unusable ? " (this term can't be run safely, so it counts as present)" : ""}`;
     }
-    const preferred = r.preferred.filter((p) => check(p.term) === true);
+    // An unusable preferred term (null) fails safe: with a negative score it counts as matching, so the penalty
+    // still applies; with a positive score it gives no bonus.
+    const preferred = r.preferred.filter((p) => {
+      const v = check(p.term);
+      return v === null ? p.score < 0 : v;
+    });
     matches.push({ rule: r.name, blocked, preferred: preferred.map((p) => ({ term: p.term, score: p.score })) });
     if (blocked) reject ??= `Blocked by release rule '${r.name}': ${blocked}`;
     else
