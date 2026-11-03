@@ -406,6 +406,10 @@ export function parseRelease(input: string): ParsedRelease {
   // CJK brackets → square brackets; full-width spaces.
   s = s.replace(/【/g, "[").replace(/】/g, "]").replace(/　/g, " ");
 
+  // An unclosed leading "[" (another "[" comes before its "]"): the name inside it was stripped upstream, as in
+  // "[ /Shinchou Yuusha 01 [WebRip ...][]". It is no group; drop it so it can't swallow the title.
+  if (/^\s*\[[^\]]*\[/.test(s)) s = s.replace(/^\s*\[\s*/, "");
+
   // ---- group: leading [Group] (possibly several: [WtF-aNiMe][SCY]) or trailing -GROUP (scene).
   let group: string | null = null;
   const lead = s.match(/^\s*\[([^\]]{1,60})\]\s*/);
@@ -424,9 +428,16 @@ export function parseRelease(input: string): ParsedRelease {
         /^\s*(?:-\s*\d{1,4}(?!\d|[pi]\b|bit\b)|$)/i.test(rest) ||
         (titleLike && /^\s*(?:S\d|E\d|Season\b|\d{1,2}(?:st|nd|rd|th)\s+Season\b)/i.test(rest));
       s = noTitle ? `${lead2[1]} ${rest}` : rest;
+    } else {
+      // An all-bracket name, "[Group][Title][01-13][BDRip]...": the bracket right after the group, followed straight
+      // by another bracket, is the title ("[工作細胞BLACK / Hataraku Saibou Black]"), not a tag to drop.
+      const titleBr = s.match(/^\s*\[([^\]]{1,100})\]\s*(?=\[)/);
+      if (titleBr && /\p{L}/u.test(titleBr[1]) && !META_TOKEN.test(titleBr[1]) && !/^\d/.test(titleBr[1]) && !RES_RE.test(titleBr[1]))
+        s = `${titleBr[1]} ${s.slice(titleBr[0].length)}`;
     }
   }
-  s = s.replace(/^[._\s-]+/, "");
+  // Leading separators, and a "/" left when a "CJK / Romaji" name lost its CJK part ("[&LoliHouse]  / Gleipnir").
+  s = s.replace(/^[._\s/-]+/, "");
 
   // ---- dot/underscore separated names → spaces (keep "H.264", "AAC2.0", "12.5" intact).
   const dots = (s.match(/\./g) ?? []).length;
@@ -760,11 +771,16 @@ export function parseRelease(input: string): ParsedRelease {
   let title = s.slice(0, titleEnd);
   title = title.replace(/\[[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ");
   // "Shingeki no Kyojin / Attack on Titan": a spaced slash separates two names; the last one is the title, as before.
-  title = title.split(/\s\/\s/).pop()!;
-  // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go.
+  // An empty side (the CJK name was stripped: "Carole & Tuesday / ") doesn't count.
+  title =
+    title
+      .split(/\s\/\s/)
+      .filter((p) => p.trim())
+      .pop() ?? "";
+  // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go, and a bare "/" at either end.
   title = cleanSpaces(title)
-    .replace(/[\s\-–~|:,.]+$/, "")
-    .replace(/^[\s\-–~|:,.]+/, "");
+    .replace(/[\s\-–~|:,./]+$/, "")
+    .replace(/^[\s\-–~|:,./]+/, "");
   // Remove a trailing "(Season 2)" left by "Title (Season 2) - 33".
   title = title.replace(/\s*\(\s*Season\s+\d+\s*\)\s*$/i, "").trim();
   // Trailing ordinal season, "Season N" or "SN" inside the title: the season is already a marker.

@@ -897,3 +897,59 @@ test("slashes inside tags or a title are not folders (round-2 review #1, real na
     },
   ]);
 });
+
+test("a title left with a bare '/' by a stripped CJK name, or in an unclosed or all-bracket name (corpus regressions 1-3)", () => {
+  check([
+    // Regression 1: the CJK title before " / " was stripped upstream; the slash must not stay in the title.
+    { name: "[&LoliHouse]  / Gleipnir - 03 [WebRip 1080p HEVC-10bit AAC][]", title: "Gleipnir", group: "&LoliHouse", absolute: [3] },
+    {
+      name: "[Lilith-Raws]  / No Guns Life - 13 [Baha][WEB-DL][1080p][AVC AAC][CHT][MKV]",
+      title: "No Guns Life",
+      group: "Lilith-Raws",
+      absolute: [13],
+    },
+    {
+      name: "[&LoliHouse]   / Mahouka Koukou no Rettousei S2 - 01 [WebRip 1080p HEVC-10bit AAC][]",
+      title: "Mahouka Koukou no Rettousei",
+      group: "&LoliHouse",
+      season: 2,
+      episodes: [1],
+    },
+    {
+      name: "[&LoliHouse] /Kouya no Kotobuki Hikoutai - 01 [WebRip 1080p HEVC-10bit AAC][]",
+      title: "Kouya no Kotobuki Hikoutai",
+      group: "&LoliHouse",
+      absolute: [1],
+    },
+    {
+      name: "[U3-Web] Carole & Tuesday /  - 13 [NFLX WEB-DL 1080p AVC AAC E-AC-3] (Carole and Tuesday)",
+      title: "Carole & Tuesday",
+      group: "U3-Web",
+      absolute: [13],
+    },
+    // Regression 2: an unclosed leading "[" (the CJK name inside it was stripped) must not swallow the whole name.
+    { name: "[ /Shinchou Yuusha 01 [WebRip 1920x1080 HEVC YUV420P10 1080p AAC][]", title: "Shinchou Yuusha", group: null, absolute: [1] },
+    { name: "[ /Shinchou Yuusha 02 [WebRip 1920x1080 HEVC YUV420P10 1080p AAC][]", title: "Shinchou Yuusha", group: null, absolute: [2] },
+    // Regression 3: an all-bracket name: the bracket right after the group is the title ("CJK / Romaji").
+    {
+      name: "【喵萌奶茶屋】[工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]",
+      title: "Hataraku Saibou Black",
+      group: "喵萌奶茶屋",
+      absolute: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    },
+    // Must not change: the same shows from other groups, and a title that really has a "/" in it.
+    {
+      name: "[Nekomoe kissaten&LoliHouse] Gleipnir - 03 [WebRip 1080p HEVC-10bit AAC ASSx2]",
+      title: "Gleipnir",
+      group: "Nekomoe kissaten&LoliHouse",
+      absolute: [3],
+    },
+    {
+      name: "[Lilith-Raws] No Guns Life - 13 [Baha][WEB-DL][1080p][AVC AAC][CHT][MKV]",
+      title: "No Guns Life",
+      group: "Lilith-Raws",
+      absolute: [13],
+    },
+    { name: "[Group] 22/7 - 05", title: "22/7", group: "Group", absolute: [5] },
+  ]);
+});
