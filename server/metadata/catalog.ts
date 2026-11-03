@@ -252,7 +252,9 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
   const gone = (db.prepare("SELECT anilist_id FROM entries").all() as { anilist_id: number }[])
     .map((r) => r.anilist_id)
     .filter((x) => !want.has(x));
-  if (gone.length && seeds.size)
+  // An empty Anime-Lists or Fribb answer is "couldn't check", never "nothing is mapped": keep entries and mappings as they are.
+  const mapsOk = al.size > 0 && f.anidbToAnilist.size > 0;
+  if (gone.length && seeds.size && mapsOk)
     tx(db, () => {
       for (const id of gone) {
         db.prepare("DELETE FROM entries WHERE anilist_id = ?").run(id);
@@ -261,7 +263,7 @@ export async function refreshCatalog(opts: { limit?: number; force?: boolean } =
       }
     });
   // Mappings follow Anime-Lists/Fribb changes every run (no AniList fetch needed).
-  remap(f);
+  if (mapsOk) remap(f);
   const known = new Map(
     (
       db.prepare("SELECT anilist_id, status, fetched_at FROM entries").all() as {
