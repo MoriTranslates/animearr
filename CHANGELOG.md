@@ -30,7 +30,8 @@ All notable changes, newest first. The commit history has the crew's version of 
   else, including settings, profiles, rules, cutover, renames, file deletes and the internal API, now needs a
   signed-in browser. **If you script against an internal route with the API key, it now gets 403.**
 - **Notification secrets don't follow a new address.** Pointing a webhook at a new URL, or an email channel at a new
-  server, port or security setting, drops the saved header values or SMTP password unless you type them again.
+  server, port or a less safe security setting, now asks you to type the saved header values or SMTP password again
+  (the save is refused until you do, or clear them). Switching to a safer setting (to STARTTLS or TLS) keeps it.
 - **"No password on my local network" ignores forwarded traffic with a `TRUST_PROXY` list too.** Before, setting
   `TRUST_PROXY` to your proxy's address let any LAN device that sent `X-Forwarded-For` (a second tunnel or proxy, such
   as cloudflared) in without a password.
