@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
 import { safeFetch } from "../system/safeFetch.js";
+import { stripXmlIllegal } from "../core/xml.js";
 import type { ClientFile, ClientStatus } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
@@ -296,7 +297,8 @@ export const delugeDriver = {
 // ---------------------------------------------------------------- XML-RPC (rTorrent)
 
 export type XmlValue = string | number | boolean | Buffer | XmlValue[] | { [k: string]: XmlValue } | null;
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// XML 1.0 can't carry some characters even escaped (a control byte in a torrent name): they are dropped, as in NFOs.
+const esc = (s: string) => stripXmlIllegal(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function encodeValue(v: XmlValue): string {
   if (v === null) return "<value><string></string></value>";
   if (Buffer.isBuffer(v)) return `<value><base64>${v.toString("base64")}</base64></value>`;
