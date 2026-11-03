@@ -205,6 +205,17 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
 }
 
 /**
+ * A restore that failed AFTER the live database was closed (blind review round 4, M1). The handle can't be reopened in
+ * this process, so a retry can't work: the caller must not offer one, and must restart the app so it opens whatever the
+ * folder now holds. `message` says exactly what state the folder was left in. Errors without this mark came before
+ * anything live was touched (nothing changed, a retry is fine).
+ */
+export function restoreStopped(message: string, cause: unknown) {
+  return Object.assign(new Error(message, { cause }), { statusCode: 500, restartNeeded: true as const });
+}
+export const restartNeeded = (e: unknown) => (e as { restartNeeded?: unknown } | null)?.restartNeeded === true;
+
+/**
  * Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). `beforeSwap` runs once
  * every check has passed, right before the live database is replaced; if it throws, nothing is changed. `beforeSwap` is
  * required (blind review round 3, L1): the routes pass the session floor, and a do-nothing default would let a caller
@@ -241,9 +252,24 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
     fs.rmSync(tmp, { force: true });
     throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
   }
-  db.close();
-  for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
-  fs.renameSync(tmp, USER_DB);
+  // From here the live handle is closed: any failure is a restoreStopped (restart, no retry). Until the rename lands,
+  // the old database is still whole at its path (close checkpointed the journal), so a failure leaves it in place.
+  try {
+    db.close();
+    for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
+    fs.renameSync(tmp, USER_DB);
+  } catch (e) {
+    let left = "";
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch (re) {
+      left = ` (a leftover ${path.basename(tmp)} could not be removed: ${(re as Error).message}; it is safe to delete)`;
+    }
+    throw restoreStopped(
+      `Couldn't restore ${name}: ${(e as Error).message}. The restore stopped after the database was closed, before it was replaced: the database you had is still in place${left}. AnimeArr is restarting to reopen it; reload the page in a few seconds (start it again yourself if it isn't running in Docker), log in again, then retry the restore.`,
+      e,
+    );
+  }
 }
 
 // ---------------------------------------------------------------- migrations (transactional; backup first)

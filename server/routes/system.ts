@@ -13,7 +13,17 @@ import {
 import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
 import { authState, DEVICE_COOKIE, loginAllowed, loginSucceeded, validDevice } from "../system/auth.js";
-import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restoreBackup } from "../system/db.js";
+import {
+  BACKUP_DIR,
+  backupNow,
+  CONFIG_DIR,
+  dbState,
+  listBackups,
+  listJobs,
+  resetCache,
+  restartNeeded,
+  restoreBackup,
+} from "../system/db.js";
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
 
@@ -81,14 +91,35 @@ export function registerSystemRoutes(app: FastifyInstance) {
     writable();
     return { name: backupNow("manual") };
   });
+  /*
+   * Once a restore has closed the live database (it succeeded, or it stopped after the close: blind review round 4,
+   * M1), this process can't serve it again; it exits so it restarts on what the folder holds. Until then, another
+   * restore is refused instead of failing with "database is not open".
+   */
+  let restarting = false;
+  const restartAfterRestore = (code: number, why: string) => {
+    restarting = true;
+    app.log[code ? "error" : "warn"](why);
+    setTimeout(() => process.exit(code), 500);
+  };
+  const notRestarting = () => {
+    if (restarting) throw fail("AnimeArr is restarting after a restore; reload the page in a few seconds", 503);
+  };
   app.post<{ Body: { name?: string; password?: string } }>("/api/system/restore", async (req) => {
+    notRestarting();
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     signedInPassed(req);
-    restoreBackup(String(req.body?.name ?? ""), keepSessionsEndedAcrossRestore);
-    app.log.warn("Backup restored; exiting so the app restarts with it.");
-    setTimeout(() => process.exit(0), 500);
+    notRestarting();
+    try {
+      restoreBackup(String(req.body?.name ?? ""), keepSessionsEndedAcrossRestore);
+    } catch (e) {
+      if (restartNeeded(e))
+        restartAfterRestore(1, `Restore stopped after the database was closed; exiting so the app restarts. ${(e as Error).message}`);
+      throw e;
+    }
+    restartAfterRestore(0, "Backup restored; exiting so the app restarts with it.");
     return {
       ok: true,
       message:
@@ -134,13 +165,24 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     signedInPassed(req);
+    notRestarting();
     const token = String(req.body?.token ?? "");
     const staged = peekStaged(token);
     try {
       restoreUploaded(staged, keepSessionsEndedAcrossRestore);
     } catch (e) {
-      // The upload stays staged until a restore succeeds (blind review round 3, L5), so the user can retry without
-      // sending a possibly large file again; the message says so.
+      // Stopped after the database was closed: no retry in this process (blind review round 4, M1). The swap was
+      // undone where it could be, the message says what the folder holds, and the app restarts to reopen it.
+      if (restartNeeded(e)) {
+        dropStaged(token);
+        restartAfterRestore(
+          1,
+          `Uploaded backup restore stopped after the database was closed; exiting so the app restarts. ${(e as Error).message}`,
+        );
+        throw e;
+      }
+      // Failed before anything live was touched: the upload stays staged (blind review round 3, L5), so the user can
+      // retry without sending a possibly large file again; the message says so.
       const err = e as Error & { statusCode?: number };
       throw Object.assign(
         new Error(`${err.message}. The uploaded file is kept for a few minutes: try again without choosing the file again.`, { cause: e }),
@@ -148,8 +190,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
       );
     }
     dropStaged(token);
-    app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
-    setTimeout(() => process.exit(0), 500);
+    restartAfterRestore(0, "Uploaded backup restored; exiting so the app restarts with it.");
     return {
       ok: true,
       message:
