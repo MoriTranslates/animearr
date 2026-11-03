@@ -1106,3 +1106,23 @@ test("an all-bracket name with a season bracket after the title never reads as s
     "Hataraku Saibou Black",
   );
 });
+
+test("an all-bracket name never takes a tag bracket as the title; the next bracket is (round-3 M3)", () => {
+  const title = "Show Name That Is Long Enough";
+  const tags = ["繁體", "简体", "简繁日内封", "繁中", "CHT", "CHS", "BIG5", "GB", "BIG5 GB", "HEVC AAC 10bit FLAC Mixed", "1080p HEVC"];
+  for (const tag of tags) {
+    assert.equal(parseRelease(`[Group][${tag}][${title}][01]`).title, title, tag);
+    assert.equal(parseRelease(`[Group][${tag}][${title}][01][1080p]`).title, title, tag);
+    // No non-tag bracket left: unknown, never the tag text.
+    assert.equal(parseRelease(`[Group][${tag}][01][1080p]`).title, "", tag);
+  }
+  assert.equal(parseRelease("[Group][HEVC AAC 10bit FLAC Mixed][Show Name][01]").title, "Show Name");
+  // Must not change: a real title with one tag-like word is still the title.
+  assert.equal(parseRelease("[Group][Sword Art Online GB Edition Extra][01][1080p]").title, "Sword Art Online GB Edition Extra");
+  assert.equal(parseRelease("[Group][Mixed Martial Arts Kenichi Fighter][01][1080p]").title, "Mixed Martial Arts Kenichi Fighter");
+  // Real names: the title bracket right after the group stays the title.
+  assert.equal(
+    parseRelease("[Nekomoe.kissaten][Mobile.Suit.Gundam.THE.WITCH.FROM.MERCURY][24][1080p][JPTC].mp4-xpost").title,
+    "Mobile Suit Gundam THE WITCH FROM MERCURY",
+  );
+});

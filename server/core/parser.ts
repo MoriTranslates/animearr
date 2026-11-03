@@ -269,6 +269,18 @@ const LANGUAGE_ONLY = new RegExp(`^${LANGUAGE_WORD}(?:(?:\\s*[/,+]\\s*|\\s+)${LA
 const META_TOKEN =
   /^(?:\d{3,4}p|\d{3,4}x\d{3,4}|[A-F0-9]{8}|batch|complete|web(?:[ -]?(?:dl|rip))?|bd(?:rip)?|blu-?ray|dvd(?:rip)?|hevc|avc|x26[45]|h\.?26[45]|av1|aac.*|flac.*|opus.*|e?ac3.*|dts.*|hi10p?|10[ -]?bits?|8[ -]?bits?|multi.*|dual.*|eng.*|english.*|vostfr.*|raw|mkv|mp4|uncensored|uncut|v\d|end|fin(?:al)?|hdr|sdr|remux|\d+bit|cr|amzn|nf|hidive|dsnp|b-global|japanese.*sub.*|jp.*sub.*)$/i;
 
+/** Subtitle-language words in Chinese brackets: 繁體, 简繁日内封, 繁中. */
+const CJK_TAG = /^(?:繁體|繁体|簡體|简体|簡繁|简繁|簡中|简中|繁中|繁|簡|简|日|中日|內封|内封|內嵌|内嵌|外掛|外挂|雙語|双语|中文|字幕)+$/;
+/** Other bracket words that are tags, not titles, next to META_TOKEN. */
+const TAG_WORD = /^(?:cht|chs|big5|gbk?|jptc|jpsc|sc|tc|cn|mixed|sub|subs|softsubs?|hardsubs?|bdrip|h26[45]|ma|lossless|audio)$/i;
+/** A bracket made only of tag words ("CHT", "BIG5 GB", "HEVC AAC 10bit FLAC Mixed", 繁體): never a show title. */
+function isTagBracket(text: string): boolean {
+  const t = text.trim();
+  if (CJK_TAG.test(t)) return true;
+  const words = t.split(/[\s/+&,_]+/).filter(Boolean);
+  return words.length > 0 && words.every((w) => TAG_WORD.test(w) || META_TOKEN.test(w) || RES_RE.test(w));
+}
+
 /**
  * A "[v2]" / "(v2)" in the tag block at the very end of the text after the episode: only more bracket groups and an
  * optional file extension follow it. Plain words after it ("- The (v2) Mission") mean it is part of an episode title.
@@ -440,7 +452,9 @@ export function parseRelease(input: string): ParsedRelease {
     // or, for a multi-word mixed-case bracket, an SxxEyy or season marker ("[Oshi no Ko] S02E05", "... 2nd Season").
     // A digit-first title after it stays the title ("[SCY] 86 - 05", "[TV Series] 2 - 05").
     const lead2 = s.match(/^\s*\[([A-Za-z][\w.& -]{0,20})\]\s*[._ ]?/);
-    if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
+    // A tag bracket followed by another bracket ("[Group][CHT][Show][01]") goes to the all-bracket branch below.
+    const tagThenBracket = lead2 && isTagBracket(lead2[1]) && /^\[/.test(s.slice(lead2[0].length));
+    if (lead2 && !tagThenBracket && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
       const rest = s.slice(lead2[0].length);
       const titleLike = /\s/.test(lead2[1].trim()) && lead2[1] !== lead2[1].toUpperCase();
       // A multi-word mixed-case bracket is the title when a marker follows. Any other bracket is, only when nothing
@@ -453,7 +467,15 @@ export function parseRelease(input: string): ParsedRelease {
     } else {
       // An all-bracket name, "[Group][Title][01-13][BDRip]...": the bracket right after the group, followed straight
       // by another bracket, is the title ("[工作細胞BLACK / Hataraku Saibou Black]"), not a tag to drop.
-      const titleBr = s.match(/^\s*\[([^\]]{1,100})\]\s*(?=\[)/);
+      // Brackets that are only tags (subtitle language, codec, resolution, audio, source) are never the title; the next
+      // bracket is. With none left, the name stays untitled (unknown).
+      let titleBr: RegExpMatchArray | null = null;
+      let skipped = 0;
+      for (;;) {
+        titleBr = s.slice(skipped).match(/^\s*\[([^\]]{1,100})\]\s*(?=\[)/);
+        if (!titleBr || !isTagBracket(titleBr[1])) break;
+        skipped += titleBr[0].length;
+      }
       // A later season bracket ("[S2]", "[Season 2]", "[2nd Season]", "[Part 2]") would be lost with the title found,
       // and the name would match season 1 by absolute number. Leave such a name unknown instead.
       const seasonBr = /\[\s*(?:S\d{1,2}|Season\s*\d+|\d{1,2}(?:st|nd|rd|th)\s+Season|Part\s*\d+|第[^\]]{1,3}[季期部])\s*\]/i;
@@ -463,9 +485,9 @@ export function parseRelease(input: string): ParsedRelease {
         !META_TOKEN.test(titleBr[1]) &&
         !/^\d/.test(titleBr[1]) &&
         !RES_RE.test(titleBr[1]) &&
-        !seasonBr.test(s.slice(titleBr[0].length))
+        !seasonBr.test(s.slice(skipped + titleBr[0].length))
       )
-        s = `${titleBr[1]} ${s.slice(titleBr[0].length)}`;
+        s = `${titleBr[1]} ${s.slice(skipped + titleBr[0].length)}`;
     }
   }
   // Leading separators, and a "/" left when a "CJK / Romaji" name lost its CJK part ("[&LoliHouse]  / Gleipnir").
