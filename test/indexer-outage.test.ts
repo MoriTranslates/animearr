@@ -257,3 +257,23 @@ test("managed search where one indexer refuses the queries (HTTP 400): a real at
   assert.equal(state(7009).attempts, 3);
   assert.equal(state(7009).state, "gave-up");
 });
+
+// ---------------------------------------------------------------- the breaker only counts real outages (M3b)
+
+test("an indexer that refuses queries (HTTP 400) is never switched off for grabbing; 500s and timeouts still trip it", async () => {
+  const { indexerOff } = await import("../server/search/health.js");
+  const { indexerNumId } = await import("../server/search/indexers.js");
+  const o2 = indexerNumId("o2");
+  const rounds = async () => {
+    for (let i = 0; i < 6; i++) await deepSearch(TVDB, [7001 + i], { budget: 8 }); // different queries, so none is cached
+  };
+  set("ok", "badQuery", "ok");
+  await rounds();
+  assert.equal(indexerOff(o2), false, "repeated 400s must not trip the breaker");
+
+  for (const m of ["500", "timeout", "auth"] as const) {
+    set("ok", m, "ok");
+    await rounds();
+    assert.equal(indexerOff(o2), true, `repeated ${m} failures must trip the breaker`);
+  }
+});
