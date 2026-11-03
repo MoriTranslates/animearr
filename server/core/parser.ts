@@ -264,6 +264,20 @@ const CRC_RE = /[\[(]([A-F0-9]{8})[\])]/i;
 const META_TOKEN =
   /^(?:\d{3,4}p|\d{3,4}x\d{3,4}|[A-F0-9]{8}|batch|complete|web(?:[ -]?(?:dl|rip))?|bd(?:rip)?|blu-?ray|dvd(?:rip)?|hevc|avc|x26[45]|h\.?26[45]|av1|aac.*|flac.*|opus.*|e?ac3.*|dts.*|hi10p?|10[ -]?bits?|8[ -]?bits?|multi.*|dual.*|eng.*|english.*|vostfr.*|raw|mkv|mp4|uncensored|uncut|v\d|end|fin(?:al)?|hdr|sdr|remux|\d+bit|cr|amzn|nf|hidive|dsnp|b-global|japanese.*sub.*|jp.*sub.*)$/i;
 
+/**
+ * A "[v2]" / "(v2)" in the tag block at the very end of the text after the episode: only more bracket groups and an
+ * optional file extension follow it. Plain words after it ("- The (v2) Mission") mean it is part of an episode title.
+ */
+function trailingBracketVersion(afterEpisode: string): RegExpExecArray | null {
+  const re = /[[(]\s*v(\d)\s*[\])]/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(afterEpisode))) {
+    const rest = afterEpisode.slice(m.index + m[0].length);
+    if (/^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))*\s*(?:\.[A-Za-z0-9]{2,4})?\s*$/.test(rest)) return m;
+  }
+  return null;
+}
+
 function cleanSpaces(s: string) {
   return s.replace(/\s+/g, " ").trim();
 }
@@ -729,7 +743,7 @@ export function parseRelease(input: string): ParsedRelease {
     /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
   if (scene) version = Math.max(version, Number(scene[1] ?? 1) + 1);
   // A version on its own after the episode number: a bare "v2" right after it ("- 05 v2", "S01E05 v2"), or "[v2]" /
-  // "(v2)" right after it or among the bracket tags that follow it ("- 05 [1080p][v2]"). A "v2" inside the title
+  // "(v2)" right after it, among the bracket tags that follow it, or in the closing tag block ("- 05 - Title [1080p][v2]"). A "v2" inside the title
   // ("Superstar!! v2 - 05") or in an episode title ("- 05 - The (v2) Mission") is not one. With no episode number,
   // a bracketed version anywhere after the title counts, as before.
   const epEnd = chosen.find((c) => c.episodes || c.absolute)?.end;
@@ -737,7 +751,8 @@ export function parseRelease(input: string): ParsedRelease {
     epEnd === undefined
       ? /[[(]\s*v(\d)\s*[\])]/i.exec(tail)
       : (/^\s?v(\d)(?![A-Za-z0-9])/i.exec(work.slice(epEnd)) ??
-        /^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))*?\s*[[(]\s*v(\d)\s*[\])]/i.exec(s.slice(epEnd)));
+        /^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))*?\s*[[(]\s*v(\d)\s*[\])]/i.exec(s.slice(epEnd)) ??
+        trailingBracketVersion(s.slice(epEnd)));
   if (verM) version = Math.max(version, Number(verM[1]));
   // A dash number right after a fan "S6 - 01" is the same number; don't double-count.
   if (fan && absolute.length === 1 && episodes.length === 1 && absolute[0] === episodes[0]) absolute = [];

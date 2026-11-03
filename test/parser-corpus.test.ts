@@ -768,6 +768,20 @@ test("a bracketed '(v2)' inside an episode title is not the version (review #8)"
   assert.equal(ver("Show S01E05 [v2]"), 2);
 });
 
+test("a trailing '[v2]' after an episode title or bare tags is still the version (review round 2 #4)", () => {
+  const ver = (name: string) => parseRelease(name).version;
+  assert.equal(ver("[Group] Show - 05 - Episode Title [1080p][v2]"), 2);
+  assert.equal(ver("[Group] Show - 05 END [v2]"), 2);
+  assert.equal(ver("[Group] Show - 05 1080p [v2]"), 2);
+  assert.equal(ver("Show S01E05 1080p WEB x264 [v2]"), 2);
+  assert.equal(ver("Show.S01E05.1080p.WEB.(v2)"), 2);
+  assert.equal(ver("[Group] Show - S01E01-02 - 001-002 [v2]"), 2);
+  assert.equal(ver("[Group] Show - 05 - Episode Title [v2].mkv"), 2);
+  // Still not a version when plain words follow it.
+  assert.equal(ver("[Group] Show - 05 - The (v2) Mission"), 1);
+  assert.equal(ver("[Group] Show - 05 - The [v2] Mission [1080p]"), 1);
+});
+
 test("an 'Ep' marker is not left in the title (Show Ep 05)", () => {
   check([
     // Was title "Show Ep" / "Show Ep.05" / "Show - Ep".
