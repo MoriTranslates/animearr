@@ -812,9 +812,13 @@ export function forgetSettingsCache() {
  * settings load raises the restored generation to it, which ends every session from before the restore.
  */
 const SESSION_FLOOR_FILE = path.join(CONFIG_DIR, "session-floor");
-function sessionFloor() {
+function sessionFloor(currentGen: number) {
   try {
-    return Math.max(0, Number(fs.readFileSync(SESSION_FLOOR_FILE, "utf8").trim()) || 0);
+    const text = fs.readFileSync(SESSION_FLOOR_FILE, "utf8").trim();
+    // Fail safe (blind review R8): a file that exists but isn't a whole number (empty, cut short, garbage) means a
+    // restore was under way, so end every session (one past the current generation) rather than let old ones back in.
+    if (!/^\d{1,15}$/.test(text)) return currentGen + 1;
+    return Number(text);
   } catch (e) {
     // No floor file is the normal case (no restore pending); any other read error is reported, not swallowed.
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return 0;
@@ -823,8 +827,27 @@ function sessionFloor() {
 }
 /** Call right before restoring a backup. Throws if the floor can't be written (the restore must then not go ahead). */
 export function keepSessionsEndedAcrossRestore() {
-  const floor = Math.max(sessionFloor(), Number(getSettings().auth.sessionGen) || 0) + 1;
-  fs.writeFileSync(SESSION_FLOOR_FILE, String(floor));
+  const gen = Number(getSettings().auth.sessionGen) || 0;
+  const floor = Math.max(sessionFloor(gen), gen) + 1;
+  // Temp file in the same folder, flushed, then renamed over the old floor: a crash leaves the old or the new one whole.
+  const tmp = `${SESSION_FLOOR_FILE}.tmp`;
+  try {
+    const fd = fs.openSync(tmp, "w");
+    try {
+      fs.writeFileSync(fd, String(floor));
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, SESSION_FLOOR_FILE);
+  } catch (e) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Only the leftover temp file; the original error below is what matters, and the next write overwrites it.
+    }
+    throw e;
+  }
 }
 
 export function getSettings(): Settings {
@@ -869,7 +892,7 @@ export function getSettings(): Settings {
   const missing = !s.apiKey || !s.secret || migrated;
   if (missing) s = { ...s, apiKey: s.apiKey || rand(16), secret: s.secret || rand(32) };
   // After a restore: sessions ended before it stay ended (see keepSessionsEndedAcrossRestore).
-  const floor = sessionFloor();
+  const floor = sessionFloor(Number(s.auth.sessionGen) || 0);
   const raised = floor > (Number(s.auth.sessionGen) || 0);
   if (raised) s = { ...s, auth: { ...s.auth, sessionGen: floor } };
   if ((missing || raised) && !dbState.corrupt) write(s);

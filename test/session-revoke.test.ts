@@ -193,3 +193,44 @@ test("review R2: the floor is written after the checks, and if writing it fails 
   assert.ok(fs.readFileSync(KEY_FILE).equals(keyBefore), "the key is untouched");
   assert.equal(await get(await login()), 200, "the database is still open");
 });
+
+test("review R8: a floor write that fails midway leaves the old floor intact and no temp file", async () => {
+  const { CONFIG_DIR } = await import("../server/system/db.js");
+  const { keepSessionsEndedAcrossRestore } = await import("../server/system/settings.js");
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  fs.writeFileSync(floorFile, "7");
+  const realRename = fs.renameSync;
+  fs.renameSync = () => {
+    throw new Error("power cut");
+  };
+  try {
+    assert.throws(() => keepSessionsEndedAcrossRestore(), /power cut/);
+  } finally {
+    fs.renameSync = realRename;
+  }
+  try {
+    assert.equal(fs.readFileSync(floorFile, "utf8"), "7", "the old floor is untouched");
+    const leftovers = fs.readdirSync(CONFIG_DIR).filter((f) => f.startsWith("session-floor") && f !== "session-floor");
+    assert.deepEqual(leftovers, [], "no temp file left behind");
+  } finally {
+    fs.rmSync(floorFile, { force: true });
+  }
+});
+
+test("review R8: an empty or garbage floor file fails safe: old sessions stay ended", async () => {
+  const { CONFIG_DIR } = await import("../server/system/db.js");
+  const { forgetSettingsCache } = await import("../server/system/settings.js");
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  try {
+    for (const junk of ["", "garbage", "12abc", "-3", "1.5", String.fromCharCode(0, 0)]) {
+      const old = await login();
+      assert.equal(await get(old), 200);
+      fs.writeFileSync(floorFile, junk);
+      forgetSettingsCache(); // as after the next restart
+      assert.equal(await get(old), 401, `floor ${JSON.stringify(junk)}: old session ended`);
+      assert.equal(await get(await login()), 200, "a new login works");
+    }
+  } finally {
+    fs.rmSync(floorFile, { force: true });
+  }
+});
