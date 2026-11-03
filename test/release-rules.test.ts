@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseRelease } from "../server/core/parser.js";
 import { rankRelease, type Profile } from "../server/core/rank.js";
-import { applyRules, compileTerm, guardedRegexRuns, isClearlySafeRegex, PREFERRED_CAP, type ReleaseRule } from "../server/core/rules.js";
+import { applyRules, compileTerm, guardedRegexRuns, PREFERRED_CAP, type ReleaseRule } from "../server/core/rules.js";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rules-"));
 process.env.ANIMEARR_NO_LOCK = "1";
@@ -84,35 +84,7 @@ test("a runaway regex the static check misses can't hang the server, and it fail
   assert.equal(applyRules("Show 1080p x264", [rule({ mustNot: ["/x265/"] })]).reject, null);
 });
 
-test("the 'clearly safe' regex check: what runs directly and what stays guarded", () => {
-  for (const src of [
-    "(1080p|720p).*(x26[45])",
-    "\\bHEVC\\b",
-    "S\\d+E\\d+",
-    "^\\[(SubsPlease|Erai-raws)\\]",
-    "web-?dl",
-    "[(+*]x", // quantifier characters inside a class are literal
-    "\\(a+\\)+", // escaped parentheses are not a group
-    "(?:x26[45]|hevc)",
-  ])
-    assert.equal(isClearlySafeRegex(src), true, src);
-  for (const src of [
-    "((a+))+$", // nested repeat
-    "(a|a)*b", // repeated alternation
-    "(a?)+", // optional inside a repeat
-    "(x+){2,}",
-    "(a)\\1", // backreference
-    "(?<n>a)\\k<n>",
-    ".*.*.*a", // three unbounded repeats: polynomial blow-up
-    "(?=(a+))+b",
-  ])
-    assert.equal(isClearlySafeRegex(src), false, src);
-});
-
-test("adjacent overlapping repeats are guarded, and terms over 1,024 characters are refused on save (review misc round 2 #1)", () => {
-  for (const src of ["[a-z]*[a-z]*x", "(?:a*)(?:a*)x", "[a-z]+[a-z]+x", ".{0,999}.{0,999}.{0,999}.{0,999}x", ".*.*x"])
-    assert.equal(isClearlySafeRegex(src), false, src);
-  for (const src of ["S\\d+E\\d+", "a+b+c", "\\(a+\\)+"]) assert.equal(isClearlySafeRegex(src), true, src);
+test("adjacent overlapping repeats run guarded, and terms over 1,024 characters are refused on save (review misc round 2 #1)", () => {
   // The quadratic shape now goes through the time-limited path, so a long title can't freeze the event loop for long.
   const quad = compileTerm("/[a-z]*[a-z]*x/");
   assert.ok("test" in quad);
@@ -128,28 +100,24 @@ test("adjacent overlapping repeats are guarded, and terms over 1,024 characters 
   assert.throws(() => saveRule(null, { name: "Long", must: ["/" + "a".repeat(1100) + "/"] }), /at most 1024 characters/);
 });
 
-test("clearly safe regex terms run directly (fast); only the others pay for the time limit (review misc #1)", () => {
-  // The reviewer's case: 500 releases x 5 regex terms. With every test behind the vm watchdog this took well over a
-  // second; run directly it takes a few milliseconds. The limit leaves a wide margin for slow machines.
-  const safe = ["/(1080p|720p).*(x26[45])/", "/\\bHEVC\\b/", "/S\\d+E\\d+/", "/^\\[(SubsPlease|Erai-raws)\\]/", "/web-?dl/"];
-  const r = rule({ mustNot: safe.slice(0, 2), must: safe.slice(2, 4), preferred: [{ term: safe[4], score: 1 }] });
-  const guardedBefore = guardedRegexRuns();
+test("a realistic search (500 releases x 5 regex terms) with every regex guarded: results are right and the cost is printed", () => {
+  const terms = ["/(1080p|720p).*(x26[45])/", "/\\bHEVC\\b/", "/S\\d+E\\d+/", "/^\\[(SubsPlease|Erai-raws)\\]/", "/web-?dl/"];
+  const r = rule({ mustNot: terms.slice(0, 2), must: terms.slice(2, 4), preferred: [{ term: terms[4], score: 1 }] });
+  const before = guardedRegexRuns();
   const t0 = Date.now();
   for (let i = 0; i < 500; i++) applyRules(`[SubsPlease] Show S01E${i} 1080p WEB-DL x264 ${"pad ".repeat(10)}`, [r]);
   const ms = Date.now() - t0;
-  assert.equal(guardedRegexRuns() - guardedBefore, 0, "safe terms never go through the vm watchdog");
-  // The counter above is the exact check; this bound is only a loose tolerance (the guarded path took over 1 s).
-  assert.ok(ms < 1000, `500 releases x 5 safe regex terms took ${ms} ms`);
-  // Results are unchanged by the direct path.
+  console.log(`PERF: 500 releases x 5 guarded regex terms took ${ms} ms (${guardedRegexRuns() - before} guarded runs)`);
+  assert.ok(guardedRegexRuns() > before, "regex terms go through the guarded runner");
+  assert.ok(ms < 20000, `took ${ms} ms`); // loose tolerance; the real number is printed above
   assert.equal(
     applyRules("[SubsPlease] Show S01E05 1080p x265", [r]).reject,
     "Blocked by release rule 'Rule': contains '/(1080p|720p).*(x26[45])/'",
   );
-  // A runaway term is still cut off (it goes through the guarded path), and fails closed.
+  // A runaway term is cut off and fails closed.
   const t1 = Date.now();
   const slow = applyRules("c".repeat(30) + "!", [rule({ mustNot: ["/((c+))+$/"] })]);
   assert.ok(Date.now() - t1 < 1500, `runaway took ${Date.now() - t1} ms`);
-  assert.ok(guardedRegexRuns() > guardedBefore, "the runaway term went through the guarded path");
   assert.match(slow.reject ?? "", /took too long to check/);
 });
 
@@ -297,4 +265,23 @@ test("rules are saved with trimmed, de-duplicated terms and survive a reload; de
     false,
   );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM release_rule_tags WHERE rule_id = ?").get(r.id) as { n: number }).n, 0);
+});
+
+test("every user regex goes through the guarded runner: exponential and quadratic shapes are never run directly (blind review misc final High)", () => {
+  // The review's shape: "a?" N times, "a" N times, then "b". Small N here so even unguarded code can't hang the run.
+  const n = 18;
+  const expo = "/" + "a?".repeat(n) + "a".repeat(n) + "b/";
+  for (const src of [expo, "/.*a.*b/", "/S\\d+E\\d+/", "/web-?dl/"]) {
+    const c = compileTerm(src);
+    assert.ok("test" in c, src);
+    const before = guardedRegexRuns();
+    c.test("a".repeat(n));
+    assert.equal(guardedRegexRuns() - before, 1, `${src} went through the guarded runner`);
+  }
+  // Plain-text terms stay direct: no guard needed.
+  const plain = compileTerm("1080p");
+  assert.ok("test" in plain);
+  const before = guardedRegexRuns();
+  assert.equal(plain.test("Show 1080p"), true);
+  assert.equal(guardedRegexRuns(), before);
 });

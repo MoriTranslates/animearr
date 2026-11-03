@@ -29,8 +29,8 @@ const MAX_TERM = 1024;
 const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 
 /**
- * User regexes run with a time limit. The static check above can't catch every runaway pattern ("((a+))+$",
- * "(a|a)*b" backtrack exponentially), and JavaScript has no regex timeout, so the match runs as a vm script with one.
+ * User regexes run with a time limit. Every user regex runs this way, with no "looks safe" shortcut: exponential ("((a+))+$", "a?a?aab") and
+ * quadratic (".*a.*b") shapes can't be told apart from safe ones reliably, and JavaScript has no regex timeout, so the match runs as a vm script with one.
  * A check that hits the limit gives "couldn't check" (null), and applyRules fails closed on it: a must-not term
  * blocks, a must term is missing, a preferred term scores nothing. A term that keeps hitting it is marked as runaway
  * and not run again (still failing closed) until the term is edited (newly added to a rule)
@@ -41,94 +41,8 @@ const regexRun = new vm.Script("re.test(title)");
 const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
 const runaway = new Set<string>();
 let guardedRuns = 0;
-/** How many regex tests went through the time-limited path (for tests: safe terms must not). */
+/** How many regex tests went through the time-limited path (for tests: plain-text terms must not). */
 export const guardedRegexRuns = () => guardedRuns;
-
-/**
- * The vm watchdog costs far more than the match itself (a thread per call), so a term that clearly can't run away is
- * tested directly. "Clearly safe": no backreference, no repeated group that holds a repeat or an alternation
- * ("(a+)+", "(a|a)*", "(a?)+"), and at most two unbounded repeats in all (".*.*.*a" is polynomial). Anything else, or
- * anything this small scanner doesn't understand, stays on the guarded path.
- */
-export function isClearlySafeRegex(src: string): boolean {
-  const frames: { quant: boolean; alt: boolean }[] = [{ quant: false, alt: false }];
-  let closed: { quant: boolean; alt: boolean } | null = null; // the group that just ended, if the last token was ")"
-  let unbounded = 0;
-  // The atom being repeated, and the atom just before it when that one was itself repeated without limit: two
-  // neighbouring repeats that can match the same characters ("[a-z]*[a-z]*x") are quadratic.
-  let cur = "";
-  let curBefore: string | null = null;
-  let lastUnb: string | null = null;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    const top = frames[frames.length - 1];
-    let quant: "bounded" | "unbounded" | null = null;
-    const isQuant = c === "*" || c === "+" || c === "?" || (c === "{" && /^\{\d+(,\d*)?\}/.test(src.slice(i)));
-    if (!isQuant && c !== "(" && c !== "|" && c !== ")") {
-      curBefore = lastUnb;
-      lastUnb = null;
-      cur = c === "\\" ? src.slice(i, i + 2) : c;
-      if (c === "[") {
-        let j = i + 1;
-        for (; j < src.length && src[j] !== "]"; j++) if (src[j] === "\\") j++;
-        cur = src.slice(i, j + 1);
-      }
-    }
-    if (c === "(" && src[i + 1] === "?") {
-      const p = /^\?(?:<[=!]|[:=!]|<[^>]*>)/.exec(src.slice(i + 1));
-      if (p) i += p[0].length; // the group's own prefix is not an atom
-    }
-    if (c === ")") {
-      curBefore = null;
-      cur = "(";
-    }
-    if (c === "\\") {
-      if (/[1-9k]/.test(src[i + 1] ?? "")) return false; // backreference
-      i++;
-    } else if (c === "[") {
-      for (i++; i < src.length && src[i] !== "]"; i++) if (src[i] === "\\") i++;
-    } else if (c === "(") {
-      frames.push({ quant: false, alt: false });
-    } else if (c === ")") {
-      if (frames.length < 2) return false;
-      closed = frames.pop()!;
-      const parent = frames[frames.length - 1];
-      parent.quant ||= closed.quant;
-      parent.alt ||= closed.alt;
-      continue;
-    } else if (c === "|") {
-      top.alt = true;
-    } else if (c === "*" || c === "+") {
-      quant = "unbounded";
-    } else if (c === "?") {
-      // "(?:", "(?=" and a lazy "*?" are not repeats of their own.
-      if (src[i - 1] !== "(" && !/[*+?}]/.test(src[i - 1] ?? "")) quant = "bounded";
-    } else if (c === "{") {
-      const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i));
-      if (m) {
-        quant = (m[2] && !m[3]) || Number(m[3] ?? m[1]) >= 100 ? "unbounded" : "bounded"; // a big max is as bad as none
-        i += m[0].length - 1;
-      }
-    }
-    if (quant) {
-      if (closed && (closed.quant || closed.alt)) return false; // a repeated group holding a repeat or an alternation
-      top.quant = true;
-      if (quant === "unbounded") {
-        if (++unbounded > 2) return false;
-        if (curBefore !== null && overlaps(curBefore, cur)) return false;
-        lastUnb = cur;
-      }
-    }
-    closed = null;
-  }
-  return frames.length === 1;
-}
-
-/** Could two repeated atoms match some of the same characters? (Two different plain characters can't.) */
-function overlaps(a: string, b: string): boolean {
-  const wide = (x: string) => x === "." || x === "(" || x[0] === "[" || /^\\[dDwWsS]$/.test(x);
-  return a === b || wide(a) || wide(b);
-}
 
 function guardedTest(term: string, re: RegExp, title: string): boolean | null {
   if (runaway.has(term)) return null;
@@ -199,7 +113,6 @@ function compileUncached(raw: string): Compiled {
   if (/\([^)]*[+*][^)]*\)[+*{]/.test(m[1])) return { error: `The regular expression ${term} is too complex (nested repeats); simplify it` };
   try {
     const re = new RegExp(m[1], "i");
-    if (isClearlySafeRegex(m[1])) return { test: (title) => re.test(title) };
     return { test: (title) => guardedTest(term, re, title) };
   } catch (e) {
     return { error: `${term} isn't a valid regular expression: ${(e as Error).message.replace(/^Invalid regular expression: /, "")}` };
