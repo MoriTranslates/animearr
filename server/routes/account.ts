@@ -162,8 +162,10 @@ export function registerAccountRoutes(app: FastifyInstance) {
   app.put<{ Body: { currentPassword?: string; username?: string; password?: string } }>("/api/auth/account", async (req, reply) => {
     writable();
     const a = getSettings().auth;
+    // Signed in already: throttled on the device, or on one "signed-in" entry, never on the anonymous real-name budget
+    // a login flood can use up (review B7, R1). A stolen session guessing the current password still backs off there.
     const device = validDevice(req.cookies[DEVICE_COOKIE]);
-    if (!loginAllowed(req.ip, a.username, device)) throw fail("Too many attempts, wait a few seconds and try again", 429);
+    if (!loginAllowed(req.ip, a.username, device ?? "signed-in")) throw fail("Too many attempts, wait a few seconds and try again", 429);
     // Signed in already: never queued behind anonymous logins (review B7).
     if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, req.ip, { signedIn: true })))
       throw fail("Current password is wrong", 403);

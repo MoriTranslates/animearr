@@ -359,7 +359,62 @@ const drop = (k: string) => {
 const sweep = (now: number) => {
   swept = now;
   for (const [k, v] of attempts) if (now - v.seen > FORGET_MS) drop(k);
+  for (const [k, v] of ownerAttempts) if (now - v.seen > FORGET_MS) ownerAttempts.delete(k);
 };
+
+/*
+ * Guesses at the account's real user name (blind review R1). The main table lets a newcomer through untracked when it
+ * is full (A3), and junk names can't log in anyway, but the real name can: so its attempts are always tracked, in a
+ * table of their own keyed by address group, with the same per-address back-off. On top of that, one global budget
+ * bounds them across all addresses: bursts of OWNER_GUESS_BURST, then OWNER_GUESS_PER_MIN a minute; past it, every
+ * address gets "too many attempts". That is the real bound on distributed guessing. A known device (the owner's own
+ * browser, see validDevice) is in neither, so a flood naming the user can't lock it out; a browser AnimeArr hasn't
+ * seen can be kept waiting while such a flood lasts.
+ */
+export const OWNER_GUESS_BURST = 60;
+const OWNER_GUESS_PER_MIN = 30;
+const OWNER_TABLE_MAX = 4096;
+const ownerAttempts = new Map<string, { n: number; until: number; seen: number }>(); // address group → attempts, LRU
+let ownerBudget = OWNER_GUESS_BURST;
+let ownerBudgetAt = 0;
+function ownerBudgetRefill(now: number) {
+  ownerBudget = Math.min(OWNER_GUESS_BURST, ownerBudget + (Math.max(0, now - ownerBudgetAt) * OWNER_GUESS_PER_MIN) / 60_000);
+  ownerBudgetAt = now;
+}
+/** For tests: a full global budget again. */
+export function resetOwnerGuessBudget() {
+  ownerBudget = OWNER_GUESS_BURST;
+  ownerBudgetAt = Date.now();
+}
+function ownerAllowed(group: string, now: number) {
+  let a = ownerAttempts.get(group);
+  if (a && now - a.seen > FORGET_MS) {
+    ownerAttempts.delete(group);
+    a = undefined;
+  }
+  if (a && a.until > now) return false; // this address waits out its back-off; the global budget isn't touched
+  if (!a && ownerAttempts.size >= OWNER_TABLE_MAX) {
+    // Room only by forgetting an entry that is past its back-off (oldest first); one still waiting is never dropped.
+    let victim: string | undefined;
+    for (const [k, v] of ownerAttempts)
+      if (v.until <= now) {
+        victim = k;
+        break;
+      }
+    if (victim === undefined) return false;
+    ownerAttempts.delete(victim);
+  }
+  ownerBudgetRefill(now);
+  if (ownerBudget < 1) return false;
+  ownerBudget -= 1;
+  a ??= { n: 0, until: 0, seen: now };
+  a.n++;
+  a.seen = now;
+  if (a.n > FREE_TRIES) a.until = now + Math.min(15_000, 1000 * 2 ** (a.n - FREE_TRIES));
+  ownerAttempts.delete(group);
+  ownerAttempts.set(group, a);
+  return true;
+}
 /**
  * Room for a new entry when the map is full: forget expired ones, else the entry with the fewest failures, but only one
  * still within its free tries (it carries no back-off). An entry past them is never evicted, so a flood can't reset an
@@ -382,12 +437,13 @@ export function loginAllowed(rawIp: string, user: string, device: string | null 
   if (device) return deviceAllowed(device, now); // a known device: its own entry, outside the main table
   const ip = throttleAddr(rawIp);
   if (now - swept > 60_000) sweep(now);
+  // The account's own user name always keeps its own entry, in its own table (see ownerAllowed): junk names from a
+  // shared address (everyone behind one proxy) must not push it into that address's throttled shared bucket, and a
+  // full main table must not stop it being tracked (R1). Trade-off: while an address floods made-up names, the real
+  // name answers 401 where junk names get 429; the password is still throttled on its own entry.
+  if (user.toLowerCase() === getSettings().auth.username.toLowerCase()) return ownerAllowed(ip, now);
   let key = throttleKey(ip, user);
-  // The account's own user name always keeps its own entry: junk names from a shared address (everyone behind one
-  // proxy) must not push it into that address's throttled shared bucket. Trade-off: while an address floods made-up
-  // names, the real name answers 401 where junk names get 429; the password is still throttled on its own entry.
-  const own = user.toLowerCase() === getSettings().auth.username.toLowerCase();
-  if (!own && !attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
+  if (!attempts.has(key) && (perIp.get(ip) ?? 0) >= NAMES_PER_IP) key = sharedKey(ip);
   let a = attempts.get(key);
   if (!a) {
     // Full of entries past their free tries: let this attempt through without tracking it. That costs nothing a
@@ -411,7 +467,10 @@ export function loginSucceeded(ip: string, user: string, device: string | null =
   drop(throttleKey(g, user));
   // The address's shared bucket too (blind review A4): after a real login there, others behind it start fresh.
   drop(sharedKey(g));
+  ownerAttempts.delete(g);
   if (device) deviceAttempts.delete(device);
+  // The owner's own successful try doesn't count against the global budget for the real name.
+  else if (user.toLowerCase() === getSettings().auth.username.toLowerCase()) ownerBudget = Math.min(OWNER_GUESS_BURST, ownerBudget + 1);
 }
 /** For tests: how many throttle entries are held. */
 export const throttleSize = () => attempts.size;

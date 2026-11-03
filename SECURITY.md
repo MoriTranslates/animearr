@@ -55,6 +55,11 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   cookie (a year, httpOnly, kept after logout, void after a password change). It grants nothing by itself, but its
   logins get their own back-off and their own password-check lane, so floods that name your user name, or come from
   the address you share, can't lock that browser out.
+- **What bounds password guessing:** each address (IPv6: each /64) gets 5 free tries per user name, then waits 2, 4,
+  8 and at most 15 seconds between tries. Guesses at your real user name are also limited across **all** addresses
+  together: bursts of 60, then 30 a minute (about 43,000 a day at most), however many addresses an attacker uses. A
+  strong password is what makes that number harmless. While such a flood lasts, a browser AnimeArr hasn't seen before
+  gets "too many attempts"; a known-device browser and an already signed-in session are not affected.
 - Only a salted scrypt hash is stored; "still the default" is a comparison against that hash. The plaintext is never
   saved.
 - The default is only created when there is no account. Updating an install that already has an account never resets

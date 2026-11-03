@@ -21,7 +21,7 @@ delete process.env.TRUST_PROXY;
 const { setAccount } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1");
 const { app } = await import("../server/index.js");
-const { DEVICE_COOKIE, validDevice } = await import("../server/system/auth.js");
+const { DEVICE_COOKIE, loginAllowed, resetOwnerGuessBudget, validDevice } = await import("../server/system/auth.js");
 
 const login = (peer: string, username: string, password: string) =>
   app
@@ -118,6 +118,7 @@ test("a browser the owner logged in with before (device cookie) is served ahead 
 });
 
 test("one address can't queue without limit: its extra checks are refused, other addresses aren't", async () => {
+  resetOwnerGuessBudget(); // the floods above used up the real name's global budget (review R1)
   const many = Array.from({ length: 20 }, (_, i) => login("198.18.2.9", `name${i}`, "nope"));
   const other = login("198.18.2.10", "captain", "pw-test-1");
   const [codes, own] = await Promise.all([Promise.all(many), other]);
@@ -126,6 +127,7 @@ test("one address can't queue without limit: its extra checks are refused, other
 });
 
 test("review B7: a signed-in password change isn't queued behind anonymous logins", async () => {
+  resetOwnerGuessBudget();
   const cookieRes = await app.inject({
     method: "POST",
     url: "/api/auth/login",
@@ -145,4 +147,28 @@ test("review B7: a signed-in password change isn't queued behind anonymous login
   const [, r] = await Promise.all([Promise.all(flood), change]);
   assert.equal(r.statusCode, 200, r.body);
   await setAccount("captain", "pw-test-1");
+});
+
+test("review R1: a flood that uses up the real name's budget doesn't stop a signed-in password change", async () => {
+  resetOwnerGuessBudget();
+  const cookieRes = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    remoteAddress: "198.18.5.1",
+    headers: { "x-animearr": "1" },
+    payload: { username: "captain", password: "pw-test-1" },
+  });
+  const cookie = String([cookieRes.headers["set-cookie"]].flat()[0]).split(";")[0]; // the session only, no device
+  for (let i = 0; i < 200; i++) loginAllowed(`10.77.${i >> 8}.${i & 255}`, "captain"); // the budget is gone now
+  assert.equal(await login("198.18.5.2", "captain", "pw-test-1"), 429, "an unknown browser waits while the flood lasts");
+  const r = await app.inject({
+    method: "PUT",
+    url: "/api/auth/account",
+    remoteAddress: "198.18.5.1",
+    headers: { cookie, "x-animearr": "1" },
+    payload: { currentPassword: "pw-test-1", password: "pw-test-8-xx" },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  await setAccount("captain", "pw-test-1");
+  resetOwnerGuessBudget();
 });
