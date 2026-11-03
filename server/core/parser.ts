@@ -590,6 +590,9 @@ export function parseRelease(input: string): ParsedRelease {
       continue;
     }
     if (spacedDash && !(m[1].startsWith("0") || batchWord)) continue;
+    // "Ranma 1-2 2024 S03E04": an unpadded "1-2" right before an optional year and an SxxEyy marker is part of the title
+    // ("Ranma 1/2"), not an episode range. The SxxEyy already says which episode this is.
+    if (!m[1].startsWith("0") && /^[ ._]*(?:(?:19|20)\d\d[ ._]+)?S\d{1,2}[ ._]?E\d/i.test(work.slice(m.index + m[0].length))) continue;
     if (b > a && !(isYear(a) || isYear(b)) && b - a < 1500) {
       const off = m[0].search(/\d/);
       const idx =

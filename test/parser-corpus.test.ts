@@ -1056,3 +1056,22 @@ test("a real SxxEyy range may run straight into END, FIN or an xNNN codec tag (r
   assert.deepEqual(eps("Show S01E05-1080p"), [5]);
   assert.deepEqual(eps("Show S01E05-720 Group"), [5]);
 });
+
+test("a title like Ranma 1-2 before the year and SxxEyy is not an episode range (round-2 Ranma)", () => {
+  const names = [
+    "Ranma 1-2 2024 S03E04 The Way of Tea 1080p NF WEB-DL DUAL AAC2.0 H.264-VARYG (Ranma 1/2 (2024) 3rd Season, Dual-Audio, Multi-Subs)",
+    "Ranma.1-2.2024.S03E03.Happosai.Days.Are.Here.Again.REPACK.1080p.NF.WEB-DL.DUAL.AAC2.0.H.264.MSubs-ToonsHub.mkv",
+    "[ToonsHub] Ranma 1-2 2024 S03E03 REPACK 1080p NF WEB-DL DUAL AAC2.0 H.264 (Dual-Audio, Multi-Subs)",
+  ];
+  for (const n of names) {
+    const p = parseRelease(n);
+    assert.equal(p.title, "Ranma 1-2 2024", n);
+    assert.equal(p.season, 3, n);
+    assert.deepEqual(p.absolute, [], n);
+    assert.equal(p.episodes.length, 1, n);
+    assert.equal(p.batch, false, n);
+  }
+  // Must not change: a real range before an SxxEyy-less name, and a padded range, are still ranges.
+  assert.deepEqual(parseRelease("Show 1-12 [1080p]").absolute.length, 12);
+  assert.deepEqual(parseRelease("Show 01-12 S01E05").absolute.length, 12);
+});
