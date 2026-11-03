@@ -33,7 +33,8 @@ const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
  * "(a|a)*b" backtrack exponentially), and JavaScript has no regex timeout, so the match runs as a vm script with one.
  * A check that hits the limit gives "couldn't check" (null), and applyRules fails closed on it: a must-not term
  * blocks, a must term is missing, a preferred term scores nothing. A term that keeps hitting it is marked as runaway
- * and not run again (still failing closed) until its rule is saved.
+ * and not run again (still failing closed) until the term is edited (newly added to a rule)
+ * or AnimeArr is restarted. Saving a rule unchanged does not clear it.
  */
 const REGEX_LIMIT_MS = 50;
 const regexRun = new vm.Script("re.test(title)");

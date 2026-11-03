@@ -138,7 +138,8 @@ test("clearly safe regex terms run directly (fast); only the others pay for the 
   for (let i = 0; i < 500; i++) applyRules(`[SubsPlease] Show S01E${i} 1080p WEB-DL x264 ${"pad ".repeat(10)}`, [r]);
   const ms = Date.now() - t0;
   assert.equal(guardedRegexRuns() - guardedBefore, 0, "safe terms never go through the vm watchdog");
-  assert.ok(ms < 250, `500 releases x 5 safe regex terms took ${ms} ms`);
+  // The counter above is the exact check; this bound is only a loose tolerance (the guarded path took over 1 s).
+  assert.ok(ms < 1000, `500 releases x 5 safe regex terms took ${ms} ms`);
   // Results are unchanged by the direct path.
   assert.equal(
     applyRules("[SubsPlease] Show S01E05 1080p x265", [r]).reject,
@@ -160,10 +161,13 @@ test("the first time a rule's term takes too long, one warning names the rule an
   const rows = db.prepare("SELECT why FROM decisions WHERE kind = 'rule' AND why LIKE ?").all(`%${term}%`) as { why: string }[];
   assert.equal(rows.length - before, 1, JSON.stringify(rows));
   assert.match(rows.at(-1)!.why, /Slow rule/);
+  // The advice must be what actually works: saving an unchanged rule no longer clears the mark.
+  assert.match(rows.at(-1)!.why, /edit the term, or restart AnimeArr/i);
+  assert.doesNotMatch(rows.at(-1)!.why, /re-?save/i);
   deleteRule(saved.id);
 });
 
-test("one timeout doesn't disable a term for good; repeated ones do, until the rule is saved again (review misc #2)", () => {
+test("one timeout doesn't disable a term for good; repeated ones do, until the term is edited in (review misc #2)", () => {
   // "/(d|d)*e/" is fine on ordinary names but runs away on a long run of "d": one heavy name stands in for a
   // timeout under CPU load.
   const term = "/(d|d)*e/";
@@ -177,10 +181,11 @@ test("one timeout doesn't disable a term for good; repeated ones do, until the r
   // Three timeouts in a short window: the term is marked, and every name is blocked (fail closed) without running it.
   applyRules(heavy, [r]);
   applyRules(heavy, [r]);
-  const t0 = Date.now();
+  // Counted, not timed: a wall-clock bound like 20 ms flakes on a loaded machine (a GC pause or a busy disk).
+  const runsBefore = guardedRegexRuns();
   assert.match(applyRules("Show - 06 [1080p]", [r]).reject ?? "", /took too long to check/);
-  assert.ok(Date.now() - t0 < 20, "a marked term isn't run again");
-  // Saving the rule (an edit) clears the mark.
+  assert.equal(guardedRegexRuns(), runsBefore, "a marked term isn't run again");
+  // Adding the term to a rule afresh (an edit) clears the mark.
   const saved = saveRule(null, { name: "Marked rule", mustNot: [term] });
   assert.equal(testRules("Show - 07 [1080p]").rejected, null);
   deleteRule(saved.id);

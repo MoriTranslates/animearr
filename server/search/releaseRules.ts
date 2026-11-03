@@ -13,7 +13,7 @@ const fail = (message: string, statusCode = 400) => Object.assign(new Error(mess
 
 // A regex term that took too long is already handled safely by core/rules.ts (it fails closed); say so once.
 setRunawayReporter((rule, term) => {
-  const why = `Release rule "${rule}": the regular expression ${term} took too long to check, so it is treated as blocking (must not contain) or missing (must contain). Simplify it.`;
+  const why = `Release rule "${rule}": the regular expression ${term} took too long to check, so it is treated as blocking (must not contain) or missing (must contain). Simplify it: edit the term, or restart AnimeArr to retry it as it is (saving the rule unchanged does not clear this).`;
   console.warn(why);
   try {
     logDecision("rule", { why });
