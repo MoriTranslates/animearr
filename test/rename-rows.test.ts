@@ -220,12 +220,17 @@ test("a replaced file's corrections and marks never stick to the new file that t
   assert.equal(at.file_marks, 0, "nor its burned-in mark");
   assert.equal(at.file_meta, 0, "nor its release details");
   assert.equal(linkOf(dest), JSON.stringify([108]), "the new file is linked to its episode");
-  // The old file's rows went with it to the bin (kept, not deleted).
+  // The old file's rows went with it to the bin (kept, not deleted), keyed by the bin's library-style path (L1).
   const binned = (
     db.prepare("SELECT path FROM file_marks WHERE path LIKE ?").all(`%${path.posix.basename(dest)}`) as { path: string }[]
   ).map((r) => r.path);
   assert.equal(binned.length, 1, JSON.stringify(binned));
-  assert.match(binned[0], /bin\/animearr\//);
+  assert.equal(binned[0], `/media/Recycle/animearr/Frieren (2023)/Season 01/${path.posix.basename(dest)}`);
+  // L1: when the bin is emptied, the rows of the files it deletes go too.
+  const { purgeBin } = await import("../server/import/binpurge.js");
+  const r = await purgeBin({ all: true });
+  assert.ok(r.deleted >= 1, JSON.stringify(r));
+  assert.deepEqual(rowsAt(binned[0]), NONE, "no orphan rows left for the purged file");
 });
 
 // ---------------------------------------------------------------- episode delete (through Sonarr, into its bin)

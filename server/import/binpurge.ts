@@ -14,6 +14,7 @@ import { getSettings } from "../system/settings.js";
 import { mappedPath } from "../system/paths.js";
 import { libraryRoots } from "./mediafiles.js";
 import { configFolder, libraryFolders, overlaps, realish } from "./protectedPaths.js";
+import { deletePathRows } from "./pathRows.js";
 
 const DAY = 86_400_000;
 
@@ -31,6 +32,15 @@ export function binFolder(): { local: string } | { error: string } {
   if (libraryFolders().some((r) => overlaps(real, r))) return { error: `the recycling bin "${bin}" is in (or contains) a library folder` };
   if (overlaps(real, configFolder())) return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
   return { local };
+}
+
+/**
+ * A file in the bin by the bin's library-style path (the setting, e.g. /media/Recycle/animearr/Show/x.mkv): the key
+ * per-file rows use, like every library path, whatever this machine's own path is.
+ */
+export function binArrPath(local: string, binLocal: string) {
+  const rel = path.relative(binLocal, path.resolve(local)).split(path.sep).join("/");
+  return `${getSettings().media.recycleBin.trim().replace(/\/+$/, "")}/${rel}`;
 }
 
 /**
@@ -139,7 +149,13 @@ export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
       deleted++;
       bytes += size;
     } catch {
-      /* next run */
+      continue; // still there: tried again next run (its rows stay with it)
+    }
+    // Gone for good: the per-file rows that went into the bin with it go too.
+    try {
+      deletePathRows(binArrPath(p, bin.local));
+    } catch {
+      /* orphan rows at a bin path apply to no file: harmless, tidied with the next purge of that name */
     }
   }
   // Rows for files that are gone (restored by hand) go too.

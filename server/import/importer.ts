@@ -16,7 +16,7 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
-import { binFolder, noteBinned, pinBinned } from "./binpurge.js";
+import { binArrPath, binFolder, noteBinned, pinBinned } from "./binpurge.js";
 import { movePathRows } from "./pathRows.js";
 import { copyNoClobber, moveNoClobber } from "./fileMoves.js";
 import { touchesProtected } from "./protectedPaths.js";
@@ -728,10 +728,12 @@ async function placeItems(
         why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}`,
       });
       // The replaced file's own rows (track corrections, burned-in mark, release details) go to the bin with it: the new
-      // file, often at the same name, must not inherit them.
+      // file, often at the same name, must not inherit them. Keyed by the bin's library-style path, like every file
+      // (the bin's purge removes them with the file).
       if (binned.length && it.replacesArr)
         try {
-          movePathRows(it.replacesArr, binned[0].to);
+          const bin = binFolder();
+          movePathRows(it.replacesArr, "error" in bin ? binned[0].to : binArrPath(binned[0].to, bin.local));
         } catch (e) {
           logDecision("fail", {
             tvdbId: target.tvdbId ?? null,
