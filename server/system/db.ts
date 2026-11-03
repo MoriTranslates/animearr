@@ -190,17 +190,25 @@ export function listBackups() {
     .sort((a, b) => b.at - a.at);
 }
 
-/** Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind. */
-export function backupNow(kind: BackupKind, label = ""): string | null {
+/** Removes the oldest copies of one kind beyond how many are kept. */
+export function pruneBackups(kind: BackupKind) {
+  for (const old of listBackups()
+    .filter((b) => b.kind === kind)
+    .slice(KEEP[kind]))
+    fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+}
+
+/**
+ * Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind unless `prune` is false:
+ * the safety copy prunes only once its key is saved too, so a copy that fails never costs an older one (round 6).
+ */
+export function backupNow(kind: BackupKind, label = "", prune = true): string | null {
   if (dbState.corrupt) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const name = `animearr-${kind}-${stamp}${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`;
   const file = path.join(BACKUP_DIR, name);
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  for (const old of listBackups()
-    .filter((b) => b.kind === kind)
-    .slice(KEEP[kind]))
-    fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+  if (prune) pruneBackups(kind);
   return name;
 }
 

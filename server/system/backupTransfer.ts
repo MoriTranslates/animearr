@@ -10,7 +10,18 @@ import path from "node:path";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
-import { BACKUP_DIR, backupNow, db, dbState, listBackups, quickCheck, restoreStopped, USER_DB, userSchemaVersion } from "./db.js";
+import {
+  BACKUP_DIR,
+  backupNow,
+  db,
+  dbState,
+  listBackups,
+  pruneBackups,
+  quickCheck,
+  restoreStopped,
+  USER_DB,
+  userSchemaVersion,
+} from "./db.js";
 import { KEY_FILE, open } from "./secretbox.js";
 import { VERSION } from "./version.js";
 
@@ -349,7 +360,7 @@ export function safetyBackup(label: string): string {
   try {
     let base: string;
     if (!dbState.corrupt) {
-      const dbName = backupNow("prerestore", label);
+      const dbName = backupNow("prerestore", label, false); // pruned below, once the key is saved too
       if (!dbName) throw new Error("the database was flagged damaged while it was being copied"); // backupNow's only null
       made.push(dbName);
       base = dbName.replace(/\.db$/, "");
@@ -366,6 +377,8 @@ export function safetyBackup(label: string): string {
     }
     keyName = `${base}.secret.key`;
     copyIntoBackups(KEY_FILE, keyName, made);
+    if (!fs.readFileSync(path.join(BACKUP_DIR, keyName)).equals(fs.readFileSync(KEY_FILE)))
+      throw new Error(`${keyName} read back different from secret.key`);
   } catch (e) {
     const leftovers: string[] = [];
     for (const f of made)
@@ -384,14 +397,58 @@ export function safetyBackup(label: string): string {
       { statusCode: 500, safetyCopyFailed: true as const },
     );
   }
-  for (const old of fs
+  // Only now, with the new copy and its key both saved and checked, are older ones pruned: a copy that failed above
+  // left them as they were (blind review round 6, L).
+  pruneBackups("prerestore");
+  pruneSafetyKeys();
+  return made.join(", ");
+}
+
+/**
+ * Prunes saved safety keys beyond the newest three, but never one a backup still on disk may need (blind review round
+ * 6, M): a nightly, manual or premigration backup sealed with an older key can only be restored while that key exists.
+ * An older key goes only when it is a byte copy of one of the newest three, or when every listed backup was read and
+ * none is opened by it. If any backup can't be read, or a key can't be, it is kept: "couldn't check" never means "not
+ * needed". Keys are tiny, so keeping extra ones costs nothing.
+ */
+function pruneSafetyKeys() {
+  const read = (f: string) => {
+    try {
+      return fs.readFileSync(path.join(BACKUP_DIR, f));
+    } catch {
+      // Unreadable: it can't be judged, so the caller keeps it. Nothing is deleted on this path.
+      return null;
+    }
+  };
+  const keys = fs
     .readdirSync(BACKUP_DIR)
     .filter((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f))
     .sort()
-    .reverse()
-    .slice(3))
-    fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
-  return made.join(", ");
+    .reverse();
+  if (keys.length <= 3) return;
+  const newest = keys.slice(0, 3).map(read);
+  let sealed: string[] | null = [];
+  for (const b of listBackups()) {
+    try {
+      const d = new DatabaseSync(path.join(BACKUP_DIR, b.name), { readOnly: true });
+      try {
+        const row = settingsRow(d);
+        if (row !== undefined) sealed.push(row);
+      } finally {
+        d.close();
+      }
+    } catch {
+      // Which key this backup needs is unknown, so only byte copies of the newest keys may go (sealed = null).
+      sealed = null;
+      break;
+    }
+  }
+  for (const f of keys.slice(3)) {
+    const k = read(f);
+    if (!k) continue;
+    const copyOfNewest = newest.some((x) => x !== null && x.equals(k));
+    if (copyOfNewest || (sealed !== null && !sealed.some((r) => unlocks(r, k)))) fs.rmSync(path.join(BACKUP_DIR, f), { force: true });
+  }
 }
 
 /** Saved keys to try for a backup, in order: the one saved under its own name, the live key, then every other one. */
