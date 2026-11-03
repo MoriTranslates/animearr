@@ -148,3 +148,23 @@ test("an older episode's search, closed while it was gone from the cache, reopen
   planBacklog(now);
   assert.equal(search(101)?.state, "backlog");
 });
+
+test("without statistics, the same shorter list on three syncs in a row is a real removal and applies (L4)", async () => {
+  withStats = false;
+  mode = "ok";
+  await syncLibrary(true);
+  assert.deepEqual(cachedIds(), [101, 102, 103, 201]);
+  mode = "short";
+  for (const n of [1, 2]) {
+    const r = await syncLibrary(true);
+    assert.ok(r.errors.length, `read ${n}: still held back`);
+    assert.deepEqual(cachedIds(), [101, 102, 103, 201]);
+  }
+  const third = await syncLibrary(true);
+  assert.deepEqual(third.errors, [], "third identical short read applies");
+  assert.deepEqual(cachedIds(), [101, 102, 201]);
+  mode = "ok";
+  withStats = true;
+  await syncLibrary(true);
+  assert.deepEqual(cachedIds(), [101, 102, 103, 201]);
+});

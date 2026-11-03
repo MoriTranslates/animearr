@@ -274,14 +274,31 @@ function shortEpisodeList(seriesId: number, eps: { seasonNumber: number }[]): st
   const row = cache.prepare("SELECT seasons FROM series WHERE id = ?").get(seriesId) as { seasons: string } | undefined;
   const seasons = (row ? (JSON.parse(row.seasons) as { season: number; total?: number }[]) : []).filter((s) => (s.total ?? 0) > 0);
   if (seasons.length) {
+    repeatedShort.delete(seriesId);
     const got = new Map<number, number>();
     for (const e of eps) got.set(e.seasonNumber, (got.get(e.seasonNumber) ?? 0) + 1);
     const lacking = seasons.filter((s) => (got.get(s.season) ?? 0) < s.total!);
     return lacking.length ? lacking.map((s) => `season ${s.season}: ${got.get(s.season) ?? 0} of ${s.total}`).join(", ") : null;
   }
   const cached = (cache.prepare("SELECT COUNT(*) AS n FROM episodes WHERE series_id = ?").get(seriesId) as { n: number }).n;
-  return eps.length < cached ? `${eps.length} episodes, ${cached} known` : null;
+  if (eps.length >= cached) {
+    repeatedShort.delete(seriesId);
+    return null;
+  }
+  // Review L4: with no counts, the same shorter list on several reads in a row is a real removal, not a half answer.
+  const seen = repeatedShort.get(seriesId);
+  const count = seen && seen.length === eps.length ? seen.count + 1 : 1;
+  if (count >= SHORT_REPEATS_APPLY) {
+    repeatedShort.delete(seriesId);
+    return null;
+  }
+  repeatedShort.set(seriesId, { length: eps.length, count });
+  return `${eps.length} episodes, ${cached} known`;
 }
+
+/** Without season counts: how many reads in a row came back with the same shorter list, per series (in memory). */
+const repeatedShort = new Map<number, { length: number; count: number }>();
+const SHORT_REPEATS_APPLY = 3;
 
 /** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
