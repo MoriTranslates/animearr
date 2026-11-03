@@ -518,9 +518,12 @@ function deviceAllowed(device: string, now: number) {
 /*
  * Password checks (scrypt) are deliberately slow; unbounded parallel checks let a burst of logins tie up the thread
  * pool. At most SCRYPT_SLOTS anonymous checks run at once. Waiting ones are served fairly between address groups
- * (round-robin; IPv6 by /64), each group waiting at most PER_GROUP_WAITING (more get 429), so a flood from many
- * addresses only delays a newcomer by about one round instead of refusing it. Nothing here depends on the user name
- * in the request: it isn't secret, and a lane picked by it was easy to fill (blind review B4). A known device has its
+ * (round-robin; IPv6 by /64), each group waiting at most PER_GROUP_WAITING (more get 429), so a flood from a few
+ * addresses only delays a newcomer by about one round. That is not a guarantee (blind review R6): a flood from
+ * thousands of address groups (cheap over IPv6) fills MAX_WAITING_GROUPS, so a newcomer gets 429, or makes one round
+ * longer than a browser waits. Known devices and signed-in requests are what stay usable then. A waiter whose client
+ * disconnected skips its check when its turn comes, so slots aren't spent on nobody. Nothing here depends on the user
+ * name in the request: it isn't secret, and a lane picked by it was easy to fill (blind review B4). A known device has its
  * own one-slot lane; signed-in requests (the password change) skip the queue entirely (B7).
  */
 const SCRYPT_SLOTS = 2;
@@ -550,7 +553,7 @@ export async function checkPasswordLimited(
   pw: string,
   stored: string,
   rawIp: string,
-  opts: { signedIn?: boolean; device?: string | null } = {},
+  opts: { signedIn?: boolean; device?: string | null; gone?: () => boolean } = {},
 ) {
   if (opts.signedIn) return checkPassword(pw, stored); // already authenticated: never queued behind anonymous logins
   const lane = opts.device ? deviceLane : anonLane;
@@ -567,6 +570,8 @@ export async function checkPasswordLimited(
     await new Promise<void>((r) => q.push(r)); // a finishing check hands its slot over
   }
   try {
+    // The client gave up while waiting (blind review R6): nobody hears the answer, so don't spend a slot on scrypt.
+    if (opts.gone?.()) return false;
     return await checkPassword(pw, stored);
   } finally {
     handOver(lane);

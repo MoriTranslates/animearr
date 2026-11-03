@@ -127,7 +127,9 @@ export function registerAccountRoutes(app: FastifyInstance) {
         throw fail("Too many attempts, wait a few seconds and try again", 429);
       const a = getSettings().auth;
       const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
-      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", req.ip, { device });
+      // A login that waited so long its browser hung up isn't checked at all (blind review R6).
+      const gone = () => req.raw.socket?.destroyed === true;
+      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", req.ip, { device, gone });
       if (!okUser || !okPass) throw fail("Wrong username or password", 401);
       // Safety rule: the default password only works from the home network, until it's changed.
       const refused = defaultLoginRefusal(req, await usingDefaultPassword());
