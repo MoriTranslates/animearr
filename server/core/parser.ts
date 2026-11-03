@@ -424,9 +424,12 @@ export function parseRelease(input: string): ParsedRelease {
     if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
       const rest = s.slice(lead2[0].length);
       const titleLike = /\s/.test(lead2[1].trim()) && lead2[1] !== lead2[1].toUpperCase();
-      const noTitle =
-        /^\s*(?:-\s*\d{1,4}(?!\d|[pi]\b|bit\b)|$)/i.test(rest) ||
-        (titleLike && /^\s*(?:S\d|E\d|Season\b|\d{1,2}(?:st|nd|rd|th)\s+Season\b)/i.test(rest));
+      // A multi-word mixed-case bracket is the title when a marker follows. Any other bracket is, only when nothing
+      // but the marker follows (a tag or the end), since dropping it would leave an empty title: "[Frieren] S01E05
+      // [1080p]". "[TV] E01 Show" keeps "Show" as the title.
+      const marker = /^\s*(?:-\s*)?(?:S\d|E\d|Season\b|\d{1,2}(?:st|nd|rd|th)\s+Season\b)/i;
+      const markerOnly = /^\s*(?:-\s*)?(?:S\d+E\d+(?:-E?\d+)?|E\d+|Season\s*\d+|\d{1,2}(?:st|nd|rd|th)\s+Season)(?=\s*(?:$|[-\[(._]))/i;
+      const noTitle = /^\s*(?:-\s*\d{1,4}(?!\d|[pi]\b|bit\b)|$)/i.test(rest) || (titleLike ? marker.test(rest) : markerOnly.test(rest));
       s = noTitle ? `${lead2[1]} ${rest}` : rest;
     } else {
       // An all-bracket name, "[Group][Title][01-13][BDRip]...": the bracket right after the group, followed straight

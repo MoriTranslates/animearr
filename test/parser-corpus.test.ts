@@ -1004,3 +1004,16 @@ test("'Title N SxxEyy' fallback: a sequel whose N equals the episode number is n
     assert.equal(r.candidate, null, `${name}: ${r.summary}`);
   }
 });
+
+test("a one-word or all-caps second bracket is the title when only an episode or season marker follows it", () => {
+  check([
+    { name: "[Group][Frieren] S01E05 [1080p]", title: "Frieren", group: "Group", season: 1, episodes: [5] },
+    { name: "[Group] [Naruto] E05", title: "Naruto", group: "Group", absolute: [5] },
+    { name: "[Group][BOCCHI THE ROCK] S01E05", title: "BOCCHI THE ROCK", group: "Group", season: 1, episodes: [5] },
+    { name: "[Group][Frieren] Season 2 - 05", title: "Frieren", group: "Group", season: 2, episodes: [5] },
+    { name: "[Group][Frieren] - S01E05", title: "Frieren", group: "Group", season: 1, episodes: [5] },
+    { name: "[Group][Frieren] 2nd Season - 05", title: "Frieren", group: "Group", season: 2, absolute: [5] },
+    // Must not change: a tag followed by a real title is still dropped.
+    { name: "[Group][SCY] Show Name S01E05", title: "Show Name", group: "Group", season: 1, episodes: [5] },
+  ]);
+});
