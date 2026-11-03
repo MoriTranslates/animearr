@@ -128,17 +128,68 @@ test("review A9: a backup restore doesn't bring back sessions that were logged o
   assert.equal(await get(await login()), 200, "a new login works");
 });
 
-test("the restore routes write the floor before restoring", async () => {
-  const { CONFIG_DIR } = await import("../server/system/db.js");
-  const r = await app.inject({
-    method: "POST",
-    url: "/api/system/restore",
-    headers: { cookie: await login(), "x-animearr": "1" },
-    payload: { name: "no-such-backup.db", password: "pw-test-1" },
-  });
-  assert.notEqual(r.statusCode, 200);
-  // A failed restore leaves the floor (a partly applied restore must not bring sessions back): the next load uses it.
+test("review R2: a restore refused before it changes anything writes no floor and logs nobody out", async () => {
+  const { BACKUP_DIR, CONFIG_DIR } = await import("../server/system/db.js");
+  const { forgetSettingsCache } = await import("../server/system/settings.js");
   const floorFile = path.join(CONFIG_DIR, "session-floor");
-  assert.equal(fs.existsSync(floorFile), true);
-  fs.rmSync(floorFile, { force: true });
+  const damaged = path.join(BACKUP_DIR, "animearr-manual-2026-11-03T00-00-00.db");
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  fs.writeFileSync(damaged, "not a database");
+  try {
+    for (const name of ["no-such-backup.db", path.basename(damaged)]) {
+      const cookie = await login();
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/system/restore",
+        headers: { cookie, "x-animearr": "1" },
+        payload: { name, password: "pw-test-1" },
+      });
+      assert.ok(r.statusCode >= 400, `${name}: refused (${r.statusCode})`);
+      assert.equal(fs.existsSync(floorFile), false, `${name}: no floor written`);
+      forgetSettingsCache(); // as after the next restart
+      assert.equal(await get(cookie), 200, `${name}: still logged in after a restart`);
+    }
+  } finally {
+    fs.rmSync(damaged, { force: true });
+    fs.rmSync(floorFile, { force: true });
+  }
+});
+
+test("review R2: the floor is written after the checks, and if writing it fails nothing is restored", async () => {
+  const { backupNow, restoreBackup, USER_DB } = await import("../server/system/db.js");
+  const name = backupNow("manual", "r2");
+  assert.ok(name, "a valid backup to restore");
+  const before = fs.readFileSync(USER_DB);
+  let called = 0;
+  assert.throws(
+    () =>
+      restoreBackup(name, () => {
+        called++;
+        throw new Error("disk full");
+      }),
+    /disk full.*nothing was changed/,
+  );
+  assert.equal(called, 1, "reached only after the backup passed its checks");
+  assert.equal(fs.existsSync(`${USER_DB}.restore-tmp`), false, "the copy is cleaned up");
+  assert.ok(fs.readFileSync(USER_DB).equals(before), "the live database is untouched");
+  assert.equal(await get(await login()), 200, "and still open");
+
+  // The uploaded-backup restore: same order, same outcome.
+  const { createBackup, parseBackup, restoreUploaded } = await import("../server/system/backupTransfer.js");
+  const { KEY_FILE } = await import("../server/system/secretbox.js");
+  const parsed = await parseBackup((await createBackup()).data);
+  const keyBefore = fs.readFileSync(KEY_FILE);
+  let uploadCalled = 0;
+  assert.throws(
+    () =>
+      restoreUploaded(parsed, () => {
+        uploadCalled++;
+        throw new Error("disk full");
+      }),
+    /disk full.*nothing was changed/,
+  );
+  assert.equal(uploadCalled, 1);
+  for (const f of [`${USER_DB}.restore-tmp`, `${KEY_FILE}.restore-tmp`]) assert.equal(fs.existsSync(f), false, `${f} cleaned up`);
+  assert.ok(fs.readFileSync(KEY_FILE).equals(keyBefore), "the key is untouched");
+  assert.equal(await get(await login()), 200, "the database is still open");
 });

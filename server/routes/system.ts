@@ -14,16 +14,13 @@ import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
 import { STARTED, fail, writable } from "./common.js";
 
-/**
- * Runs a restore so that sessions ended before it stay ended (the restored settings bring back an older session
- * generation and signing secret; blind review A9). The floor is written first: if that fails, nothing is restored.
- * It is left in place even if the restore throws (a partly applied restore must not bring old sessions back); the
- * cost is that everyone signs in again after the next restart.
+/*
+ * Both restores take keepSessionsEndedAcrossRestore as their beforeSwap step: the session floor (blind review A9) is
+ * written only once the input is checked and the safety copy made, right before the live files are replaced. A restore
+ * refused before that writes no floor (R2: otherwise the next restart signed everyone out); if writing the floor
+ * fails, nothing is replaced. Once it is written the swap follows, so a partly applied restore still can't bring
+ * logged-out sessions back.
  */
-function restoreKeepingSessionsEnded(restore: () => void) {
-  keepSessionsEndedAcrossRestore();
-  restore();
-}
 
 export function registerSystemRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- system: jobs, metadata, backups
@@ -66,7 +63,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    restoreKeepingSessionsEnded(() => restoreBackup(String(req.body?.name ?? "")));
+    restoreBackup(String(req.body?.name ?? ""), keepSessionsEndedAcrossRestore);
     app.log.warn("Backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {
@@ -113,7 +110,7 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (!loginAllowed(req.ip, getSettings().auth.username)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
     const staged = takeStaged(String(req.body?.token ?? ""));
-    restoreKeepingSessionsEnded(() => restoreUploaded(staged));
+    restoreUploaded(staged, keepSessionsEndedAcrossRestore);
     app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {

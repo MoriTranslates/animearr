@@ -240,9 +240,23 @@ export function safetyBackup() {
     fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
 }
 
-/** Restores an uploaded backup into the live config folder. */
-export function restoreUploaded(b: ParsedBackup) {
-  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: safetyBackup, closeDb: () => db.close() });
+/**
+ * Restores an uploaded backup into the live config folder. `beforeSwap` runs once the copies are written and checked,
+ * right before the live files are replaced; if it throws, the copies are removed and nothing is changed.
+ */
+export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void = () => undefined) {
+  const closeDb = () => {
+    try {
+      beforeSwap();
+    } catch (e) {
+      for (const f of [`${USER_DB}.restore-tmp`, `${KEY_FILE}.restore-tmp`]) fs.rmSync(f, { force: true });
+      throw Object.assign(new Error(`Couldn't restore that backup: ${(e as Error).message}; nothing was changed`, { cause: e }), {
+        statusCode: 500,
+      });
+    }
+    db.close();
+  };
+  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: safetyBackup, closeDb });
 }
 
 // ---------------------------------------------------------------- staging between "upload" and "confirm with password"

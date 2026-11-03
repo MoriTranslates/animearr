@@ -204,8 +204,11 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
   return name;
 }
 
-/** Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). */
-export function restoreBackup(name: string) {
+/**
+ * Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). `beforeSwap` runs once
+ * every check has passed, right before the live database is replaced; if it throws, nothing is changed.
+ */
+export function restoreBackup(name: string, beforeSwap: () => void = () => undefined) {
   const b = listBackups().find((x) => x.name === name);
   if (!b) throw new Error("Unknown backup");
   const src = path.join(BACKUP_DIR, b.name);
@@ -231,6 +234,7 @@ export function restoreBackup(name: string) {
     const tr = quickCheck(t);
     t.close();
     if (tr !== "ok") throw new Error(`the copy failed its check (${tr})`);
+    beforeSwap();
   } catch (e) {
     fs.rmSync(tmp, { force: true });
     throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
