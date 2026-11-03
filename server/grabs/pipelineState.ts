@@ -270,10 +270,22 @@ export const importModeFor = (client: string | null): "copy" | "move" => (isTorr
 export function retryImport(id: number) {
   const r = db
     .prepare(
-      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention'",
+      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention' AND client IS NOT NULL",
     )
     .run(Date.now(), Date.now(), id);
-  if (!r.changes) throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
+  if (!r.changes) {
+    const g = db.prepare("SELECT state, client FROM grabs WHERE id = ?").get(id) as { state: string; client: string | null } | undefined;
+    if (g?.state === "needs-attention" && g.client === null)
+      throw Object.assign(
+        new Error(
+          "This grab has no download client on record, so there's nothing to import; check the client, or remove it to search again",
+        ),
+        {
+          statusCode: 409,
+        },
+      );
+    throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
+  }
 }
 
 /** A search result as a grab candidate. */
