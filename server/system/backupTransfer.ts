@@ -242,9 +242,11 @@ export function safetyBackup() {
 
 /**
  * Restores an uploaded backup into the live config folder. `beforeSwap` runs once the copies are written and checked,
- * right before the live files are replaced; if it throws, the copies are removed and nothing is changed.
+ * right before the live files are replaced; if it throws, the copies are removed and nothing is changed. `beforeSwap` is
+ * required (blind review round 3, L1): the routes pass the session floor, and a do-nothing default would let a caller
+ * drop that protection silently.
  */
-export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void = () => undefined) {
+export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void) {
   const closeDb = () => {
     try {
       beforeSwap();
@@ -266,9 +268,15 @@ export function stageBackup(b: ParsedBackup) {
   staged = { token: crypto.randomBytes(16).toString("hex"), backup: b, at: Date.now() };
   return staged.token;
 }
-export function takeStaged(token: string): ParsedBackup {
+/**
+ * The staged upload for this token, left staged: it is dropped only once the restore succeeded (dropStaged), so a
+ * restore that fails (say, a full disk while the session floor is written) can be retried without uploading the file
+ * again (blind review round 3, L5).
+ */
+export function peekStaged(token: string): ParsedBackup {
   if (!staged || staged.token !== token || Date.now() - staged.at > 10 * 60_000) throw refuse("That upload expired, choose the file again");
-  const b = staged.backup;
-  staged = null;
-  return b;
+  return staged.backup;
+}
+export function dropStaged(token: string) {
+  if (staged?.token === token) staged = null;
 }

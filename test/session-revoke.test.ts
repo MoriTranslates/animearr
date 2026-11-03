@@ -234,3 +234,106 @@ test("review R8: an empty or garbage floor file fails safe: old sessions stay en
     fs.rmSync(floorFile, { force: true });
   }
 });
+
+test("blind review round 3 L2: restoring over a corrupt database whose generation can't be read ends every session", async () => {
+  const { db, dbState, CONFIG_DIR } = await import("../server/system/db.js");
+  const { forgetSettingsCache, keepSessionsEndedAcrossRestore } = await import("../server/system/settings.js");
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  const row = () => (db.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string }).value;
+  const setRow = (value: string) => db.prepare("UPDATE settings SET value = ? WHERE key = 'settings'").run(value);
+  const logout = (cookie: string) => app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie, "x-animearr": "1" } });
+
+  await logout(await login()); // the generation is past 0, as on any install that has logged out once
+  const atBackup = await login();
+  const backup = row();
+  await logout(atBackup); // logged out after the backup was taken
+  const later = await login();
+  await logout(later); // and one more generation that only the (now corrupt) live database knew
+  const current = await login(); // a session of the live generation itself
+  // The live database fails its check and its settings row can't be read: the live generation is unknown.
+  dbState.corrupt = true;
+  setRow("enc:v1:AAAA");
+  forgetSettingsCache();
+  try {
+    keepSessionsEndedAcrossRestore();
+  } finally {
+    dbState.corrupt = false;
+  }
+  try {
+    setRow(backup); // the restore swaps the backup in, then the app restarts
+    forgetSettingsCache();
+    assert.equal(await get(atBackup), 401, "a session logged out after the backup stays ended");
+    assert.equal(await get(later), 401, "so does one from a generation only the corrupt database knew");
+    assert.equal(await get(current), 401, "and one of the live generation (whatever number it had)");
+    assert.equal(fs.existsSync(floorFile), false, "the floor is used up once saved");
+    assert.equal(await get(await login()), 200, "a new login works");
+  } finally {
+    fs.rmSync(floorFile, { force: true });
+  }
+});
+
+test("blind review round 3 L2: a floor lower than the restored generation still ends the restored generation's sessions", async () => {
+  const { CONFIG_DIR } = await import("../server/system/db.js");
+  const { forgetSettingsCache } = await import("../server/system/settings.js");
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  const old = await login();
+  assert.equal(await get(old), 200);
+  fs.writeFileSync(floorFile, "1"); // written from a generation that was too low (the corrupt-database case)
+  try {
+    forgetSettingsCache(); // as after the restart that follows a restore
+    assert.equal(await get(old), 401, "the floor never lowers protection: the restored generation is raised past itself");
+    assert.equal(await get(await login()), 200, "a new login works");
+  } finally {
+    fs.rmSync(floorFile, { force: true });
+  }
+});
+
+test("blind review round 3 L1: both restores take the floor step as a required argument", async () => {
+  const { restoreBackup } = await import("../server/system/db.js");
+  const { restoreUploaded } = await import("../server/system/backupTransfer.js");
+  // A parameter with a default doesn't count in a function's length; a required one does.
+  assert.equal(restoreBackup.length, 2, "restoreBackup(name, beforeSwap): beforeSwap has no do-nothing default");
+  assert.equal(restoreUploaded.length, 2, "restoreUploaded(backup, beforeSwap): beforeSwap has no do-nothing default");
+});
+
+test("blind review round 3 L3: the floor's folder is flushed after the rename (where the platform can), before any swap", async () => {
+  const { CONFIG_DIR } = await import("../server/system/db.js");
+  const { keepSessionsEndedAcrossRestore } = await import("../server/system/settings.js");
+  const floorFile = path.join(CONFIG_DIR, "session-floor");
+  const realPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  const real = { openSync: fs.openSync, fsyncSync: fs.fsyncSync, closeSync: fs.closeSync, renameSync: fs.renameSync };
+  const run = (platform: string) => {
+    const events: string[] = [];
+    const DIR_FD = 987654;
+    Object.defineProperty(process, "platform", { ...realPlatform, value: platform });
+    fs.openSync = ((p: fs.PathLike, ...rest: unknown[]) => {
+      if (path.resolve(String(p)) === path.resolve(CONFIG_DIR)) {
+        events.push("open dir");
+        return DIR_FD;
+      }
+      return (real.openSync as (...a: unknown[]) => number)(p, ...rest);
+    }) as typeof fs.openSync;
+    fs.fsyncSync = ((fd: number) => {
+      if (fd === DIR_FD) return void events.push("fsync dir");
+      real.fsyncSync(fd);
+    }) as typeof fs.fsyncSync;
+    fs.closeSync = ((fd: number) => {
+      if (fd === DIR_FD) return void events.push("close dir");
+      real.closeSync(fd);
+    }) as typeof fs.closeSync;
+    fs.renameSync = ((a: fs.PathLike, b: fs.PathLike) => {
+      if (String(b) === floorFile) events.push("rename floor");
+      real.renameSync(a, b);
+    }) as typeof fs.renameSync;
+    try {
+      keepSessionsEndedAcrossRestore();
+    } finally {
+      Object.assign(fs, real);
+      Object.defineProperty(process, "platform", realPlatform);
+      fs.rmSync(floorFile, { force: true });
+    }
+    return events;
+  };
+  assert.deepEqual(run("linux"), ["rename floor", "open dir", "fsync dir", "close dir"], "Linux: the rename is flushed");
+  assert.deepEqual(run("win32"), ["rename floor"], "Windows can't open a folder to flush it; skipped (see the comment)");
+});

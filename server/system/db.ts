@@ -206,9 +206,11 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
 
 /**
  * Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). `beforeSwap` runs once
- * every check has passed, right before the live database is replaced; if it throws, nothing is changed.
+ * every check has passed, right before the live database is replaced; if it throws, nothing is changed. `beforeSwap` is
+ * required (blind review round 3, L1): the routes pass the session floor, and a do-nothing default would let a caller
+ * drop that protection silently.
  */
-export function restoreBackup(name: string, beforeSwap: () => void = () => undefined) {
+export function restoreBackup(name: string, beforeSwap: () => void) {
   const b = listBackups().find((x) => x.name === name);
   if (!b) throw new Error("Unknown backup");
   const src = path.join(BACKUP_DIR, b.name);

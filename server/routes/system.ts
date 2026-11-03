@@ -1,7 +1,15 @@
 /** Routes: System: jobs, metadata, logs, update check, backups. */
 import { humanizeError } from "../system/errors.js";
 import { checkForUpdates } from "../system/releases.js";
-import { createBackup, MAX_BACKUP_BYTES, parseBackup, restoreUploaded, stageBackup, takeStaged } from "../system/backupTransfer.js";
+import {
+  createBackup,
+  dropStaged,
+  MAX_BACKUP_BYTES,
+  parseBackup,
+  peekStaged,
+  restoreUploaded,
+  stageBackup,
+} from "../system/backupTransfer.js";
 import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
 import { authState, DEVICE_COOKIE, loginAllowed, validDevice } from "../system/auth.js";
@@ -119,8 +127,20 @@ export function registerSystemRoutes(app: FastifyInstance) {
     if (authState(req).via === "apikey") throw fail("Restoring needs the account password", 403);
     if (!signedInAllowed(req)) throw fail("Too many attempts, wait a few seconds", 429);
     if (!(await checkPassword(String(req.body?.password ?? ""), getSettings().auth.passwordHash))) throw fail("Wrong password", 403);
-    const staged = takeStaged(String(req.body?.token ?? ""));
-    restoreUploaded(staged, keepSessionsEndedAcrossRestore);
+    const token = String(req.body?.token ?? "");
+    const staged = peekStaged(token);
+    try {
+      restoreUploaded(staged, keepSessionsEndedAcrossRestore);
+    } catch (e) {
+      // The upload stays staged until a restore succeeds (blind review round 3, L5), so the user can retry without
+      // sending a possibly large file again; the message says so.
+      const err = e as Error & { statusCode?: number };
+      throw Object.assign(
+        new Error(`${err.message}. The uploaded file is kept for a few minutes: try again without choosing the file again.`, { cause: e }),
+        { statusCode: err.statusCode ?? 500 },
+      );
+    }
+    dropStaged(token);
     app.log.warn("Uploaded backup restored; exiting so the app restarts with it.");
     setTimeout(() => process.exit(0), 500);
     return {
