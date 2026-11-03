@@ -8,7 +8,8 @@ import { DatabaseSync } from "node:sqlite";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-nrestore-"));
 process.env.ANIMEARR_NO_LOCK = "1";
-const { db, backupNow, restoreBackup, listBackups, BACKUP_DIR, USER_DB } = await import("../server/system/db.js");
+const { db, backupNow, listBackups, BACKUP_DIR, USER_DB } = await import("../server/system/db.js");
+const { restoreBackup } = await import("../server/system/backupTransfer.js");
 
 // These tests are about the database swap alone; the session floor step has its own tests (session-revoke).
 const noFloor = () => undefined;
@@ -24,7 +25,7 @@ test("when the safety copy of the current database fails, nothing is restored", 
     const stamp = new Date(now + s * 1000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
     fs.writeFileSync(path.join(BACKUP_DIR, `animearr-prerestore-${stamp}.db`), "in the way");
   }
-  assert.throws(() => restoreBackup(name, noFloor), /Couldn't save a copy of the current database first.*nothing was restored/);
+  assert.throws(() => restoreBackup(name, noFloor), /Couldn't save a safety copy of the current database.*nothing was changed/);
   assert.equal(
     (db.prepare("SELECT value FROM kv WHERE key = 'restore-test'").get() as { value: string }).value,
     "after",

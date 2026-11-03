@@ -56,7 +56,8 @@ test("restore: a failure after the close keeps the old database, says so and res
   }
   assert.equal(first.statusCode, 500, first.body);
   assert.match(first.body, /EPERM/);
-  assert.match(first.body, /the database you had is still in place/);
+  assert.match(first.body, /undone: your previous database and its key are in place/);
+  assert.match(first.body, /retry the restore/);
   assert.match(first.body, /restarting/);
   assert.doesNotMatch(first.body, /nothing was changed/, "the database was closed, so 'nothing changed' would mislead");
   const d = new DatabaseSync(USER_DB, { readOnly: true });

@@ -303,7 +303,7 @@ test("M1: if the old key can't be put back at all, the message says the folder i
   assert.equal(restartNeeded(caught), true);
   const msg = (caught as Error).message;
   assert.match(msg, /stopped halfway: the backup's secret\.key is in place but your previous database is still there/);
-  assert.match(msg, /copy the prerestore \.secret\.key file named below/);
+  assert.match(msg, /copy the safety copy's \.secret\.key file named below/);
   assert.match(msg, /the-safety-copy/);
   assert.match(msg, /EBUSY.*EACCES/);
   assert.equal(fs.readFileSync(paths.db, "utf8"), "old database");
@@ -330,7 +330,7 @@ test("M1: closing the database failing is treated as past the point of no return
 
 test("the real safety copy is a database backup plus the current key", async () => {
   const before = listBackups().filter((b) => b.kind === "prerestore").length;
-  safetyBackup();
+  safetyBackup("upload");
   assert.equal(listBackups().filter((b) => b.kind === "prerestore").length, before + 1);
   assert.ok(fs.readdirSync(BACKUP_DIR).some((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f)));
   assert.equal(getSettings().externalUrl, "http://backup-test.lan", "the live data is untouched");

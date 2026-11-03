@@ -156,7 +156,8 @@ test("review R2: a restore refused before it changes anything writes no floor an
 });
 
 test("review R2: the floor is written after the checks, and if writing it fails nothing is restored", async () => {
-  const { backupNow, restoreBackup, USER_DB } = await import("../server/system/db.js");
+  const { backupNow, USER_DB } = await import("../server/system/db.js");
+  const { restoreBackup } = await import("../server/system/backupTransfer.js");
   const name = backupNow("manual", "r2");
   assert.ok(name, "a valid backup to restore");
   const before = fs.readFileSync(USER_DB);
@@ -289,8 +290,7 @@ test("blind review round 3 L2: a floor lower than the restored generation still 
 });
 
 test("blind review round 3 L1: both restores take the floor step as a required argument", async () => {
-  const { restoreBackup } = await import("../server/system/db.js");
-  const { restoreUploaded } = await import("../server/system/backupTransfer.js");
+  const { restoreBackup, restoreUploaded } = await import("../server/system/backupTransfer.js");
   // A parameter with a default doesn't count in a function's length; a required one does.
   assert.equal(restoreBackup.length, 2, "restoreBackup(name, beforeSwap): beforeSwap has no do-nothing default");
   assert.equal(restoreUploaded.length, 2, "restoreUploaded(backup, beforeSwap): beforeSwap has no do-nothing default");

@@ -7,23 +7,15 @@ import {
   MAX_BACKUP_BYTES,
   parseBackup,
   peekStaged,
+  restoreBackup,
   restoreUploaded,
+  safetyCopyFailed,
   stageBackup,
 } from "../system/backupTransfer.js";
 import { getLogs, logText } from "../system/logs.js";
 import { type FastifyReply, type FastifyRequest } from "fastify";
 import { authState, DEVICE_COOKIE, loginAllowed, loginSucceeded, validDevice } from "../system/auth.js";
-import {
-  BACKUP_DIR,
-  backupNow,
-  CONFIG_DIR,
-  dbState,
-  listBackups,
-  listJobs,
-  resetCache,
-  restartNeeded,
-  restoreBackup,
-} from "../system/db.js";
+import { BACKUP_DIR, backupNow, CONFIG_DIR, dbState, listBackups, listJobs, resetCache, restartNeeded } from "../system/db.js";
 import { syncLibrary } from "../library/library.js";
 import { aliasIndex, invalidateIndex, metadataStatus, refreshMetadata } from "../metadata/metadata.js";
 
@@ -183,11 +175,13 @@ export function registerSystemRoutes(app: FastifyInstance) {
       }
       // Failed before anything live was touched: the upload stays staged (blind review round 3, L5), so the user can
       // retry without sending a possibly large file again; the message says so.
+      // A safety copy that couldn't be made (a full disk, a read-only backups folder) fails the same way on a plain
+      // retry, so the message names what to fix instead of saying "try again" (blind review round 5, M1).
       const err = e as Error & { statusCode?: number };
-      throw Object.assign(
-        new Error(`${err.message}. The uploaded file is kept for a few minutes: try again without choosing the file again.`, { cause: e }),
-        { statusCode: err.statusCode ?? 500 },
-      );
+      const next = safetyCopyFailed(e)
+        ? "Fix that first (free some disk space, or check the backups folder can be written). The uploaded file is kept for a few minutes, so you won't need to choose it again."
+        : "The uploaded file is kept for a few minutes: try again without choosing the file again.";
+      throw Object.assign(new Error(`${err.message}. ${next}`, { cause: e }), { statusCode: err.statusCode ?? 500 });
     }
     dropStaged(token);
     restartAfterRestore(0, "Uploaded backup restored; exiting so the app restarts with it.");

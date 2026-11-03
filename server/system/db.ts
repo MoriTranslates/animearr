@@ -215,62 +215,7 @@ export function restoreStopped(message: string, cause: unknown) {
 }
 export const restartNeeded = (e: unknown) => (e as { restartNeeded?: unknown } | null)?.restartNeeded === true;
 
-/**
- * Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). `beforeSwap` runs once
- * every check has passed, right before the live database is replaced; if it throws, nothing is changed. `beforeSwap` is
- * required (blind review round 3, L1): the routes pass the session floor, and a do-nothing default would let a caller
- * drop that protection silently.
- */
-export function restoreBackup(name: string, beforeSwap: () => void) {
-  const b = listBackups().find((x) => x.name === name);
-  if (!b) throw new Error("Unknown backup");
-  const src = path.join(BACKUP_DIR, b.name);
-  const check = new DatabaseSync(src, { readOnly: true });
-  const r = quickCheck(check);
-  check.close();
-  if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
-  // The current database is kept first; without that copy nothing is replaced (unless it's the damaged one).
-  if (!dbState.corrupt) {
-    try {
-      backupNow("prerestore");
-    } catch (e) {
-      throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
-    }
-  }
-  // Copied next to the live file and checked there, then renamed over it in one step: a crash or a full disk mid-copy
-  // leaves the old database as it was, never a half-written or missing one.
-  const tmp = `${USER_DB}.restore-tmp`;
-  fs.rmSync(tmp, { force: true });
-  try {
-    fs.copyFileSync(src, tmp);
-    const t = new DatabaseSync(tmp, { readOnly: true });
-    const tr = quickCheck(t);
-    t.close();
-    if (tr !== "ok") throw new Error(`the copy failed its check (${tr})`);
-    beforeSwap();
-  } catch (e) {
-    fs.rmSync(tmp, { force: true });
-    throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
-  }
-  // From here the live handle is closed: any failure is a restoreStopped (restart, no retry). Until the rename lands,
-  // the old database is still whole at its path (close checkpointed the journal), so a failure leaves it in place.
-  try {
-    db.close();
-    for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
-    fs.renameSync(tmp, USER_DB);
-  } catch (e) {
-    let left = "";
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch (re) {
-      left = ` (a leftover ${path.basename(tmp)} could not be removed: ${(re as Error).message}; it is safe to delete)`;
-    }
-    throw restoreStopped(
-      `Couldn't restore ${name}: ${(e as Error).message}. The restore stopped after the database was closed, before it was replaced: the database you had is still in place${left}. AnimeArr is restarting to reopen it; reload the page in a few seconds (start it again yourself if it isn't running in Docker), log in again, then retry the restore.`,
-      e,
-    );
-  }
-}
+// Restoring a named backup lives in backupTransfer.ts (restoreBackup): it must swap secret.key with the database.
 
 // ---------------------------------------------------------------- migrations (transactional; backup first)
 

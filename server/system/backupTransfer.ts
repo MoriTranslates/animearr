@@ -10,7 +10,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
-import { BACKUP_DIR, backupNow, db, dbState, quickCheck, restoreStopped, USER_DB, userSchemaVersion } from "./db.js";
+import { BACKUP_DIR, backupNow, db, dbState, listBackups, quickCheck, restoreStopped, USER_DB, userSchemaVersion } from "./db.js";
 import { KEY_FILE, open } from "./secretbox.js";
 import { VERSION } from "./version.js";
 
@@ -37,6 +37,20 @@ const refuse = (msg: string) => Object.assign(new Error(msg), { statusCode: 400 
 const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 const sha = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
+const keyHex = (k: Buffer) => k.toString("utf8").trim();
+const validKey = (k: Buffer) => /^[0-9a-f]{64}$/i.test(keyHex(k));
+const settingsRow = (d: DatabaseSync) =>
+  (d.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined)?.value;
+/** True when `key` opens the sealed settings row (the only data secret.key protects). */
+function unlocks(row: string, key: Buffer) {
+  try {
+    JSON.parse(open(row, Buffer.from(keyHex(key), "hex")));
+    return true;
+  } catch {
+    // A failed decrypt (or JSON parse) is the answer itself: this key doesn't fit. Nothing is lost by dropping it.
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------- a minimal tar (regular files only)
 
@@ -156,7 +170,7 @@ export async function parseBackup(data: Buffer, schemaNow = userSchemaVersion())
     const f = m.files?.[name];
     if (!f || f.size !== b.length || f.sha256 !== sha(b)) throw refuse(`That backup is damaged (${name} doesn't match its checksum)`);
   }
-  if (!/^[0-9a-f]{64}$/i.test(key.toString("utf8").trim())) throw refuse("That backup's secret key isn't valid");
+  if (!validKey(key)) throw refuse("That backup's secret key isn't valid");
   // The database itself: opens, passes its integrity check, has the schema the manifest says, and its settings open with the key.
   const tmp = path.join(BACKUP_DIR, `.check-${crypto.randomBytes(4).toString("hex")}.tmp`);
   fs.writeFileSync(tmp, dbBytes);
@@ -167,14 +181,8 @@ export async function parseBackup(data: Buffer, schemaNow = userSchemaVersion())
       if (r !== "ok") throw refuse(`That backup's database is damaged (${r})`);
       const v = (d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
       if (v !== m.schema) throw refuse("That backup's database doesn't match its manifest");
-      const row = d.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined;
-      if (row) {
-        try {
-          JSON.parse(open(row.value, Buffer.from(key.toString("utf8").trim(), "hex")));
-        } catch {
-          throw refuse("That backup's secret key doesn't unlock its settings");
-        }
-      }
+      const row = settingsRow(d);
+      if (row !== undefined && !unlocks(row, key)) throw refuse("That backup's secret key doesn't unlock its settings");
     } finally {
       d.close();
     }
@@ -200,6 +208,10 @@ export interface ApplyHooks {
   beforeSwap: () => void;
   /** Releases the live database before its file is replaced. */
   closeDb: () => void;
+  /** Names the backup in messages (default "that backup"). */
+  what?: string;
+  /** How to retry once the app is back, for a restore that stopped after the close (default: the upload's wording). */
+  retry?: string;
 }
 
 /**
@@ -209,7 +221,8 @@ export interface ApplyHooks {
  * The key goes first: it is a few bytes kept in memory, so undoing it needs no second copy of the database, while the
  * database rename is the last step and either lands (restore done) or leaves the old database whole.
  */
-export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHooks) {
+export function applyBackup(b: Pick<ParsedBackup, "db" | "key">, paths: ApplyPaths, hooks: ApplyHooks) {
+  const what = hooks.what ?? "that backup";
   const safetyName = hooks.safety();
   const tmpDb = `${paths.db}.restore-tmp`;
   const tmpKey = `${paths.key}.restore-tmp`;
@@ -226,7 +239,7 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
     hooks.beforeSwap();
   } catch (e) {
     for (const f of [tmpDb, tmpKey]) fs.rmSync(f, { force: true });
-    throw Object.assign(new Error(`Couldn't restore that backup: ${(e as Error).message}; nothing was changed`, { cause: e }), {
+    throw Object.assign(new Error(`Couldn't restore ${what}: ${(e as Error).message}; nothing was changed`, { cause: e }), {
       statusCode: 500,
     });
   }
@@ -239,14 +252,32 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
     keySwapped = true;
     fs.renameSync(tmpDb, paths.db);
   } catch (e) {
-    throw rollBackSwap(e, { paths, tmpDb, tmpKey, oldKey, keySwapped, safetyName });
+    throw rollBackSwap(e, {
+      paths,
+      tmpDb,
+      tmpKey,
+      oldKey,
+      keySwapped,
+      safetyName,
+      what,
+      retry: hooks.retry ?? "The uploaded file is not kept; choose it again to retry once AnimeArr is back.",
+    });
   }
 }
 
 /** After a failure past closeDb: puts the old key back if it was replaced, and says exactly what the folder holds. */
 function rollBackSwap(
   e: unknown,
-  s: { paths: ApplyPaths; tmpDb: string; tmpKey: string; oldKey: Buffer; keySwapped: boolean; safetyName: string | void },
+  s: {
+    paths: ApplyPaths;
+    tmpDb: string;
+    tmpKey: string;
+    oldKey: Buffer;
+    keySwapped: boolean;
+    safetyName: string | void;
+    what: string;
+    retry: string;
+  },
 ) {
   const why = (e as Error).message;
   const leftovers: string[] = [];
@@ -283,25 +314,76 @@ function rollBackSwap(
   }
   if (keyBack)
     return restoreStopped(
-      `Couldn't restore that backup: ${why}. The restore stopped after the database was closed and was undone: your previous database and its key are in place, nothing from the backup was applied. ${restarting} The uploaded file is not kept; choose it again to retry once AnimeArr is back.${extra}`,
+      `Couldn't restore ${s.what}: ${why}. The restore stopped after the database was closed and was undone: your previous database and its key are in place, nothing from the backup was applied. ${restarting} ${s.retry}${extra}`,
       e,
     );
   return restoreStopped(
-    `Couldn't restore that backup: ${why}. The restore stopped halfway: the backup's secret.key is in place but your previous database is still there, and the previous key couldn't be put back (${keyErr}). AnimeArr will not start like this. Before starting it again, copy the prerestore .secret.key file named below from the backups folder over secret.key in the config folder (your database was not replaced, so that key matches it).${extra} AnimeArr is stopping now.`,
+    `Couldn't restore ${s.what}: ${why}. The restore stopped halfway: the backup's secret.key is in place but your previous database is still there, and the previous key couldn't be put back (${keyErr}). AnimeArr will not start like this. Before starting it again, copy the safety copy's .secret.key file named below from the backups folder over secret.key in the config folder (your database was not replaced, so that key matches it).${extra} AnimeArr is stopping now.`,
     e,
   );
 }
 
+/** The safety copy couldn't be made; nothing live was touched. A plain retry fails the same way until its cause is fixed. */
+export const safetyCopyFailed = (e: unknown) => (e as { safetyCopyFailed?: unknown } | null)?.safetyCopyFailed === true;
+
+/** Copies `from` into the backups folder as `name`, never over an existing file, and checks the copy's size. */
+function copyIntoBackups(from: string, name: string, made: string[]) {
+  const to = path.join(BACKUP_DIR, name);
+  if (fs.existsSync(to)) throw new Error(`${name} already exists`);
+  made.push(name); // from here a partial copy is ours to remove
+  fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+  if (fs.statSync(to).size !== fs.statSync(from).size) throw new Error(`the copy of ${path.basename(from)} came out short`);
+}
+
 /**
- * The safety copy before a restore: the database (VACUUM INTO) plus the current key, which that copy can't be opened
- * without. Returns both file names (they go into messages if the restore stops partway).
+ * The safety copy before a restore: the database plus the current key, which that copy can't be opened without. Both
+ * are saved under one name (`<name>.db` and `<name>.secret.key`) so restoring the copy later finds its key (blind review
+ * round 5, M2). A healthy database is copied with VACUUM INTO. One flagged corrupt can't be, and that is exactly when a
+ * restore is needed (round 5, M1): its raw files are copied byte for byte as animearr-damaged-*, kept out of the restore
+ * list (they would fail its check) and never pruned. If the copy can't be made, what it wrote is removed and a
+ * safetyCopyFailed error is thrown; nothing live has been touched. Returns the file names, for messages.
  */
-export function safetyBackup(): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const dbName = backupNow("prerestore", "upload");
-  if (!dbName) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
-  const keyName = `animearr-prerestore-${stamp}.secret.key`;
-  fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, keyName));
+export function safetyBackup(label: string): string {
+  const made: string[] = [];
+  let keyName: string;
+  try {
+    let base: string;
+    if (!dbState.corrupt) {
+      const dbName = backupNow("prerestore", label);
+      if (!dbName) throw new Error("the database was flagged damaged while it was being copied"); // backupNow's only null
+      made.push(dbName);
+      base = dbName.replace(/\.db$/, "");
+    } else {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      base = `animearr-damaged-${stamp}${label ? `-${label}` : ""}`;
+      // The -shm index is rebuilt from these two, so it isn't kept. A missing database file (it couldn't be opened at
+      // all) has nothing to keep.
+      for (const [from, ext] of [
+        [USER_DB, ".db"],
+        [`${USER_DB}-wal`, ".db-wal"],
+      ])
+        if (fs.existsSync(from)) copyIntoBackups(from, `${base}${ext}`, made);
+    }
+    keyName = `${base}.secret.key`;
+    copyIntoBackups(KEY_FILE, keyName, made);
+  } catch (e) {
+    const leftovers: string[] = [];
+    for (const f of made)
+      try {
+        fs.rmSync(path.join(BACKUP_DIR, f), { force: true });
+      } catch (re) {
+        leftovers.push(`${f} (${(re as Error).message})`);
+      }
+    throw Object.assign(
+      new Error(
+        `Couldn't save a safety copy of the ${dbState.corrupt ? "damaged" : "current"} database and its key (${(e as Error).message}), so nothing was changed${
+          leftovers.length ? `. Leftover partial copies that are safe to delete: ${leftovers.join(", ")}` : ""
+        }`,
+        { cause: e },
+      ),
+      { statusCode: 500, safetyCopyFailed: true as const },
+    );
+  }
   for (const old of fs
     .readdirSync(BACKUP_DIR)
     .filter((f) => /^animearr-prerestore-.*\.secret\.key$/.test(f))
@@ -309,7 +391,73 @@ export function safetyBackup(): string {
     .reverse()
     .slice(3))
     fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
-  return `${dbName} and ${keyName}`;
+  return made.join(", ");
+}
+
+/** Saved keys to try for a backup, in order: the one saved under its own name, the live key, then every other one. */
+function keyCandidates(name: string, liveKey: Buffer): Buffer[] {
+  const own = name.replace(/\.db$/, ".secret.key");
+  const read = (f: string) => {
+    try {
+      return fs.readFileSync(path.join(BACKUP_DIR, f));
+    } catch {
+      // A saved key that can't be read just isn't a candidate; if no candidate fits, the refusal says what to do.
+      return null;
+    }
+  };
+  const others = fs
+    .readdirSync(BACKUP_DIR)
+    .filter((f) => f.endsWith(".secret.key") && f !== own)
+    .sort()
+    .reverse();
+  return [read(own), liveKey, ...others.map(read)].filter((k): k is Buffer => k !== null && validKey(k));
+}
+
+/**
+ * Restores one of the backups in the backups folder by name. The process must restart afterwards (the caller exits).
+ * A database is useless without the secret.key that sealed its settings: swapping in one the live key can't open made
+ * the app crash-loop on its next start (blind review round 5, M2). So the key is chosen while everything is still open:
+ * the key saved under the backup's own name (safety copies have one), else the live key, else any other saved key,
+ * whichever provably opens the backup's settings. If none does, the restore is refused and nothing is touched. The
+ * database and that key then go in together through applyBackup, the same key-first swap with rollback an uploaded
+ * backup uses. `beforeSwap` is required (blind review round 3, L1): the routes pass the session floor.
+ */
+export function restoreBackup(name: string, beforeSwap: () => void) {
+  const b = listBackups().find((x) => x.name === name);
+  if (!b) throw new Error("Unknown backup");
+  const src = path.join(BACKUP_DIR, b.name);
+  const liveKey = fs.readFileSync(KEY_FILE);
+  let key: Buffer | undefined;
+  let bytes: Buffer;
+  const check = new DatabaseSync(src, { readOnly: true });
+  try {
+    const r = quickCheck(check);
+    if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
+    const row = settingsRow(check);
+    // No settings row: nothing in it is sealed, so the live key opens it as well as any.
+    key = row === undefined ? liveKey : keyCandidates(b.name, liveKey).find((k) => unlocks(row, k));
+    bytes = fs.readFileSync(src); // read while it is open and checked
+  } finally {
+    check.close();
+  }
+  if (!key)
+    throw Object.assign(
+      new Error(
+        `Nothing was changed: ${name} can't be restored with the secret.key in use. Its saved passwords are locked with another key, and no key in the backups folder opens them, so restoring it would leave AnimeArr unable to start. If you still have the secret.key from when it was made, put it in the backups folder as ${name.replace(/\.db$/, ".secret.key")}, then restore it again.`,
+      ),
+      { statusCode: 409 },
+    );
+  applyBackup(
+    { db: bytes, key },
+    { db: USER_DB, key: KEY_FILE },
+    {
+      safety: () => safetyBackup(""),
+      beforeSwap,
+      closeDb: () => db.close(),
+      what: name,
+      retry: "Then retry the restore.",
+    },
+  );
 }
 
 /**
@@ -319,7 +467,7 @@ export function safetyBackup(): string {
  * drop that protection silently. A failure once the database is closed is a restoreStopped (see applyBackup).
  */
 export function restoreUploaded(b: ParsedBackup, beforeSwap: () => void) {
-  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: safetyBackup, beforeSwap, closeDb: () => db.close() });
+  applyBackup(b, { db: USER_DB, key: KEY_FILE }, { safety: () => safetyBackup("upload"), beforeSwap, closeDb: () => db.close() });
 }
 
 // ---------------------------------------------------------------- staging between "upload" and "confirm with password"
