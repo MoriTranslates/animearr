@@ -142,13 +142,53 @@ test("restart before anything was handed to a client: failed, and the next candi
   assert.deepEqual(sent, ["Show - 4 [next]"]);
 });
 
-test("restart after an NZB was handed over (no id to look it up by): needs a look, never failed or sent again", async () => {
+test("restart after an NZB was handed over, clients that can't look it up: needs a look, never failed or sent again", async () => {
   const id = cutOff(5, "usenet", "?");
   const { d, sent } = deps(async () => null);
   recoverGrabs();
   await pipelineTick(d);
   assert.equal(row(id).state, "needs-attention");
   assert.deepEqual(sent, []);
+});
+
+// The NZB is looked up by its release name in the Usenet clients (findNzb; its client-side cases: nzb-lookup.test.ts).
+test("restart, the NZB is in the client (queue or history): it moves on to downloading, nothing is sent again", async () => {
+  const id = cutOff(11, "usenet", "?");
+  const { d, sent } = deps(async () => null);
+  const asked: string[] = [];
+  d.clients.findNzb = async (name) => (asked.push(name), { client: "sabnzbd", ref: "SABnzbd_nzo_11" });
+  await pipelineTick(d);
+  assert.deepEqual(asked, ["Show - 11 [cut]"]);
+  assert.equal(row(id).state, "downloading");
+  assert.deepEqual([row(id).client, row(id).client_ref], ["sabnzbd", "SABnzbd_nzo_11"]);
+  assert.deepEqual(sent, []);
+});
+
+test("restart, the NZB is in no client: failed, and the next release is tried", async () => {
+  const id = cutOff(12, "usenet", "?");
+  const { d, sent } = deps(async () => null);
+  d.clients.findNzb = async () => null;
+  await pipelineTick(d);
+  assert.equal(row(id).state, "failed");
+  assert.deepEqual(sent, ["Show - 12 [next]"]);
+  assert.equal(grabsFor("cut-12"), 1, "the cut-off release itself isn't sent again");
+});
+
+test("restart, a Usenet client down or two jobs of that name: needs a look with the reason, never sent again", async () => {
+  for (const [ep, why] of [
+    [13, "SABnzbd unreachable (connect ECONNREFUSED)"],
+    [14, "2 jobs in the download clients are named Show - 14 [cut]"],
+  ] as const) {
+    const id = cutOff(ep, "usenet", "?");
+    const { d, sent } = deps(async () => null);
+    d.clients.findNzb = async () => {
+      throw new Error(why);
+    };
+    await pipelineTick(d);
+    assert.equal(row(id).state, "needs-attention");
+    assert.ok((row(id).error ?? "").includes(why), row(id).error ?? "");
+    assert.deepEqual(sent, []);
+  }
 });
 
 test("a 'sending' grab cut off by a restart can be removed: from the client when it's there", async () => {

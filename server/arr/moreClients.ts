@@ -6,7 +6,7 @@
 import type { ClientCfg } from "../system/settings.js";
 import { redactUrl } from "./http.js";
 import { safeFetch } from "../system/safeFetch.js";
-import type { ClientFile, ClientStatus, OwnTorrent } from "./clients.js";
+import type { ClientFile, ClientStatus, NamedJob, OwnTorrent } from "./clients.js";
 
 const trim = (u: string) => u.replace(/\/+$/, "");
 const mapPath = (p: string, c: ClientCfg) => {
@@ -97,6 +97,22 @@ export const nzbgetDriver = {
     ]);
     const h = hist.find((x) => x.NZBID === Number(ref));
     return h ? { category: h.Category, status: h.Status, dir: mapPath(h.FinalDir || h.DestDir, c) } : null;
+  },
+  /** The queue and history by job name (an NZB a restart cut off mid-send is looked up by it). Read-only. */
+  async jobs(c: ClientCfg): Promise<NamedJob[]> {
+    const groups = await nzbget<{ NZBID: number; NZBName: string; Category: string }[]>(c, "listgroups", [0]);
+    const hist = await nzbget<{ NZBID: number; Name: string; NZBName?: string; Category: string; HistoryTime?: number }[]>(c, "history", [
+      false,
+    ]);
+    return [
+      ...groups.map((g) => ({ ref: String(g.NZBID), name: g.NZBName, category: g.Category, doneAt: null })),
+      ...hist.map((h) => ({
+        ref: String(h.NZBID),
+        name: h.NZBName ?? h.Name,
+        category: h.Category,
+        doneAt: h.HistoryTime ? h.HistoryTime * 1000 : null,
+      })),
+    ];
   },
   async remove(c: ClientCfg, ref: string) {
     const id = Number(ref);

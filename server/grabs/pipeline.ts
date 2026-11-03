@@ -408,24 +408,39 @@ async function resolveCutOffSends(deps: PipelineDeps) {
       await retry("AnimeArr restarted before it was handed to the download client; trying the next candidate");
       continue;
     }
-    if (row.protocol !== "torrent" || row.client_ref === SENT_UNKNOWN || !deps.clients.findTorrent) {
+    const needsLook = (why?: string) =>
       setState(
         row.id,
         "needs-attention",
-        "AnimeArr restarted while handing this to the download client and can't tell whether it arrived. Check the client: if it's there, let it finish there; remove it here to search again",
+        `AnimeArr restarted while handing this to the download client and can't tell whether it arrived${why ? ` (${why})` : ""}. Check the client: if it's there, let it finish there; remove it here to search again`,
       );
-      continue;
-    }
     let job: ClientJob | null;
-    try {
-      job = await deps.clients.findTorrent(row.client_ref);
-    } catch (e) {
-      db.prepare("UPDATE grabs SET error = ? WHERE id = ? AND state = 'sending'").run(
-        `AnimeArr restarted while sending this; the download client couldn't be asked whether it arrived (${(e as Error).message}). Asking again shortly`,
-        row.id,
-      );
+    if (row.protocol !== "torrent") {
+      // An NZB: looked up by its release name (one exact match in AnimeArr's category); a client down or any doubt
+      // (several or near matches) needs a look rather than a guess, and it is never sent twice.
+      if (!deps.clients.findNzb) {
+        needsLook();
+        continue;
+      }
+      try {
+        job = await deps.clients.findNzb(row.release, row.at);
+      } catch (e) {
+        needsLook((e as Error).message);
+        continue;
+      }
+    } else if (row.client_ref === SENT_UNKNOWN || !deps.clients.findTorrent) {
+      needsLook();
       continue;
-    }
+    } else
+      try {
+        job = await deps.clients.findTorrent(row.client_ref);
+      } catch (e) {
+        db.prepare("UPDATE grabs SET error = ? WHERE id = ? AND state = 'sending'").run(
+          `AnimeArr restarted while sending this; the download client couldn't be asked whether it arrived (${(e as Error).message}). Asking again shortly`,
+          row.id,
+        );
+        continue;
+      }
     if (!job) {
       await retry("AnimeArr restarted while sending it, and no download client has it; trying the next candidate");
       continue;

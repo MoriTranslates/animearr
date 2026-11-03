@@ -156,6 +156,22 @@ export interface DownloadClients {
    * as "not there".
    */
   findTorrent?(hash: string): Promise<ClientJob | null>;
+  /**
+   * The same for an NZB, by the release name it was sent with (NZBs have no id before they're added): one exact match
+   * in AnimeArr's category, in a Usenet client's queue or history. null = every Usenet client answered and none has it;
+   * throws when one couldn't be asked, or on several matches or only a near match (can't tell which is ours). History
+   * entries that finished before `since` (an earlier grab of the same release) don't count.
+   */
+  findNzb?(name: string, since?: number): Promise<ClientJob | null>;
+}
+
+/** A Usenet job as a client's queue or history lists it (for findNzb). */
+export interface NamedJob {
+  ref: string;
+  name: string;
+  category: string;
+  /** When a history entry finished (ms); unknown or still queued = null. */
+  doneAt: number | null;
 }
 
 // ---------------------------------------------------------------- SABnzbd
@@ -360,6 +376,23 @@ const primary = {
       ...live,
     };
   },
+  /** SABnzbd's queue and (recent) history, by job name (for findNzb). */
+  async sabJobs(): Promise<NamedJob[]> {
+    const q = await sab<{ queue: { slots: { nzo_id: string; filename: string; cat: string }[] } }>({ mode: "queue", limit: "1000" });
+    const h = await sab<{ history: { slots: { nzo_id: string; name: string; category: string; completed?: number }[] } }>({
+      mode: "history",
+      limit: "1000",
+    });
+    return [
+      ...(q.queue?.slots ?? []).map((s) => ({ ref: s.nzo_id, name: s.filename, category: s.cat, doneAt: null })),
+      ...(h.history?.slots ?? []).map((s) => ({
+        ref: s.nzo_id,
+        name: s.name,
+        category: s.category,
+        doneAt: s.completed ? s.completed * 1000 : null,
+      })),
+    ];
+  },
   async remove(job: ClientJob): Promise<void> {
     // Only ever AnimeArr's own jobs: the job must still be in AnimeArr's category. Not found = already gone (fine).
     if (job.client === "sabnzbd") {
@@ -561,6 +594,36 @@ export const realClients: DownloadClients = {
         unsure ??= e as Error;
       }
     }
+    if (unsure) throw unsure;
+    return null;
+  },
+  async findNzb(name, since = 0) {
+    // As sent: SABnzbd takes the name as is; NZBGet gets it as a file name (the same characters replaced).
+    const exact = new Set([name, name.replace(/[\\/:*?"<>|]/g, "_")]);
+    const loose = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const hits: ClientJob[] = [];
+    let near = false;
+    let unsure: Error | null = null;
+    for (const c of clientsFor("usenet")) {
+      if (isBlackhole(c.type)) {
+        unsure ??= new Error(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
+        continue;
+      }
+      try {
+        const jobs = c.type === "sabnzbd" ? await primary.sabJobs() : await nzbgetDriver.jobs(c.cfg!);
+        for (const j of jobs) {
+          if (c.category && j.category !== c.category) continue; // not AnimeArr's
+          if (j.doneAt !== null && j.doneAt < since) continue; // an earlier grab of the same release, finished before this one
+          if (exact.has(j.name)) hits.push({ client: c.id, ref: j.ref });
+          else if (loose(j.name) === loose(name)) near = true;
+        }
+      } catch (e) {
+        unsure ??= e as Error;
+      }
+    }
+    if (hits.length > 1) throw new Error(`${hits.length} jobs in the download clients are named ${name}; can't tell which is AnimeArr's`);
+    if (hits.length) return hits[0];
+    if (near) throw new Error(`a job in the download client has a similar name but not exactly ${name}`);
     if (unsure) throw unsure;
     return null;
   },
