@@ -26,10 +26,11 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   them (a reverse proxy, tunnel or Docker gateway would make everyone look local), requests that came through any proxy
   (one listed in `TRUST_PROXY`, or any request carrying `X-Forwarded-For` or similar headers) never count, a hop-count
   `TRUST_PROXY` turns the no-password check off, and the browser must address AnimeArr by IP or a LAN name (or a name
-  in `ANIMEARR_ALLOWED_HOSTS`). With a hop count the default login judges the client your proxy reports in
-  `X-Forwarded-For` (its last entry), and only when the proxy itself is on your home network by the same rule. A
-  proxy on a Docker network or on loopback doesn't count unless you list its range in `ANIMEARR_LOCAL_NETWORKS`, since
-  internet traffic can arrive from those addresses through Docker's gateway. Tailscale addresses
+  in `ANIMEARR_ALLOWED_HOSTS`). Through a reverse proxy (`TRUST_PROXY` as a hop count, or a list that includes the
+  proxy) the default login judges the client your proxy reports in `X-Forwarded-For` (its last entry), and only when
+  the proxy itself is on your home network by the same rule. A proxy on a Docker network or on loopback doesn't count
+  unless you list its range in `ANIMEARR_LOCAL_NETWORKS`, since internet traffic can arrive from those addresses
+  through Docker's gateway (a listed Docker range holds that gateway too). Tailscale addresses
   (`fd7a:115c:a1e0::/48`) are ULA, so they only count if you list them, e.g.
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`; then devices on your tailnet, **including
   nodes shared with you or by you**, count as home network.

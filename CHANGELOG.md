@@ -49,8 +49,9 @@ All notable changes, newest first. The commit history has the crew's version of 
   list the range in `ANIMEARR_LOCAL_NETWORKS`, which now takes IPv6 too, e.g.
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`. Plain IPv4 home networks and IPv6
   link-local are unchanged.
-- **A fresh install behind a reverse proxy set up with a hop count (`TRUST_PROXY=1`) can log in.** The default login
-  was refused everywhere, so the password could never be changed. It now works from home through your proxy when the
+- **A fresh install reachable only through a reverse proxy can log in.** With `TRUST_PROXY` set (a hop count or a
+  list), the default login was refused through the proxy, so the password could never be changed. It now works from
+  home through your proxy when the
   proxy runs on another machine in your home network (10.x or 192.168.x; a proxy on a Docker network or on the same
   host only once you list its range in `ANIMEARR_LOCAL_NETWORKS`) and you open AnimeArr by IP, a LAN name or a name in
   `ANIMEARR_ALLOWED_HOSTS`. It is still refused for clients outside your home network, including forged
