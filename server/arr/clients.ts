@@ -384,7 +384,8 @@ const primary = {
     // error/missingFiles are often transient (disk full, permissions, a missing save path): the user should look.
     if (/error|missingFiles/.test(t.state))
       return { state: "error", progress: t.progress, message: `qBittorrent reports "${t.state}"`, ...live };
-    if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path, ...live };
+    // A finished torrent that qBit is still moving to its final folder is not done: importing now would take a half-copied file.
+    if (t.progress >= 1 && t.state !== "moving") return { state: "completed", progress: 1, path: t.content_path, ...live };
     return {
       state: /queued|metaDL|checking|^paused|^stopped|moving/i.test(t.state) ? "queued" : "downloading",
       progress: t.progress,

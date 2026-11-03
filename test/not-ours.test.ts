@@ -231,3 +231,30 @@ test("qBittorrent: a torrent it already has is not added again and comes back as
   }
 });
 after(() => undefined);
+
+// ---------------------------------------------------------------- qBittorrent: a torrent still being moved is not done
+
+test("qBittorrent: a finished torrent still in the moving state is not reported completed (M13)", async () => {
+  const realFetch = globalThis.fetch;
+  const hash = "ef".repeat(20);
+  let state = "moving";
+  patchSettings((s) => ({ ...s, qbittorrent: { ...s.qbittorrent, url: "http://qb.test", username: "" } }));
+  globalThis.fetch = (async (u: string | URL) => {
+    const url = new URL(String(u));
+    if (url.pathname.endsWith("/torrents/info"))
+      return new Response(
+        JSON.stringify([{ hash, progress: 1, state, content_path: "/dl/x", eta: 0, dlspeed: 0, size: 5, num_seeds: 0 }]),
+        { status: 200 },
+      );
+    return new Response("Ok.", { status: 200 });
+  }) as typeof fetch;
+  try {
+    const job = { client: "qbittorrent", ref: hash } as never;
+    assert.equal((await realClients.status(job)).state, "queued", "mid-move must wait");
+    state = "stalledUP";
+    assert.equal((await realClients.status(job)).state, "completed", "once moved it is done");
+  } finally {
+    globalThis.fetch = realFetch;
+    patchSettings((s) => ({ ...s, qbittorrent: { ...s.qbittorrent, url: "" } }));
+  }
+});
