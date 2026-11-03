@@ -1321,3 +1321,51 @@ test("an untrustworthy range end is a whole-season pack only from episode 1, one
   assert.equal(p("Show S01E01-720 Batch").fullSeason, true);
   assert.equal(p("Show S01E01-E9999 [Batch]").fullSeason, true);
 });
+
+test("blind round-6: extra season markers, pack brackets and season words in an all-bracket title give unknown (M1-M4)", () => {
+  const unknownPack = [
+    "Show S01E01-3000 Batch S02E01-3000",
+    "Show S01E01-3000 Batch 2nd Season",
+    "Show S01E01-3000 Batch S02",
+    "Show S01E01-3000 Batch Season 2",
+    "Show Season 2 S01E01-3000 Batch",
+    "Show S01E01-3000 Batch Part 2",
+    "Show S01E01-3000 Batch 第二季",
+    "Show S01E01-3000 Batch 2期",
+  ];
+  for (const name of unknownPack) {
+    const r = parseRelease(name);
+    assert.equal(r.fullSeason, false, name);
+    assert.deepEqual(r.episodes, [], name);
+    assert.deepEqual(r.absolute, [], name);
+  }
+  const unknownBracket = [
+    // M2: a pack bracket after the episode
+    "[Grp][Show][12][Batch]",
+    "[Grp][Show][05][BD][Complete]",
+    "[Grp][Show][12][Batch][1080p]",
+    "[Grp][Show][12][Fin]",
+    // M3: a season or part word in the title bracket
+    "[Grp][Show 2期][12]",
+    "[Grp][Show 第二季][12]",
+    "[Grp][Show 2nd][12]",
+    "[Grp][Show Part 2][01]",
+    "[Grp][Show II][01]",
+    "[Grp][Show III][01]",
+    "[Grp][Show Final Season][01]",
+    "[Grp][Show Season 2][01]",
+    "[Grp][Show S2][01]",
+    // M4: a hyphen number in the title bracket
+    "[Grp][Show-100][12]",
+  ];
+  for (const name of unknownBracket) {
+    const r = parseRelease(name);
+    // Unknown: no title (as before the all-bracket rule), so the resolver has nothing to match.
+    assert.equal(r.title, "", name);
+    assert.deepEqual(r.episodes, [], name);
+  }
+  // Still fine: a plain all-bracket name and a ranged one with a Batch bracket.
+  assert.deepEqual(parseRelease("[Grp][Show][12][1080p]").absolute, [12]);
+  assert.equal(parseRelease("[Grp][Show][01-12][Batch]").absolute.length, 12);
+  assert.equal(parseRelease("Show S01E01-3000 Batch").fullSeason, true);
+});

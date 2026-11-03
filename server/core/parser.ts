@@ -291,6 +291,11 @@ const GENERIC_TITLE =
 /** A bracket that is only a season, part or cour: "S2", "Season 2", "Part 2", "Cour 2", 第二季. */
 const SEASON_ONLY = /^(?:S\d{1,2}|Seasons?\b.*|Part\s*\d+|Cour\s*\d+|第.{1,4}[季期部])$/i;
 /** An all-bracket EP number: 2-3 digits and not a resolution (so never 480, 576, 720 or 1080, and never a year). */
+/** A season, part or cour word anywhere in a title bracket: 2期, 第二季, 2nd, Part 2, Final Season, Season 2, S2, a trailing II/III. */
+const SEASON_WORD_IN_TITLE =
+  /[季期]|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:Part|Cour)\s*\d|\bFinal\s+Season\b|\bSeasons?\b|\bS\d{1,2}\b|\s(?:II|III|IV|VI|VII|VIII|IX)$/i;
+/** A bracket after the episode that says the number is a pack (Batch, Complete, Fin...), so it is not one episode. */
+const PACK_BRACKET = /\b(?:batch|complete|completed|fin|finished|end|full|pack|box|bd ?box|全集|合集|完结|完結)\b|全\d+[话話集]/i;
 const isBracketEp = (n: string) => /^\d{2,3}$/.test(n) && !/^(?:480|576|720)$/.test(n);
 
 /**
@@ -319,6 +324,8 @@ function allBracketTitle(s: string): string | null {
     /\p{L}/u.test(t) && !/^\d/.test(t) && !GENERIC_TITLE.test(t) && !SEASON_ONLY.test(t) && !isTagBracket(t) && !RES_RE.test(t);
   const title = brackets[i];
   if (title === undefined || !isTitle(title)) return null;
+  // A season or part word, or a hyphen number ("Show-100"), inside the title bracket: unknown.
+  if (SEASON_WORD_IN_TITLE.test(title) || /[-~]\s*\d/.test(title)) return null;
   const next = i + 1;
   const ep = brackets[next] ?? "";
   const plain = ep.match(/^(\d+)(?:v\d)?$/);
@@ -326,6 +333,8 @@ function allBracketTitle(s: string): string | null {
   const epOk = plain ? isBracketEp(plain[1]) : range ? isBracketEp(range[1]) && isBracketEp(range[2]) : false;
   if (!epOk) return null;
   if (!brackets.slice(next + 1).every(isTagBracket)) return null;
+  // A single number followed by a pack bracket ("[12][Batch]") is a pack's count, not an episode.
+  if (plain && brackets.slice(next + 1).some((b) => PACK_BRACKET.test(b))) return null;
   // Cut through the title bracket: everything before it is the leading tags.
   let cut = 0;
   for (let k = 0; k <= i; k++) cut = s.indexOf("]", cut) + 1;
@@ -876,7 +885,12 @@ export function parseRelease(input: string): ParsedRelease {
   // An untrusted range end is a whole-season pack only when it starts at episode 1 and names one season; anything
   // else is unknown (no episodes, no fullSeason), so it is neither grabbed nor imported.
   const untrusted = chosen.find((c) => c.untrustedStart !== undefined);
-  if (untrusted && !episodes.length && !absolute.length) fullSeason = untrusted.untrustedStart === 1 && seasons.length <= 1;
+  // Any other season marker in the name (a second SxxEyy, S02, 2nd Season, Season N, Part N, a CJK season) is unknown.
+  if (untrusted && !episodes.length && !absolute.length) {
+    const otherSeason =
+      (s.match(/\bS\d{1,2}\s?E\d/gi) ?? []).length > 1 || /\bS\d{1,2}(?!\s?E\d)\b|\bSeasons?\b|\b(?:Part|Cour)\s*\d|[季期]/i.test(s);
+    fullSeason = untrusted.untrustedStart === 1 && seasons.length <= 1 && !otherSeason;
+  }
 
   // ---- title
   let title = s.slice(0, titleEnd);
