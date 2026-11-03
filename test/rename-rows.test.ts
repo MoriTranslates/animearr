@@ -381,3 +381,63 @@ test("L2: stale rows already at the new name are replaced, not merged into the r
     "the renamed file's own corrections (tracks 2 and 3), not the stale track 7",
   );
 });
+
+test("L3: a Sonarr rename still running when AnimeArr stops waiting: the rows follow once Sonarr has renamed the file", async () => {
+  const { reconcilePendingRenames } = (await import("../server/import/importer.js")) as unknown as {
+    reconcilePendingRenames: (now?: number) => void;
+  };
+  const from = libraryFile(517, "frieren 17.mkv", [101]);
+  const to = `${SEASON_ARR}/Frieren S01E17.mkv`;
+  const pending = [
+    {
+      seriesId: 10,
+      seasonNumber: 1,
+      episodeNumbers: [17],
+      episodeFileId: 517,
+      existingPath: "Season 01/frieren 17.mkv",
+      newPath: "Season 01/Frieren S01E17.mkv",
+    },
+  ];
+  const r = await applyRenameRouted(424536, [517], {
+    sonarrOn: () => true,
+    preview: async () => pending,
+    renameFiles: async () => ({ id: 9 }),
+    getCommand: async () => ({ id: 9, status: "started" }), // still running after AnimeArr's wait
+    sleep: async () => undefined,
+  });
+  assert.equal(r.results[0].done, false);
+  assert.match(r.results[0].why, /still running/);
+  assert.deepEqual(rowsAt(from), ALL, "not moved yet: the file still has its old name");
+  // Sonarr finishes later.
+  fs.renameSync(path.join(SEASON, "frieren 17.mkv"), path.join(SEASON, "Frieren S01E17.mkv"));
+  reconcilePendingRenames?.();
+  assert.deepEqual(rowsAt(to), ALL, "the rows followed the file");
+  assert.deepEqual(rowsAt(from), NONE);
+});
+
+test("L3: a pending Sonarr rename that never happens is dropped after a week, rows left with the file", async () => {
+  const { reconcilePendingRenames } = (await import("../server/import/importer.js")) as unknown as {
+    reconcilePendingRenames: (now?: number) => void;
+  };
+  const from = libraryFile(518, "frieren 18.mkv", [102]);
+  await applyRenameRouted(424536, [518], {
+    sonarrOn: () => true,
+    preview: async () => [
+      {
+        seriesId: 10,
+        seasonNumber: 1,
+        episodeNumbers: [18],
+        episodeFileId: 518,
+        existingPath: "Season 01/frieren 18.mkv",
+        newPath: "Season 01/Frieren S01E18.mkv",
+      },
+    ],
+    renameFiles: async () => ({ id: 10 }),
+    getCommand: async () => ({ id: 10, status: "queued" }),
+    sleep: async () => undefined,
+  });
+  reconcilePendingRenames(Date.now() + 8 * 86_400_000);
+  assert.deepEqual(rowsAt(from), ALL, "the file kept its name: so do its rows");
+  const left = db.prepare("SELECT value FROM kv WHERE key = 'pendingRenames'").get() as { value: string } | undefined;
+  assert.ok(!left || !left.value.includes("frieren 18"), "the entry is gone");
+});

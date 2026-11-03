@@ -1144,6 +1144,50 @@ export async function renamePlan(
   return { route, items };
 }
 
+// ---------------------------------------------------------------- Sonarr renames still running
+
+type PendingRename = { from: string; to: string; at: number };
+const PENDING_RENAMES = "pendingRenames";
+const WEEK = 7 * 86_400_000;
+
+function pendingRenames(): PendingRename[] {
+  const row = db.prepare("SELECT value FROM kv WHERE key = ?").get(PENDING_RENAMES) as { value: string } | undefined;
+  try {
+    return row ? (JSON.parse(row.value) as PendingRename[]) : [];
+  } catch {
+    return []; // a damaged entry: the renames it held keep their rows at the old names (as before this list existed)
+  }
+}
+function savePendingRenames(list: PendingRename[]) {
+  db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)").run(PENDING_RENAMES, JSON.stringify(list));
+}
+function addPendingRenames(items: { from: string; to: string }[], now = Date.now()) {
+  const list = pendingRenames().filter((p) => !items.some((i) => i.from === p.from));
+  savePendingRenames([...list, ...items.map((i) => ({ ...i, at: now }))]);
+}
+
+/**
+ * Sonarr renames AnimeArr stopped waiting for: once the new name exists and the old one is gone, the file's per-file
+ * rows follow it. One whose file still has its old name after a week is forgotten (its rows stay with the file).
+ */
+export function reconcilePendingRenames(now = Date.now()) {
+  const list = pendingRenames();
+  if (!list.length) return;
+  const keep: PendingRename[] = [];
+  for (const p of list) {
+    if (localPath(p.to) && !localPath(p.from)) {
+      try {
+        movePathRows(p.from, p.to);
+      } catch {
+        keep.push(p); // tried again next time
+      }
+      continue;
+    }
+    if (now - p.at < WEEK) keep.push(p);
+  }
+  savePendingRenames(keep);
+}
+
 /** Renames the chosen files by route. Through Sonarr: its RenameFiles command (no undo; Sonarr keeps its records). */
 export async function applyRenameRouted(
   tvdbId: number,
@@ -1159,6 +1203,7 @@ export async function applyRenameRouted(
   const route = renameRoute(tvdbId, deps);
   if (route === "animearr") return { route, results: await applyRename(tvdbId, fileIds) };
   if (!getSettings().importer.allowRename) throw err("Renaming isn't switched on (Settings → Media management → Importer)", 409);
+  reconcilePendingRenames(); // earlier renames Sonarr finished after AnimeArr stopped waiting
   const s = seriesRow(tvdbId)!;
   if (!underAllowedRoot(s.path)) throw err("This show is outside the allowed root folders");
   const before = (await renamePlan(tvdbId, deps)).items.filter((i) => fileIds.includes(i.fileId));
@@ -1173,11 +1218,22 @@ export async function applyRenameRouted(
     status = (await deps.getCommand(cmd.id)).status;
   }
   const still = new Set((await renamePlan(tvdbId, deps)).items.map((i) => i.fileId));
+  // Not finished when AnimeArr stopped waiting: Sonarr may still rename them. Remembered, so the per-file rows follow
+  // once the new name exists (reconcilePendingRenames), instead of staying at a name that's gone.
+  const running = !["completed", "failed", "aborted"].includes(status);
+  if (running) addPendingRenames(before.map((i) => ({ from: i.from, to: i.to })));
   const results = before.map((i) => ({
     from: i.from,
     to: i.to,
     done: status === "completed" && !still.has(i.fileId),
-    why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}`,
+    why:
+      status === "completed"
+        ? still.has(i.fileId)
+          ? "Sonarr didn't rename it"
+          : "renamed by Sonarr"
+        : running
+          ? "Sonarr's rename is still running; the file's track corrections follow it once it's done"
+          : `Sonarr's rename ${status}`,
   }));
   // Sonarr renamed them: their per-file rows follow (the files are already renamed, so a failure is reported).
   for (const r of results.filter((x) => x.done))
