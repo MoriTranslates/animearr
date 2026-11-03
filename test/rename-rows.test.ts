@@ -281,21 +281,29 @@ test("a file deleted into Sonarr's bin takes its rows along; a new file imported
   assert.equal(linkOf(dest), JSON.stringify([109]));
 });
 
-test("M3: a permanent delete (no bin) or an unknown bin drops the file's rows; a new file at that name starts clean", async () => {
-  for (const [id, bin] of [
-    [510, { configured: false, path: "" }],
-    [511, null],
-  ] as const) {
-    const arr = libraryFile(id, `frieren ${id}.mkv`, [id === 510 ? 106 : 102]);
-    const r = await deleteEpisodeFiles(424536, [id === 510 ? 106 : 102], sonarrDelete(id, arr, bin));
-    assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
-    assert.deepEqual(rowsAt(arr), NONE, "nothing about the deleted file is left at its name");
-    assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
-    const log = db.prepare("SELECT why FROM decisions WHERE why LIKE ? ORDER BY id DESC LIMIT 1").get(`%frieren ${id}.mkv%`) as {
-      why: string;
-    };
-    assert.match(log.why, /track corrections and burned-in mark .*dropped/);
-  }
+const lastLogAbout = (name: string) =>
+  (db.prepare("SELECT why FROM decisions WHERE why LIKE ? ORDER BY id DESC LIMIT 1").get(`%${name}%`) as { why: string }).why;
+
+test("M3: a permanent delete (Sonarr has no bin) drops the file's rows; a new file at that name starts clean", async () => {
+  const arr = libraryFile(510, "frieren 510.mkv", [106]);
+  const r = await deleteEpisodeFiles(424536, [106], sonarrDelete(510, arr, { configured: false, path: "" }));
+  assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
+  assert.deepEqual(rowsAt(arr), NONE, "nothing about the deleted file is left at its name");
+  assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM file_marks WHERE path LIKE '%frieren 510%'").get() as { n: number }).n, 0, "dropped");
+  assert.match(lastLogAbout("frieren 510.mkv"), /track corrections and burned-in mark .*dropped/);
+});
+
+test("M3: a delete whose bin Sonarr didn't report sets the rows aside (recoverable), never at the old name", async () => {
+  const arr = libraryFile(511, "frieren 511.mkv", [102]);
+  const r = await deleteEpisodeFiles(424536, [102], sonarrDelete(511, arr, null));
+  assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
+  assert.deepEqual(rowsAt(arr), NONE, "nothing left at its name");
+  assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
+  const aside = (db.prepare("SELECT path FROM file_marks WHERE path LIKE 'deleted:%'").get() as { path: string } | undefined)?.path;
+  assert.ok(aside && aside.endsWith(`:${arr}`), `kept under a reserved key: ${aside}`);
+  assert.deepEqual(rowsAt(aside!), ALL, "every row kept, under that key");
+  assert.match(lastLogAbout("frieren 511.mkv"), /set aside/);
 });
 
 // ---------------------------------------------------------------- rename undo: only the file AnimeArr renamed (L9)

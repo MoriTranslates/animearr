@@ -722,15 +722,19 @@ export async function deleteEpisodeFiles(
       done.add(ep.episodeFileId);
       deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
       // Its per-file rows (track corrections, burned-in mark, release details) never stay at its name: a new file there
-      // would inherit them. With Sonarr's bin they go to the bin with it (<bin>/<show folder>/…), kept. Gone for good,
-      // or a bin Sonarr didn't tell: they describe a file that no longer exists, so they are dropped.
+      // would inherit them. With Sonarr's bin they go to the bin with it (<bin>/<show folder>/…), kept. Sonarr has no
+      // bin (gone for good): they describe a file that no longer exists, so they are dropped. Sonarr didn't say
+      // (unknown): the file may be in its bin, so they are only detached, to a key no file can have.
       let rowsNote = "";
       try {
         if (bin?.configured && bin.path) {
           const show = keyOf(s.path);
           movePathRows(f.path, `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`);
-        } else if (deletePathRows(f.path))
-          rowsNote = " Its track corrections and burned-in mark (if any) were dropped with it, so a new file at this name starts clean.";
+        } else if (bin && !bin.configured) {
+          if (deletePathRows(f.path))
+            rowsNote = " Its track corrections and burned-in mark (if any) were dropped with it, so a new file at this name starts clean.";
+        } else if (movePathRows(f.path, `deleted:${Date.now()}:${keyOf(f.path)}`))
+          rowsNote = ` Its track corrections and burned-in mark (if any) were set aside (kept as "deleted:…:${keyOf(f.path)}"), so a new file at this name starts clean.`;
       } catch (e) {
         rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
       }
