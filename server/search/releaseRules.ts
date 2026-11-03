@@ -5,7 +5,7 @@
  */
 import crypto from "node:crypto";
 import { logDecision } from "../system/activity.js";
-import { applyRules, cleanTerms, setRunawayReporter, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
+import { applyRules, cleanTerms, forgetRegexTimeouts, setRunawayReporter, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
 import { db, dbState, tx } from "../system/db.js";
 import { tagRows, tagsOf, type TagKind } from "../library/tags.js";
 
@@ -122,6 +122,9 @@ export function saveRule(id: string | null, input: Partial<ReleaseRule>) {
     db.prepare("DELETE FROM release_rule_tags WHERE rule_id = ?").run(r.id);
     for (const t of r.tags) db.prepare("INSERT INTO release_rule_tags (rule_id, tag_id) VALUES (?, ?)").run(r.id, t);
   });
+  // An edited rule's regex terms get a fresh start (a term marked as runaway is run again).
+  const terms = (x: ReleaseRule) => [...x.must, ...x.mustNot, ...x.preferred.map((p) => p.term)];
+  forgetRegexTimeouts([...terms(r), ...(existing ? terms(existing) : [])]);
   logDecision("info", {
     why: `${existing ? "Changed" : "Added"} release rule "${r.name}" (${r.must.length} must, ${r.mustNot.length} must-not, ${r.preferred.length} preferred; ${r.tags.length ? "tagged shows only" : "all shows"})`,
   });

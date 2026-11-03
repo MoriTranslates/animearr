@@ -144,6 +144,29 @@ test("the first time a rule's term takes too long, one warning names the rule an
   deleteRule(saved.id);
 });
 
+test("one timeout doesn't disable a term for good; repeated ones do, until the rule is saved again (review misc #2)", () => {
+  // "/(d|d)*e/" is fine on ordinary names but runs away on a long run of "d": one heavy name stands in for a
+  // timeout under CPU load.
+  const term = "/(d|d)*e/";
+  const r = rule({ mustNot: [term] });
+  const heavy = "d".repeat(30) + "!";
+  // That one check fails closed...
+  assert.match(applyRules(heavy, [r]).reject ?? "", /took too long to check/);
+  // ...but the term keeps working for the next names (it used to be skipped, i.e. blocking, until a restart).
+  assert.equal(applyRules("Show - 05 [1080p]", [r]).reject, null);
+  assert.match(applyRules("Show - 05 [de]", [r]).reject ?? "", /contains '\/\(d\|d\)\*e\/'$/);
+  // Three timeouts in a short window: the term is marked, and every name is blocked (fail closed) without running it.
+  applyRules(heavy, [r]);
+  applyRules(heavy, [r]);
+  const t0 = Date.now();
+  assert.match(applyRules("Show - 06 [1080p]", [r]).reject ?? "", /took too long to check/);
+  assert.ok(Date.now() - t0 < 20, "a marked term isn't run again");
+  // Saving the rule (an edit) clears the mark.
+  const saved = saveRule(null, { name: "Marked rule", mustNot: [term] });
+  assert.equal(testRules("Show - 07 [1080p]").rejected, null);
+  deleteRule(saved.id);
+});
+
 test("must: the name needs at least one of the terms; mustNot: none may appear", () => {
   const r = rule({ must: ["1080p", "/2160p/"], mustNot: ["x265"] });
   assert.equal(applyRules("Show 1080p WEB", [r]).reject, null);

@@ -31,8 +31,9 @@ const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 /**
  * User regexes run with a time limit. The static check above can't catch every runaway pattern ("((a+))+$",
  * "(a|a)*b" backtrack exponentially), and JavaScript has no regex timeout, so the match runs as a vm script with one.
- * A term that hits the limit is remembered and never run again ("couldn't check": null), so it costs the limit only
- * once. applyRules fails closed on it: a must-not term blocks, a must term is missing, a preferred term scores nothing.
+ * A check that hits the limit gives "couldn't check" (null), and applyRules fails closed on it: a must-not term
+ * blocks, a must term is missing, a preferred term scores nothing. A term that keeps hitting it is marked as runaway
+ * and not run again (still failing closed) until its rule is saved.
  */
 const REGEX_LIMIT_MS = 50;
 const regexRun = new vm.Script("re.test(title)");
@@ -103,19 +104,40 @@ function guardedTest(term: string, re: RegExp, title: string): boolean | null {
     return regexRun.runInContext(regexCtx, { timeout: REGEX_LIMIT_MS }) === true;
   } catch (e) {
     if ((e as { code?: string }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
-    runaway.add(term);
+    // One timeout can be load (GC, ffmpeg, a busy NAS): that check fails closed, but the term stays in use. Only
+    // STRIKES timeouts within STRIKE_WINDOW_MS mark it as runaway.
+    const now = Date.now();
+    const recent = (strikes.get(term) ?? []).filter((t) => now - t < STRIKE_WINDOW_MS);
+    recent.push(now);
+    if (recent.length >= STRIKES) {
+      runaway.add(term);
+      strikes.delete(term);
+    } else strikes.set(term, recent);
     return null;
   } finally {
     regexCtx.title = "";
   }
 }
+const STRIKES = 3;
+const STRIKE_WINDOW_MS = 10 * 60_000;
+const strikes = new Map<string, number[]>();
 
-/** Told once per term, the first time a rule's term takes too long (the search layer writes the warning). */
+/** Told once per term, when a rule's term is marked as runaway (the search layer writes the warning). */
 let onRunaway: (rule: string, term: string) => void = () => {};
 export function setRunawayReporter(fn: (rule: string, term: string) => void) {
   onRunaway = fn;
 }
 const reported = new Set<string>();
+
+/** A rule was saved (edited): its terms get a fresh start, and a warning again if they still run away. */
+export function forgetRegexTimeouts(terms: string[]) {
+  for (const raw of terms)
+    for (const t of new Set([raw, raw.trim()])) {
+      runaway.delete(t);
+      strikes.delete(t);
+      reported.delete(t);
+    }
+}
 
 type Compiled = { test: (title: string) => boolean | null } | { error: string };
 const compiled = new Map<string, Compiled>();
@@ -183,11 +205,11 @@ export function applyRules(title: string, rules: ReleaseRule[]): RuleVerdict {
   const matches: RuleVerdict["matches"] = [];
   for (const r of rules) {
     if (!r.enabled) continue;
-    // true / false, or null when a regex took too long to check (reported once per term).
+    // true / false, or null when a regex took too long to check (reported once, when the term is marked).
     const check = (t: string) => {
       const c = compileTerm(t);
       const v = "test" in c ? c.test(title) : false;
-      if (v === null && !reported.has(t)) {
+      if (v === null && runaway.has(t.trim()) && !reported.has(t)) {
         reported.add(t);
         onRunaway(r.name, t);
       }
