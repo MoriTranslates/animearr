@@ -17,7 +17,7 @@
  * under a temporary name, and comes back if the swap fails.
  */
 import { binArrPath, binFolder, noteBinned, pinBinned } from "./binpurge.js";
-import { movePathRows, movePathRowsIntoEmpty } from "./pathRows.js";
+import { movePathRows } from "./pathRows.js";
 import { copyNoClobber, moveNoClobber } from "./fileMoves.js";
 import { touchesProtected } from "./protectedPaths.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
@@ -1146,8 +1146,7 @@ export async function renamePlan(
 
 // ---------------------------------------------------------------- Sonarr renames still running
 
-/** `size`: the renamed file's size when AnimeArr stopped waiting (absent in entries saved before it was kept). */
-type PendingRename = { from: string; to: string; at: number; size?: number };
+type PendingRename = { from: string; to: string; at: number };
 const PENDING_RENAMES = "pendingRenames";
 const WEEK = 7 * 86_400_000;
 
@@ -1164,43 +1163,21 @@ function savePendingRenames(list: PendingRename[]) {
 }
 function addPendingRenames(items: { from: string; to: string }[], now = Date.now()) {
   const list = pendingRenames().filter((p) => !items.some((i) => i.from === p.from));
-  savePendingRenames([...list, ...items.map((i) => ({ ...i, at: now, size: fileSize(localPath(i.from) ?? localPath(i.to)) }))]);
-}
-function fileSize(p: string | null) {
-  if (!p) return undefined;
-  try {
-    return fs.statSync(p).size;
-  } catch {
-    return undefined; // unreadable: the entry is kept without a size, and the empty-target rule still guards the move
-  }
+  savePendingRenames([...list, ...items.map((i) => ({ ...i, at: now }))]);
 }
 
 /**
  * Sonarr renames AnimeArr stopped waiting for: once the new name exists and the old one is gone, the file's per-file
  * rows follow it. One whose file still has its old name after a week is forgotten (its rows stay with the file).
- * A late reconcile never deletes rows: if the new name already has rows of its own (a newer import placed a file
- * there), or the file there isn't the renamed one (its size differs from the one recorded), the entry is dropped and
- * nothing is touched.
  */
 export function reconcilePendingRenames(now = Date.now()) {
   const list = pendingRenames();
   if (!list.length) return;
   const keep: PendingRename[] = [];
   for (const p of list) {
-    const to = localPath(p.to);
-    if (to && !localPath(p.from)) {
-      const name = path.posix.basename(p.to);
-      if (p.size !== undefined && fileSize(to) !== p.size) {
-        logDecision("info", {
-          why: `${name}: a different file now has this name, so the renamed file's track corrections stay where they were`,
-        });
-        continue;
-      }
+    if (localPath(p.to) && !localPath(p.from)) {
       try {
-        if (movePathRowsIntoEmpty(p.from, p.to) === null)
-          logDecision("info", {
-            why: `${name}: a newer import already owns this name, so the renamed file's track corrections stay where they were`,
-          });
+        movePathRows(p.from, p.to);
       } catch {
         keep.push(p); // tried again next time
       }
