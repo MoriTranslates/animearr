@@ -1075,3 +1075,14 @@ test("a title like Ranma 1-2 before the year and SxxEyy is not an episode range 
   assert.deepEqual(parseRelease("Show 1-12 [1080p]").absolute.length, 12);
   assert.deepEqual(parseRelease("Show 01-12 S01E05").absolute.length, 12);
 });
+
+test("language and dub words in a parenthesised group are not alternate titles (Fuchs Mushoku Tensei)", () => {
+  const name =
+    "[Fuchs] Mushoku Tensei - S00E01 (BD 1080p HEVC Opus 2.0/5.1) [Dual-Audio] [Multi-Audio] (Japanese, German/Deutsch, English Dubs) [OV] [OmU] [OmeU] [DF] [Synchro] | Mushoku Tensei: Isekai Ittara Honki Dasu | Jobless Reincarnation (S01E17.5) (OVA)";
+  const alts = parseRelease(name).altTitles.map((a) => a.toLowerCase());
+  for (const bad of ["japanese", "german/deutsch", "english dubs", "german", "deutsch", "english"]) assert.ok(!alts.includes(bad), bad);
+  assert.ok(!parseRelease("Show S01E01 (Spanish+Portuguese, Russian/Chinese/Korean, Dual Audio)").altTitles.length);
+  // Must not change: a real title that merely contains a language word is still an alternate title.
+  assert.deepEqual(parseRelease("Show S01E01 (German Teacher Show, Dual-Audio)").altTitles, ["German Teacher Show"]);
+  assert.deepEqual(parseRelease("Show S01E01 (Japanese Ghost Story, Dual-Audio)").altTitles, ["Japanese Ghost Story"]);
+});

@@ -260,6 +260,11 @@ const isYear = (n: number) => n >= 1950 && n <= 2049;
 const RES_RE = /\b(?:(\d{3,4})x(\d{3,4})|(2160|1080|720|576|540|480|360)[pi])\b|\b4K\b|\bUHD\b/i;
 const CRC_RE = /[\[(]([A-F0-9]{8})[\])]/i;
 
+/** A part made only of language or dub words, joined by "/", "," or "+": "Japanese", "German/Deutsch", "English Dubs". */
+const LANGUAGE_WORD =
+  "(?:japanese|english|german|deutsch|spanish|french|italian|portuguese|russian|chinese|korean|dubs?|dual[ -]?audio|multi|subs?)";
+const LANGUAGE_ONLY = new RegExp(`^${LANGUAGE_WORD}(?:(?:\\s*[/,+]\\s*|\\s+)${LANGUAGE_WORD})*$`, "i");
+
 /** Brackets/parens that are only release metadata (resolution, codec, crc, source...). */
 const META_TOKEN =
   /^(?:\d{3,4}p|\d{3,4}x\d{3,4}|[A-F0-9]{8}|batch|complete|web(?:[ -]?(?:dl|rip))?|bd(?:rip)?|blu-?ray|dvd(?:rip)?|hevc|avc|x26[45]|h\.?26[45]|av1|aac.*|flac.*|opus.*|e?ac3.*|dts.*|hi10p?|10[ -]?bits?|8[ -]?bits?|multi.*|dual.*|eng.*|english.*|vostfr.*|raw|mkv|mp4|uncensored|uncut|v\d|end|fin(?:al)?|hdr|sdr|remux|\d+bit|cr|amzn|nf|hidive|dsnp|b-global|japanese.*sub.*|jp.*sub.*)$/i;
@@ -523,7 +528,8 @@ export function parseRelease(input: string): ParsedRelease {
         p.length < 4 ||
         META_TOKEN.test(p) ||
         /\b(sub|subs|audio|dub|uncensored|web|1080|720|batch|season|bd|dual|multi)\b/i.test(p) ||
-        /^\d/.test(p)
+        /^\d/.test(p) ||
+        LANGUAGE_ONLY.test(p)
       )
         continue;
       altTitles.push(p);
