@@ -101,12 +101,14 @@ const FORWARD_HEADERS = [
  * through a listed proxy use its headers for the client IP in logs, but never get the bypass.
  */
 export function isLocalRequest(req: FastifyRequest) {
-  if (FORWARD_HEADERS.some((h) => req.headers[h])) return false;
+  if (hasForwardHeaders(req)) return false;
   // A hop-count TRUST_PROXY trusts whatever is in front blindly: no "local" bypass with it.
   if (typeof trustProxyOption() === "number") return false;
   const peer = req.socket?.remoteAddress ?? "";
   return isHomeNetwork(peer) && !isProxyPeer(peer);
 }
+
+const hasForwardHeaders = (req: FastifyRequest) => FORWARD_HEADERS.some((h) => req.headers[h]);
 
 /** The IPv6 groups of an address without its zone (fe80::1%eth0), or null. */
 const groups6 = (ip: string) => (net.isIPv6(ip.replace(/%.*$/, "")) ? hextets(ip.replace(/%.*$/, "")) : null);
@@ -207,11 +209,23 @@ function isListedProxy(peer: string) {
   const t = trustProxyOption();
   return Array.isArray(t) && t.some((c) => (c.includes("/") ? inCidr(p, c) : c === p));
 }
+/**
+ * The socket peer is named by a single-address TRUST_PROXY entry (an IP, or a /32 or /128), not by a range or keyword:
+ * the user pointed at exactly this machine or container as the proxy (blind review round 3, M1).
+ */
+function isNamedProxy(peer: string) {
+  const t = trustProxyOption();
+  if (!Array.isArray(t)) return false;
+  return t.some((c) => {
+    const [base, bits] = c.split("/");
+    const max = net.isIPv4(base) ? 32 : 128;
+    return (bits === undefined || bits === String(max)) && validRange(c) && inCidr(peer, `${base}/${max}`);
+  });
+}
+const isLoopback = (peer: string) => v4(peer).startsWith("127.") || peer === "::1";
 /** The socket peer is a loopback or a trusted proxy: then it isn't the user's device. */
 function isProxyPeer(peer: string) {
-  const p = v4(peer);
-  if (p === "127.0.0.1" || p.startsWith("127.") || peer === "::1") return true;
-  return isListedProxy(peer);
+  return isLoopback(peer) || isListedProxy(peer);
 }
 
 /**
@@ -596,6 +610,9 @@ export const DEFAULT_REMOTE_REFUSED = "The default password only works from your
 
 const HOST_HINT = " Behind a reverse proxy: open AnimeArr by its IP or LAN name, or add the address you use to ANIMEARR_ALLOWED_HOSTS.";
 
+const PROXY_HINT =
+  " Behind a reverse proxy on a Docker network: add the proxy's own IP to TRUST_PROXY (for example TRUST_PROXY=uniquelocal,172.18.0.2; give the proxy container a fixed IP). A range, keyword or hop count can't vouch for the default login there.";
+
 /**
  * The safety rule for the default login (captain/morebooty): while the password is still the default, a login is only
  * accepted from the home network (the same check as "No password on my local network": ANIMEARR_LOCAL_NETWORKS or
@@ -608,6 +625,11 @@ const HOST_HINT = " Behind a reverse proxy: open AnimeArr by its IP or LAN name,
  * gateway too, so they can't vouch for a header unless listed in ANIMEARR_LOCAL_NETWORKS (blind review A1). Only the
  * last entry counts, the one that proxy added: a hop count larger than the real number of proxies would otherwise let
  * the client pick an earlier entry; chained proxies therefore fail closed.
+ * Blind review round 3, M1: a range or keyword in TRUST_PROXY (uniquelocal is all of 10/8 and 192.168/16) makes every
+ * home device a "listed proxy". A home peer inside such a range that sends no forwarded headers at all is the browser
+ * itself, so it is judged like one (the same as with no TRUST_PROXY); a peer named by its exact IP is the proxy and
+ * still needs to report a client. And a proxy named by its exact IP may vouch even on a Docker network, since only
+ * that one container has that address (Docker's gateway is another one); loopback never vouches.
  * The no-password bypass stays off through a proxy. Returns the refusal message, or null when the login may go ahead.
  */
 export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) {
@@ -615,9 +637,15 @@ export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) 
   if (isLocalRequest(req)) return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
   const trust = trustProxyOption();
   const peer = req.socket?.remoteAddress ?? "";
+  const named = isNamedProxy(peer) && !isLoopback(peer);
+  if (Array.isArray(trust) && !hasForwardHeaders(req) && isHomeNetwork(peer) && !isLoopback(peer) && !named)
+    return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
   const trustedPeer = typeof trust === "number" ? trust >= 1 : isListedProxy(peer);
+  if (!trustedPeer) return DEFAULT_REMOTE_REFUSED;
+  // A trusted proxy that can't vouch (a Docker or loopback address reached through a range, keyword or hop count):
+  // say what to set. The address itself isn't shown, since whoever is asking may be on the internet.
+  if (!isHomeNetwork(peer) && !named) return DEFAULT_REMOTE_REFUSED + (hasForwardHeaders(req) ? PROXY_HINT : "");
   // Fastify ignores a hop count (it can't verify the peer), so req.ip may be the proxy itself: read the header here.
-  if (!trustedPeer || !isHomeNetwork(peer)) return DEFAULT_REMOTE_REFUSED;
   const xff = String(req.headers["x-forwarded-for"] ?? "")
     .split(",")
     .map((x) => x.trim())

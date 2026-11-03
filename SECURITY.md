@@ -28,9 +28,22 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   `TRUST_PROXY` turns the no-password check off, and the browser must address AnimeArr by IP or a LAN name (or a name
   in `ANIMEARR_ALLOWED_HOSTS`). Through a reverse proxy (`TRUST_PROXY` as a hop count, or a list that includes the
   proxy) the default login judges the client your proxy reports in `X-Forwarded-For` (its last entry), and only when
-  the proxy itself is on your home network by the same rule. A proxy on a Docker network or on loopback doesn't count
-  unless you list its range in `ANIMEARR_LOCAL_NETWORKS`, since internet traffic can arrive from those addresses
-  through Docker's gateway (a listed Docker range holds that gateway too). Tailscale addresses
+  the proxy itself is on your home network by the same rule. A proxy on a Docker network doesn't count through a
+  range, a keyword or a hop count, since internet traffic can arrive from those addresses through Docker's gateway (a
+  listed Docker range holds that gateway too). Name the proxy by its own IP in `TRUST_PROXY` instead (for example
+  `TRUST_PROXY=uniquelocal,172.18.0.2`, with a fixed IP for the proxy container), or list its range in
+  `ANIMEARR_LOCAL_NETWORKS`. A proxy on loopback never counts unless `ANIMEARR_LOCAL_NETWORKS` lists it. What each
+  `TRUST_PROXY` value means for the default login:
+  - unset: a browser connecting directly from the home network may use it; nothing through a proxy can.
+  - a hop count (`1`): direct browsers can't (every peer is taken for a proxy); a proxy on the home network vouches for
+    the client it reports, a proxy on Docker or loopback can't.
+  - an exact IP (`192.168.1.2`, `172.18.0.2`): that machine is always the proxy and vouches for the client it reports,
+    also on a Docker network (not on loopback). Other home browsers connect directly as with no setting.
+  - a range or keyword (`192.168.0.0/16`, `uniquelocal`): a home browser inside it that sends no proxy headers is
+    taken as the browser itself and may use the default login (it still never gets the no-password check). A proxy
+    inside it vouches only if it is on the home network, so a Docker proxy also needs its exact IP listed.
+
+  A refused login through a proxy that can't vouch says what to set. Tailscale addresses
   (`fd7a:115c:a1e0::/48`) are ULA, so they only count if you list them, e.g.
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`; then devices on your tailnet, **including
   nodes shared with you or by you**, count as home network.
@@ -85,7 +98,11 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   shares one login back-off, and "No password on my local network" is off. The keywords `loopback`, `linklocal` and
   `uniquelocal` work in the list and stand for their whole ranges (`uniquelocal` is 10/8, 172.16/12, 192.168/16 and
   fc00::/7). Every address in a listed range counts as a proxy, so with `uniquelocal` no home device gets the no-password
-  check. List your proxy's own IP instead when you can.
+  check. List your proxy's own IP instead when you can. `uniquelocal` also includes Docker's 172.16/12, so Fastify takes
+  the client address from `X-Forwarded-For` for any request arriving through Docker's gateway or docker-proxy, which a
+  client can set itself: log lines and the login back-off can then show a made-up address. A range in the list also
+  means a proxy inside it that forwards without adding `X-Forwarded-For` looks like a home browser to the default login,
+  the same limit as with a plain TCP forwarder.
 - "No password on my local network" is for home networks only; leave it off if the port is forwarded in any way, and
   think twice before listing your Tailscale range if you share Tailscale nodes (shared nodes then count as home
   network).
