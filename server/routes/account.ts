@@ -143,8 +143,20 @@ export function registerAccountRoutes(app: FastifyInstance) {
     reply.clearCookie(COOKIE, { path: "/" });
     // Session tokens are signed, not stored, so a logout ends them all: a copied token stops working too (review L1).
     // Only a browser session does this; the API key or the home-network bypass can't sign the owner out.
-    if (authState(req).via === "session") endAllSessions();
-    return { ok: true };
+    if (authState(req).via !== "session") return { ok: true, otherSessionsEnded: false };
+    try {
+      endAllSessions();
+    } catch (e) {
+      // The database can't be written (flagged corrupt, read-only): this browser is still logged out (its cookie is
+      // cleared above), but other sessions stay valid. Not swallowed: logged, and said in the answer (blind review A11).
+      req.log.error({ err: e }, "Logout couldn't end the other sessions");
+      return {
+        ok: true,
+        otherSessionsEnded: false,
+        warning: `Logged out here, but other browsers stay logged in: the database can't be written (${(e as Error).message}).`,
+      };
+    }
+    return { ok: true, otherSessionsEnded: true };
   });
 
   app.put<{ Body: { currentPassword?: string; username?: string; password?: string } }>("/api/auth/account", async (req, reply) => {

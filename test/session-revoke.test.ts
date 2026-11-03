@@ -76,3 +76,23 @@ test("the API key can't log the owner out", async () => {
   assert.equal(r.statusCode, 403, "logout isn't an API-key route");
   assert.equal(await get(s), 200);
 });
+
+test("review A11: with the database flagged corrupt, logout still logs this browser out and says what it couldn't do", async () => {
+  const s = await login();
+  const { dbState } = await import("../server/system/db.js");
+  dbState.corrupt = true;
+  try {
+    const r = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: s, "x-animearr": "1" } });
+    assert.equal(r.statusCode, 200, r.body);
+    const cleared = [r.headers["set-cookie"]].flat().map(String);
+    assert.ok(
+      cleared.some((c) => c.startsWith(`${COOKIE}=;`)),
+      "the session cookie is cleared",
+    );
+    const body = r.json() as { ok: boolean; otherSessionsEnded: boolean; warning?: string };
+    assert.equal(body.otherSessionsEnded, false);
+    assert.match(String(body.warning), /other browsers|database/i);
+  } finally {
+    dbState.corrupt = false;
+  }
+});
