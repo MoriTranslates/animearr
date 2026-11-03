@@ -15,7 +15,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQuality } = await import("../server/grabs/batch.js");
-const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
+const { startGrab, pipelineTick, removeGrab } = await import("../server/grabs/pipeline.js");
 const { cleanupGrab, removeJobFolder } = await import("../server/grabs/downloads.js");
 const { transmissionDriver } = await import("../server/arr/moreClients.js");
 type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
@@ -480,6 +480,25 @@ test("a start that keeps failing for an hour needs your attention (never silentl
   assert.equal(stateOf(id).state, "needs-attention");
   assert.match(stateOf(id).error ?? "", /stopped|start/);
   db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(id);
+});
+
+test("removed by you while the start call hangs: it stays removed, never brought back as needs-attention (M1)", async () => {
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state = 'downloading'").run();
+  const { clients } = mockClients();
+  let fail!: (e: Error) => void;
+  clients.start = () => new Promise<void>((_, rej) => (fail = rej));
+  const id = insertGrab({
+    client: "qbittorrent",
+    ref: "r5",
+    batch: { ...pendingBatch(), mode: "whole", startFailed: { since: Date.now() - 61 * 60_000, why: "unreachable" } },
+  });
+  const tick = pipelineTick(tickDeps(clients));
+  await new Promise((r) => setTimeout(r, 20));
+  await removeGrab(id, { blocklist: false, searchNext: false }, tickDeps(clients));
+  fail(new Error("qBittorrent unreachable"));
+  await tick;
+  assert.equal(stateOf(id).state, "failed");
+  assert.match(stateOf(id).error ?? "", /removed by you/);
 });
 
 test("restart while stopped: the 'added stopped' fact is on the grab before the torrent reaches the client", async () => {

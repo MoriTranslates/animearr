@@ -304,3 +304,54 @@ test("a grab being sent right now can be removed: once the client accepts it, it
   assert.equal(row(id).state, "failed");
   assert.deepEqual(removed, ["live-hash"]);
 });
+
+// ---------------------------------------------------------------- a grab the user removed stays removed (H2, M1)
+
+test("a cut-off NZB the user removes while the tick waits on another client stays removed (no stale-row overwrite)", async () => {
+  const slow = cutOff(17, "torrent", "slow017");
+  const nzb = cutOff(18, "usenet", "?");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const { d } = deps(async (hash) => {
+    if (hash === "slow017") {
+      await gate;
+      return { client: "qbittorrent", ref: hash };
+    }
+    return null;
+  });
+  const tick = pipelineTick(d);
+  await new Promise((r) => setTimeout(r, 20));
+  await removeGrab(nzb, { blocklist: false, searchNext: false }, d);
+  assert.equal(row(nzb).state, "failed");
+  release();
+  await tick;
+  assert.equal(row(nzb).state, "failed", "still removed");
+  assert.match(row(nzb).error ?? "", /removed by you/);
+  assert.equal(row(slow).state, "downloading");
+});
+
+test("a download the user removes while the tick waits on its client stays removed: no blocklist, no next release", async () => {
+  const now = Date.now();
+  const id = Number(
+    db
+      .prepare(
+        "INSERT INTO grabs (at, updated_at, tvdb_id, series_id, episode_ids, release, guid, protocol, state, dry_run, origin, why, candidates, attempt, progress_at, client, client_ref) VALUES (?, ?, ?, 1, '[119]', 'Show - 19 [dl]', 'dl-19', 'torrent', 'downloading', 0, 'manual', 'test', ?, 1, ?, 'qbittorrent', 'dl019')",
+      )
+      .run(now, now, TVDB, JSON.stringify([cand("Show - 19 [next]", "next-19", [119])]), now).lastInsertRowid,
+  );
+  let answer!: (s: { state: "failed"; progress: number; message: string }) => void;
+  const { d, sent } = deps(async () => null);
+  d.clients.status = (job) =>
+    job.ref === "dl019"
+      ? new Promise((r) => (answer = r))
+      : Promise.resolve({ state: "queued" as const, progress: 0, clientStatus: "queued" });
+  const tick = pipelineTick(d);
+  await new Promise((r) => setTimeout(r, 20));
+  await removeGrab(id, { blocklist: false, searchNext: false }, d);
+  answer({ state: "failed", progress: 0, message: "tracker error" });
+  await tick;
+  assert.equal(row(id).state, "failed");
+  assert.match(row(id).error ?? "", /removed by you/);
+  assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Show - 19 [dl]'").get(), undefined, "not blocklisted");
+  assert.deepEqual(sent, [], "no next release grabbed after the user removed it");
+});

@@ -949,8 +949,7 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   const unsafe = unsafeDownload(deps, row, p0, !single);
   if (unsafe) {
     // Same as pipeline.ts rejectUnsafe for a movie grab: reject the download, then try the movie's next release.
-    await rejectUnsafeDownload(row, unsafe, deps, "before import");
-    if (row.movie_id) await movieNextForRow(row, deps, unsafe);
+    if ((await rejectUnsafeDownload(row, unsafe, deps, "before import")) && row.movie_id) await movieNextForRow(row, deps, unsafe);
     return;
   }
   let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];

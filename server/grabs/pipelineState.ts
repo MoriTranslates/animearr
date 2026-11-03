@@ -149,12 +149,23 @@ export async function takeBackOut(deps: PipelineDeps, job: ClientJob, release: s
 export const STALL_MS = 6 * 3_600_000;
 export const MAX_ATTEMPTS = 3;
 
-export const setState = (id: number, state: string, error: string | null = null, extra: { client?: string; ref?: string } = {}) =>
+/**
+ * Sets a grab's state. `from` makes it a compare-and-set: only a grab still in one of those states changes (true when
+ * it did). Every change made after an await passes the state it read, so a grab the user removed meanwhile is never
+ * brought back (blind review of the jobs branch, H2/M1).
+ */
+export const setState = (
+  id: number,
+  state: string,
+  error: string | null = null,
+  extra: { client?: string; ref?: string } = {},
+  from?: string[],
+): boolean =>
   db
     .prepare(
-      "UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?",
+      `UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?${from ? ` AND state IN (${from.map(() => "?").join(",")})` : ""}`,
     )
-    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id);
+    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id, ...(from ?? [])).changes > 0;
 
 export function isBlocked(c: { guid: string; title: string }) {
   return !!db.prepare("SELECT 1 FROM blocklist WHERE release = ? OR (guid IS NOT NULL AND guid = ?) LIMIT 1").get(c.title, c.guid);

@@ -82,9 +82,20 @@ export function unsafeDownload(deps: Pick<PipelineDeps, "localPath">, row: GrabR
  * with the plain reason; nothing from it is ever imported. The caller then searches the next release (rejectUnsafe in
  * pipeline.ts, or movies.ts for a movie).
  */
-export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: PipelineDeps, when: string) {
-  setState(row.id, "failed", reason);
+export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: PipelineDeps, when: string): Promise<boolean> {
+  // The row was read before awaiting the client: only a grab still in flight is failed here (H2/M1). The release is
+  // blocklisted either way (it is unsafe); one you removed meanwhile is left as you left it, with no next release.
+  const mine = setState(row.id, "failed", reason, {}, ["downloading", "importing"]);
   const bid = blocklist(row, reason);
+  if (!mine) {
+    logDecision("fail", {
+      tvdbId: row.tvdb_id,
+      release: row.release,
+      why: `${row.release} ${reason} (found ${when}, after you removed it). Blocklisted it`,
+      detail: { grabId: row.id, malware: true },
+    });
+    return false;
+  }
   let removed = "";
   if (row.client && row.client_ref) {
     try {
@@ -103,6 +114,7 @@ export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: P
     detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) },
     undo: { action: "unblock", args: { id: bid, release: row.release } },
   });
+  return true;
 }
 
 /** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */

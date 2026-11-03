@@ -419,6 +419,8 @@ async function resolveCutOffSends(deps: PipelineDeps, now = Date.now()) {
         row.id,
         "needs-attention",
         `AnimeArr restarted while handing this to the download client and can't tell whether it arrived${why ? ` (${why})` : ""}. Check the client: if it's there, let it finish there; remove it here to search again`,
+        {},
+        ["sending"], // the row was read before awaiting other rows' clients: only if it's still unresolved (H2)
       );
     let job: ClientJob | null;
     if (row.protocol !== "torrent") {
@@ -526,7 +528,7 @@ async function scanWhileDownloading(row: GrabRow, job: ClientJob, deps: Pipeline
  * with the plain reason, the next release searched; nothing from it is ever imported.
  */
 export async function rejectUnsafe(row: GrabRow, reason: string, deps: PipelineDeps, when: string) {
-  await rejectUnsafeDownload(row, reason, deps, when);
+  if (!(await rejectUnsafeDownload(row, reason, deps, when))) return; // removed by you meanwhile: nothing more
   if (row.movie_id) await movieNextForRow(row, deps, reason);
   else await tryNext(row.id, rowRequest(row), deps, reason);
 }
@@ -566,7 +568,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
               ? `still waiting in the download client after ${Math.floor((now - row.at) / 86_400_000)} days (${st.clientStatus ?? "queued"})`
               : null;
           db.prepare(
-            "UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ?, strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ?",
+            "UPDATE grabs SET progress_at = ?, progress = MAX(COALESCE(progress, 0), ?), error = ?, strikes = 0, strike_at = NULL, strike_why = NULL WHERE id = ? AND state = 'downloading'",
           ).run(now, st.progress, long, row.id);
           continue;
         }
@@ -576,6 +578,8 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
             row.id,
             "needs-attention",
             `${st.message ?? "the download client reports an error"}; check the client, then retry or remove it`,
+            {},
+            ["downloading"],
           );
           continue;
         }
@@ -601,7 +605,8 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
             if (n < qh.strikes) continue;
             why = `${why} (strike ${n} of ${qh.strikes})`;
           }
-          setState(row.id, "failed", why);
+          // Removed by you while the client was asked: nothing more happens to it (no blocklist, no next release).
+          if (!setState(row.id, "failed", why, {}, ["downloading"])) continue;
           blocklist(row, why);
           let removed = "";
           if (qh.removeFailed) {
@@ -625,13 +630,14 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
           else await tryNext(row.id, rowRequest(row), deps, why);
         } else if (st.state === "missing") {
           // The job vanished from the client (e.g. its history was cleared by hand): not the release's fault.
-          setState(row.id, "needs-attention", "the download disappeared from the download client");
+          setState(row.id, "needs-attention", "the download disappeared from the download client", {}, ["downloading"]);
         } else if (st.state === "completed" && st.path) {
           // Downloaded: wait in the import line (progress 1 = "waiting to import"; the UI shows the position).
-          if ((row.progress ?? 0) < 1) db.prepare("UPDATE grabs SET progress = 1, progress_at = ? WHERE id = ?").run(now, row.id);
+          if ((row.progress ?? 0) < 1)
+            db.prepare("UPDATE grabs SET progress = 1, progress_at = ? WHERE id = ? AND state = 'downloading'").run(now, row.id);
           ready.push({ row, path: st.path });
         } else if ((row.progress ?? -1) < st.progress) {
-          db.prepare("UPDATE grabs SET progress = ?, progress_at = ? WHERE id = ?").run(st.progress, now, row.id);
+          db.prepare("UPDATE grabs SET progress = ?, progress_at = ? WHERE id = ? AND state = 'downloading'").run(st.progress, now, row.id);
         }
       } catch (e) {
         db.prepare("UPDATE grabs SET error = ? WHERE id = ?").run((e as Error).message, row.id);
@@ -803,12 +809,16 @@ export async function pendingSelection(row: GrabRow, deps: PipelineDeps): Promis
     if (r !== "attention") return;
     const why = readBatch((db.prepare("SELECT batch FROM grabs WHERE id = ?").get(row.id) as { batch: string | null }).batch)?.startFailed
       ?.why;
-    setState(
+    // Only a grab still downloading: removed by you while the start call hung, it stays removed (M1).
+    return setState(
       row.id,
       "needs-attention",
       `it was added stopped to choose its files, and the download client couldn't be told to start it for an hour (${why ?? b.startFailed.why}); start it in the client, or remove it here`,
-    );
-    return "attention";
+      {},
+      ["downloading"],
+    )
+      ? "attention"
+      : undefined;
   }
   if (b.mode !== "pending") return;
   const job: ClientJob = { client: row.client, ref: row.client_ref, select: true, paused: !!b.paused };
@@ -1342,6 +1352,8 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
         : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
           ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
           : "removed by you",
+    {},
+    ["removing"], // the claim made above (after the client calls it's still ours alone)
   );
   const eps = JSON.parse(row.episode_ids) as number[];
   let undo = null;
