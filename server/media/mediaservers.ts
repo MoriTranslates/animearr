@@ -14,6 +14,7 @@
  * server's with each server's own path mappings (longest prefix wins).
  */
 import { logDecision } from "../system/activity.js";
+import { onShutdown } from "../system/db.js";
 import { BULK_SCAN_FOLDERS, toPlexPath as mapPath } from "./plex.js";
 import { getSettings, type MediaServerConn, type PathMapping } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
@@ -144,23 +145,34 @@ const mappingsOf = (kind: NotifyKind): PathMapping[] => (getSettings()[kind] as 
 
 const pending: Record<NotifyKind, Set<string>> = { jellyfin: new Set(), emby: new Set(), kodi: new Set() };
 let timer: NodeJS.Timeout | null = null;
+let queuedDeps: { scan: typeof scanFolders } = { scan: scanFolders };
+let retries = 0;
+const MAX_RETRIES = 3;
+const RETRY_MS = 5 * 60_000;
+// A stop (SIGTERM/SIGINT) sends what is queued instead of dropping it.
+onShutdown(() => (pendingCount() ? flushMediaServers(queuedDeps, false) : undefined));
+const pendingCount = () => Object.values(pending).reduce((n, s) => n + s.size, 0);
 
 /** Queues a look at these folders (AnimeArr paths) on every enabled server; they go out together a few seconds later. */
 export function notifyMediaServers(folders: string[], deps: { scan: typeof scanFolders } = { scan: scanFolders }, delayMs = 15_000) {
   const kinds = (Object.keys(pending) as NotifyKind[]).filter((k) => configured(k));
   if (!kinds.length) return;
   for (const k of kinds) for (const f of folders) if (f) pending[k].add(f.replace(/\/+$/, ""));
+  queuedDeps = deps;
   if (timer) return;
   timer = setTimeout(() => void flushMediaServers(deps).catch(() => undefined), delayMs);
   timer.unref?.();
 }
 
-export async function flushMediaServers(deps: { scan: typeof scanFolders } = { scan: scanFolders }) {
+/** `retry` false (on shutdown): a failed scan is not queued again. */
+export async function flushMediaServers(deps: { scan: typeof scanFolders } = { scan: scanFolders }, retry = true) {
   if (timer) clearTimeout(timer);
   timer = null;
+  let failed = false;
   const out: { server: NotifyKind; folders: string[]; ok: boolean; why: string }[] = [];
   for (const kind of Object.keys(pending) as NotifyKind[]) {
-    const folders = [...pending[kind]].map((f) => mapPath(f, mappingsOf(kind)));
+    const queued = [...pending[kind]];
+    const folders = queued.map((f) => mapPath(f, mappingsOf(kind)));
     pending[kind].clear();
     if (!folders.length || !configured(kind)) continue;
     try {
@@ -168,8 +180,18 @@ export async function flushMediaServers(deps: { scan: typeof scanFolders } = { s
       out.push({ server: kind, folders, ok: true, why: "scan asked" });
     } catch (e) {
       out.push({ server: kind, folders, ok: false, why: (e as Error).message });
+      // Server down or refused: keep these folders and try again later (a few times).
+      if (retry && retries < MAX_RETRIES) {
+        failed = true;
+        for (const f of queued) pending[kind].add(f);
+      }
     }
   }
+  if (failed) {
+    retries++;
+    timer = setTimeout(() => void flushMediaServers(deps).catch(() => undefined), RETRY_MS);
+    timer.unref?.();
+  } else retries = 0;
   for (const r of out)
     logDecision(r.ok ? "info" : "fail", {
       why: `${SERVER_NAMES[r.server]}: ${r.ok ? `${r.folders.length > BULK_SCAN_FOLDERS ? `asked to scan the whole library (${r.folders.length} folders changed)` : `asked to scan ${r.folders.slice(0, 3).join(", ")}${r.folders.length > 3 ? "…" : ""}`}` : `couldn't scan ${r.folders.slice(0, 2).join(", ")}: ${r.why}`}`,

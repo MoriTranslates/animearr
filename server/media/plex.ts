@@ -7,6 +7,7 @@
  * view to Plex's with Plex path mappings (longest prefix wins); unmapped paths are used as they are.
  */
 import { logDecision } from "../system/activity.js";
+import { onShutdown } from "../system/db.js";
 import { getSettings, type PathMapping } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
 
@@ -106,6 +107,9 @@ const pending = new Set<string>();
 let timer: NodeJS.Timeout | null = null;
 let sectionsCache: { at: number; url: string; v: PlexSection[] } | null = null;
 let retries = 0;
+let queuedDeps: Parameters<typeof flush>[0];
+// A stop (SIGTERM/SIGINT) sends what is queued instead of dropping it.
+onShutdown(() => (pending.size ? flush(queuedDeps) : undefined));
 
 /** Queues partial scans of these folders (AnimeArr paths); they go out together a few seconds later. */
 export function notifyPlex(
@@ -120,6 +124,7 @@ export function notifyPlex(
   const s = getSettings().plex;
   if (!s.enabled || !s.url || !s.token) return;
   for (const f of folders) if (f) pending.add(f.replace(/\/+$/, ""));
+  queuedDeps = deps;
   if (timer) return;
   timer = setTimeout(() => void flush(deps).catch(() => undefined), delayMs);
   timer.unref?.();

@@ -68,7 +68,21 @@ function takeLock() {
     }
   };
   process.on("exit", release);
-  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => void runShutdown().finally(() => process.exit(0)));
+}
+const shutdownHooks: (() => Promise<unknown> | unknown)[] = [];
+/** Work to finish before the process exits on SIGINT/SIGTERM (e.g. queued media-server scans). */
+export function onShutdown(fn: () => Promise<unknown> | unknown) {
+  shutdownHooks.push(fn);
+}
+/** Runs the hooks (a failure is logged) and gives up after timeoutMs, so a stop never hangs but doesn't drop queued work. */
+export async function runShutdown(timeoutMs = 5000) {
+  const all = Promise.allSettled(shutdownHooks.map(async (h) => h())).then((rs) => {
+    for (const r of rs) if (r.status === "rejected") console.error("Shutdown task failed:", r.reason);
+  });
+  let t: NodeJS.Timeout | undefined;
+  await Promise.race([all, new Promise((res) => (t = setTimeout(res, timeoutMs)))]);
+  clearTimeout(t);
 }
 if (!process.env.ANIMEARR_NO_LOCK) takeLock();
 
