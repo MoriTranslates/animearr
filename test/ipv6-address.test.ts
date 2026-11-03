@@ -86,3 +86,30 @@ test("ANIMEARR_LOCAL_NETWORKS can list IPv6 ranges", async () => {
     delete process.env.ANIMEARR_LOCAL_NETWORKS;
   }
 });
+
+test("review A10: a malformed IPv4 prefix matches nothing instead of half the internet", async () => {
+  for (const bad of ["192.168.1.0/33", "192.168.1.0/-1", "192.168.1.0/abc", "192.168.1.0/", "192.168.1.0/8.5"]) {
+    process.env.ANIMEARR_LOCAL_NETWORKS = bad;
+    try {
+      assert.equal(await probe("203.0.113.9"), 401, `${bad}: an internet address isn't home`);
+      assert.equal(await probe("192.168.1.10"), 401, `${bad}: a broken entry matches nothing`);
+    } finally {
+      delete process.env.ANIMEARR_LOCAL_NETWORKS;
+    }
+  }
+  for (const bad of ["2001:db8::/", "2001:db8::/129", "2001:db8::/32/1"]) {
+    process.env.ANIMEARR_LOCAL_NETWORKS = bad;
+    try {
+      assert.equal(await probe("2001:db8:ffff::1"), 401, `${bad}: an empty or broken IPv6 prefix matches nothing`);
+    } finally {
+      delete process.env.ANIMEARR_LOCAL_NETWORKS;
+    }
+  }
+  process.env.ANIMEARR_LOCAL_NETWORKS = "192.168.1.10, 10.0.0.0/32, 0.0.0.0/0x";
+  try {
+    assert.equal(await probe("192.168.1.10"), 200, "a bare address means just that address");
+    assert.equal(await probe("192.168.1.11"), 401);
+  } finally {
+    delete process.env.ANIMEARR_LOCAL_NETWORKS;
+  }
+});

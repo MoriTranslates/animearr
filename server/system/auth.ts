@@ -103,20 +103,28 @@ const v4 = (ip: string) => {
   if (g && g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return [g[6] >> 8, g[6] & 255, g[7] >> 8, g[7] & 255].join(".");
   return ip;
 };
+/**
+ * A CIDR prefix length: none means a single address (max), otherwise 0..max in plain digits. Anything else is null, and
+ * the entry then matches nothing (blind review A10: "/33" became a mask covering half the internet).
+ */
+const prefixLen = (bits: string | undefined, max: number) =>
+  bits === undefined ? max : /^\d{1,3}$/.test(bits) && Number(bits) <= max ? Number(bits) : null;
 const inCidr = (ip: string, cidr: string) => {
-  const [base, bits] = cidr.split("/");
+  const [base, bits, extra] = cidr.split("/");
+  if (extra !== undefined) return false;
   const a = v4(ip);
   if (net.isIPv4(base)) {
-    if (!net.isIPv4(a)) return false;
+    const len = prefixLen(bits, 32);
+    if (len === null || !net.isIPv4(a)) return false;
     const n = (x: string) => x.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
-    const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+    const mask = len === 0 ? 0 : (~0 << (32 - len)) >>> 0;
     return (n(a) & mask) === (n(base) & mask);
   }
   // An IPv6 range (ANIMEARR_LOCAL_NETWORKS may list e.g. a home ULA prefix or Tailscale's fd7a:115c:a1e0::/48).
   const g = groups6(ip);
   const b = groups6(base);
-  const len = bits === undefined ? 128 : Number(bits);
-  if (!g || !b || !Number.isInteger(len) || len < 0 || len > 128) return false;
+  const len = prefixLen(bits, 128);
+  if (!g || !b || len === null) return false;
   for (let i = 0, left = len; left > 0; i++, left -= 16) {
     const m = left >= 16 ? 0xffff : (0xffff << (16 - left)) & 0xffff;
     if ((g[i] & m) !== (b[i] & m)) return false;
