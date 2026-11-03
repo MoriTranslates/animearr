@@ -15,7 +15,6 @@ import fastifyStatic from "@fastify/static";
 import { guard, trustProxyOption } from "./system/auth.js";
 import { backupNow, cache, listBackups } from "./system/db.js";
 import { logDecision, pruneDecisions } from "./system/activity.js";
-import { reconcilePendingRenames } from "./import/importer.js";
 import { redactUrl } from "./arr/http.js";
 import { importListsTick } from "./library/importLists.js";
 import { refreshCovers } from "./metadata/covers.js";
@@ -215,7 +214,6 @@ every(
     const nightly = listBackups().find((b) => b.kind === "nightly");
     if (!nightly || Date.now() - nightly.at > 23 * 3_600_000) backupNow("nightly");
     pruneDecisions();
-    reconcilePendingRenames(); // Sonarr renames finished after AnimeArr stopped waiting: their rows follow the files
   },
   "hourly",
 );
