@@ -186,6 +186,22 @@ test("one timeout doesn't disable a term for good; repeated ones do, until the r
   deleteRule(saved.id);
 });
 
+test("saving a rule only gives its newly added terms a fresh start (review misc round 2 #3)", () => {
+  const term = "/(f|f)*g/";
+  const heavy = "f".repeat(30) + "!";
+  const a = saveRule(null, { name: "Keep marked", mustNot: [term] });
+  for (let i = 0; i < 3; i++) applyRules(heavy, [rule({ mustNot: [term] })]);
+  assert.ok(testRules("Show - 08 [1080p]").rejected, "the term is marked as runaway");
+  // Renaming the rule leaves its unchanged term marked.
+  saveRule(a.id, { name: "Keep marked (renamed)" });
+  assert.ok(testRules("Show - 08 [1080p]").rejected, "an unchanged term stays marked");
+  // Another rule that uses the same term text doesn't un-mark it.
+  const b = saveRule(null, { name: "Other rule", mustNot: [term] });
+  assert.ok(testRules("Show - 08 [1080p]").rejected, "saving another rule doesn't clear a shared term");
+  deleteRule(b.id);
+  deleteRule(a.id);
+});
+
 test("must: the name needs at least one of the terms; mustNot: none may appear", () => {
   const r = rule({ must: ["1080p", "/2160p/"], mustNot: ["x265"] });
   assert.equal(applyRules("Show 1080p WEB", [r]).reject, null);

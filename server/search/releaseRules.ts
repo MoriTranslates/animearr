@@ -122,9 +122,13 @@ export function saveRule(id: string | null, input: Partial<ReleaseRule>) {
     db.prepare("DELETE FROM release_rule_tags WHERE rule_id = ?").run(r.id);
     for (const t of r.tags) db.prepare("INSERT INTO release_rule_tags (rule_id, tag_id) VALUES (?, ?)").run(r.id, t);
   });
-  // An edited rule's regex terms get a fresh start (a term marked as runaway is run again).
+  // Only terms this save newly added get a fresh start (a term marked as runaway is run again). Terms the rule
+  // already had, or that another rule also uses, keep their marks.
   const terms = (x: ReleaseRule) => [...x.must, ...x.mustNot, ...x.preferred.map((p) => p.term)];
-  forgetRegexTimeouts([...terms(r), ...(existing ? terms(existing) : [])]);
+  const kept = new Set(
+    [...(existing ? terms(existing) : []), ...all.filter((x) => x.id !== r.id).flatMap(terms)].flatMap((t) => [t, t.trim()]),
+  );
+  forgetRegexTimeouts(terms(r).filter((t) => !kept.has(t) && !kept.has(t.trim())));
   logDecision("info", {
     why: `${existing ? "Changed" : "Added"} release rule "${r.name}" (${r.must.length} must, ${r.mustNot.length} must-not, ${r.preferred.length} preferred; ${r.tags.length ? "tagged shows only" : "all shows"})`,
   });
