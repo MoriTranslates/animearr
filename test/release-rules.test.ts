@@ -109,6 +109,25 @@ test("the 'clearly safe' regex check: what runs directly and what stays guarded"
     assert.equal(isClearlySafeRegex(src), false, src);
 });
 
+test("adjacent overlapping repeats are guarded, and terms over 1,024 characters are refused on save (review misc round 2 #1)", () => {
+  for (const src of ["[a-z]*[a-z]*x", "(?:a*)(?:a*)x", "[a-z]+[a-z]+x", ".{0,999}.{0,999}.{0,999}.{0,999}x", ".*.*x"])
+    assert.equal(isClearlySafeRegex(src), false, src);
+  for (const src of ["S\\d+E\\d+", "a+b+c", "\\(a+\\)+"]) assert.equal(isClearlySafeRegex(src), true, src);
+  // The quadratic shape now goes through the time-limited path, so a long title can't freeze the event loop for long.
+  const quad = compileTerm("/[a-z]*[a-z]*x/");
+  assert.ok("test" in quad);
+  const before = guardedRegexRuns();
+  const t0 = Date.now();
+  quad.test("a".repeat(20000));
+  assert.ok(guardedRegexRuns() > before, "ran through the guarded path");
+  assert.ok(Date.now() - t0 < 1500, `quadratic term took ${Date.now() - t0} ms`);
+  // Length cap: 1,024 characters is allowed, 1,025 is refused with a clear message.
+  assert.ok("test" in compileTerm("/" + "a".repeat(1022) + "/"), "1,024 characters is accepted");
+  const long = compileTerm("/" + "a".repeat(1023) + "/");
+  assert.ok("error" in long && /at most 1024 characters/.test(long.error), JSON.stringify(long));
+  assert.throws(() => saveRule(null, { name: "Long", must: ["/" + "a".repeat(1100) + "/"] }), /at most 1024 characters/);
+});
+
 test("clearly safe regex terms run directly (fast); only the others pay for the time limit (review misc #1)", () => {
   // The reviewer's case: 500 releases x 5 regex terms. With every test behind the vm watchdog this took well over a
   // second; run directly it takes a few milliseconds. The limit leaves a wide margin for slow machines.

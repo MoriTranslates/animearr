@@ -25,7 +25,7 @@ export interface ReleaseRule {
 
 /** The most the preferred terms can move a release's score, either way: a nudge inside a close race, never a verdict. */
 export const PREFERRED_CAP = 8;
-const MAX_TERM = 200;
+const MAX_TERM = 1024;
 const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 
 /**
@@ -53,10 +53,34 @@ export function isClearlySafeRegex(src: string): boolean {
   const frames: { quant: boolean; alt: boolean }[] = [{ quant: false, alt: false }];
   let closed: { quant: boolean; alt: boolean } | null = null; // the group that just ended, if the last token was ")"
   let unbounded = 0;
+  // The atom being repeated, and the atom just before it when that one was itself repeated without limit: two
+  // neighbouring repeats that can match the same characters ("[a-z]*[a-z]*x") are quadratic.
+  let cur = "";
+  let curBefore: string | null = null;
+  let lastUnb: string | null = null;
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
     const top = frames[frames.length - 1];
     let quant: "bounded" | "unbounded" | null = null;
+    const isQuant = c === "*" || c === "+" || c === "?" || (c === "{" && /^\{\d+(,\d*)?\}/.test(src.slice(i)));
+    if (!isQuant && c !== "(" && c !== "|" && c !== ")") {
+      curBefore = lastUnb;
+      lastUnb = null;
+      cur = c === "\\" ? src.slice(i, i + 2) : c;
+      if (c === "[") {
+        let j = i + 1;
+        for (; j < src.length && src[j] !== "]"; j++) if (src[j] === "\\") j++;
+        cur = src.slice(i, j + 1);
+      }
+    }
+    if (c === "(" && src[i + 1] === "?") {
+      const p = /^\?(?:<[=!]|[:=!]|<[^>]*>)/.exec(src.slice(i + 1));
+      if (p) i += p[0].length; // the group's own prefix is not an atom
+    }
+    if (c === ")") {
+      curBefore = null;
+      cur = "(";
+    }
     if (c === "\\") {
       if (/[1-9k]/.test(src[i + 1] ?? "")) return false; // backreference
       i++;
@@ -81,18 +105,28 @@ export function isClearlySafeRegex(src: string): boolean {
     } else if (c === "{") {
       const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i));
       if (m) {
-        quant = m[2] && !m[3] ? "unbounded" : "bounded";
+        quant = (m[2] && !m[3]) || Number(m[3] ?? m[1]) >= 100 ? "unbounded" : "bounded"; // a big max is as bad as none
         i += m[0].length - 1;
       }
     }
     if (quant) {
       if (closed && (closed.quant || closed.alt)) return false; // a repeated group holding a repeat or an alternation
       top.quant = true;
-      if (quant === "unbounded" && ++unbounded > 2) return false;
+      if (quant === "unbounded") {
+        if (++unbounded > 2) return false;
+        if (curBefore !== null && overlaps(curBefore, cur)) return false;
+        lastUnb = cur;
+      }
     }
     closed = null;
   }
   return frames.length === 1;
+}
+
+/** Could two repeated atoms match some of the same characters? (Two different plain characters can't.) */
+function overlaps(a: string, b: string): boolean {
+  const wide = (x: string) => x === "." || x === "(" || x[0] === "[" || /^\\[dDwWsS]$/.test(x);
+  return a === b || wide(a) || wide(b);
 }
 
 function guardedTest(term: string, re: RegExp, title: string): boolean | null {
