@@ -1322,8 +1322,10 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
       statusCode: 409,
     });
   // A row that may have been mid-import keeps its files (Sonarr could be moving them right now).
+  // A row recovered from a cut-off removal lost its earlier state, so it takes this same most-protective path.
   const mayBeImporting =
-    row.state === "needs-attention" && /^((Sonarr|Radarr) import|AnimeArr restarted during the import|import error)/.test(row.error ?? "");
+    row.state === "needs-attention" &&
+    /^((Sonarr|Radarr) import|AnimeArr restarted during the (import|removal)|import error)/.test(row.error ?? "");
   let job = row.client && row.client_ref ? { client: row.client as ClientJob["client"], ref: row.client_ref } : null;
   // Cut off mid-send by a restart: a torrent is looked up by its info-hash (an NZB has no id to look up by).
   const cutOffTorrent =
