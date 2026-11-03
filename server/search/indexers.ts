@@ -264,7 +264,7 @@ async function prowlarrPerIndexer(
       return;
     }
     const why = redactUrl((r.reason as Error).message);
-    if (query.trim() && !refusedQuery(why)) recordIndexerFailure(list[i].id, why, Date.now(), { name: list[i].name, kind: "search" });
+    if (query.trim()) recordIndexerFailure(list[i].id, why, Date.now(), { name: list[i].name, kind: "search" });
     failed({ indexerId: list[i].id, name: list[i].name, why });
   });
   return ok.flatMap((r) => r.value);
@@ -381,7 +381,7 @@ async function searchAllNow(
         (e) => {
           const why = redactUrl(describeFetchError(e));
           lastErrors.set(ix.id, { at: Date.now(), why: `${ix.name}: ${why}` });
-          if (!refusedQuery(why)) recordIndexerFailure(indexerNumId(ix.id), why, Date.now(), { name: ix.name, kind: "search" }); // a refused query is no outage
+          recordIndexerFailure(indexerNumId(ix.id), why, Date.now(), { name: ix.name, kind: "search" });
           failures.push({ indexerId: indexerNumId(ix.id), name: ix.name, why });
           return Promise.reject(new Error(`${ix.name}: ${why}`));
         },
