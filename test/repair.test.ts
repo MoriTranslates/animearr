@@ -294,7 +294,9 @@ test("a Sonarr sourceTitle that is a relative path is reduced to the file name b
   );
   // ...and without a droppedPath, a name that clearly is a path (a [Group] name after the "/", or 2+ folders) is reduced.
   assert.equal(historyReleaseName("Show Batch/[Group] Show - 05 [1080p]"), "[Group] Show - 05 [1080p]");
-  assert.equal(historyReleaseName("dl/Show Batch/Show.S01E05.1080p.x264"), "Show.S01E05.1080p.x264");
+  assert.equal(historyReleaseName("dl/Show Batch/Show.S01E05.1080p.x264.mkv"), "Show.S01E05.1080p.x264.mkv");
+  // Without a file extension or a droppedPath, "a/b/c" can't be told from a title with slashes: kept whole.
+  assert.equal(historyReleaseName("dl/Show Batch/Show.S01E05.1080p.x264"), "dl/Show Batch/Show.S01E05.1080p.x264");
 
   // End to end: the group learned from the import is the file's, not the folder's.
   patchSettings((s) => ({ ...s, repair: { mode: "log", maxPerDay: 10 } }));

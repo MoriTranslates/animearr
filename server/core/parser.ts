@@ -373,29 +373,35 @@ interface Marker {
 
 const range = (a: number, b: number) => (b >= a && b - a < 2000 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]);
 
+const VIDEO_EXT = /\.(?:mkv|mp4|avi|m4v|ts|m2ts|wmv|webm|mov|flv|ogm|rmvb)$/i;
+
 /**
- * The file name when `name` clearly is a path, else `name` unchanged. A path: a backslash; a leading "/", "./", "../",
- * "~/" or drive letter; two or more "/" between words ("Anime/Show/Show - 04.mkv"); or one whose last part starts a
- * new "[Group]" name ("Show Batch/[Group] Show - 05"). A single "/" otherwise is part of the title ("Fate/Zero",
- * "22/7"), and a spaced one is a separator ("[1080p / HEVC]").
+ * The file name when `name` truly looks like a path, else `name` unchanged. Only a "/" outside [...] and (...) can be a
+ * folder separator ("[1080p/HEVC]", "(German/Deutsch)" are tags). A path: a backslash; a leading "/", "./", "../",
+ * "~/" or drive letter; or unspaced "/" whose last part is a file name: a "[Group] name" after it ("Show Batch/[Group]
+ * Show - 05") or, with two or more folders, a video extension ("Anime/Show/Show - 04.mkv"). Anything else keeps its
+ * "/" as part of the title ("Fate/Zero", "Fate/kaleid liner Prisma/Illya", "Yes/No/Maybe").
  */
 export function fileNameOf(name: string): string {
-  const inner = [...name.matchAll(/(?<=\S)\/(?=\S)/g)].length;
-  const lastPart = name.slice(name.lastIndexOf("/") + 1);
+  const trimmed = name.replace(/[\\/]+$/, "");
+  // Bracket contents masked out (same length), so only separators outside tags count.
+  const outside = trimmed.replace(/\[[^\]]*\]|\([^)]*\)/g, (m) => "_".repeat(m.length));
+  const cut = Math.max(outside.lastIndexOf("/"), outside.lastIndexOf("\\"));
+  if (cut < 0) return name;
+  const lastPart = trimmed.slice(cut + 1);
+  const unspaced = [...outside.matchAll(/(?<=\S)\/(?=\S)/g)].length;
   const path =
-    name.includes("\\") ||
-    /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(name) ||
-    (inner >= 2 && !/\s\/\s/.test(name)) || // not "Fate/Zero / Fate/stay night"
-    (inner === 1 && /(?<=\S)\/(?=\[)/.test(name) && /^\[/.test(lastPart));
-  return path ? (name.split(/[\\/]/).filter(Boolean).pop() ?? name) : name;
+    trimmed.includes("\\") ||
+    /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(trimmed) ||
+    (/\S/.test(trimmed[cut - 1] ?? "") && /^\[[^\]]+\]\s*[^\s[]/.test(lastPart)) ||
+    (unspaced >= 2 && VIDEO_EXT.test(lastPart));
+  return path && lastPart ? lastPart : name;
 }
 
 export function parseRelease(input: string): ParsedRelease {
   const raw = input;
-  let s = stripDecorations(input);
-
-  // Path → last component (manual-import file names).
-  s = fileNameOf(s);
+  // Path → last component (manual-import file names); before the extension is stripped, which the path check uses.
+  let s = stripDecorations(fileNameOf(input));
 
   // CJK brackets → square brackets; full-width spaces.
   s = s.replace(/【/g, "[").replace(/】/g, "]").replace(/　/g, " ");

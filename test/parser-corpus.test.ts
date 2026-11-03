@@ -860,3 +860,40 @@ test("a relative path is reduced to the file name when it clearly is one (review
     { name: "[Group] Fate/Zero / Fate/stay night - 05", title: "Fate/stay night", group: "Group", absolute: [5] },
   ]);
 });
+
+test("slashes inside tags or a title are not folders (round-2 review #1, real names)", () => {
+  check([
+    // Real names from the library (were cut at the last "/": "SPA]- AF", "Deutsch, English Dubs) | ...").
+    {
+      name: "Frieren Beyond Journeys End S02 1080p BD Remux FLAC [JAP/ENG/SPA]- AF",
+      title: "Frieren Beyond Journeys End",
+      group: null,
+      season: 2,
+    },
+    {
+      name: "[Fuchs] Mushoku Tensei - S00E02 (BD 1080p HEVC Opus 2.0) [Dual-Audio] [Multi-Audio] (Japanese, German/Deutsch, English Dubs) [OV] [OmU] [OmeU] [DF] [S",
+      title: "Mushoku Tensei",
+      group: "Fuchs",
+      season: 0,
+      episodes: [2],
+    },
+    // The reviewer's probes.
+    { name: "[SubsPlease] Fate/Zero - 01 [1080p/HEVC]", title: "Fate/Zero", group: "SubsPlease", absolute: [1] },
+    { name: "[Group] Show - 01 [1080p/x265/10bit]", title: "Show", group: "Group", absolute: [1] },
+    { name: "[Group] Show - 01 (BD 1080p/HEVC/FLAC)", title: "Show", group: "Group", absolute: [1] },
+    { name: "[Group] 22/7 - 05 [1080p/AAC]", title: "22/7", group: "Group", absolute: [5] },
+    { name: "[Group] Fate/kaleid liner Prisma/Illya - 05 [1080p]", title: "Fate/kaleid liner Prisma/Illya", group: "Group", absolute: [5] },
+    { name: "Show S01E05 - Yes/No/Maybe [1080p]", title: "Show", group: null, season: 1, episodes: [5] },
+    { name: "[Group] Show - 05 [1080p]/[v2]", title: "Show", group: "Group", absolute: [5] },
+    // Must not change: real paths, including a "/" inside a tag of the file name.
+    { name: "/downloads/[Group] Show - 05 [1080p/HEVC].mkv", title: "Show", group: "Group", absolute: [5] },
+    { name: "Show Batch/[Group] Show - 05 [1080p].mkv", title: "Show", group: "Group", absolute: [5] },
+    { name: "Anime/Show Name/Show Name - 04.mkv", title: "Show Name", group: null, absolute: [4] },
+    {
+      name: "[Ioroid] お兄ちゃんはおしまい！/ Onii-chan / Oniichan wa Oshimai! - 01 [Uncensored][ABEMA WEB-DL 1080p AVC AAC]",
+      title: "Oniichan wa Oshimai!",
+      group: "Ioroid",
+      absolute: [1],
+    },
+  ]);
+});
