@@ -68,12 +68,18 @@ const esc = (s: string) =>
   s.replace(XML_ILLEGAL, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const el = (name: string, v: string | number | null | undefined, attrs = "") =>
   v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
-/** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)"): plain text for the NFO. */
+/**
+ * A real HTML tag: a known element name, then only name=value attributes (value quoted, so a ">" inside it is part of
+ * the value, or unquoted), then ">" or "/>". "a <b and c> d", "x<3" and "1 <foo> 2" don't fit and stay text.
+ */
+const TAG_NAMES =
+  "a|abbr|b|big|blockquote|br|center|cite|code|del|div|em|font|h[1-6]|hr|i|img|ins|li|ol|p|pre|q|s|small|span|strike|strong|sub|sup|u|ul";
+const TAG = new RegExp(`<\\/?(${TAG_NAMES})((?:\\s+[A-Za-z_:][\\w:.-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'<>=\`]+))*)\\s*\\/?>`, "gi");
+/** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)", comments): plain text for the NFO. */
 export const plainText = (html: string | null | undefined) =>
   (html ?? "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    // Only real tags ("<i>", "</b>", "<a href=…>"): "a < b and c > d" and "x<3" are text.
-    .replace(/<\/?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]*)?\/?>/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(TAG, (_m, name: string) => (name.toLowerCase() === "br" ? "\n" : ""))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

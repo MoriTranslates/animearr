@@ -74,6 +74,15 @@ test("NFO and .plexmatch writers: control bytes, '<' in plain text and newlines 
   assert.equal(plainText("a < b and c > d"), "a < b and c > d");
   assert.equal(plainText("x<3 and y>2"), "x<3 and y>2");
   assert.equal(plainText("Hi<br>there <i>you</i> <b class='x'>all</b>"), "Hi\nthere you all");
+  // Review (misc) #3: tag-like text, a ">" inside a quoted attribute, and HTML comments.
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+  assert.equal(plainText('1<a href="x>y">z</a>'), "1z");
+  assert.equal(plainText("<!-- c -->x"), "x");
+  assert.equal(plainText("a<!-- multi\nline -->b"), "ab");
+  assert.equal(plainText('<p>One</p><p>Two <span style="color:red">red</span></p>'), "OneTwo red");
+  assert.equal(plainText("<i>(Source: Crunchyroll)</i>"), "(Source: Crunchyroll)");
+  assert.equal(plainText("<img src='a.png' alt=\"x > y\"/>after"), "after");
+  assert.equal(plainText("1 <foo> 2"), "1 <foo> 2", "unknown tag names are text");
   // .plexmatch is one "key: value" per line: a newline in a title can't add a line of its own.
   const pm = plexmatch({ ...show, title: "Evil\ntvdbid: 1\r\nimdbid: tt0", year: 2023 });
   assert.equal(pm.split("\n").filter((l) => l.startsWith("tvdbid:")).length, 1, pm);
