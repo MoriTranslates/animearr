@@ -226,10 +226,27 @@ export function backupNow(kind: BackupKind, label = ""): string | null {
 export function keepDamaged(): string | null {
   if (!fs.existsSync(USER_DB)) return null;
   const name = freeBackupName("animearr-damaged-", ".db");
-  fs.copyFileSync(USER_DB, path.join(BACKUP_DIR, name), fs.constants.COPYFILE_EXCL);
-  if (fs.existsSync(`${USER_DB}-wal`)) fs.copyFileSync(`${USER_DB}-wal`, path.join(BACKUP_DIR, `${name}-wal`), fs.constants.COPYFILE_EXCL);
+  const file = path.join(BACKUP_DIR, name);
+  try {
+    fs.copyFileSync(USER_DB, file, fs.constants.COPYFILE_EXCL);
+    if (fs.existsSync(`${USER_DB}-wal`)) fs.copyFileSync(`${USER_DB}-wal`, `${file}-wal`, fs.constants.COPYFILE_EXCL);
+  } catch (e) {
+    // A half copy is no copy: it goes (ours, created exclusively; never a file that was already there).
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") for (const f of [file, `${file}-wal`]) fs.rmSync(f, { force: true });
+    throw e;
+  }
+  // Repeated attempts each keep a copy of the same damaged file: the newest three are enough.
+  const copies = fs
+    .readdirSync(BACKUP_DIR)
+    .filter((f) => /^animearr-damaged-.*\.db$/.test(f))
+    .map((f) => ({ f, at: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+  for (const old of copies.slice(3)) for (const f of [old.f, `${old.f}-wal`]) fs.rmSync(path.join(BACKUP_DIR, f), { force: true });
   return name;
 }
+
+/** What to do when the copy of a damaged database can't be made (said with the refusal). */
+export const DAMAGED_COPY_HINT = `Free some space on the disk that holds ${CONFIG_DIR}, or move ${USER_DB} out of that folder yourself (AnimeArr then starts empty, and you can restore from Settings → System → Backups), then try again.`;
 
 /** An error after the live database was closed: the process can't go on, the caller must restart it. */
 export const needsRestart = (msg: string, cause: unknown) => Object.assign(new Error(msg, { cause }), { restart: true, statusCode: 500 });
@@ -256,7 +273,10 @@ export function restoreBackup(name: string, opts: { key?: string } = {}) {
     if (dbState.corrupt) keepDamaged();
     else backupNow("prerestore");
   } catch (e) {
-    throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
+    throw new Error(
+      `Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored${dbState.corrupt ? `. ${DAMAGED_COPY_HINT}` : ""}`,
+      { cause: e },
+    );
   }
   // Copied next to the live file and checked there, then renamed over it in one step: a crash or a full disk mid-copy
   // leaves the old database as it was, never a half-written or missing one.

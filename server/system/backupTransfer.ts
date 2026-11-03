@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   BACKUP_DIR,
   backupNow,
+  DAMAGED_COPY_HINT,
   db,
   dbState,
   freeBackupName,
@@ -328,7 +329,12 @@ export function safetyBackup() {
     try {
       keepDamaged();
     } catch (e) {
-      throw new Error(`Couldn't save a copy of the damaged database (${(e as Error).message}), so nothing was changed`, { cause: e });
+      throw new Error(
+        `Couldn't save a copy of the damaged database (${(e as Error).message}), so nothing was changed. ${DAMAGED_COPY_HINT}`,
+        {
+          cause: e,
+        },
+      );
     }
   } else if (!backupNow("prerestore", "upload")) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
   saveKeyCopy({ prune: true });
