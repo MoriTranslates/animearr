@@ -109,6 +109,31 @@ const v4 = (ip: string) => {
  */
 const prefixLen = (bits: string | undefined, max: number) =>
   bits === undefined ? max : /^\d{1,3}$/.test(bits) && Number(bits) <= max ? Number(bits) : null;
+/** An address or CIDR range inCidr can use. */
+const validRange = (entry: string) => {
+  const [base, bits, extra] = entry.split("/");
+  return extra === undefined && net.isIP(base) !== 0 && prefixLen(bits, net.isIPv4(base) ? 32 : 128) !== null;
+};
+const warnedRanges = new Set<string>();
+/** At startup: names each malformed ANIMEARR_LOCAL_NETWORKS / TRUST_PROXY entry once (it matches nothing). */
+export function warnNetworkSettings(log: (msg: string) => void = console.warn) {
+  const lists: [string, string[]][] = [
+    [
+      "ANIMEARR_LOCAL_NETWORKS",
+      (process.env.ANIMEARR_LOCAL_NETWORKS ?? "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ],
+    ["TRUST_PROXY", [trustProxyOption()].flat().filter((x): x is string => typeof x === "string")],
+  ];
+  for (const [name, entries] of lists)
+    for (const e of entries) {
+      if (validRange(e) || warnedRanges.has(`${name} ${e}`)) continue;
+      warnedRanges.add(`${name} ${e}`);
+      log(`${name}: "${e}" isn't an IP address or range (like 192.168.0.0/16); it is ignored and matches nothing.`);
+    }
+}
 const inCidr = (ip: string, cidr: string) => {
   const [base, bits, extra] = cidr.split("/");
   if (extra !== undefined) return false;
