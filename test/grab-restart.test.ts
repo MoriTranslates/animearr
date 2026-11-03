@@ -199,13 +199,80 @@ test("a 'sending' grab cut off by a restart can be removed: from the client when
   assert.deepEqual(removed, ["abc666"]);
 });
 
-test("removing a cut-off 'sending' grab while the client is down says so and keeps it", async () => {
+test("removing a cut-off 'sending' grab while the client is down closes it here, says to check the client, frees the episode", async () => {
   const id = cutOff(7, "torrent", "abc777");
   const { d } = deps(async () => {
     throw new Error("qBittorrent unreachable");
   });
-  await assert.rejects(removeGrab(id, { blocklist: false, searchNext: false }, d), /unreachable/);
-  assert.equal(row(id).state, "sending");
+  await removeGrab(id, { blocklist: false, searchNext: false }, d);
+  assert.equal(row(id).state, "failed");
+  assert.match(row(id).error ?? "", /unreachable.*check the client/);
+  // The episode isn't blocked any more: a new grab for it goes through.
+  const r = await startGrab(
+    { tvdbId: TVDB, episodeIds: [107], candidate: cand("Show - 7 v2", "new-7", [107]), fallbacks: [], origin: "manual" },
+    d,
+  );
+  assert.ok(!r.failed, r.message);
+});
+
+// ---------------------------------------------------------------- a cut-off torrent never stays 'sending' for good (H1)
+
+test("a watch-folder torrent client can't be asked: findTorrent says so (CantLookUp), not 'down'", async () => {
+  const { realClients, CantLookUp } = await import("../server/arr/clients.js");
+  const before = structuredClone((await import("../server/system/settings.js")).getSettings());
+  patchSettings((s) => ({
+    ...s,
+    qbittorrent: { ...s.qbittorrent, url: "" },
+    extraClients: [
+      {
+        id: "bh1",
+        type: "blackhole-torrent",
+        name: "Watch folder",
+        url: "",
+        username: "",
+        password: "",
+        category: "",
+        priority: 1,
+        enabled: true,
+        removeCompleted: false,
+        pathMappings: [],
+        watchFolder: "/tmp/w",
+        completedFolder: "/tmp/c",
+      },
+    ],
+  }));
+  try {
+    await assert.rejects(realClients.findTorrent!("ab".repeat(20)) /* a 40-hex info-hash */, (e) => e instanceof CantLookUp);
+  } finally {
+    patchSettings(() => before);
+  }
+});
+
+test("restart, the torrent client is a watch folder: needs a look at once, never stuck 'sending', never re-sent", async () => {
+  const { CantLookUp } = await import("../server/arr/clients.js");
+  const id = cutOff(15, "torrent", "abc015");
+  const { d, sent } = deps(async () => {
+    throw new CantLookUp("Watch folder is a watch folder; AnimeArr can't ask it what it has");
+  });
+  await pipelineTick(d);
+  assert.equal(row(id).state, "needs-attention");
+  assert.match(row(id).error ?? "", /watch folder/);
+  assert.deepEqual(sent, []);
+});
+
+test("restart, the client stays down: asked again for an hour, then it needs a look (never stuck 'sending')", async () => {
+  const id = cutOff(16, "torrent", "abc016");
+  const { d, sent } = deps(async () => {
+    throw new Error("qBittorrent unreachable (connect ECONNREFUSED)");
+  });
+  const t0 = Date.now();
+  await pipelineTick(d, t0);
+  await pipelineTick(d, t0 + 30 * 60_000);
+  assert.equal(row(id).state, "sending", "still asking within the hour");
+  await pipelineTick(d, t0 + 61 * 60_000);
+  assert.equal(row(id).state, "needs-attention");
+  assert.match(row(id).error ?? "", /unreachable.*after 60 min/);
+  assert.deepEqual(sent, []);
 });
 
 test("a cut-off NZB or never-sent grab can be removed", async () => {

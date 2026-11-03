@@ -20,7 +20,7 @@ import { executeImport, listVideos, planImport } from "../import/importer.js";
 import { isNativeSeriesId } from "../library/nativeIds.js";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
-import { clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "../arr/clients.js";
+import { CantLookUp, clientName, isTorrentClient, realClients, type ClientJob, type DownloadClients } from "../arr/clients.js";
 import { applySelection, batchLine, existingFiles, planBatch, readBatch, retryStart, type BatchInfo, type ExistingFile } from "./batch.js";
 import { identify } from "../core/identify.js";
 import { inExtrasFolder } from "../core/resolver.js";
@@ -379,15 +379,21 @@ export function recoverGrabs() {
   ).run();
 }
 
+/** How long a cut-off torrent may go without an answer from its client before it needs a look. */
+export const CUTOFF_GIVE_UP_MS = 60 * 60_000;
+/** Since when each cut-off row's client couldn't be asked (in memory: a restart gives it another hour). */
+const cantTellSince = new Map<number, number>();
+
 /**
  * 'sending' rows this process isn't sending (cut off by a restart): did the release reach a client?
  * - nothing was handed over yet: failed, the next candidate is tried;
  * - a torrent: the clients are asked for its info-hash. There: it moves on to downloading. No client has it: failed,
  *   the next candidate is tried. A client couldn't be asked: it stays 'sending' and is asked again next tick (never
- *   failed, never sent twice);
- * - an NZB (no id to ask for): needs a look; the user checks the client and removes it here to search again.
+ *   failed, never sent twice), for at most CUTOFF_GIVE_UP_MS; then, or at once when a client can't be asked at all
+ *   (a watch folder), it needs a look (review of the jobs branch, H1);
+ * - an NZB: looked up by name; any doubt needs a look. The user checks the client and removes it here to search again.
  */
-async function resolveCutOffSends(deps: PipelineDeps) {
+async function resolveCutOffSends(deps: PipelineDeps, now = Date.now()) {
   const rows = (db.prepare("SELECT * FROM grabs WHERE state = 'sending' AND dry_run = 0 ORDER BY id").all() as unknown as GrabRow[]).filter(
     (r) => !sendingNow.has(r.id),
   );
@@ -434,9 +440,18 @@ async function resolveCutOffSends(deps: PipelineDeps) {
     } else
       try {
         job = await deps.clients.findTorrent(row.client_ref);
+        cantTellSince.delete(row.id);
       } catch (e) {
+        const msg = (e as Error).message;
+        const since = cantTellSince.get(row.id) ?? now;
+        cantTellSince.set(row.id, since);
+        if (e instanceof CantLookUp || now - since >= CUTOFF_GIVE_UP_MS) {
+          cantTellSince.delete(row.id);
+          needsLook(e instanceof CantLookUp ? msg : `${msg}; still no answer after ${CUTOFF_GIVE_UP_MS / 60_000} min`);
+          continue;
+        }
         db.prepare("UPDATE grabs SET error = ? WHERE id = ? AND state = 'sending'").run(
-          `AnimeArr restarted while sending this; the download client couldn't be asked whether it arrived (${(e as Error).message}). Asking again shortly`,
+          `AnimeArr restarted while sending this; the download client couldn't be asked whether it arrived (${msg}). Asking again shortly`,
           row.id,
         );
         continue;
@@ -522,7 +537,7 @@ export async function pipelineTick(deps: PipelineDeps = realDeps, now = Date.now
   if (dbState.corrupt || ticking) return;
   ticking = true;
   try {
-    await resolveCutOffSends(deps).catch((e) =>
+    await resolveCutOffSends(deps, now).catch((e) =>
       logDecision("fail", { why: `Couldn't check the downloads a restart cut off: ${(e as Error).message}; trying again next round` }),
     );
     const rows = db.prepare("SELECT * FROM grabs WHERE state = 'downloading' ORDER BY id").all() as unknown as GrabRow[];
@@ -1295,21 +1310,26 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
   // Cut off mid-send by a restart: a torrent is looked up by its info-hash (an NZB has no id to look up by).
   const cutOffTorrent =
     row.state === "sending" && !sendingNow.has(id) && row.protocol === "torrent" && !!row.client_ref && row.client_ref !== SENT_UNKNOWN;
+  // A cut-off send whose client can't be checked (down, a watch folder) or won't remove it is still closed here, with a
+  // note to check the client: AnimeArr may never have got it there, and refusing would leave it stuck for good (H1).
+  let unchecked: string | null = null;
   if (cutOffTorrent && deps.clients.findTorrent) {
     try {
       job = await deps.clients.findTorrent(row.client_ref!);
     } catch (e) {
-      db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
-      throw Object.assign(new Error(`Couldn't check the download client for it: ${(e as Error).message}`), { statusCode: 502 });
+      unchecked = `couldn't check the download client: ${(e as Error).message}`;
     }
   }
   if (job && !mayBeImporting) {
     try {
       await deps.clients.remove(job);
     } catch (e) {
-      // The download is still there (client unreachable, or it isn't AnimeArr's): put the row back and say so.
-      db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
-      throw Object.assign(new Error(`Couldn't remove it from the download client: ${(e as Error).message}`), { statusCode: 502 });
+      if (cutOffTorrent) unchecked = `couldn't remove it from the download client: ${(e as Error).message}`;
+      else {
+        // The download is still there (client unreachable, or it isn't AnimeArr's): put the row back and say so.
+        db.prepare("UPDATE grabs SET state = ?, updated_at = ? WHERE id = ? AND state = 'removing'").run(row.state, Date.now(), id);
+        throw Object.assign(new Error(`Couldn't remove it from the download client: ${(e as Error).message}`), { statusCode: 502 });
+      }
     }
   }
   setState(
@@ -1317,9 +1337,11 @@ export async function removeGrab(id: number, opts: { blocklist: boolean; searchN
     "failed",
     mayBeImporting
       ? "closed by you (downloaded files kept: an import may have been in progress)"
-      : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
-        ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
-        : "removed by you",
+      : unchecked
+        ? `removed by you (${unchecked}; check the client yourself and remove it there if it arrived)`
+        : row.state === "sending" && row.client_ref === SENT_UNKNOWN && !sendingNow.has(id)
+          ? "removed by you (AnimeArr can't look it up in the download client: check there whether it arrived)"
+          : "removed by you",
   );
   const eps = JSON.parse(row.episode_ids) as number[];
   let undo = null;

@@ -165,6 +165,9 @@ export interface DownloadClients {
   findNzb?(name: string, since?: number): Promise<ClientJob | null>;
 }
 
+/** findTorrent/findNzb can't ask at all (a watch folder): unlike a client that is down, asking again never helps. */
+export class CantLookUp extends Error {}
+
 /** A Usenet job as a client's queue or history lists it (for findNzb). */
 export interface NamedJob {
   ref: string;
@@ -593,9 +596,10 @@ export const realClients: DownloadClients = {
   },
   async findTorrent(hash) {
     let unsure: Error | null = null;
+    let blind: CantLookUp | null = null;
     for (const c of clientsFor("torrent")) {
       if (isBlackhole(c.type)) {
-        unsure ??= new Error(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
+        blind ??= new CantLookUp(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
         continue;
       }
       const job = { client: c.id, ref: hash.toLowerCase() };
@@ -605,7 +609,8 @@ export const realClients: DownloadClients = {
         unsure ??= e as Error;
       }
     }
-    if (unsure) throw unsure;
+    if (unsure) throw unsure; // a client down: worth asking again
+    if (blind) throw blind; // a watch folder: asking again never helps
     return null;
   },
   async findNzb(name, since = 0) {
