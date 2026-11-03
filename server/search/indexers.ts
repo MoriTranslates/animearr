@@ -292,15 +292,28 @@ export interface SearchOutage {
 export const OUTAGE_RETRY_MS = 30 * 60_000;
 /** The outage when a search's "nothing found" must not count (it couldn't ask every indexer), else null. */
 export const couldntSearch = (r: { outage?: SearchOutage }) => (r.outage && !r.outage.counts ? r.outage : null);
+/**
+ * An indexer that refused the query itself (a 4xx other than auth, timeout or rate limit: e.g. HTTP 400 on a title with
+ * "[", "&" or a long alias) answers the same way every time: that's an answer, not an outage, so it never keeps a
+ * search from counting (review of the jobs branch, M3). Timeouts, 5xx, 401/403/407/408/429 and network errors are outages.
+ */
+export function refusedQuery(why: string): boolean {
+  const status = Number(/\bHTTP (\d{3})\b/.exec(why)?.[1] ?? 0);
+  return status >= 400 && status < 500 && ![401, 403, 407, 408, 429].includes(status);
+}
+
 export function searchOutage(asked: number, failedQueries: string[], failed: IndexerFailure[], startedAt: number): SearchOutage {
-  if (asked > 0 && failedQueries.length >= asked)
-    return { kind: "all", why: `the indexers didn't answer (${failedQueries[0]})`, counts: false };
+  // Only real outages keep a search from counting; refused queries are reported but count as answered.
+  const downQueries = failedQueries.filter((q) => !refusedQuery(q));
+  const down = failed.filter((f) => !refusedQuery(f.why));
+  if (asked > 0 && downQueries.length >= asked)
+    return { kind: "all", why: `the indexers didn't answer (${downQueries[0]})`, counts: false };
   if (!failed.length && !failedQueries.length) return { kind: "none", why: "", counts: true };
   const names = [...new Set(failed.map((f) => f.name))];
   const why = names.length
     ? `${names.join(", ")} didn't answer (${failed[0].why})`
     : `the indexers didn't answer some queries (${failedQueries[0]})`;
-  const counts = !failedQueries.length && failed.every((f) => f.indexerId !== null && indexerOffBefore(f.indexerId, startedAt));
+  const counts = !downQueries.length && down.every((f) => f.indexerId !== null && indexerOffBefore(f.indexerId, startedAt));
   return { kind: "partial", why, counts };
 }
 

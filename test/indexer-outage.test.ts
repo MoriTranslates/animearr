@@ -16,6 +16,7 @@ const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { clearQueryCache } = await import("../server/search/searchQueue.js");
 const { deepSearch } = await import("../server/search/search.js");
+const { searchOutage } = await import("../server/search/indexers.js");
 const { decideEpisode } = await import("../server/library/managed.js");
 const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
 const { regrabEpisodes } = await import("../server/library/episodes.js");
@@ -27,7 +28,7 @@ const TVDB = 700700;
 
 // ---------------------------------------------------------------- three direct indexers, each switchable
 
-type Mode = "ok" | "timeout" | "500" | "auth";
+type Mode = "ok" | "timeout" | "500" | "auth" | "badQuery";
 const modes: Record<string, Mode> = { o1: "ok", o2: "ok", o3: "ok" };
 const set = (o1: Mode, o2: Mode, o3: Mode) => {
   Object.assign(modes, { o1, o2, o3 });
@@ -81,6 +82,7 @@ before(() => {
     if (m === "timeout") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
     if (m === "500") return new Response("boom", { status: 500 });
     if (m === "auth") return new Response("bad key", { status: 401 });
+    if (m === "badQuery") return new Response("bad request", { status: 400 }); // it refuses this query, every time
     return new Response("<rss><channel></channel></rss>", { headers: { "content-type": "application/xml" } });
   }) as typeof fetch;
 });
@@ -215,4 +217,43 @@ test("Re-grab during an outage says it couldn't search instead of 'nothing else 
   } as unknown as EDeps;
   const r = await regrabEpisodes(TVDB, [7007], deps);
   assert.match(r[0].outcome, /didn't answer/);
+});
+
+// ---------------------------------------------------------------- a query an indexer always refuses isn't an outage (M3)
+
+test("a deterministic 4xx (the indexer refuses that query) doesn't keep a search from counting; outages still do", () => {
+  const t = Date.now();
+  // One query refused (Prowlarr's form and a direct indexer's), the other eleven answered.
+  for (const why of ["Show [Special]: Prowlarr GET /search failed (HTTP 400)", "Show & Co: O1: HTTP 404", "Show: O1: HTTP 422"])
+    assert.equal(searchOutage(12, [why], [], t).counts, true, why);
+  // One indexer refusing a query others answered: reported, still counts.
+  const refused = searchOutage(12, [], [{ indexerId: 9, name: "O2", why: "HTTP 400" }], t);
+  assert.equal(refused.counts, true);
+  assert.match(refused.why, /O2/);
+  // Every query refused: the search ran and the indexers answered "no" — a real (failed) attempt, not "all down".
+  const allRefused = searchOutage(3, ["a: HTTP 400", "b: HTTP 400", "c: HTTP 400"], [], t);
+  assert.notEqual(allRefused.kind, "all");
+  assert.equal(allRefused.counts, true);
+  // Outages stay outages: timeouts, 5xx, auth errors, rate limits, network failures.
+  for (const why of [
+    "q: O1 timed out",
+    "q: O1: HTTP 500",
+    "q: Prowlarr GET /search failed (HTTP 503)",
+    "q: refused (HTTP 401: check the API key)",
+    "q: O1: HTTP 403",
+    "q: O1: HTTP 429",
+    "q: O1: HTTP 408",
+    "q: o1.example refused the connection",
+  ]) {
+    assert.equal(searchOutage(12, [why], [], t).counts, false, why);
+    assert.equal(searchOutage(12, [], [{ indexerId: 9, name: "O1", why: why.slice(3) }], t).counts, false, why);
+  }
+});
+
+test("managed search where one indexer refuses the queries (HTTP 400): a real attempt, given up on like any other", async () => {
+  set("ok", "badQuery", "ok");
+  const now = Date.now();
+  await decideEpisode(row(7009, "new", 2), now);
+  assert.equal(state(7009).attempts, 3);
+  assert.equal(state(7009).state, "gave-up");
 });
