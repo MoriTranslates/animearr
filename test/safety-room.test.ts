@@ -90,6 +90,26 @@ test("M2: statfs giving NaN or a zero block size is unknown, not 'no room': the 
     );
 });
 
+test("M1 (round 10): blocks=0, or bavail=0 while bfree>0, is unmeasurable: the restore proceeds", () => {
+  for (const odd of [
+    { blocks: 0, bavail: 0, bfree: 0, bsize: 4096 },
+    { blocks: 1e9, bavail: 0, bfree: 5e8, bsize: 4096 },
+  ])
+    withStatfs(
+      () => odd,
+      () => assert.throws(() => restoreUploaded(upload, failAtSwap), new RegExp(MARK), `reached the swap with ${JSON.stringify(odd)}`),
+    );
+});
+
+test("M1 (round 10): a genuinely full disk (blocks>0, bavail and bfree both 0) still refuses", () => {
+  const before = safetyFiles();
+  withStatfs(
+    () => ({ blocks: 1e9, bavail: 0, bfree: 0, bsize: 4096 }),
+    () => assert.throws(() => restoreUploaded(upload, failAtSwap), /not enough free disk space/),
+  );
+  assert.deepEqual(safetyFiles(), before, "nothing written");
+});
+
 test("M2: statfs throwing (FUSE / network mounts) skips the check: the restore proceeds", () => {
   withStatfs(
     () => {

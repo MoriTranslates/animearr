@@ -379,6 +379,16 @@ function freeBytes(dir: string): number | null {
     );
     return null;
   }
+  // Some FUSE / network mounts report zeros without erroring: blocks=0, or bavail=0 while bfree>0. That is "unknown", not "full".
+  // A genuinely full disk has blocks>0 and both bavail and bfree at 0. Fields that are absent (NaN) don't trigger this.
+  const blocks = Number(s.blocks);
+  const bfree = Number(s.bfree);
+  if (blocks === 0 || (bavail === 0 && bfree > 0)) {
+    console.warn(
+      `Free space in ${dir} reads as zero without being full (blocks ${String(s.blocks)}, bavail ${String(s.bavail)}, bfree ${String(s.bfree)}); restoring without that check.`,
+    );
+    return null;
+  }
   return bavail * bsize;
 }
 
