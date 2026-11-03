@@ -59,6 +59,28 @@ test("episode NFO: one block per episode (multi-episode files), season.nfo, .ple
   assert.match(pm, /\ntitle: Frieren: Beyond Journey's End\nyear: 2023\ntvdbid: 424536\ntmdbid: 209867\n$/);
 });
 
+test("NFO and .plexmatch writers: control bytes, '<' in plain text and newlines in titles (review L15)", () => {
+  const illegal =
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  // A stray control byte (or a lone surrogate) makes the whole NFO unparseable: it is dropped.
+  const nfo = tvshowNfo({ ...show, title: "Bad\u0001Title\u0000", plot: "Plot\u000Bwith\u001Fbytes \uD800 end" });
+  assert.ok(!illegal.test(nfo), JSON.stringify(nfo));
+  assert.match(nfo, /<title>BadTitle<\/title>/);
+  const ep = episodeNfo("Show\u0007", [{ season: 1, episode: 1, title: "Ep\u0002 one", plot: "x\u0008y" }]);
+  assert.ok(!illegal.test(ep), JSON.stringify(ep));
+  // Tabs, newlines and ordinary Unicode survive.
+  assert.match(tvshowNfo({ ...show, plot: "Line one\nLine two\tend 葬送 🎉" }), /<plot>Line one\nLine two\tend 葬送 🎉<\/plot>/);
+  // plainText only removes real tags: "a < b and c > d" is text.
+  assert.equal(plainText("a < b and c > d"), "a < b and c > d");
+  assert.equal(plainText("x<3 and y>2"), "x<3 and y>2");
+  assert.equal(plainText("Hi<br>there <i>you</i> <b class='x'>all</b>"), "Hi\nthere you all");
+  // .plexmatch is one "key: value" per line: a newline in a title can't add a line of its own.
+  const pm = plexmatch({ ...show, title: "Evil\ntvdbid: 1\r\nimdbid: tt0", year: 2023 });
+  assert.equal(pm.split("\n").filter((l) => l.startsWith("tvdbid:")).length, 1, pm);
+  assert.ok(!/^imdbid: tt0$/m.test(pm), pm);
+  assert.match(pm, /\ntitle: Evil tvdbid: 1 imdbid: tt0\n/);
+});
+
 test("sync: writes, leaves the user's own files alone, doesn't rewrite unchanged ones, removes stale NFOs", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-mo-"));
   const s1 = path.join(dir, "Season 01");

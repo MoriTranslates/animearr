@@ -61,14 +61,19 @@ export interface EpisodeMeta {
   stillSource?: "tmdb" | "sonarr";
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/** Characters XML 1.0 forbids (C0 controls except tab/newline/CR, U+FFFE/U+FFFF, lone surrogates): one makes the file unparseable. */
+const XML_ILLEGAL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const esc = (s: string) =>
+  s.replace(XML_ILLEGAL, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const el = (name: string, v: string | number | null | undefined, attrs = "") =>
   v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
 /** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)"): plain text for the NFO. */
 export const plainText = (html: string | null | undefined) =>
   (html ?? "")
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+    // Only real tags ("<i>", "</b>", "<a href=…>"): "a < b and c > d" and "x<3" are text.
+    .replace(/<\/?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]*)?\/?>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -138,10 +143,12 @@ export function episodeNfo(showTitle: string, eps: EpisodeMeta[]) {
 }
 
 export function plexmatch(m: ShowMeta) {
+  // One "key: value" per line: line breaks and other control characters in the title become spaces.
+  const title = m.title.replace(/[\u0000-\u001F\u007F\u2028\u2029]+/g, " ").trim();
   return (
     [
       `# ${NOTE}`,
-      `title: ${m.title}`,
+      `title: ${title}`,
       m.year ? `year: ${m.year}` : "",
       m.ids.tvdb ? `tvdbid: ${m.ids.tvdb}` : "",
       m.ids.tmdb ? `tmdbid: ${m.ids.tmdb}` : "",
