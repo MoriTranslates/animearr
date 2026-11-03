@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { parseRelease } from "../server/core/parser.js";
 import { rankRelease, type Profile } from "../server/core/rank.js";
-import { applyRules, compileTerm, guardedRegexRuns, PREFERRED_CAP, type ReleaseRule } from "../server/core/rules.js";
+import { applyRules, clearCompiledTerms, compileTerm, PREFERRED_CAP, type ReleaseRule } from "../server/core/rules.js";
+import { foldCase, forceLinearEngineForTests, LINEAR_FLAG } from "../server/core/linearRegex.js";
 
 process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rules-"));
 process.env.ANIMEARR_NO_LOCK = "1";
@@ -44,135 +45,193 @@ test("terms: plain text is a case-insensitive substring; /regex/ is a case-insen
   assert.ok("test" in re && re.test("Show 1080p X265-GRP") && re.test("Show hevc") && !re.test("Show x2650"));
 });
 
-test("invalid regular expressions are refused with a clear message, and runaway ones too", () => {
+test("invalid regular expressions are refused with a clear message", () => {
   const bad = compileTerm("/(unclosed/");
   assert.ok("error" in bad && /isn't a valid regular expression/.test(bad.error), JSON.stringify(bad));
-  assert.ok("error" in compileTerm("/(a+)+$/"));
   assert.ok("error" in compileTerm("   "));
   assert.throws(() => saveRule(null, { name: "Bad", mustNot: ["/[/"] }), /Must not contain: .*valid regular expression/);
   assert.equal(listRules().length, 0, "nothing saved");
 });
 
-test("a runaway regex the static check misses can't hang the server, and it fails closed", () => {
-  // Both pass the nested-repeat check, and both backtrack exponentially (30 characters: seconds; a long title: forever).
-  const runaway = ["/((a+))+$/", "/(a|a)*b/"];
-  for (const t of runaway) assert.ok("test" in compileTerm(t), `${t} passes the static check`);
-  const title = "a".repeat(30) + "!";
-  const r = rule({ mustNot: runaway, preferred: [{ term: "/(a|aa)+$/", score: 5 }] });
+test("the review's exponential pattern (N=50) runs in linear time on a 100 KB name and can't hang anything (blind review misc round 3 High)", () => {
+  const n = 50;
+  const expo = compileTerm("/" + "a?".repeat(n) + "a".repeat(n) + "b/");
+  assert.ok("test" in expo, "it compiles on the linear engine");
+  for (const src of ["/((a+))+$/", "/(a|a)*b/", "/(a|aa)+$/", "/.*a.*b/", "/[a-z]*[a-z]*x/"]) {
+    const c = compileTerm(src);
+    assert.ok("test" in c, `${src} is accepted: on the linear engine it is harmless`);
+  }
+  const huge = "a".repeat(100_000);
   const t0 = Date.now();
-  const first = applyRules(title, [r]);
-  for (let i = 0; i < 20; i++) applyRules(title, [r]); // later calls skip the term at once
+  assert.equal(expo.test(huge), false);
+  for (const src of ["/((a+))+$/", "/(a|a)*b/", "/(a|aa)+$/", "/.*a.*b/", "/[a-z]*[a-z]*x/"]) {
+    const c = compileTerm(src);
+    if ("test" in c) c.test(huge + "!");
+  }
   const ms = Date.now() - t0;
-  assert.ok(ms < 1500, `took ${ms} ms`);
-  // Must not contain: a term that couldn't be checked counts as present, so the release stays blocked.
-  assert.match(first.reject ?? "", /Blocked by release rule 'Rule': contains '\/\(\(a\+\)\)\+\$\/' \(took too long to check\)/);
-  // Must contain: it counts as absent, so the release is blocked too.
-  assert.match(applyRules(title, [rule({ must: ["/((a+))+$/"] })]).reject ?? "", /lacks any of/);
-  // Preferred: it scores nothing; other preferred terms still count.
-  const pref = applyRules(title, [
-    rule({
-      preferred: [
-        { term: "/(a|aa)+$/", score: 5 },
-        { term: "aaa", score: 2 },
-      ],
-    }),
-  ]);
-  assert.equal(pref.reject, null);
-  assert.equal(pref.score, 2);
-  // Ordinary regexes keep working, also after a runaway one was cut off.
-  assert.notEqual(applyRules("Show 1080p x265", [rule({ mustNot: ["/x26[45]/"] })]).reject, null);
-  assert.equal(applyRules("Show 1080p x264", [rule({ mustNot: ["/x265/"] })]).reject, null);
+  assert.ok(ms < 1000 * 6, `6 runaway shapes on 100 KB took ${ms} ms`); // under 1 s each, loose for a loaded machine
+  // Still a real matcher: the same term matches when it should.
+  assert.equal(expo.test("a".repeat(n) + "b"), true);
 });
 
-test("adjacent overlapping repeats run guarded, and terms over 1,024 characters are refused on save (review misc round 2 #1)", () => {
-  // The quadratic shape now goes through the time-limited path, so a long title can't freeze the event loop for long.
-  const quad = compileTerm("/[a-z]*[a-z]*x/");
-  assert.ok("test" in quad);
-  const before = guardedRegexRuns();
-  const t0 = Date.now();
-  quad.test("a".repeat(20000));
-  assert.ok(guardedRegexRuns() > before, "ran through the guarded path");
-  assert.ok(Date.now() - t0 < 1500, `quadratic term took ${Date.now() - t0} ms`);
-  // Length cap: 1,024 characters is allowed, 1,025 is refused with a clear message.
+test("patterns the linear engine can't run (backreferences, lookaheads, big counted repeats) are refused on save", () => {
+  for (const src of ["/(a)\\1/", "/(?<g>x)\\k<g>/", "/x26(?=5)/", "/x26(?!4)/", "/.{0,30}/", "/(?i:hevc)/"]) {
+    const c = compileTerm(src);
+    assert.ok("error" in c, src);
+    assert.match(c.error, /this pattern uses features AnimeArr can't run safely \(backreferences\/lookarounds\); rewrite it without them/);
+    assert.throws(() => saveRule(null, { name: "Unsafe", mustNot: [src] }), /Must not contain: .*can't run safely/);
+  }
+  assert.equal(listRules().length, 0, "nothing saved");
+  // The 1,024-character cap stays: 1,024 is accepted, 1,025 is refused with a clear message.
   assert.ok("test" in compileTerm("/" + "a".repeat(1022) + "/"), "1,024 characters is accepted");
   const long = compileTerm("/" + "a".repeat(1023) + "/");
   assert.ok("error" in long && /at most 1024 characters/.test(long.error), JSON.stringify(long));
   assert.throws(() => saveRule(null, { name: "Long", must: ["/" + "a".repeat(1100) + "/"] }), /at most 1024 characters/);
 });
 
-test("a realistic search (500 releases x 5 regex terms) with every regex guarded: results are right and the cost is printed", () => {
+test("a stored term the linear engine refuses is skipped, fails closed, and is warned about once", () => {
+  const term = "/(x26)\\1/";
+  const saved = saveRule(null, { name: "Old rule", mustNot: ["x264"] });
+  // As if saved by an older AnimeArr that didn't refuse it.
+  db.prepare("UPDATE release_rules SET must_not = ?, must = ? WHERE id = ?").run(JSON.stringify([term]), JSON.stringify([]), saved.id);
+  const before = (db.prepare("SELECT COUNT(*) AS n FROM decisions WHERE kind = 'rule' AND why LIKE ?").get(`%${term}%`) as { n: number }).n;
+  for (let i = 0; i < 3; i++) assert.match(testRules("Show - 01 [1080p]").rejected ?? "", /'Old rule': contains .*can't be run safely/);
+  const rows = db.prepare("SELECT why FROM decisions WHERE kind = 'rule' AND why LIKE ?").all(`%${term}%`) as { why: string }[];
+  assert.equal(rows.length - before, 1, JSON.stringify(rows));
+  assert.match(rows.at(-1)!.why, /Old rule.*skipped.*can't run safely/);
+  // Must contain: the term counts as missing. Preferred: it scores nothing.
+  assert.match(applyRules("x26x26", [rule({ must: [term] })]).reject ?? "", /lacks any of/);
+  assert.equal(applyRules("x26x26", [rule({ preferred: [{ term, score: 5 }] })]).score, 0);
+  deleteRule(saved.id);
+});
+
+test("without the linear engine, regex terms fail closed and are refused on save; plain text still works", () => {
+  forceLinearEngineForTests(false);
+  clearCompiledTerms();
+  try {
+    const c = compileTerm("/x265/");
+    assert.ok("error" in c && /safe regular-expression engine isn't available/.test(c.error), JSON.stringify(c));
+    assert.throws(() => saveRule(null, { name: "No engine", mustNot: ["/x265/"] }), /isn't available/);
+    assert.match(
+      applyRules("Show 1080p x264", [rule({ mustNot: ["/x265/"] })]).reject ?? "",
+      /contains '\/x265\/' \(this term can't be run safely/,
+    );
+    assert.match(applyRules("Show 1080p x265", [rule({ must: ["/x265/"] })]).reject ?? "", /lacks any of/);
+    assert.equal(applyRules("Show 1080p x264", [rule({ mustNot: ["x265"] })]).reject, null, "plain text is unaffected");
+  } finally {
+    forceLinearEngineForTests(null);
+    clearCompiledTerms();
+  }
+  assert.ok("test" in compileTerm("/x265/"));
+});
+
+test("ordinary patterns match exactly as the case-insensitive backtracking engine did", () => {
+  const R = String.raw;
+  const patterns = [
+    R`S\d+E\d+`,
+    R`\b(x265|hevc)\b`,
+    R`^\[(SubsPlease|Erai-raws)\]`,
+    "web-?dl",
+    "(1080p|720p).*(x26[45])",
+    "[a-f]+",
+    "[^a-z0-9 ]",
+    "[A-Z]{2,3}",
+    R`[\w-]+\.mkv$`,
+    R`\x4a\x55DAS`,
+    "(?<group>judas)",
+    R`(?<=\d)p`,
+    R`(?<!x)264`,
+    "[a-]z",
+    "[--z]",
+    R`[\d-z]`,
+    R`\bBD\b|\bBluRay\b`,
+    "dual.?audio",
+    R`v\d`,
+  ];
+  const titles = [
+    "[SubsPlease] Show - S01E05 (1080p) [HEVC]",
+    "[Erai-raws] show s02e11 720p x264 WEB-DL",
+    "[Judas] SHOW - 05 [BD 1080p][x265][Dual-Audio]",
+    "show.web.dl.v2.mkv",
+    "SHOW_name-01.MKV",
+    "Show 264 X264 [jUdAs]",
+    "abc DEF z Z - _ ! ~",
+    "",
+  ];
+  for (const src of patterns) {
+    const c = compileTerm(`/${src}/`);
+    assert.ok("test" in c, src);
+    const old = new RegExp(src, "i"); // small, safe patterns: fine to run the old way here, as the reference
+    for (const t of titles) assert.equal(c.test(t), old.test(t), `${src} on ${JSON.stringify(t)}`);
+  }
+  // Trailing flags after the closing slash are accepted and ignored, as before (always case-insensitive).
+  const flagged = compileTerm("/x265/gim");
+  assert.ok("test" in flagged && flagged.test("X265"));
+});
+
+test("foldCase leaves escapes, group names and quantifiers alone and adds the other case to letters and ranges", () => {
+  const R = String.raw;
+  assert.equal(foldCase(R`S\d+E\d+`), R`[Ss]\d+[Ee]\d+`);
+  assert.equal(foldCase("[a-f0-9]{2,4}"), "[a-fA-F0-9]{2,4}");
+  assert.equal(foldCase("(?<name>x)"), "(?<name>[xX])");
+  assert.equal(foldCase(R`\x41`), R`[\x41a]`);
+  assert.equal(foldCase(R`\cJ\bB`), R`\cJ\b[Bb]`);
+  assert.equal(foldCase("(?:ab)"), "(?:[aA][bB])");
+});
+
+test("foldCase fuzz: random short patterns match exactly like the i flag on random names, and stay valid", () => {
+  // Odd inputs on purpose: brackets, dashes, escapes, group syntax, accented letters. Seeded, so a failure repeats.
+  const atoms = [..."aBz-[]^\\dx41():<>=!*+.{},2|$cku0_", "é", "É"];
+  const chars = [..."aAbBzZxXdD-[]^_09 \\{}<>.!:=,|$cCkK", "é", "É"];
+  let seed = 12345;
+  const rnd = (n: number) => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed % n;
+  };
+  const names = Array.from({ length: 80 }, () => Array.from({ length: rnd(8) }, () => chars[rnd(chars.length)]).join(""));
+  let tried = 0;
+  for (let i = 0; i < 12000; i++) {
+    const p = Array.from({ length: 1 + rnd(7) }, () => atoms[rnd(atoms.length)]).join("");
+    let ref: RegExp;
+    try {
+      ref = new RegExp(p, "i"); // at most 7 atoms: fine to run on the backtracking engine as the reference
+    } catch {
+      continue; // not a valid pattern: compileTerm refuses it before folding
+    }
+    let lin: RegExp;
+    try {
+      lin = new RegExp(foldCase(p), LINEAR_FLAG);
+    } catch (e) {
+      assert.match((e as Error).message, /linear time/, `folding broke ${JSON.stringify(p)} -> ${JSON.stringify(foldCase(p))}`);
+      continue;
+    }
+    tried++;
+    for (const n of names)
+      assert.equal(lin.test(n), ref.test(n), `${JSON.stringify(p)} -> ${JSON.stringify(foldCase(p))} on ${JSON.stringify(n)}`);
+  }
+  assert.ok(tried > 2000, `only ${tried} patterns compared`);
+});
+
+test("a realistic search (500 releases x 5 regex terms): results are right and the cost is printed", () => {
   const terms = ["/(1080p|720p).*(x26[45])/", "/\\bHEVC\\b/", "/S\\d+E\\d+/", "/^\\[(SubsPlease|Erai-raws)\\]/", "/web-?dl/"];
   const r = rule({ mustNot: terms.slice(0, 2), must: terms.slice(2, 4), preferred: [{ term: terms[4], score: 1 }] });
-  const before = guardedRegexRuns();
   const t0 = Date.now();
   for (let i = 0; i < 500; i++) applyRules(`[SubsPlease] Show S01E${i} 1080p WEB-DL x264 ${"pad ".repeat(10)}`, [r]);
   const ms = Date.now() - t0;
-  console.log(`PERF: 500 releases x 5 guarded regex terms took ${ms} ms (${guardedRegexRuns() - before} guarded runs)`);
-  assert.ok(guardedRegexRuns() > before, "regex terms go through the guarded runner");
+  console.log(`PERF: 500 releases x 5 linear regex terms took ${ms} ms`);
   assert.ok(ms < 20000, `took ${ms} ms`); // loose tolerance; the real number is printed above
   assert.equal(
     applyRules("[SubsPlease] Show S01E05 1080p x265", [r]).reject,
     "Blocked by release rule 'Rule': contains '/(1080p|720p).*(x26[45])/'",
   );
-  // A runaway term is cut off and fails closed.
-  const t1 = Date.now();
-  const slow = applyRules("c".repeat(30) + "!", [rule({ mustNot: ["/((c+))+$/"] })]);
-  assert.ok(Date.now() - t1 < 1500, `runaway took ${Date.now() - t1} ms`);
-  assert.match(slow.reject ?? "", /took too long to check/);
+  assert.equal(applyRules("[SubsPlease] Show s01e05 web-dl", [r]).score, 1);
 });
 
-test("the first time a rule's term takes too long, one warning names the rule and the term", () => {
-  const term = "/((b+))+$/";
-  const saved = saveRule(null, { name: "Slow rule", mustNot: [term] });
-  const before = (db.prepare("SELECT COUNT(*) AS n FROM decisions WHERE kind = 'rule' AND why LIKE ?").get(`%${term}%`) as { n: number }).n;
-  for (let i = 0; i < 3; i++) assert.ok(testRules("b".repeat(30) + "!").rejected);
-  const rows = db.prepare("SELECT why FROM decisions WHERE kind = 'rule' AND why LIKE ?").all(`%${term}%`) as { why: string }[];
-  assert.equal(rows.length - before, 1, JSON.stringify(rows));
-  assert.match(rows.at(-1)!.why, /Slow rule/);
-  // The advice must be what actually works: saving an unchanged rule no longer clears the mark.
-  assert.match(rows.at(-1)!.why, /edit the term, or restart AnimeArr/i);
-  assert.doesNotMatch(rows.at(-1)!.why, /re-?save/i);
-  deleteRule(saved.id);
-});
-
-test("one timeout doesn't disable a term for good; repeated ones do, until the term is edited in (review misc #2)", () => {
-  // "/(d|d)*e/" is fine on ordinary names but runs away on a long run of "d": one heavy name stands in for a
-  // timeout under CPU load.
-  const term = "/(d|d)*e/";
-  const r = rule({ mustNot: [term] });
-  const heavy = "d".repeat(30) + "!";
-  // That one check fails closed...
-  assert.match(applyRules(heavy, [r]).reject ?? "", /took too long to check/);
-  // ...but the term keeps working for the next names (it used to be skipped, i.e. blocking, until a restart).
-  assert.equal(applyRules("Show - 05 [1080p]", [r]).reject, null);
-  assert.match(applyRules("Show - 05 [de]", [r]).reject ?? "", /contains '\/\(d\|d\)\*e\/'$/);
-  // Three timeouts in a short window: the term is marked, and every name is blocked (fail closed) without running it.
-  applyRules(heavy, [r]);
-  applyRules(heavy, [r]);
-  // Counted, not timed: a wall-clock bound like 20 ms flakes on a loaded machine (a GC pause or a busy disk).
-  const runsBefore = guardedRegexRuns();
-  assert.match(applyRules("Show - 06 [1080p]", [r]).reject ?? "", /took too long to check/);
-  assert.equal(guardedRegexRuns(), runsBefore, "a marked term isn't run again");
-  // Adding the term to a rule afresh (an edit) clears the mark.
-  const saved = saveRule(null, { name: "Marked rule", mustNot: [term] });
-  assert.equal(testRules("Show - 07 [1080p]").rejected, null);
-  deleteRule(saved.id);
-});
-
-test("saving a rule only gives its newly added terms a fresh start (review misc round 2 #3)", () => {
-  const term = "/(f|f)*g/";
-  const heavy = "f".repeat(30) + "!";
-  const a = saveRule(null, { name: "Keep marked", mustNot: [term] });
-  for (let i = 0; i < 3; i++) applyRules(heavy, [rule({ mustNot: [term] })]);
-  assert.ok(testRules("Show - 08 [1080p]").rejected, "the term is marked as runaway");
-  // Renaming the rule leaves its unchanged term marked.
-  saveRule(a.id, { name: "Keep marked (renamed)" });
-  assert.ok(testRules("Show - 08 [1080p]").rejected, "an unchanged term stays marked");
-  // Another rule that uses the same term text doesn't un-mark it.
-  const b = saveRule(null, { name: "Other rule", mustNot: [term] });
-  assert.ok(testRules("Show - 08 [1080p]").rejected, "saving another rule doesn't clear a shared term");
-  deleteRule(b.id);
-  deleteRule(a.id);
+test("the worker-thread regex runner is gone: nothing can keep a thread spinning or hold up process exit", () => {
+  for (const f of ["server/core/rules.ts", "server/core/linearRegex.ts", "server/search/releaseRules.ts"]) {
+    const src = fs.readFileSync(path.join(import.meta.dirname, "..", f), "utf8");
+    assert.doesNotMatch(src, /worker_threads|new Worker|Atomics\.|node:vm|runInContext/, f);
+  }
 });
 
 test("must: the name needs at least one of the terms; mustNot: none may appear", () => {
@@ -265,23 +324,4 @@ test("rules are saved with trimmed, de-duplicated terms and survive a reload; de
     false,
   );
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM release_rule_tags WHERE rule_id = ?").get(r.id) as { n: number }).n, 0);
-});
-
-test("every user regex goes through the guarded runner: exponential and quadratic shapes are never run directly (blind review misc final High)", () => {
-  // The review's shape: "a?" N times, "a" N times, then "b". Small N here so even unguarded code can't hang the run.
-  const n = 18;
-  const expo = "/" + "a?".repeat(n) + "a".repeat(n) + "b/";
-  for (const src of [expo, "/.*a.*b/", "/S\\d+E\\d+/", "/web-?dl/"]) {
-    const c = compileTerm(src);
-    assert.ok("test" in c, src);
-    const before = guardedRegexRuns();
-    c.test("a".repeat(n));
-    assert.equal(guardedRegexRuns() - before, 1, `${src} went through the guarded runner`);
-  }
-  // Plain-text terms stay direct: no guard needed.
-  const plain = compileTerm("1080p");
-  assert.ok("test" in plain);
-  const before = guardedRegexRuns();
-  assert.equal(plain.test("Show 1080p"), true);
-  assert.equal(guardedRegexRuns(), before);
 });

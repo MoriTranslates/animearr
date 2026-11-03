@@ -1,9 +1,11 @@
 /**
  * Release rules (Sonarr's release profiles): terms a release name must or must not contain, and preferred terms with
  * a score. A term is a plain case-insensitive substring, or `/regex/` (always case-insensitive) when wrapped in slashes.
+ * Regex terms run on V8's linear-time engine (core/linearRegex.ts), so no pattern can hang AnimeArr; patterns that
+ * engine can't run are refused on save, and a stored one fails closed with a warning.
  * Pure: the rules a show falls under (tag scoping) are picked by server/search/releaseRules.ts before they get here.
  */
-import vm from "node:vm";
+import { linearCaseInsensitive, linearEngine } from "./linearRegex.js";
 
 export interface PreferredTerm {
   term: string;
@@ -29,68 +31,18 @@ const MAX_TERM = 1024;
 const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 
 /**
- * User regexes run with a time limit. Every user regex runs this way, with no "looks safe" shortcut: exponential ("((a+))+$", "a?a?aab") and
- * quadratic (".*a.*b") shapes can't be told apart from safe ones reliably, and JavaScript has no regex timeout, so the match runs as a vm script with one.
- * A check that hits the limit gives "couldn't check" (null), and applyRules fails closed on it: a must-not term
- * blocks, a must term is missing, a preferred term scores nothing. A term that keeps hitting it is marked as runaway
- * and not run again (still failing closed) until the term is edited (newly added to a rule)
- * or AnimeArr is restarted. Saving a rule unchanged does not clear it.
+ * Told once per stored term that can't be run (a term saved before AnimeArr refused unsafe patterns, or the
+ * linear-time engine missing); the search layer writes the warning. Such a term fails closed.
  */
-const REGEX_LIMIT_MS = 50;
-const regexRun = new vm.Script("re.test(title)");
-const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
-const runaway = new Set<string>();
-let guardedRuns = 0;
-/** How many regex tests went through the time-limited path (for tests: plain-text terms must not). */
-export const guardedRegexRuns = () => guardedRuns;
-
-function guardedTest(term: string, re: RegExp, title: string): boolean | null {
-  if (runaway.has(term)) return null;
-  guardedRuns++;
-  regexCtx.re = re;
-  regexCtx.title = title;
-  try {
-    return regexRun.runInContext(regexCtx, { timeout: REGEX_LIMIT_MS }) === true;
-  } catch (e) {
-    if ((e as { code?: string }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
-    // One timeout can be load (GC, ffmpeg, a busy NAS): that check fails closed, but the term stays in use. Only
-    // STRIKES timeouts within STRIKE_WINDOW_MS mark it as runaway.
-    const now = Date.now();
-    const recent = (strikes.get(term) ?? []).filter((t) => now - t < STRIKE_WINDOW_MS);
-    recent.push(now);
-    if (recent.length >= STRIKES) {
-      runaway.add(term);
-      strikes.delete(term);
-    } else strikes.set(term, recent);
-    return null;
-  } finally {
-    regexCtx.title = "";
-  }
-}
-const STRIKES = 3;
-const STRIKE_WINDOW_MS = 10 * 60_000;
-const strikes = new Map<string, number[]>();
-
-/** Told once per term, when a rule's term is marked as runaway (the search layer writes the warning). */
-let onRunaway: (rule: string, term: string) => void = () => {};
-export function setRunawayReporter(fn: (rule: string, term: string) => void) {
-  onRunaway = fn;
+let onUnusable: (rule: string, term: string, error: string) => void = () => {};
+export function setUnusableTermReporter(fn: (rule: string, term: string, error: string) => void) {
+  onUnusable = fn;
 }
 const reported = new Set<string>();
 
-/** A rule was saved (edited): its terms get a fresh start, and a warning again if they still run away. */
-export function forgetRegexTimeouts(terms: string[]) {
-  for (const raw of terms)
-    for (const t of new Set([raw, raw.trim()])) {
-      runaway.delete(t);
-      strikes.delete(t);
-      reported.delete(t);
-    }
-}
-
-type Compiled = { test: (title: string) => boolean | null } | { error: string };
+type Compiled = { test: (title: string) => boolean } | { error: string };
 const compiled = new Map<string, Compiled>();
-/** A term as a matcher (true / false, or null when it took too long to check), or an error message in plain words. */
+/** A term as a matcher, or an error message in plain words. */
 export function compileTerm(raw: string): Compiled {
   let c = compiled.get(raw);
   if (!c) {
@@ -99,6 +51,11 @@ export function compileTerm(raw: string): Compiled {
     compiled.set(raw, c);
   }
   return c;
+}
+/** For tests: forget compiled terms and warnings (after switching the linear engine off or on). */
+export function clearCompiledTerms() {
+  compiled.clear();
+  reported.clear();
 }
 function compileUncached(raw: string): Compiled {
   const term = raw.trim();
@@ -109,16 +66,26 @@ function compileUncached(raw: string): Compiled {
     const needle = term.toLowerCase();
     return { test: (title) => title.toLowerCase().includes(needle) };
   }
-  // Nested quantifiers like (a+)+ can make a regex take forever on a long title.
-  if (/\([^)]*[+*][^)]*\)[+*{]/.test(m[1])) return { error: `The regular expression ${term} is too complex (nested repeats); simplify it` };
   try {
-    const re = new RegExp(m[1], "i");
-    return { test: (title) => guardedTest(term, re, title) };
+    new RegExp(m[1]); // syntax check only (compiled, never run): gives the clearest message for a typo
   } catch (e) {
     return { error: `${term} isn't a valid regular expression: ${(e as Error).message.replace(/^Invalid regular expression: /, "")}` };
   }
+  // Every user regex runs on the linear-time engine, never the backtracking one: see core/linearRegex.ts.
+  if (!linearEngine())
+    return {
+      error: `${term} can't be used: AnimeArr's safe regular-expression engine isn't available in this Node.js, so regex terms are off`,
+    };
+  try {
+    const re = linearCaseInsensitive(m[1]);
+    return { test: (title) => re.test(title) };
+  } catch {
+    // The pattern is valid (checked above), so the linear engine refused it; the message says what to change.
+    return {
+      error: `${term}: this pattern uses features AnimeArr can't run safely (backreferences/lookarounds); rewrite it without them. Lookaheads, inline flags like (?i:...) and counted repeats over 16 such as {0,30} count too`,
+    };
+  }
 }
-
 /** Trims, drops blanks and duplicates, and refuses invalid terms with a clear message. */
 export function cleanTerms(v: unknown, what: string): string[] {
   const list = Array.isArray(v) ? v : String(v ?? "").split(/\r?\n/);
@@ -153,15 +120,15 @@ export function applyRules(title: string, rules: ReleaseRule[]): RuleVerdict {
   const matches: RuleVerdict["matches"] = [];
   for (const r of rules) {
     if (!r.enabled) continue;
-    // true / false, or null when a regex took too long to check (reported once, when the term is marked).
-    const check = (t: string) => {
+    // true / false, or null for a stored term that can't be run (reported once per term; it fails closed).
+    const check = (t: string): boolean | null => {
       const c = compileTerm(t);
-      const v = "test" in c ? c.test(title) : false;
-      if (v === null && runaway.has(t.trim()) && !reported.has(t)) {
+      if ("test" in c) return c.test(title);
+      if (!reported.has(t)) {
         reported.add(t);
-        onRunaway(r.name, t);
+        onUnusable(r.name, t, c.error);
       }
-      return v;
+      return null;
     };
     let blocked: string | null = null;
     if (r.must.length) {
@@ -170,13 +137,13 @@ export function applyRules(title: string, rules: ReleaseRule[]): RuleVerdict {
     }
     if (!blocked) {
       // Fails closed: a term that couldn't be checked counts as present.
-      let slow = false;
+      let unusable = false;
       const bad = r.mustNot.find((t) => {
         const v = check(t);
-        slow = v === null;
+        unusable = v === null;
         return v !== false;
       });
-      if (bad) blocked = `contains '${bad}'${slow ? " (took too long to check)" : ""}`;
+      if (bad) blocked = `contains '${bad}'${unusable ? " (this term can't be run safely, so it counts as present)" : ""}`;
     }
     const preferred = r.preferred.filter((p) => check(p.term) === true);
     matches.push({ rule: r.name, blocked, preferred: preferred.map((p) => ({ term: p.term, score: p.score })) });
