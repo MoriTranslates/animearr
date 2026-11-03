@@ -499,6 +499,8 @@ export interface SwitchDeps {
   radarrQueue: typeof radarr.radarrQueueFor;
   /** Whether Sonarr still has the series (false only on a clear "not found"; throws when Sonarr can't be asked). */
   sonarrHasSeries?: (id: number) => Promise<boolean>;
+  /** Same for Radarr and a movie. */
+  radarrHasMovie?: (id: number) => Promise<boolean>;
 }
 async function sonarrHasSeries(id: number) {
   try {
@@ -515,6 +517,7 @@ const realSwitch: SwitchDeps = {
   sonarrQueue: sonarr.getQueue,
   radarrQueue: radarr.radarrQueueFor,
   sonarrHasSeries,
+  radarrHasMovie,
 };
 
 // ---------------------------------------------------------------- the cutover journal
@@ -545,11 +548,36 @@ function finishShowSwitch(p: PendingSwitch) {
   if (nr) materialize(nr as never);
 }
 
+/** The movie half: Radarr no longer has it → state moves now; Radarr still has it → the row goes; unreachable → later. */
+async function resumeMovieCutovers(deps: Pick<SwitchDeps, "radarrHasMovie">) {
+  const out: { movieId: number; finished: boolean }[] = [];
+  for (const p of allRows<{ movie_id: number; native_id: number }>(db.prepare("SELECT * FROM cutover_pending_movies"))) {
+    let has: boolean;
+    try {
+      has = await (deps.radarrHasMovie ?? radarrHasMovie)(p.movie_id);
+    } catch {
+      continue; // can't tell yet: unknown is never "gone"
+    }
+    if (has) {
+      db.prepare("DELETE FROM cutover_pending_movies WHERE movie_id = ?").run(p.movie_id);
+      out.push({ movieId: p.movie_id, finished: false });
+      continue;
+    }
+    finishMovieSwitch(p.movie_id, p.native_id);
+    logDecision("info", {
+      why: "Cutover: finished switching a movie that Radarr had removed but whose answer didn't arrive; AnimeArr's copy is live",
+    });
+    out.push({ movieId: p.movie_id, finished: true });
+  }
+  return out;
+}
+
 /**
  * Finishes switches that were cut off: Sonarr no longer has the show → AnimeArr's state moves now; Sonarr still has it
  * → the DELETE never happened, the journal row goes and the show can be switched again. Sonarr unreachable → later.
  */
-export async function resumeCutovers(deps: Pick<SwitchDeps, "sonarrHasSeries"> = realSwitch) {
+export async function resumeCutovers(deps: Pick<SwitchDeps, "sonarrHasSeries" | "radarrHasMovie"> = realSwitch) {
+  await resumeMovieCutovers(deps);
   const rows = allRows<PendingSwitch>(db.prepare("SELECT * FROM cutover_pending"));
   const out: { tvdbId: number; finished: boolean }[] = [];
   for (const p of rows) {
@@ -572,6 +600,27 @@ export async function resumeCutovers(deps: Pick<SwitchDeps, "sonarrHasSeries"> =
     out.push({ tvdbId: p.tvdb_id, finished: true });
   }
   return out;
+}
+
+/** Moves the movie's state and drops Radarr's cached row. Safe to run twice. */
+function finishMovieSwitch(radarrId: number, nativeId: number) {
+  tx(db, () => {
+    moveMovieState(radarrId, NATIVE_BASE + nativeId);
+    db.prepare("DELETE FROM cutover_pending_movies WHERE movie_id = ?").run(radarrId);
+  });
+  cache.prepare("DELETE FROM movies WHERE id = ?").run(radarrId);
+  const nm = db.prepare("SELECT * FROM native_movies WHERE id = ?").get(nativeId);
+  if (nm) materializeMovie(nm as never);
+}
+
+async function radarrHasMovie(id: number) {
+  try {
+    await radarr.getMovie(id);
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return false;
+    throw e;
+  }
 }
 
 /** Rewrites every id-keyed piece of AnimeArr state from a Sonarr show's episode ids to AnimeArr's (one transaction). */
@@ -702,7 +751,18 @@ export async function switchToAnimeArr(
     out.push({ id: tvdbId, kind: "show", ok: true, why: `${sr.title}: removed from Sonarr (files kept); AnimeArr's copy is live` });
   }
   if ((input.movieIds ?? []).length && !s.importer.movies) throw err("Switch movie imports by AnimeArr's own importer on first", 409);
+  if ((input.movieIds ?? []).length) {
+    for (const r of await resumeMovieCutovers(deps))
+      if (r.finished && input.movieIds!.includes(r.movieId))
+        out.push({
+          id: r.movieId,
+          kind: "movie",
+          ok: true,
+          why: `Movie ${r.movieId}: Radarr had already removed it (files kept); AnimeArr's copy is live`,
+        });
+  }
   for (const movieId of input.movieIds ?? []) {
+    if (out.some((x) => x.id === movieId && x.kind === "movie")) continue;
     const m = cache.prepare(`SELECT id, title, tmdb_id FROM movies WHERE id = ? AND id < ${NATIVE_BASE}`).get(movieId) as
       { id: number; title: string; tmdb_id: number | null } | undefined;
     const nm = m?.tmdb_id
@@ -726,14 +786,19 @@ export async function switchToAnimeArr(
         fail("Radarr is still downloading it; switch it when that's done");
         continue;
       }
-      await deps.removeMovie(m.id);
     } catch (e) {
       fail((e as Error).message);
       continue;
     }
-    tx(db, () => moveMovieState(m.id, NATIVE_BASE + nm.id));
-    cache.prepare("DELETE FROM movies WHERE id = ?").run(m.id);
-    materializeMovie(db.prepare("SELECT * FROM native_movies WHERE id = ?").get(nm.id) as never);
+    // Journal first: a timeout after Radarr acted leaves the row, and the next start or switch finishes (or clears) it.
+    db.prepare("INSERT OR REPLACE INTO cutover_pending_movies (movie_id, native_id, at) VALUES (?, ?, ?)").run(m.id, nm.id, Date.now());
+    try {
+      await deps.removeMovie(m.id);
+    } catch (e) {
+      fail(`${(e as Error).message} (if Radarr did remove it, AnimeArr finishes the switch on its next start or when you switch it again)`);
+      continue;
+    }
+    finishMovieSwitch(m.id, nm.id);
     out.push({ id: movieId, kind: "movie", ok: true, why: `${m.title}: removed from Radarr (files kept); AnimeArr's copy is live` });
   }
   const ok = out.filter((x) => x.ok);

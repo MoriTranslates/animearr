@@ -460,6 +460,9 @@ const USER_MIGRATIONS: string[] = [
   // 44: a torrent the client already had before AnimeArr's add (a duplicate), or one a restart's lookup adopted: tracked
   // as usual, but never AnimeArr's to remove or delete (Remove, clean-ups, sweeps). Review of the jobs branch, M4/L6.
   `ALTER TABLE grabs ADD COLUMN not_ours INTEGER NOT NULL DEFAULT 0;`,
+  // 45: the movie half of the cutover journal (review L21): written before Radarr is asked to delete a movie, cleared once
+  // AnimeArr's movie_* state has moved to the native id.
+  `CREATE TABLE cutover_pending_movies (movie_id INTEGER PRIMARY KEY, native_id INTEGER NOT NULL, at INTEGER NOT NULL);`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */
