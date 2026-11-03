@@ -1044,3 +1044,15 @@ test("a one-word or all-caps second bracket is the title when only an episode or
     { name: "[Group][SCY] Show Name S01E05", title: "Show Name", group: "Group", season: 1, episodes: [5] },
   ]);
 });
+
+test("a real SxxEyy range may run straight into END, FIN or an xNNN codec tag (round-2 #6)", () => {
+  const eps = (name: string) => parseRelease(name).episodes;
+  // Was [1] and [5].
+  assert.equal(eps("Show S01E01-12END [1080p]").length, 12);
+  assert.deepEqual(eps("Show.S01E05-06x265"), [5, 6]);
+  assert.deepEqual(eps("Show S01E05-06FIN"), [5, 6]);
+  // Must not change: a bit depth, resolution or other unit glued to the number is still not a range end.
+  assert.deepEqual(eps("Show S01E05-10bit"), [5]);
+  assert.deepEqual(eps("Show S01E05-1080p"), [5]);
+  assert.deepEqual(eps("Show S01E05-720 Group"), [5]);
+});

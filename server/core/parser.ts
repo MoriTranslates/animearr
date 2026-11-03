@@ -546,7 +546,7 @@ export function parseRelease(input: string): ParsedRelease {
   // S01E02(-E03|E03)(v2), S01E01-02, and longer chains: S01E01-02-03, S01E01E02E03, S01E01-E02-E03 (first to last).
   // A chained number must end at a separator, another "E", a "v2" or the end, so "-10bit" and "-1080p" are not
   // ranges; and a range longer than 200 episodes ("S01E05-720 Group") is the first episode only.
-  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d))*)(?:v(\d))?/gi;
+  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d|x\d|END|FIN))*)(?:v(\d))?/gi;
   while ((m = reSE.exec(work))) {
     const last = m[4] ? Number(m[4].match(/\d+/g)!.at(-1)) : undefined;
     // The 200 cap only guards a bare "-NNN" (could be a resolution); an explicit "E" or a batch word is a real range.

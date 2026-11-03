@@ -250,7 +250,7 @@ export function materialize(n: NativeRow, now = Date.now()) {
     const folderSeason = /(?:^|\/)Season (\d+)\//i.exec(r.path.slice(base.length))?.[1];
     // "S01E01", "S01E01-02", and longer chains "S01E01-02-03" / "S01E01E02E03" (first to last). A chained number must
     // end at a separator, another "E", a "v2" or the end: "S01E05-1080p" and "S01E05-10bit" are one episode.
-    const m = /S(\d{1,2})E(\d{1,4})((?:-?E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d))*)/i.exec(name);
+    const m = /S(\d{1,2})E(\d{1,4})((?:-?E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d|x\d|END|FIN))*)/i.exec(name);
     let hit: Ep[] = [];
     const linked = links.get(r.path);
     if (linked) hit = linked.map((id) => eps.find((e) => e.id === id)).filter((x): x is Ep => !!x);
