@@ -1164,3 +1164,78 @@ test("a short all-bracket title (21 characters or fewer) is the title, like a lo
   assert.equal(parseRelease("[Group][F-B] 86 - 05").title, "86");
   assert.equal(parseRelease("[Group][Frieren] S01E05 [1080p]").title, "Frieren");
 });
+
+test("an all-bracket name gives a title only in the one [Group][Title][EP][tags] shape; anything else is unknown (round-4 M1-M4)", () => {
+  // Every M1-M4 input from the round-4 blind review. Each one gave a title (with the season or episode wrong); each must
+  // now be unknown, as before the all-bracket unwrapping.
+  const unknown = [
+    // M1: a season marker that is not the whole bracket, or a cour bracket.
+    "[Group][Frieren][05][Season 2 Part 1]",
+    "[Group][Frieren][05][S2 Part 1]",
+    "[Group][Frieren][01][1080p][Season 2 Remaster]",
+    "[Group][Frieren][05][Seasons 1-2]",
+    "[Group][Mushoku Tensei][2nd Cour][05]",
+    // M2: 2期, 2 期, a bare ordinal.
+    "[Group][Spy x Family][2期][05]",
+    "[Group][Spy x Family][2 期][05]",
+    "[Group][Frieren][05][2期]",
+    "[Group][K][2nd][01]",
+    // M3: a bare number bracket between the title and the episode, or as the only number.
+    "[Group][Frieren][2][05]",
+    "[Group][Frieren][2][1080p]",
+    // M4: generic words are no title.
+    "[Group][Movie][01]",
+    "[Group][Special][01]",
+    "[Group][PV][01]",
+    "[Group][BDBox][01]",
+    "[Group][Ep][01]",
+    "[Group][Episode][01]",
+    "[Group][TV][01]",
+    "[Group][ANIME][01]",
+    // The same rules, nearby shapes.
+    "[Group][Specials][01]",
+    "[Group][OVA][01]",
+    "[Group][NCOP][01]",
+    "[Group][Season 2][05]",
+    "[Group][S2][Frieren][05]",
+    "[Group][Frieren][Season Two][05]",
+    "[Group][Frieren][05][Zero]",
+    "[Group][Frieren][2024][1080p]",
+  ];
+  for (const name of unknown) assert.equal(parseRelease(name).title, "", name);
+
+  // Must still resolve: real corpus names the all-bracket unwrapping gained, and the review's "checked and fine" rows.
+  for (const [name, title] of [
+    ["[Nekomoe kissaten][Hataraku Saibou Black][01][1080p][CHT][v2]", "Hataraku Saibou Black"],
+    ["[Nigel][Shin Samurai-den Yaiba][01][BDRIP][1080P][H264_FLACx2]", "Shin Samurai-den Yaiba"],
+    ["[Nigel][Shin Samurai-den Yaiba][02][BDRIP][1080P][H264_FLAC].mkv", "Shin Samurai-den Yaiba"],
+    ["[SubsWhen][Isekai Ojisan][09][1080p][NF][766FC386]", "Isekai Ojisan"],
+    ["[Nekomoe.kissaten][Isekai.Ojisan][13][720p][JPSC].mp4-xpost", "Isekai.Ojisan"],
+    ["[Nekomoe.kissaten][Sono.Bisque.Doll.wa.Koi.wo.Suru][14][1080p][CHT].mp4-[N-Z-B]-xpost", "Sono Bisque Doll wa Koi wo Suru"],
+    ["[Nekomoe.kissaten][Tensei.Kizoku.no.Isekai.Boukenroku][01][1080p][JPTC].mp4-xpost", "Tensei Kizoku no Isekai Boukenroku"],
+    ["[XKsub][SSSS.DYNAZENON][01][CHS JAP][1080p][WEBRip][MP4].mp4-xpost", "SSSS.DYNAZENON"],
+    [
+      "[hyakuhuyu][Re.Zero.kara.Hajimeru.Isekai.Seikatsu][62][WebRip.1080p.AVC.AAC][CHT].mp4-[N-Z-B]-xpost",
+      "Re Zero kara Hajimeru Isekai Seikatsu",
+    ],
+    [
+      "[SweetSub][靠死亡游戏混饭吃。][Shibou Yuugi de Meshi wo Kuu.][08][WebRip][1080P][AVC 8bit][简日双语][v2]（检索用：以死亡游戏为生。）",
+      "靠死亡游戏混饭吃。",
+    ],
+    ["[喵萌奶茶屋][工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]", "Hataraku Saibou Black"],
+    ["[Group][Gleipnir][01]", "Gleipnir"],
+    ["[Group][K][01]", "K"],
+    ["[Group][K-On!][01]", "K-On!"],
+    ["[Group][Re:Zero][05]", "Re:Zero"],
+    ["[Group][CHT][Gleipnir][01]", "Gleipnir"],
+  ] as const)
+    assert.equal(parseRelease(name).title, title, name);
+  const yaiba = parseRelease("[Nigel][Shin Samurai-den Yaiba][05][BDRIP][1080P][H264_FLAC]");
+  assert.deepEqual([yaiba.season, yaiba.absolute], [null, [5]]);
+  // A season note next to a CJK title ("Honzuki no Gekokujou S04", （第四季）) is not dropped: the name stays unknown.
+  assert.equal(
+    parseRelease("[SweetSub][小书痴的下克上 领主的养女][Honzuki no Gekokujou S04][01][WebRip][1080P][AVC 8bit][简日双语][v2]（第四季）")
+      .title,
+    "",
+  );
+});

@@ -272,13 +272,69 @@ const META_TOKEN =
 /** Subtitle-language words in Chinese brackets: 繁體, 简繁日内封, 繁中. */
 const CJK_TAG = /^(?:繁體|繁体|簡體|简体|簡繁|简繁|簡中|简中|繁中|繁|簡|简|日|中日|內封|内封|內嵌|内嵌|外掛|外挂|雙語|双语|中文|字幕)+$/;
 /** Other bracket words that are tags, not titles, next to META_TOKEN. */
-const TAG_WORD = /^(?:cht|chs|big5|gbk?|jptc|jpsc|sc|tc|cn|mixed|sub|subs|softsubs?|hardsubs?|bdrip|h26[45]|ma|lossless|audio)$/i;
-/** A bracket made only of tag words ("CHT", "BIG5 GB", "HEVC AAC 10bit FLAC Mixed", 繁體): never a show title. */
+const TAG_WORD = /^(?:cht|chs|jap|big5|gbk?|jptc|jpsc|sc|tc|cn|mixed|sub|subs|softsubs?|hardsubs?|bdrip|h26[45]|ma|lossless|audio)$/i;
+/** A bracket made only of tag words ("CHT", "BIG5 GB", "HEVC AAC 10bit FLAC Mixed", "WebRip.1080p.AVC.AAC", 繁體). */
 function isTagBracket(text: string): boolean {
   const t = text.trim();
   if (CJK_TAG.test(t)) return true;
-  const words = t.split(/[\s/+&,_]+/).filter(Boolean);
-  return words.length > 0 && words.every((w) => TAG_WORD.test(w) || META_TOKEN.test(w) || RES_RE.test(w));
+  const allTags = (sep: RegExp) => {
+    const words = t.split(sep).filter(Boolean);
+    return words.length > 0 && words.every((w) => TAG_WORD.test(w) || META_TOKEN.test(w) || RES_RE.test(w));
+  };
+  // Dots split only as a second try, so "H.264" and "AAC2.0" stay one word.
+  return allTags(/[\s/+&,_]+/) || allTags(/[\s/+&,_.]+/);
+}
+
+/** Words that name what a release is (movie, special, preview, box), not which show: never an all-bracket title. */
+const GENERIC_TITLE =
+  /^(?:movies?|specials?|sp|ova|oad|ona|pv|cm|ncop|nced|bd ?box|bd|tv|ep|episodes?|batch|complete|preview|menu|anime)$/i;
+/** A bracket that is only a season, part or cour: "S2", "Season 2", "Part 2", "Cour 2", 第二季. */
+const SEASON_ONLY = /^(?:S\d{1,2}|Seasons?\b.*|Part\s*\d+|Cour\s*\d+|第.{1,4}[季期部])$/i;
+/** Any season, part or cour hint ("2nd", "Part 1", 2期): an extra bracket with one could hold the season we'd lose. */
+const SEASON_HINT = /\bS\d|season|\bcour\b|\bpart\b|\d(?:st|nd|rd|th)\b|[季期部]/i;
+const CJK_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+/** Recruiting banner some Chinese groups append: "[招募翻譯]". Not a tag, but never a title or season either. */
+const BANNER = /^招募翻[譯译]$/;
+
+/**
+ * The one all-bracket shape that yields a title: "[Title][EP]" (the group is already cut), then only recognised tags.
+ * Leading tag brackets may come before the title ("[CHT][Show][01]"); a CJK title may be followed by one romaji name
+ * ("[靠死亡游戏混饭吃。][Shibou Yuugi de Meshi wo Kuu.][08]"); a closing "（检索用：...）" search note is allowed. EP is a
+ * 2-4 digit number (not a year) with an optional "v2", or a range "01-13". Anything else returns null and the name
+ * stays unknown: a season or part bracket anywhere, a bare "[2]", 2期, a generic word as title, an unknown extra
+ * bracket. Unknown is safe (nothing is grabbed or imported); a wrong title or season is not.
+ * Returns `s` with the title unwrapped ("Title [EP][tags]..."), or null.
+ */
+function allBracketTitle(s: string): string | null {
+  const brackets: string[] = [];
+  const re = /\s*\[([^\]]{1,100})\]\s*/y;
+  let m: RegExpExecArray | null;
+  let end = 0;
+  while ((m = re.exec(s))) {
+    brackets.push(m[1].trim());
+    end = re.lastIndex;
+  }
+  // Only a closing search note may follow the brackets.
+  if (!/^(?:（[检檢]索用[:：][^）]*）)?\s*$/.test(s.slice(end))) return null;
+  let i = 0;
+  while (i < brackets.length && isTagBracket(brackets[i])) i++;
+  const isTitle = (t: string) =>
+    /\p{L}/u.test(t) && !/^\d/.test(t) && !GENERIC_TITLE.test(t) && !SEASON_ONLY.test(t) && !isTagBracket(t) && !RES_RE.test(t);
+  const title = brackets[i];
+  if (title === undefined || !isTitle(title)) return null;
+  let next = i + 1;
+  // A romaji name after a CJK title: letters only, no season hint and no number of any kind.
+  const alt = brackets[next];
+  if (alt !== undefined && CJK_CHAR.test(title) && !CJK_CHAR.test(alt) && isTitle(alt) && !/\d/.test(alt) && !SEASON_HINT.test(alt)) next++;
+  const ep = brackets[next];
+  const plain = ep?.match(/^(\d{2,4})(?:v\d)?$/);
+  const epOk = plain ? !(plain[1].length === 4 && isYear(+plain[1])) : /^\d{1,4}\s*[-~]\s*\d{1,4}(?:v\d)?$/.test(ep ?? "");
+  if (!epOk) return null;
+  if (!brackets.slice(next + 1).every((t) => isTagBracket(t) || BANNER.test(t))) return null;
+  // Cut through the title bracket: everything before it is the leading tags.
+  let cut = 0;
+  for (let k = 0; k <= i; k++) cut = s.indexOf("]", cut) + 1;
+  return `${title} ${s.slice(cut)}`;
 }
 
 /**
@@ -467,29 +523,12 @@ export function parseRelease(input: string): ParsedRelease {
       const noTitle = /^\s*(?:-\s*\d{1,4}(?!\d|[pi]\b|bit\b)|$)/i.test(rest) || (titleLike ? marker.test(rest) : markerOnly.test(rest));
       s = noTitle ? `${lead2[1]} ${rest}` : rest;
     } else {
-      // An all-bracket name, "[Group][Title][01-13][BDRip]...": the bracket right after the group, followed straight
-      // by another bracket, is the title ("[工作細胞BLACK / Hataraku Saibou Black]"), not a tag to drop.
-      // Brackets that are only tags (subtitle language, codec, resolution, audio, source) are never the title; the next
-      // bracket is. With none left, the name stays untitled (unknown).
-      let titleBr: RegExpMatchArray | null = null;
-      let skipped = 0;
-      for (;;) {
-        titleBr = s.slice(skipped).match(/^\s*\[([^\]]{1,100})\]\s*(?=\[)/);
-        if (!titleBr || !isTagBracket(titleBr[1])) break;
-        skipped += titleBr[0].length;
-      }
-      // A later season bracket ("[S2]", "[Season 2]", "[2nd Season]", "[Part 2]") would be lost with the title found,
-      // and the name would match season 1 by absolute number. Leave such a name unknown instead.
-      const seasonBr = /\[\s*(?:S\d{1,2}|Season\s*\d+|\d{1,2}(?:st|nd|rd|th)\s+Season|Part\s*\d+|第[^\]]{1,3}[季期部])\s*\]/i;
-      if (
-        titleBr &&
-        /\p{L}/u.test(titleBr[1]) &&
-        !META_TOKEN.test(titleBr[1]) &&
-        !/^\d/.test(titleBr[1]) &&
-        !RES_RE.test(titleBr[1]) &&
-        !seasonBr.test(s.slice(skipped + titleBr[0].length))
-      )
-        s = `${titleBr[1]} ${s.slice(skipped + titleBr[0].length)}`;
+      // An all-bracket name, "[Group][Title][01-13][BDRip]...": only the one shape allBracketTitle accepts yields a
+      // title. Any other all-bracket name stays as before: a second bracket that looks like a group tag is dropped,
+      // and with no title left the name is unknown.
+      const unwrapped = allBracketTitle(s);
+      if (unwrapped !== null) s = unwrapped;
+      else if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) s = s.slice(lead2[0].length);
     }
   }
   // Leading separators, and a "/" left when a "CJK / Romaji" name lost its CJK part ("[&LoliHouse]  / Gleipnir").
