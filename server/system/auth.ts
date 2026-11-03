@@ -16,7 +16,20 @@ declare module "fastify" {
   }
 }
 
-/** TRUST_PROXY: a hop count or a comma-separated list of proxy IPs/CIDRs. "true" is refused (it trusts any X-Forwarded-For). */
+/**
+ * proxy-addr's keywords, which Fastify accepts in a TRUST_PROXY list: spelt out here as the same ranges, so Fastify
+ * (req.ip) and AnimeArr's own proxy checks read one list (blind review round 2, R7).
+ */
+const PROXY_KEYWORDS: Record<string, string[]> = {
+  linklocal: ["169.254.0.0/16", "fe80::/10"],
+  loopback: ["127.0.0.1/8", "::1/128"],
+  uniquelocal: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"],
+};
+
+/**
+ * TRUST_PROXY: a hop count or a comma-separated list of proxy IPs/CIDRs (or the keywords above). "true" is refused (it
+ * trusts any X-Forwarded-For).
+ */
 export function trustProxyOption(): number | string[] | false {
   const v = (process.env.TRUST_PROXY ?? "").trim();
   if (!v || v === "false") return false;
@@ -30,7 +43,8 @@ export function trustProxyOption(): number | string[] | false {
   return v
     .split(",")
     .map((x) => x.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap((x) => (Object.hasOwn(PROXY_KEYWORDS, x) ? PROXY_KEYWORDS[x] : [x]));
 }
 
 const hmac = (data: string) => crypto.createHmac("sha256", getSettings().secret).update(data).digest("base64url");

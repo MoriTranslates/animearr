@@ -78,7 +78,10 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
 - Don't expose AnimeArr to the internet without an HTTP reverse proxy with authentication, or a VPN. If you use a proxy,
   set `TRUST_PROXY` to its IP/CIDR. Avoid the hop-count form (`TRUST_PROXY=1`): AnimeArr can't check who sent the
   forwarded headers, so it never uses them for the client address. Logs then show only the proxy, everyone behind it
-  shares one login back-off, and "No password on my local network" is off.
+  shares one login back-off, and "No password on my local network" is off. The keywords `loopback`, `linklocal` and
+  `uniquelocal` work in the list and stand for their whole ranges (`uniquelocal` is 10/8, 172.16/12, 192.168/16 and
+  fc00::/7). Every address in a listed range counts as a proxy, so with `uniquelocal` no home device gets the no-password
+  check. List your proxy's own IP instead when you can.
 - "No password on my local network" is for home networks only; leave it off if the port is forwarded in any way, and
   think twice before listing your Tailscale range if you share Tailscale nodes (shared nodes then count as home
   network).
