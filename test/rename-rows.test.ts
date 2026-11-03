@@ -190,6 +190,31 @@ test("a rename done by Sonarr: the rows follow once Sonarr has renamed the file"
   assert.deepEqual(rowsAt(from), NONE);
 });
 
+test("L3 known limit: a Sonarr rename still running when AnimeArr stops waiting leaves the rows at the old path, never deleted", async () => {
+  const from = libraryFile(517, "frieren 17.mkv", [109]);
+  const to = `${SEASON_ARR}/Frieren S01E09 slow.mkv`;
+  const pending = [
+    {
+      seriesId: 10,
+      seasonNumber: 1,
+      episodeNumbers: [9],
+      episodeFileId: 517,
+      existingPath: "Season 01/frieren 17.mkv",
+      newPath: "Season 01/Frieren S01E09 slow.mkv",
+    },
+  ];
+  const r = await applyRenameRouted(424536, [517], {
+    sonarrOn: () => true,
+    preview: async () => pending,
+    renameFiles: async () => ({ id: 17 }),
+    getCommand: async () => ({ id: 17, status: "started" }), // never finishes while AnimeArr waits
+    sleep: async () => undefined,
+  });
+  assert.equal(r.results[0].done, false);
+  assert.deepEqual(rowsAt(from), ALL, "every row is still at the old path");
+  assert.deepEqual(rowsAt(to), NONE);
+});
+
 test("a replaced file's corrections and marks never stick to the new file that takes its name", async () => {
   const probe = async () =>
     ({
