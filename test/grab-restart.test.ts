@@ -393,3 +393,15 @@ test("a send that turns out to be a duplicate, landing after you removed the gra
   assert.deepEqual(removed, [], "not AnimeArr's to delete: it was in the client before");
   assert.equal(row(id).state, "failed");
 });
+
+test("restart while a removal was in flight (state 'removing'): the grab comes back to needs-attention, never stuck, and can be removed again (L19)", async () => {
+  const id = cutOff(22, "torrent", "abc2222");
+  db.prepare("UPDATE grabs SET state = 'removing', client = 'qbittorrent' WHERE id = ?").run(id);
+  const { d, removed } = deps(async () => null);
+  recoverGrabs();
+  assert.equal(row(id).state, "needs-attention");
+  assert.match(row(id).error ?? "", /restarted during the removal/);
+  await removeGrab(id, { blocklist: false, searchNext: false }, d);
+  assert.equal(row(id).state, "failed");
+  assert.deepEqual(removed, ["abc2222"]);
+});

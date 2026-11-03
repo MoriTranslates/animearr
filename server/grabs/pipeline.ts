@@ -378,6 +378,11 @@ export function recoverGrabs() {
   db.prepare(
     "UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the import; check the show folder, then retry the import' WHERE state = 'importing'",
   ).run();
+  // A removal cut off by the restart (L19): 'removing' is a claim held only while removeGrab runs, so nothing is
+  // removing now. Back to needs-attention, where the user can remove it again (the client may already have dropped it).
+  db.prepare(
+    "UPDATE grabs SET state = 'needs-attention', error = 'AnimeArr restarted during the removal; check the download client, then remove it again' WHERE state = 'removing'",
+  ).run();
 }
 
 /** How long a cut-off torrent may go without an answer from its client before it needs a look. */
