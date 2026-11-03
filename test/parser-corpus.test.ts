@@ -516,6 +516,19 @@ test("a bit depth or bare resolution after SxxEyy is not the end of a range (rev
   assert.deepEqual(eps("One Piece S21E892-1085 [Batch]").length, 194);
 });
 
+test("a long SxxEyy range stays a range when it says E or Batch; only a bare unmarked number is capped (round-2 #5)", () => {
+  const p = (name: string) => parseRelease(name);
+  // Was [1] with batch=false.
+  assert.equal(p("Pokemon S01E01-276 [Batch]").episodes.length, 276);
+  assert.equal(p("Pokemon S01E01-276 [Batch]").batch, true);
+  assert.equal(p("Show S01E01-E250 [Batch]").episodes.length, 250);
+  assert.equal(p("Show S01E01-E250 [Batch]").batch, true);
+  assert.equal(p("Show S01E01-E250").episodes.length, 250);
+  // Must not change: a bare resolution-like number with no E and no batch word.
+  assert.deepEqual(p("Show S01E05-720 Group").episodes, [5]);
+  assert.deepEqual(p("Show S01E01-276").episodes, [1]);
+});
+
 test("an 'absolute' numbering rule respects the release's own SxxEyy", () => {
   const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
   // Two seasons of 12: absolute 13 is S02E01.

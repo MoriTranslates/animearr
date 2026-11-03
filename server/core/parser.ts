@@ -549,7 +549,9 @@ export function parseRelease(input: string): ParsedRelease {
   const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d))*)(?:v(\d))?/gi;
   while ((m = reSE.exec(work))) {
     const last = m[4] ? Number(m[4].match(/\d+/g)!.at(-1)) : undefined;
-    const eps = last !== undefined && last - +m[2] <= 200 ? range(+m[2], last) : [+m[2]];
+    // The 200 cap only guards a bare "-NNN" (could be a resolution); an explicit "E" or a batch word is a real range.
+    const explicit = !!m[4] && (/E\d+$/i.test(m[4]) || /\b(batch|complete)\b/i.test(s));
+    const eps = last !== undefined && (explicit || last - +m[2] <= 200) ? range(+m[2], last) : [+m[2]];
     push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1) });
   }
   // 10x14
