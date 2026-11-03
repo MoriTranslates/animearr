@@ -31,6 +31,25 @@ export function movePathRows(from: string, to: string) {
 }
 
 /**
+ * Moves every per-file row from one path to another only when the new path has no rows of its own (any kind). Never
+ * deletes: if the new path already has rows, a newer import owns it, and nothing changes. Returns how many rows moved,
+ * or null when it refused because the new path had rows.
+ */
+export function movePathRowsIntoEmpty(from: string, to: string): number | null {
+  const a = keyOf(from);
+  const b = keyOf(to);
+  if (a === b) return 0;
+  const moved = tx(db, () => {
+    for (const t of TABLES) if (db.prepare(`SELECT 1 FROM ${t} WHERE path = ? LIMIT 1`).get(b)) return null;
+    let n = 0;
+    for (const t of TABLES) n += Number(db.prepare(`UPDATE ${t} SET path = ? WHERE path = ?`).run(b, a).changes);
+    return n;
+  });
+  if (moved) invalidateOverrides();
+  return moved;
+}
+
+/**
  * Drops every per-file row of a file that is gone for good (deleted without a bin): they describe that file only, and
  * a new file that later gets the same name must start clean. Returns how many rows went.
  */
