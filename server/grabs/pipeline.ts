@@ -263,7 +263,8 @@ export async function startGrab(
     const file = await fetchOrNote(deps, c);
     let job: ClientJob;
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
-    markHandingOver(id, c.protocol, file);
+    // Removed by you while the release was fetched: nothing goes to the client (M4).
+    if (!markHandingOver(id, c.protocol, file)) return { id, dryRun: false, message: "Cancelled", failed: true };
     if (c.protocol === "usenet") {
       job = await deps.clients.addNzb(file.data!, c.title);
     } else job = await deps.clients.addTorrent(file, c.title, { ...seedLimitsFor(c.indexerId), ...(select ? { paused: true } : {}) });

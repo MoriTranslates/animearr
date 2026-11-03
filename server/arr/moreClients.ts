@@ -223,7 +223,7 @@ export const transmissionDriver = {
     c: ClientCfg,
     src: { data?: Buffer; magnet?: string },
     opts: { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean } = {},
-  ): Promise<{ ref: string; paused?: boolean; select?: boolean }> {
+  ): Promise<{ ref: string; paused?: boolean; select?: boolean; duplicate?: boolean }> {
     const s = await transmission<{ "download-dir": string }>(c, "session-get", { fields: ["download-dir"] });
     const args: Record<string, unknown> = {
       "download-dir": `${s["download-dir"].replace(/\/+$/, "")}/${c.category}`,
@@ -248,7 +248,7 @@ export const transmissionDriver = {
       await transmission(c, "torrent-set", { ids: [hash], seedRatioLimit: opts.seedRatio, seedRatioMode: 1 }).catch(() => undefined);
     // A duplicate was already in Transmission: its files are left as they are.
     const fresh = !!r["torrent-added"];
-    return { ref: hash.toLowerCase(), ...(opts.paused && fresh ? { select: true, paused } : {}) };
+    return { ref: hash.toLowerCase(), ...(opts.paused && fresh ? { select: true, paused } : {}), ...(fresh ? {} : { duplicate: true }) };
   },
   /** The torrent's files (index = position); null until a magnet has its metadata. */
   async listFiles(c: ClientCfg, ref: string): Promise<ClientFile[] | null> {

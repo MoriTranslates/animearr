@@ -644,7 +644,8 @@ export async function startMovieGrab(
   try {
     const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
-    markHandingOver(id, c.protocol, file);
+    // Removed by you while the release was fetched: nothing goes to the client (M4).
+    if (!markHandingOver(id, c.protocol, file)) return { id, dryRun: false, message: "Cancelled", failed: true };
     const job =
       c.protocol === "usenet"
         ? await deps.clients.addNzb(file.data!, c.title)

@@ -120,11 +120,12 @@ export const sendingNow = new Set<number>();
 export const SENT_UNKNOWN = "?";
 /**
  * Records, just before the release is handed to a client, how to find it there after a restart: a torrent's
- * info-hash, else SENT_UNKNOWN. A row without it was cut off before anything reached a client.
+ * info-hash, else SENT_UNKNOWN. A row without it was cut off before anything reached a client. False when the grab
+ * isn't 'sending' any more (you removed it while its release was fetched): then nothing may be sent (review M4).
  */
-export function markHandingOver(id: number, protocol: string, file: { data?: Buffer; magnet?: string }) {
+export function markHandingOver(id: number, protocol: string, file: { data?: Buffer; magnet?: string }): boolean {
   const ref = protocol === "torrent" ? (torrentHash(file) ?? SENT_UNKNOWN) : SENT_UNKNOWN;
-  db.prepare("UPDATE grabs SET client_ref = ? WHERE id = ? AND state = 'sending'").run(ref, id);
+  return db.prepare("UPDATE grabs SET client_ref = ? WHERE id = ? AND state = 'sending'").run(ref, id).changes > 0;
 }
 
 /** The user removed this grab while it was being sent (removeGrab claims it, then closes it as "removed by you"). */
@@ -133,8 +134,19 @@ export function removedByYou(id: number): boolean {
   return !!r && (r.state === "removing" || (r.state === "failed" && /^removed by you/.test(r.error ?? "")));
 }
 
-/** A send that finished after the user removed it: out of the client again, or a clear note when that fails. */
+/**
+ * A send that finished after the user removed it: out of the client again, or a clear note when that fails. A
+ * torrent the client already had before this add (a duplicate) is someone else's: it is left alone (review M4).
+ */
 export async function takeBackOut(deps: PipelineDeps, job: ClientJob, release: string, tvdbId: number | null) {
+  if (job.duplicate) {
+    logDecision("info", {
+      tvdbId,
+      release,
+      why: `You removed ${release} while it was being sent; ${clientName(job.client)} already had that torrent before, so it was left as it was`,
+    });
+    return;
+  }
   try {
     await deps.clients.remove(job);
   } catch (e) {

@@ -355,3 +355,41 @@ test("a download the user removes while the tick waits on its client stays remov
   assert.equal(db.prepare("SELECT 1 FROM blocklist WHERE release = 'Show - 19 [dl]'").get(), undefined, "not blocklisted");
   assert.deepEqual(sent, [], "no next release grabbed after the user removed it");
 });
+
+// ---------------------------------------------------------------- removed while its release is fetched (M4)
+
+test("removed while its .torrent/.nzb is being fetched: nothing is sent to the client", async () => {
+  let fetched!: () => void;
+  const { d, sent, removed } = deps(async () => null);
+  d.fetchRelease = (r) => new Promise((res) => (fetched = () => res({ data: Buffer.from("x"), filename: r.title })));
+  const sending = startGrab(
+    { tvdbId: TVDB, episodeIds: [120], candidate: cand("Show - 20", "fetch-20", [120]), fallbacks: [], origin: "manual" },
+    d,
+  );
+  await new Promise((r) => setTimeout(r, 20));
+  const id = (db.prepare("SELECT id FROM grabs WHERE guid = 'fetch-20'").get() as { id: number }).id;
+  await removeGrab(id, { blocklist: false, searchNext: false }, d);
+  fetched();
+  const out = await sending;
+  assert.equal(out.message, "Cancelled");
+  assert.deepEqual(sent, [], "never handed to the client");
+  assert.deepEqual(removed, []);
+  assert.equal(row(id).state, "failed");
+});
+
+test("a send that turns out to be a duplicate, landing after you removed the grab, leaves the earlier torrent alone", async () => {
+  let accept!: (j: Job & { duplicate?: boolean }) => void;
+  const { d, removed } = deps(async () => null);
+  d.clients.addTorrent = () => new Promise((r) => (accept = r));
+  const sending = startGrab(
+    { tvdbId: TVDB, episodeIds: [121], candidate: cand("Show - 21", "dup-21", [121]), fallbacks: [], origin: "manual" },
+    d,
+  );
+  await new Promise((r) => setTimeout(r, 20));
+  const id = (db.prepare("SELECT id FROM grabs WHERE guid = 'dup-21'").get() as { id: number }).id;
+  await removeGrab(id, { blocklist: false, searchNext: false }, d);
+  accept({ client: "deluge1", ref: "theirs", duplicate: true });
+  await sending;
+  assert.deepEqual(removed, [], "not AnimeArr's to delete: it was in the client before");
+  assert.equal(row(id).state, "failed");
+});

@@ -19,6 +19,8 @@ export interface ClientJob {
   paused?: boolean;
   /** Freshly added for file selection (never set for a torrent the client already had: its files are left alone). */
   select?: boolean;
+  /** The client already had this torrent before AnimeArr's add: not AnimeArr's to remove or delete (review M4). */
+  duplicate?: boolean;
 }
 
 /** One file of a torrent, as its client lists it (index = the client's file index). */
@@ -502,7 +504,7 @@ interface Driver {
     src: { data?: Buffer; magnet?: string },
     name: string,
     opts: AddTorrentOpts,
-  ): Promise<{ ref: string; paused?: boolean; select?: boolean }>;
+  ): Promise<{ ref: string; paused?: boolean; select?: boolean; duplicate?: boolean }>;
   listFiles?(c: ClientCfg, ref: string): Promise<ClientFile[] | null>;
   selectFiles?(c: ClientCfg, ref: string, wanted: number[], skipped: number[]): Promise<void>;
   start?(c: ClientCfg, ref: string): Promise<void>;

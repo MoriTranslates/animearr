@@ -26,7 +26,8 @@ export const mapClientPath = (p: string, c: ClientCfg) => {
   return p;
 };
 type AddOpts = { seedRatio?: number | null; seedTimeMin?: number | null; paused?: boolean };
-type Added = { ref: string; paused?: boolean; select?: boolean };
+/** `duplicate`: the client already had it (its files and data are never AnimeArr's to touch). */
+type Added = { ref: string; paused?: boolean; select?: boolean; duplicate?: boolean };
 
 // ---------------------------------------------------------------- info-hash (rTorrent's load doesn't return it)
 
@@ -229,12 +230,12 @@ export const delugeDriver = {
       else throw new Error(`Nothing to send to ${c.name}`);
     } catch (e) {
       // Deluge 2 raises "Torrent already in session"; 1.3 returns null. Either way: not freshly added.
-      if (known && /already/i.test((e as Error).message)) return { ref: known };
+      if (known && /already/i.test((e as Error).message)) return { ref: known, duplicate: true };
       throw e;
     }
     const ref = (id ?? known ?? "").toLowerCase();
     if (!ref) throw new Error(`${c.name} accepted the torrent but returned no hash`);
-    if (!id) return { ref }; // a duplicate: its files and state are left alone
+    if (!id) return { ref, duplicate: true }; // a duplicate: its files and state are left alone
     // Category = the Label plugin's label. Not enabled: fine (the sub-folder still keeps them apart).
     if (await delugeHasLabel(c)) {
       const label = c.category.toLowerCase();
@@ -523,7 +524,7 @@ export const rtorrentDriver = {
     const hash = torrentHash(src);
     if (!hash) throw new Error(`${c.name}: couldn't read the torrent's info-hash`);
     const already = await rtTorrent(c, hash);
-    if (already) return { ref: hash }; // a duplicate: left as it is
+    if (already) return { ref: hash, duplicate: true }; // a duplicate: left as it is
     const dir = await rtorrent<string>(c, "directory.default");
     const target = `${dir.replace(/\/+$/, "")}/${c.category}`.replace(/"/g, "");
     // rTorrent doesn't create missing parent folders (the torrent would sit "open but inactive"): mkdir -p it, the way
