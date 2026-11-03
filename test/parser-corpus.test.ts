@@ -1369,3 +1369,41 @@ test("blind round-6: extra season markers, pack brackets and season words in an 
   assert.equal(parseRelease("[Grp][Show][01-12][Batch]").absolute.length, 12);
   assert.equal(parseRelease("Show S01E01-3000 Batch").fullSeason, true);
 });
+
+test("R1: every season-ish form in an all-bracket title bracket gives unknown", () => {
+  const titles = [
+    "Dr. STONE Season3",
+    "SPY x FAMILY Season2",
+    "Show Seasons 2",
+    "Show Season２",
+    "Show S３",
+    "Show S3",
+    "ShowS3",
+    "Show2S3",
+    "Mushoku Tensei Ⅱ",
+    "Mushoku Tensei Ⅲ",
+    "Mushoku TenseiⅡ",
+    "Mob Psycho 100 Ⅲ",
+    "Show Ⅳ",
+    "Show Ⅴ",
+    "Show Ⅹ",
+    "Show ⅱ",
+    "Show ＩＩ",
+    "Sword Art Online V",
+    "Sword Art Online X",
+    "Show XI",
+    "Show XII",
+    "Show vi",
+  ];
+  for (const t of titles) {
+    const r = parseRelease(`[Group][${t}][05][1080p]`);
+    assert.equal(r.title, "", t);
+    assert.deepEqual(r.episodes, [], t);
+  }
+  // Real titles where V or X is part of a word, or only a leading token, still parse.
+  for (const t of ["Vinland Saga", "X-Men", "Xxxholic", "Vivy", "Dr. STONE", "Show Vivid", "Mix", "Sekirei"]) {
+    const r = parseRelease(`[Group][${t}][05][1080p]`);
+    assert.equal(r.title, t, t);
+    assert.deepEqual(r.absolute, [5], t);
+  }
+});

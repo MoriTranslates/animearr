@@ -293,7 +293,12 @@ const SEASON_ONLY = /^(?:S\d{1,2}|Seasons?\b.*|Part\s*\d+|Cour\s*\d+|第.{1,4}[�
 /** An all-bracket EP number: 2-3 digits and not a resolution (so never 480, 576, 720 or 1080, and never a year). */
 /** A season, part or cour word anywhere in a title bracket: 2期, 第二季, 2nd, Part 2, Final Season, Season 2, S2, a trailing II/III. */
 const SEASON_WORD_IN_TITLE =
-  /[季期]|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:Part|Cour)\s*\d|\bFinal\s+Season\b|\bSeasons?\b|\bS\d{1,2}\b|\s(?:II|III|IV|VI|VII|VIII|IX)$/i;
+  /[季期]|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:Part|Cour)\s*\d|\bFinal\s+Season\b|\bSeasons?(?!\p{L})|S[0-9]{1,2}(?![0-9\p{L}])|\s(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)$/iu;
+/** The Unicode Roman numerals (U+2160 to U+217F), built from code points; they count glued to a word too. */
+const UNICODE_ROMAN = new RegExp(`[${String.fromCharCode(0x2160)}-${String.fromCharCode(0x217f)}]`);
+/** True when a title bracket holds a season, part or cour form, also after NFKC (full-width digits and letters). */
+const hasSeasonWord = (t: string) =>
+  SEASON_WORD_IN_TITLE.test(t) || UNICODE_ROMAN.test(t) || SEASON_WORD_IN_TITLE.test(t.normalize("NFKC"));
 /** A bracket after the episode that says the number is a pack (Batch, Complete, Fin...), so it is not one episode. */
 const PACK_BRACKET = /\b(?:batch|complete|completed|fin|finished|end|full|pack|box|bd ?box|全集|合集|完结|完結)\b|全\d+[话話集]/i;
 const isBracketEp = (n: string) => /^\d{2,3}$/.test(n) && !/^(?:480|576|720)$/.test(n);
@@ -325,7 +330,7 @@ function allBracketTitle(s: string): string | null {
   const title = brackets[i];
   if (title === undefined || !isTitle(title)) return null;
   // A season or part word, or a hyphen number ("Show-100"), inside the title bracket: unknown.
-  if (SEASON_WORD_IN_TITLE.test(title) || /[-~]\s*\d/.test(title)) return null;
+  if (hasSeasonWord(title) || /[-~]\s*\d/.test(title)) return null;
   const next = i + 1;
   const ep = brackets[next] ?? "";
   const plain = ep.match(/^(\d+)(?:v\d)?$/);
