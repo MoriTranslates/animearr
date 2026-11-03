@@ -209,19 +209,6 @@ function isListedProxy(peer: string) {
   const t = trustProxyOption();
   return Array.isArray(t) && t.some((c) => (c.includes("/") ? inCidr(p, c) : c === p));
 }
-/**
- * The socket peer is named by a single-address TRUST_PROXY entry (an IP, or a /32 or /128), not by a range or keyword:
- * the user pointed at exactly this machine or container as the proxy (blind review round 3, M1).
- */
-function isNamedProxy(peer: string) {
-  const t = trustProxyOption();
-  if (!Array.isArray(t)) return false;
-  return t.some((c) => {
-    const [base, bits] = c.split("/");
-    const max = net.isIPv4(base) ? 32 : 128;
-    return (bits === undefined || bits === String(max)) && validRange(c) && inCidr(peer, `${base}/${max}`);
-  });
-}
 const isLoopback = (peer: string) => v4(peer).startsWith("127.") || peer === "::1";
 /** The socket peer is a loopback or a trusted proxy: then it isn't the user's device. */
 function isProxyPeer(peer: string) {
@@ -614,7 +601,10 @@ export const DEFAULT_REMOTE_REFUSED = "The default password only works from your
 const HOST_HINT = " Behind a reverse proxy: open AnimeArr by its IP or LAN name, or add the address you use to ANIMEARR_ALLOWED_HOSTS.";
 
 const PROXY_HINT =
-  " Behind a reverse proxy on a Docker network: add the proxy's own IP to TRUST_PROXY (for example TRUST_PROXY=uniquelocal,172.18.0.2; give the proxy container a fixed IP). A range, keyword or hop count can't vouch for the default login there.";
+  " A reverse proxy on a Docker network or loopback can't vouch for the default login, since internet traffic can arrive from those addresses. Set a password first: open AnimeArr directly (by its IP and port, not through the proxy) from a browser on your home network.";
+
+const PROXY_PEER_HINT =
+  " TRUST_PROXY covers this device's address, so AnimeArr takes it for a proxy, and a proxy that reports no client could be forwarding internet traffic. Set a password first: open AnimeArr directly from a home device TRUST_PROXY doesn't cover, or set TRUST_PROXY to just your proxy's own IP (or remove it) until then.";
 
 /**
  * The safety rule for the default login (captain/morebooty): while the password is still the default, a login is only
@@ -628,26 +618,26 @@ const PROXY_HINT =
  * gateway too, so they can't vouch for a header unless listed in ANIMEARR_LOCAL_NETWORKS (blind review A1). Only the
  * last entry counts, the one that proxy added: a hop count larger than the real number of proxies would otherwise let
  * the client pick an earlier entry; chained proxies therefore fail closed.
- * Blind review round 3, M1: a range or keyword in TRUST_PROXY (uniquelocal is all of 10/8 and 192.168/16) makes every
- * home device a "listed proxy". A home peer inside such a range that sends no forwarded headers at all is the browser
- * itself, so it is judged like one (the same as with no TRUST_PROXY); a peer named by its exact IP is the proxy and
- * still needs to report a client. And a proxy named by its exact IP may vouch even on a Docker network, since only
- * that one container has that address (Docker's gateway is another one); loopback never vouches.
- * The no-password bypass stays off through a proxy. Returns the refusal message, or null when the login may go ahead.
+ * The default login is a convenience for a home browser talking directly to AnimeArr; when in doubt it refuses
+ * (blind review round 4, H1 and M2). So a proxy on a Docker network or loopback never vouches, even when TRUST_PROXY
+ * names its exact IP: a host-run proxy reaches a bridge container from Docker's gateway, which also carries internet
+ * traffic relayed by docker-proxy, and AnimeArr can't tell a proxy container from that gateway. And a peer TRUST_PROXY
+ * covers (by IP, range, keyword or hop count) that reports no client is refused, never taken as the browser itself:
+ * a TCP forwarder or tunnel on the LAN (nginx stream, frp, ssh -R, socat) adds no headers either.
+ * The no-password bypass stays off through a proxy (R7). Returns the refusal message, or null when the login may go ahead.
  */
 export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) {
   if (!usingDefault) return null;
   if (isLocalRequest(req)) return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
   const trust = trustProxyOption();
   const peer = req.socket?.remoteAddress ?? "";
-  const named = isNamedProxy(peer) && !isLoopback(peer);
-  if (Array.isArray(trust) && !hasForwardHeaders(req) && isHomeNetwork(peer) && !isLoopback(peer) && !named)
-    return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
   const trustedPeer = typeof trust === "number" ? trust >= 1 : isListedProxy(peer);
   if (!trustedPeer) return DEFAULT_REMOTE_REFUSED;
-  // A trusted proxy that can't vouch (a Docker or loopback address reached through a range, keyword or hop count):
-  // say what to set. The address itself isn't shown, since whoever is asking may be on the internet.
-  if (!isHomeNetwork(peer) && !named) return DEFAULT_REMOTE_REFUSED + (hasForwardHeaders(req) ? PROXY_HINT : "");
+  // A trusted proxy that can't vouch (a Docker, ULA or loopback address, however TRUST_PROXY names it): say what to do.
+  // The address itself isn't shown, since whoever is asking may be on the internet.
+  if (!isHomeNetwork(peer)) return DEFAULT_REMOTE_REFUSED + (hasForwardHeaders(req) ? PROXY_HINT : "");
+  // A home peer TRUST_PROXY covers that reports no client may be a TCP forwarder: refuse, and say why.
+  if (!hasForwardHeaders(req)) return DEFAULT_REMOTE_REFUSED + PROXY_PEER_HINT;
   // Fastify ignores a hop count (it can't verify the peer), so req.ip may be the proxy itself: read the header here.
   const xff = String(req.headers["x-forwarded-for"] ?? "")
     .split(",")

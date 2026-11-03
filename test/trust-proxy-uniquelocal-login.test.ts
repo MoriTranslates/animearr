@@ -3,9 +3,10 @@
  * TRUST_PROXY=uniquelocal every 10/8 and 192.168/16 peer was a "listed proxy". A home browser connecting directly
  * (no forwarded headers) was then refused the default login because no proxy had vouched for it, and a proxy on a
  * Docker network (172.18.x) could never vouch, so a fresh install couldn't be logged into at all.
- * Now: a headerless home peer that only falls inside a listed *range* is the client itself for the default login (it
- * still gets no no-password bypass, R7), and a proxy named by its own exact IP in TRUST_PROXY may vouch even on a
- * Docker network (a range or keyword can't: it also holds Docker's gateway). Loopback never vouches.
+ * Round 3 loosened that; blind review round 4 (H1, M2) took the loosening back: the default login fails closed. A
+ * headerless peer that TRUST_PROXY covers is refused (it may be a TCP forwarder), with a message saying why and what
+ * to do, and a proxy on a Docker network never vouches, even when named by its exact IP (it may be Docker's gateway).
+ * A home browser that TRUST_PROXY doesn't cover still gets the default login; R7 (no no-password bypass) holds.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,16 +44,21 @@ const withTrust = async (value: string, fn: () => Promise<void>) => {
   }
 };
 
-test("R3-M1: TRUST_PROXY=uniquelocal, a home browser connecting directly gets the default login", async () => {
+test("R4-M2: TRUST_PROXY=uniquelocal, a headerless home peer is refused and told why and what to do", async () => {
   const r = await login("192.168.1.50");
-  assert.equal(r.statusCode, 200, r.body);
-  assert.equal((await login("10.0.0.7")).statusCode, 200, "10/8 too");
-  assert.equal((await login("::ffff:192.168.1.50")).statusCode, 200, "IPv4-mapped spelling");
+  assert.equal(r.statusCode, 403, r.body);
+  assert.match(r.body, /TRUST_PROXY covers this device/, "says why");
+  assert.match(r.body, /Set a password first/, "says what to do");
+  assert.doesNotMatch(r.body, /192\.168\.1\.50/, "doesn't echo the address");
+  assert.equal((await login("10.0.0.7")).statusCode, 403, "10/8 too");
+  assert.equal((await login("::ffff:192.168.1.50")).statusCode, 403, "IPv4-mapped spelling");
 });
 
-test("R3-M1: the direct home login still needs a host name AnimeArr expects", async () => {
-  const r = await login("192.168.1.51", { host: "evil.example.com" });
-  assert.equal(r.statusCode, 403, r.body);
+test("R3-M1: a direct home browser TRUST_PROXY doesn't cover gets the default login, with a host name AnimeArr expects", async () => {
+  await withTrust("192.168.1.2", async () => {
+    assert.equal((await login("192.168.1.51", { host: "evil.example.com" })).statusCode, 403, "unexpected host");
+    assert.equal((await login("192.168.1.51")).statusCode, 200, "LAN address as host");
+  });
 });
 
 test("R3-M1: TRUST_PROXY=uniquelocal, a direct home browser still gets no no-password bypass (R7)", async () => {
@@ -75,17 +81,18 @@ test("R3-M1: Docker's 172.16/12 and loopback inside uniquelocal/loopback never c
 test("R3-M1: through a Docker proxy with TRUST_PROXY=uniquelocal the login is refused and the message says what to set", async () => {
   const r = await login("172.19.0.7", { "x-forwarded-for": "192.168.1.52" });
   assert.equal(r.statusCode, 403, r.body);
-  assert.match(r.body, /TRUST_PROXY/, "the refusal tells the user to name the proxy's own IP");
+  assert.match(r.body, /Set a password first: open AnimeArr directly/, "the refusal tells the user what to do");
   assert.doesNotMatch(r.body, /172\.19\.0\.7/, "but doesn't show internal addresses to whoever is asking");
   const plain = await login("172.19.0.7");
-  assert.doesNotMatch(plain.body, /TRUST_PROXY/, "no proxy hint for a Docker peer that sent no client header");
+  assert.doesNotMatch(plain.body, /reverse proxy/, "no proxy hint for a Docker peer that sent no client header");
 });
 
-test("R3-M1: a Docker proxy named by its exact IP in TRUST_PROXY vouches for a home client", async () => {
+test("R4-H1: a Docker proxy named by its exact IP in TRUST_PROXY no longer vouches (it may be Docker's gateway)", async () => {
   for (const trust of ["uniquelocal,172.18.0.2", "172.18.0.2", "172.18.0.2/32"])
     await withTrust(trust, async () => {
       const r = await login("172.18.0.2", { "x-forwarded-for": "192.168.1.53" });
-      assert.equal(r.statusCode, 200, `${trust}: ${r.body}`);
+      assert.equal(r.statusCode, 403, `${trust}: ${r.body}`);
+      assert.match(r.body, /Set a password first/, `${trust}: says what to do`);
     });
 });
 
@@ -116,7 +123,9 @@ test("R3-M1: loopback named exactly in TRUST_PROXY still can't vouch", async () 
 
 test("R3-M1: a home proxy named exactly without a client header is not taken as the client", async () => {
   await withTrust("192.168.1.2", async () => {
-    assert.equal((await login("192.168.1.2")).statusCode, 403, "the named proxy forwarded without X-Forwarded-For");
+    const bare = await login("192.168.1.2");
+    assert.equal(bare.statusCode, 403, "the named proxy forwarded without X-Forwarded-For");
+    assert.match(bare.body, /TRUST_PROXY covers this device/);
     assert.equal((await login("192.168.1.2", { "x-forwarded-for": "192.168.1.57" })).statusCode, 200, "with it, it vouches");
   });
 });
