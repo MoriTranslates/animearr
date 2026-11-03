@@ -792,7 +792,8 @@ export function parseRelease(input: string): ParsedRelease {
   // "(Complete)", "Complete Series", "(Batch)" name the pack, not the show.
   title = title.replace(/[\s(\[]*\b(?:complete(?:\s+series)?|batch)\b[)\]]?\s*$/i, "").trim();
   title = title.replace(/[\s\-–~|:,([]+$/, "").trim();
-  if (!title && group && !lead) title = group;
+  // A trailing [Group] tag is never the title: "Ep.78 - Episode name [Dual Audio] [KaiDubs]" has no series name, and
+  // calling it "KaiDubs" could match a show of that name. Better an empty title (unknown) than a wrong one.
 
   const hints = detectHints(raw, group, platform);
   return {

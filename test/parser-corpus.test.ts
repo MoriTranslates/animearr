@@ -953,3 +953,27 @@ test("a title left with a bare '/' by a stripped CJK name, or in an unclosed or 
     { name: "[Group] 22/7 - 05", title: "22/7", group: "Group", absolute: [5] },
   ]);
 });
+
+test("a trailing [Group] tag is never promoted to the title when the name starts with 'Ep.NN' (KaiDubs)", () => {
+  check([
+    {
+      name: "Ep.78 - Even the Universes' Gods are Appalled! The Lose-and-Perish Tournament of Power [Dual Audio] [KaiDubs] [1080p] v2",
+      title: "",
+      group: "KaiDubs",
+      absolute: [78],
+    },
+    {
+      name: "Ep.97 - Survive! The ''Tournament of Power'' Begins At Last!! [Dual Audio] [KaiDubs] [1080p]",
+      title: "",
+      group: "KaiDubs",
+      absolute: [97],
+    },
+    // Must not change: the same group on a name that has a real title.
+    {
+      name: "Hunter x Hunter (2011) - 126 - Zero x and x Rose [KaiDubs] [1080p]",
+      title: "Hunter x Hunter (2011)",
+      group: "KaiDubs",
+      absolute: [126],
+    },
+  ]);
+});
