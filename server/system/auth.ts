@@ -311,6 +311,9 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
   const route = req.routeOptions.url;
   if (!route || !route.startsWith("/api/")) return; // static files / SPA fallback
   const cfg = req.routeOptions.config ?? {};
+  // public/setup routes (GET /api/status, POST /api/auth/login) skip everything below, the cross-site check for the
+  // home-network bypass included (blind review B3). That's fine for these two: status can't be read cross-site (no
+  // CORS) and changes nothing, and login checks csrfOk itself. A new public/setup route must make the same case.
   if (cfg.public) return;
   if (cfg.setup) return; // status, login and first-run setup check their own preconditions
   const st = authState(req);
