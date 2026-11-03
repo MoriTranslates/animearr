@@ -683,6 +683,23 @@ test("group, second group and metadata brackets: rows that must not change", () 
   ]);
 });
 
+test("a second bracket tag is not merged into a title that follows it (review #6)", () => {
+  check([
+    // The reviewer's repro (was "TV Series 2", "Fan Edit - Show", "TV").
+    { name: "[Group] [TV Series] 2 - 05", title: "2", group: "Group", absolute: [5] },
+    { name: "[Group] [Fan Edit] - Show - 05", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] [Big Five] 86 - 05 [1080p]", title: "86", group: "Group", absolute: [5] },
+    // Must not change: a bracketed title with only an episode or season after it.
+    { name: "[Group] [Oshi no Ko] - 05", title: "Oshi no Ko", group: "Group", absolute: [5] },
+    { name: "[Erai-raws] [Oshi no Ko] 2nd Season - 05 [1080p]", title: "Oshi no Ko", group: "Erai-raws", season: 2, absolute: [5] },
+    { name: "[Group] [Oshi no Ko] S02E05 [1080p]", title: "Oshi no Ko", group: "Group", season: 2, episodes: [5] },
+    { name: "[Group][Show] - 05", title: "Show", group: "Group", absolute: [5] },
+    { name: "[Group] [SCY] 86 - 05", title: "86", group: "Group", absolute: [5] },
+  ]);
+  // "[TV] E01 Show" was an empty title before the parser branch; it must not become "TV".
+  assert.notEqual(parseRelease("[Group] [TV] E01 Show").title, "TV");
+});
+
 test("[Oshi no Ko] goes to its own show, not a show named after what follows the brackets", () => {
   const lib = (tvdbId: number, title: string) => ({ seriesId: tvdbId, tvdbId, title, path: `/a/${tvdbId}`, altTitles: [] });
   const eps = (t: number) =>
