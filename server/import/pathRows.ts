@@ -24,3 +24,17 @@ export function movePathRows(from: string, to: string) {
   invalidateOverrides();
   return moved;
 }
+
+/**
+ * Drops every per-file row of a file that is gone for good (deleted without a bin): they describe that file only, and
+ * a new file that later gets the same name must start clean. Returns how many rows went.
+ */
+export function deletePathRows(p: string) {
+  const a = keyOf(p);
+  let dropped = 0;
+  tx(db, () => {
+    for (const t of TABLES) dropped += Number(db.prepare(`DELETE FROM ${t} WHERE path = ?`).run(a).changes);
+  });
+  invalidateOverrides();
+  return dropped;
+}

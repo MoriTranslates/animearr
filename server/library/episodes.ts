@@ -11,7 +11,7 @@ import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { recycleSetting } from "../import/recycle.js";
-import { movePathRows } from "../import/pathRows.js";
+import { deletePathRows, movePathRows } from "../import/pathRows.js";
 import { keyOf } from "../system/paths.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "../import/mediafiles.js";
@@ -721,18 +721,18 @@ export async function deleteEpisodeFiles(
       await deps.deleteFile(ep.episodeFileId);
       done.add(ep.episodeFileId);
       deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
-      // Its per-file rows (track corrections, burned-in mark, release details) go to the bin with it: kept, and a new
-      // file at this name won't inherit them. Sonarr's bin keeps the show folder (<bin>/<show folder>/…). No bin (gone
-      // for good) or a bin Sonarr didn't tell: the rows stay where they are.
+      // Its per-file rows (track corrections, burned-in mark, release details) never stay at its name: a new file there
+      // would inherit them. With Sonarr's bin they go to the bin with it (<bin>/<show folder>/…), kept. Gone for good,
+      // or a bin Sonarr didn't tell: they describe a file that no longer exists, so they are dropped.
       let rowsNote = "";
-      if (bin?.configured && bin.path) {
-        const show = keyOf(s.path);
-        const binned = `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`;
-        try {
-          movePathRows(f.path, binned);
-        } catch (e) {
-          rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
-        }
+      try {
+        if (bin?.configured && bin.path) {
+          const show = keyOf(s.path);
+          movePathRows(f.path, `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`);
+        } else if (deletePathRows(f.path))
+          rowsNote = " Its track corrections and burned-in mark (if any) were dropped with it, so a new file at this name starts clean.";
+      } catch (e) {
+        rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
       }
       logDecision("info", {
         tvdbId,

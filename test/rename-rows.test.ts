@@ -281,7 +281,7 @@ test("a file deleted into Sonarr's bin takes its rows along; a new file imported
   assert.equal(linkOf(dest), JSON.stringify([109]));
 });
 
-test("a permanent delete (no bin) or an unknown bin leaves the rows where they are", async () => {
+test("M3: a permanent delete (no bin) or an unknown bin drops the file's rows; a new file at that name starts clean", async () => {
   for (const [id, bin] of [
     [510, { configured: false, path: "" }],
     [511, null],
@@ -289,7 +289,12 @@ test("a permanent delete (no bin) or an unknown bin leaves the rows where they a
     const arr = libraryFile(id, `frieren ${id}.mkv`, [id === 510 ? 106 : 102]);
     const r = await deleteEpisodeFiles(424536, [id === 510 ? 106 : 102], sonarrDelete(id, arr, bin));
     assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
-    assert.deepEqual(rowsAt(arr), ALL);
+    assert.deepEqual(rowsAt(arr), NONE, "nothing about the deleted file is left at its name");
+    assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
+    const log = db.prepare("SELECT why FROM decisions WHERE why LIKE ? ORDER BY id DESC LIMIT 1").get(`%frieren ${id}.mkv%`) as {
+      why: string;
+    };
+    assert.match(log.why, /track corrections and burned-in mark .*dropped/);
   }
 });
 
