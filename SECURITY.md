@@ -26,37 +26,29 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   them (a reverse proxy, tunnel or Docker gateway would make everyone look local), requests that came through any proxy
   (one listed in `TRUST_PROXY`, or any request carrying `X-Forwarded-For` or similar headers) never count, a hop-count
   `TRUST_PROXY` turns the no-password check off, and the browser must address AnimeArr by IP or a LAN name (or a name
-  in `ANIMEARR_ALLOWED_HOSTS`). Through a reverse proxy (`TRUST_PROXY` as a hop count, or a list that includes the
-  proxy) the default login judges the client your proxy reports in `X-Forwarded-For` (its last entry), and only when
-  the proxy itself is on your home network by the same rule. The default login is a convenience for a home browser
-  talking directly to AnimeArr, so when AnimeArr can't be sure, it refuses. A proxy on a Docker network or loopback
-  never vouches, however `TRUST_PROXY` names it (a range, a keyword, a hop count or its exact IP): a proxy running on
-  the host reaches a Docker container from Docker's gateway, internet traffic relayed by docker-proxy arrives from that
-  same address, and AnimeArr can't tell a proxy container from the gateway. Only listing the range in
-  `ANIMEARR_LOCAL_NETWORKS` makes such an address count as home network, with that same gateway risk. What each
-  `TRUST_PROXY` value means for the default login:
-  - unset: a browser connecting directly from the home network may use it; nothing through a proxy can.
-  - a hop count (`1`): direct browsers can't (every peer is taken for a proxy); a proxy on the home network vouches for
-    the client it reports, a proxy on Docker or loopback can't.
-  - an exact IP (`192.168.1.2`): that machine is always the proxy. On the home network it vouches for the client it
-    reports; on Docker or loopback it can't. Other home browsers connect directly as with no setting.
-  - a range or keyword (`192.168.0.0/16`, `uniquelocal`): every address inside it is taken for a proxy, so a home
-    browser inside it can't use the default login, even when it sends no proxy headers (a TCP forwarder or tunnel
-    sends none either). A proxy inside it vouches only if it is on the home network.
-
-  So set a password first, from a browser on your home network that opens AnimeArr directly (by IP and port, not
-  through the proxy) and that `TRUST_PROXY` doesn't cover. With `TRUST_PROXY=uniquelocal` no 10.x or 192.168.x device
-  qualifies: set `TRUST_PROXY` to just your proxy's own IP (or remove it) until the password is changed. A refused login
-  says why and what to do. Tailscale addresses
+  in `ANIMEARR_ALLOWED_HOSTS`).
+- **With `TRUST_PROXY` set, the default login is off.** The default login exists only for a home browser talking
+  directly to AnimeArr. When `TRUST_PROXY` is set to anything (an exact IP, a range, a keyword such as `uniquelocal`,
+  or a hop count), every login with the default password is refused, from any address, with "AnimeArr is set to sit
+  behind a proxy (TRUST_PROXY), so the default login is off. Set a password first: ...". The reason: a TCP forwarder
+  or tunnel (nginx `stream`, HAProxy in tcp mode, frp, `ssh -R`, socat) at an address `TRUST_PROXY` covers passes the
+  client's own `X-Forwarded-For` through untouched, so an internet client can claim any home address, and AnimeArr
+  can't tell such a forwarder from an HTTP proxy. To set a password: remove `TRUST_PROXY` and restart AnimeArr, open it
+  directly (by its IP and port, not through the proxy) from a browser on your home network, log in and change the
+  password, then set `TRUST_PROXY` again and restart. `TRUST_PROXY=0`, an empty value and `false` count as unset (Fastify
+  trusts no proxy with them either); `TRUST_PROXY=true` is refused with a warning at startup and also counts as unset.
+  Logins with your own password work through the proxy as usual. Tailscale addresses
   (`fd7a:115c:a1e0::/48`) are ULA, so they only count if you list them, e.g.
   `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`; then devices on your tailnet, **including
   nodes shared with you or by you**, count as home network.
 - **The limit of this check.** "Home network" is decided by the address the connection comes from (10.x, 192.168.x,
-  IPv6 link-local or your listed ranges, with no proxy headers). If internet traffic reaches AnimeArr *from* a LAN address, AnimeArr can't tell
-  the difference. That happens with a router port-forward that uses NAT/masquerade, or with a plain TCP forwarder
-  such as nginx `stream`, HAProxy in tcp mode, frp, `ssh -R` or socat. So: change the default password on first run,
-  don't port-forward AnimeArr directly, and if you expose it, use a normal HTTP reverse proxy (which adds
-  `X-Forwarded-For`) with `TRUST_PROXY` set.
+  IPv6 link-local or your listed ranges, with no proxy headers). If internet traffic reaches AnimeArr *from* a LAN
+  address, AnimeArr can't tell the difference. That happens with a router port-forward that uses NAT/masquerade, or
+  with a plain TCP forwarder such as nginx `stream`, HAProxy in tcp mode, frp, `ssh -R` or socat that `TRUST_PROXY`
+  doesn't cover: a forwarder adds no headers, so its traffic looks like a home browser. This affects the default login
+  while `TRUST_PROXY` is unset, and "No password on my local network" whenever the forwarder's address isn't in
+  `TRUST_PROXY`. So: change the default password on first run, don't port-forward AnimeArr directly, and if you expose
+  it, use a normal HTTP reverse proxy (which adds `X-Forwarded-For`) with `TRUST_PROXY` set.
 - Logins from home work. A banner ("You're still using the default password (morebooty). Change it, Captain.") stays
   until you change the password in Settings → Security; once you do, the rule and the banner are gone.
 - Deliberate (won't fix): a remote login with the default password gets its own "only works from your home network"
@@ -104,8 +96,8 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   fc00::/7). Every address in a listed range counts as a proxy, so with `uniquelocal` no home device gets the no-password
   check. List your proxy's own IP instead when you can. `uniquelocal` also includes Docker's 172.16/12, so Fastify takes
   the client address from `X-Forwarded-For` for any request arriving through Docker's gateway or docker-proxy, which a
-  client can set itself: log lines and the login back-off can then show a made-up address. A range in the list also
-  means no device inside it can use the default login (see above).
+  client can set itself: log lines and the login back-off can then show a made-up address. Any `TRUST_PROXY` value
+  also turns the default login off (see above), so set a password before you set it.
 - "No password on my local network" is for home networks only; leave it off if the port is forwarded in any way, and
   think twice before listing your Tailscale range if you share Tailscale nodes (shared nodes then count as home
   network).

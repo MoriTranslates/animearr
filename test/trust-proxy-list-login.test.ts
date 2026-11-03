@@ -1,9 +1,9 @@
 /**
  * Blind review A5: with a TRUST_PROXY *list*, the default login through the proxy was refused from home too, so a
- * fresh install reachable only through its proxy could never change the password. Same rule as the hop-count case
- * (A1): a listed proxy can vouch for the client it reports (the last X-Forwarded-For entry) when the proxy itself is
- * on the home network. A proxy on a Docker network needs its range listed in ANIMEARR_LOCAL_NETWORKS, because a listed
- * Docker range also holds Docker's gateway, where internet traffic can arrive with a forged header.
+ * fresh install reachable only through its proxy could never change the password. A5 let a listed home proxy vouch
+ * for the client it reports; blind review round 5 (H1) took that back: a TCP forwarder at that address passes a
+ * forged X-Forwarded-For through, so with TRUST_PROXY set the default login is off for every request, and the refusal
+ * says how to set a password (TRUST_PROXY unset, directly from home).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,17 +34,17 @@ const login = (peer: string, xff: string) =>
     })
     .then((r) => r.statusCode);
 
-test("review A5: the default login works from home through a listed proxy on the home network", async () => {
-  assert.equal(await login("192.168.1.2", "192.168.1.20"), 200);
+test("R5-H1: a listed proxy on the home network no longer vouches for the default login", async () => {
+  assert.equal(await login("192.168.1.2", "192.168.1.20"), 403, "it may be a TCP forwarder passing a forged header");
 });
 
-test("a listed proxy on a Docker network needs that network listed as home", async () => {
+test("a listed proxy on a Docker network never vouches, even with that network listed as home", async () => {
   // The reviewer's setup: peer 172.18.0.5 inside TRUST_PROXY=172.18.0.0/16.
   assert.equal(await login("172.18.0.5", "192.168.1.20"), 403, "the listed range also holds Docker's gateway");
   assert.equal(await login("172.18.0.1", "192.168.1.20"), 403, "the gateway itself, with a forged header");
   process.env.ANIMEARR_LOCAL_NETWORKS = "192.168.0.0/16,172.18.0.0/16";
   try {
-    assert.equal(await login("172.18.0.5", "192.168.1.20"), 200, "listed as home on purpose");
+    assert.equal(await login("172.18.0.5", "192.168.1.20"), 403, "listed as home on purpose: still no proxy vouches (R5-H1)");
   } finally {
     delete process.env.ANIMEARR_LOCAL_NETWORKS;
   }

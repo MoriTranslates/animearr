@@ -57,8 +57,9 @@ test("R7: no 'ignored and matches nothing' warning for a keyword", () => {
 });
 
 test("R7: a peer Fastify trusts through a keyword is a proxy for AnimeArr too", async () => {
-  // Before: 192.168.1.2 wasn't a "listed proxy", so the default login from home through it was refused.
-  assert.equal(await login("192.168.1.2", "192.168.1.20"), 200, "a home proxy inside uniquelocal vouches for a home client");
+  // With TRUST_PROXY set the default login is off for every request (blind review round 5, H1), so a keyword-covered
+  // peer is refused like every other one; R7's bypass check is below.
+  assert.equal(await login("192.168.1.2", "192.168.1.20"), 403, "a home proxy inside uniquelocal can't vouch (R5-H1)");
   assert.equal(await login("192.168.1.2", "203.0.113.9"), 403, "an internet client through that proxy");
   assert.equal(await login("172.18.0.5", "192.168.1.20"), 403, "Docker's 172.16/12 is in uniquelocal but never home");
   assert.equal(await login("127.0.0.1", "192.168.1.20"), 403, "loopback is in the list but never home");

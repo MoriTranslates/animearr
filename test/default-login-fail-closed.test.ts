@@ -5,6 +5,8 @@
  * container), and internet traffic relayed by docker-proxy arrives from that same address, so it must not vouch.
  * M2: with a range or keyword in TRUST_PROXY, a home peer that sends no proxy headers may be a TCP forwarder or tunnel
  * (nginx stream, frp, ssh -R, socat) carrying internet traffic, so it isn't taken as a home browser.
+ * Round 5, H1 went further: with TRUST_PROXY set to anything the default login is refused for every request (see
+ * default-login-trust-proxy-off.test.ts); these cases stay as regression checks.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -78,8 +80,10 @@ test("R4-M2: a headerless home peer inside a TRUST_PROXY range or keyword is ref
   });
 });
 
-test("R4-M2: a home browser outside TRUST_PROXY still gets the default login", async () => {
+test("R5-H1: with TRUST_PROXY set, even a home browser it doesn't cover gets no default login", async () => {
   await withTrust("192.168.1.2", async () => {
-    assert.equal((await login("192.168.1.50")).statusCode, 200, "a direct home browser not covered by TRUST_PROXY");
+    const r = await login("192.168.1.50");
+    assert.equal(r.statusCode, 403, "TRUST_PROXY set: the default login is off for every request");
+    assert.match(r.body, /Set a password first: remove TRUST_PROXY/);
   });
 });

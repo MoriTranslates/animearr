@@ -39,7 +39,8 @@ export function trustProxyOption(): number | string[] | false {
     );
     return false;
   }
-  if (/^\d+$/.test(v)) return Number(v);
+  // A hop count of 0 trusts no proxy: Fastify treats a falsy trustProxy as off, so 0 means unset here too (review L6).
+  if (/^\d+$/.test(v)) return Number(v) || false;
   return v
     .split(",")
     .map((x) => x.trim())
@@ -598,52 +599,23 @@ export async function checkPasswordLimited(
 
 export const DEFAULT_REMOTE_REFUSED = "The default password only works from your home network. Log in from home and change it first.";
 
-const HOST_HINT = " Behind a reverse proxy: open AnimeArr by its IP or LAN name, or add the address you use to ANIMEARR_ALLOWED_HOSTS.";
-
-const PROXY_HINT =
-  " A reverse proxy on a Docker network or loopback can't vouch for the default login, since internet traffic can arrive from those addresses. Set a password first: open AnimeArr directly (by its IP and port, not through the proxy) from a browser on your home network.";
-
-const PROXY_PEER_HINT =
-  " TRUST_PROXY covers this device's address, so AnimeArr takes it for a proxy, and a proxy that reports no client could be forwarding internet traffic. Set a password first: open AnimeArr directly from a home device TRUST_PROXY doesn't cover, or set TRUST_PROXY to just your proxy's own IP (or remove it) until then.";
+export const DEFAULT_PROXY_REFUSED =
+  "AnimeArr is set to sit behind a proxy (TRUST_PROXY), so the default login is off. Set a password first: remove TRUST_PROXY and restart AnimeArr, open it directly (by its IP and port) from a browser on your home network, log in and change the password, then set TRUST_PROXY again and restart.";
 
 /**
- * The safety rule for the default login (captain/morebooty): while the password is still the default, a login is only
- * accepted from the home network (the same check as "No password on my local network": ANIMEARR_LOCAL_NETWORKS or
- * 10/8 + 192.168/16 + IPv6 link-local, never through an untrusted proxy, addressed by IP or a LAN name).
- * Through a reverse proxy that check never passes, which made the default login impossible and the password
- * unchangeable (review L2 for a hop-count TRUST_PROXY, blind review A5 for a list). There the client is the one the
- * proxy reports in X-Forwarded-For, but only when the proxy (the socket peer) is trusted (any peer with a hop count,
- * a listed one with a list) and is itself on the home network by the same rule: Docker's 172.16/12, ULA and loopback
- * are where internet traffic arrives through Docker's gateway or docker-proxy, and a listed Docker range holds that
- * gateway too, so they can't vouch for a header unless listed in ANIMEARR_LOCAL_NETWORKS (blind review A1). Only the
- * last entry counts, the one that proxy added: a hop count larger than the real number of proxies would otherwise let
- * the client pick an earlier entry; chained proxies therefore fail closed.
- * The default login is a convenience for a home browser talking directly to AnimeArr; when in doubt it refuses
- * (blind review round 4, H1 and M2). So a proxy on a Docker network or loopback never vouches, even when TRUST_PROXY
- * names its exact IP: a host-run proxy reaches a bridge container from Docker's gateway, which also carries internet
- * traffic relayed by docker-proxy, and AnimeArr can't tell a proxy container from that gateway. And a peer TRUST_PROXY
- * covers (by IP, range, keyword or hop count) that reports no client is refused, never taken as the browser itself:
- * a TCP forwarder or tunnel on the LAN (nginx stream, frp, ssh -R, socat) adds no headers either.
+ * The safety rule for the default login (captain/morebooty): it exists only for a home browser talking directly to
+ * AnimeArr. While the password is still the default:
+ * - With TRUST_PROXY set to anything (an IP, a range, a keyword or a hop count), every default login is refused. A
+ *   TCP forwarder or tunnel (nginx stream, frp, ssh -R, socat) inside a TRUST_PROXY entry passes the client's own
+ *   X-Forwarded-For through untouched, and AnimeArr can't tell it from an HTTP proxy, so no peer can vouch for a
+ *   client (blind review round 5, H1). The message says how to set a password.
+ * - With TRUST_PROXY unset, a login is only accepted from the home network by the same check as "No password on my
+ *   local network" (ANIMEARR_LOCAL_NETWORKS or 10/8 + 192.168/16 + IPv6 link-local, never Docker or loopback, no
+ *   forwarded headers), addressed by IP or a LAN name.
  * The no-password bypass stays off through a proxy (R7). Returns the refusal message, or null when the login may go ahead.
  */
 export function defaultLoginRefusal(req: FastifyRequest, usingDefault: boolean) {
   if (!usingDefault) return null;
-  if (isLocalRequest(req)) return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
-  const trust = trustProxyOption();
-  const peer = req.socket?.remoteAddress ?? "";
-  const trustedPeer = typeof trust === "number" ? trust >= 1 : isListedProxy(peer);
-  if (!trustedPeer) return DEFAULT_REMOTE_REFUSED;
-  // A trusted proxy that can't vouch (a Docker, ULA or loopback address, however TRUST_PROXY names it): say what to do.
-  // The address itself isn't shown, since whoever is asking may be on the internet.
-  if (!isHomeNetwork(peer)) return DEFAULT_REMOTE_REFUSED + (hasForwardHeaders(req) ? PROXY_HINT : "");
-  // A home peer TRUST_PROXY covers that reports no client may be a TCP forwarder: refuse, and say why.
-  if (!hasForwardHeaders(req)) return DEFAULT_REMOTE_REFUSED + PROXY_PEER_HINT;
-  // Fastify ignores a hop count (it can't verify the peer), so req.ip may be the proxy itself: read the header here.
-  const xff = String(req.headers["x-forwarded-for"] ?? "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  const client = xff.at(-1) ?? "";
-  if (!net.isIP(client.replace(/%.*$/, "")) || !isHomeNetwork(client)) return DEFAULT_REMOTE_REFUSED;
-  return hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED + HOST_HINT;
+  if (trustProxyOption() !== false) return DEFAULT_PROXY_REFUSED;
+  return isLocalRequest(req) && hostAllowed(req) ? null : DEFAULT_REMOTE_REFUSED;
 }

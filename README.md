@@ -170,7 +170,8 @@ same paths your download clients (and Sonarr/Radarr) use. One `/data` folder hol
 Environment: `PUID`, `PGID`, `UMASK` (default 002), `TZ`, `URL_BASE` (reverse proxy on a sub-path, e.g. `/animearr`),
 `TRUST_PROXY` (your proxy's IP/CIDR, e.g. `172.18.0.0/16`, so real client IPs are seen; a hop count such as `1` is
 accepted but gives no real client IPs: logs show only the proxy and everyone behind it shares one login back-off, so
-prefer the IP/CIDR form), `ANIMEARR_LOCAL_NETWORKS` (what counts as "home"
+prefer the IP/CIDR form; while it is set the default login is off, so change the password first),
+`ANIMEARR_LOCAL_NETWORKS` (what counts as "home"
 for the default login and the optional no-password-at-home setting).
 
 </details>
