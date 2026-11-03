@@ -36,14 +36,22 @@ test("pruning still keeps the newest copies of each kind", () => {
   assert.equal(listBackups().filter((b) => b.kind === "manual").length, 10);
 });
 
-test("two safety copies at the same instant keep both key copies (an earlier key copy is never overwritten)", async (t) => {
+test("a key copy saved at the same instant as an earlier one never overwrites it", async (t) => {
   const { safetyBackup } = await import("../server/system/backupTransfer.js");
   t.mock.timers.enable({ apis: ["Date"], now: Date.UTC(2026, 10, 2, 13, 0, 0, 0) });
-  safetyBackup();
+  // An earlier copy of a different key sits exactly at the name this instant gives.
+  const earlier = path.join(BACKUP_DIR, "animearr-prerestore-2026-11-02T13-00-00-000.secret.key");
+  const other = "ab".repeat(32);
+  fs.writeFileSync(earlier, other);
   safetyBackup();
   t.mock.timers.reset();
+  assert.equal(fs.readFileSync(earlier, "utf8"), other, "the earlier copy is untouched");
+  const live = fs.readFileSync(path.join(process.env.ANIMEARR_CONFIG!, "secret.key"), "utf8").trim();
   const keys = fs.readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".secret.key"));
-  assert.equal(keys.length, 2, keys.join(", "));
+  assert.ok(
+    keys.some((f) => fs.readFileSync(path.join(BACKUP_DIR, f), "utf8").trim() === live),
+    `the live key was saved beside it: ${keys.join(", ")}`,
+  );
 });
 
 // Last: the restore closes the live database.

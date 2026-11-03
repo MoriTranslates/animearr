@@ -249,11 +249,64 @@ export function applyBackup(b: ParsedBackup, paths: ApplyPaths, hooks: ApplyHook
 
 const SAVED_KEY = /^animearr-prerestore-.*\.secret\.key$/;
 
-/** Keeps a copy of the live key: the safety copies made before a restore can't be opened without it. */
-function saveKeyCopy() {
-  // Never over an earlier copy (that one may be the only key for older backups).
-  fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, freeBackupName("animearr-prerestore-", ".secret.key")), fs.constants.COPYFILE_EXCL);
-  for (const old of savedKeys().slice(3)) fs.rmSync(path.join(BACKUP_DIR, old), { force: true });
+/**
+ * Keeps a copy of the live key: the safety copies made before a restore can't be opened without it. One copy per key
+ * (none is added when that key is already saved), and never over an earlier copy. `prune` tidies the copies after.
+ */
+function saveKeyCopy(opts: { prune: boolean }) {
+  const live = fs.readFileSync(KEY_FILE, "utf8").trim();
+  if (!savedKeys().some((f) => readKey(f) === live))
+    fs.copyFileSync(KEY_FILE, path.join(BACKUP_DIR, freeBackupName("animearr-prerestore-", ".secret.key")), fs.constants.COPYFILE_EXCL);
+  if (opts.prune) pruneKeyCopies(live);
+}
+
+const readKey = (f: string) => {
+  try {
+    return fs.readFileSync(path.join(BACKUP_DIR, f), "utf8").trim();
+  } catch {
+    return ""; // unreadable: not a usable key; pruning leaves such a file alone
+  }
+};
+
+/**
+ * Removes key copies nobody needs. Always kept: one copy of every key that opens a backup in the backups folder the
+ * live key can't open (without it that backup can't be restored), one copy of the live key, and the newest three other
+ * keys. Identical copies are kept once (the newest).
+ */
+function pruneKeyCopies(live: string) {
+  const sealedWithOther: string[] = []; // settings of retained backups the live key can't open
+  for (const b of listBackups()) {
+    try {
+      const d = new DatabaseSync(path.join(BACKUP_DIR, b.name), { readOnly: true });
+      try {
+        const row = d.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined;
+        if (row && isSealed(row.value) && !opensWith(row.value, live)) sealedWithOther.push(row.value);
+      } finally {
+        d.close();
+      }
+    } catch {
+      // Can't tell which key this backup needs (a locked file, a passing read error): prune nothing this time.
+      return;
+    }
+  }
+  const seen = new Set<string>();
+  let spare = 0;
+  for (const f of savedKeys()) {
+    const k = readKey(f);
+    if (!/^[0-9a-f]{64}$/i.test(k)) continue; // not a key AnimeArr wrote: left alone
+    const keep = !seen.has(k) && (k === live || sealedWithOther.some((v) => opensWith(v, k)) || spare++ < 3);
+    seen.add(k);
+    if (!keep) fs.rmSync(path.join(BACKUP_DIR, f), { force: true });
+  }
+}
+
+function opensWith(sealed: string, hex: string) {
+  try {
+    open(sealed, Buffer.from(hex, "hex"));
+    return true;
+  } catch {
+    return false; // not this key
+  }
 }
 
 /** The saved key copies, newest first (by time written: old one-second and new millisecond names sort alike). */
@@ -278,7 +331,7 @@ export function safetyBackup() {
       throw new Error(`Couldn't save a copy of the damaged database (${(e as Error).message}), so nothing was changed`, { cause: e });
     }
   } else if (!backupNow("prerestore", "upload")) throw new Error("Couldn't save a safety copy of the current data, so nothing was changed");
-  saveKeyCopy();
+  saveKeyCopy({ prune: true });
 }
 
 /**
@@ -300,18 +353,10 @@ export function restoreSaved(name: string) {
   } catch {
     sealed = undefined; // an unreadable backup is refused by restoreBackup's own check, before anything changes
   }
-  const opens = (hex: string) => {
-    try {
-      open(sealed!, Buffer.from(hex, "hex"));
-      return true;
-    } catch {
-      return false; // not this key
-    }
-  };
-  if (!sealed || !isSealed(sealed) || opens(fs.readFileSync(KEY_FILE, "utf8").trim())) return restoreBackup(name);
+  if (!sealed || !isSealed(sealed) || opensWith(sealed, fs.readFileSync(KEY_FILE, "utf8").trim())) return restoreBackup(name);
   const key = savedKeys()
-    .map((f) => fs.readFileSync(path.join(BACKUP_DIR, f), "utf8").trim())
-    .find((k) => /^[0-9a-f]{64}$/i.test(k) && opens(k));
+    .map(readKey)
+    .find((k) => /^[0-9a-f]{64}$/i.test(k) && opensWith(sealed!, k));
   if (!key)
     throw Object.assign(
       new Error(
@@ -319,7 +364,9 @@ export function restoreSaved(name: string) {
       ),
       { statusCode: 409 },
     );
-  saveKeyCopy(); // the live key: the safety copy restoreBackup makes next is sealed with it
+  // The live key: the safety copy restoreBackup makes next is sealed with it. Not pruned here: restoreBackup may still
+  // refuse (a damaged or newer backup), and a refused restore removes nothing.
+  saveKeyCopy({ prune: false });
   restoreBackup(name, { key });
 }
 
