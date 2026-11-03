@@ -973,10 +973,11 @@ test("a title left with a bare '/' by a stripped CJK name, or in an unclosed or 
     // Regression 2: an unclosed leading "[" (the CJK name inside it was stripped) must not swallow the whole name.
     { name: "[ /Shinchou Yuusha 01 [WebRip 1920x1080 HEVC YUV420P10 1080p AAC][]", title: "Shinchou Yuusha", group: null, absolute: [1] },
     { name: "[ /Shinchou Yuusha 02 [WebRip 1920x1080 HEVC YUV420P10 1080p AAC][]", title: "Shinchou Yuusha", group: null, absolute: [2] },
-    // Regression 3: an all-bracket name: the bracket right after the group is the title ("CJK / Romaji").
+    // Regression 3: an all-bracket name never leaves a bare "/" title. This one ends in a [招募翻譯] banner, which is no
+    // recognised tag, so it is unknown (round-5 M3: no banner allowance).
     {
       name: "【喵萌奶茶屋】[工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]",
-      title: "Hataraku Saibou Black",
+      title: "",
       group: "喵萌奶茶屋",
       absolute: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
     },
@@ -1117,10 +1118,6 @@ test("an all-bracket name with a season bracket after the title never reads as s
   // Must not change: the same all-bracket names without a season bracket still find the title.
   assert.equal(parseRelease(`[Group][${title}][01][1080p]`).title, title);
   assert.equal(parseRelease(`[Group][${title}][01-13][BDRip][1080p][Multi-Sub]`).title, title);
-  assert.equal(
-    parseRelease("[喵萌奶茶屋][工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]").title,
-    "Hataraku Saibou Black",
-  );
 });
 
 test("an all-bracket name never takes a tag bracket as the title; the next bracket is (round-3 M3)", () => {
@@ -1220,11 +1217,6 @@ test("an all-bracket name gives a title only in the one [Group][Title][EP][tags]
       "[hyakuhuyu][Re.Zero.kara.Hajimeru.Isekai.Seikatsu][62][WebRip.1080p.AVC.AAC][CHT].mp4-[N-Z-B]-xpost",
       "Re Zero kara Hajimeru Isekai Seikatsu",
     ],
-    [
-      "[SweetSub][靠死亡游戏混饭吃。][Shibou Yuugi de Meshi wo Kuu.][08][WebRip][1080P][AVC 8bit][简日双语][v2]（检索用：以死亡游戏为生。）",
-      "靠死亡游戏混饭吃。",
-    ],
-    ["[喵萌奶茶屋][工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]", "Hataraku Saibou Black"],
     ["[Group][Gleipnir][01]", "Gleipnir"],
     ["[Group][K][01]", "K"],
     ["[Group][K-On!][01]", "K-On!"],
@@ -1234,12 +1226,53 @@ test("an all-bracket name gives a title only in the one [Group][Title][EP][tags]
     assert.equal(parseRelease(name).title, title, name);
   const yaiba = parseRelease("[Nigel][Shin Samurai-den Yaiba][05][BDRIP][1080P][H264_FLAC]");
   assert.deepEqual([yaiba.season, yaiba.absolute], [null, [5]]);
-  // A season note next to a CJK title ("Honzuki no Gekokujou S04", （第四季）) is not dropped: the name stays unknown.
-  assert.equal(
-    parseRelease("[SweetSub][小书痴的下克上 领主的养女][Honzuki no Gekokujou S04][01][WebRip][1080P][AVC 8bit][简日双语][v2]（第四季）")
-      .title,
-    "",
-  );
+});
+
+test("an all-bracket name with a search note, a second title bracket, a banner or a resolution as EP is unknown (round-5 M1-M4)", () => {
+  // Every M1-M4 input from the round-5 blind review. Each one gave a title with the season or episode wrong.
+  const unknown = [
+    // M1: a closing search note can carry a season the title would lose.
+    "[Group][Title][01]（检索用：第三季）",
+    "[Group][Title][01]（检索用：Title 3）",
+    "[Group][Title][01]（检索用：Title Part 2）",
+    "[Group][Title][01]（检索用：Title 2期）",
+    "[Group][Title][01]（检索用：Other Show S3）",
+    // M2: a romaji bracket after a CJK title can carry a sequel or arc word.
+    "[Group][进击的巨人][Shingeki no Kyojin II][08]",
+    "[Group][进击的巨人][Shingeki no Kyojin Final][08]",
+    "[Group][进击的巨人][Shingeki no Kyojin Zwei][08]",
+    "[Group][进击的巨人][Shingeki no Kyojin Movie][08]",
+    "[Group][鬼滅の刃][Kimetsu no Yaiba Yuukaku-hen][01]",
+    "[Group][鬼滅の刃][Kimetsu no Yaiba Mugen Ressha-hen][01]",
+    "[Group][タイトル][Title Ni][02]",
+    "[Group][タイトル][Title San][02]",
+    "[Group][タイトル][Title Gaiden][02]",
+    "[Group][タイトル][Title The Final][02]",
+    "[Group][ソードアート・オンライン][Sword Art Online Alicization][01]",
+    "[SweetSub][小书痴的下克上 领主的养女][Honzuki no Gekokujou S04][01][WebRip][1080P][AVC 8bit][简日双语][v2]（第四季）",
+    // M3: a banner bracket before the title.
+    "[喵萌奶茶屋][★04月新番★][Title][01]",
+    // M4: a resolution (or any 4-digit number) as the EP, alone or as a range end.
+    "[Group][Title][1080]",
+    "[Group][Title][720]",
+    "[Group][Title][576]",
+    "[Group][Title][480]",
+    "[Group][Title][720v2]",
+    "[Group][Title][1080v2]",
+    "[Group][Title][01-1080]",
+    "[Group][Title][01-720]",
+    "[Group][Title][480-500]",
+    "[Group][Title][1234]",
+    // Real names that resolved only through the dropped allowances: unknown again, an accepted loss.
+    "[SweetSub][靠死亡游戏混饭吃。][Shibou Yuugi de Meshi wo Kuu.][08][WebRip][1080P][AVC 8bit][简日双语][v2]（检索用：以死亡游戏为生。）",
+    "[喵萌奶茶屋][工作細胞BLACK / Hataraku Saibou Black][01-13][BDRip][1080p][繁體][v2][招募翻譯]",
+  ];
+  for (const name of unknown) assert.equal(parseRelease(name).title, "", name);
+  // Must not change: a 2-3 digit EP or range, with or without leading tag brackets.
+  assert.deepEqual(parseRelease("[Group][Title][01v2]").absolute, [1]);
+  assert.equal(parseRelease("[Group][Title][101]").title, "Title");
+  assert.equal(parseRelease("[Group][Title][01-13][BDRip]").title, "Title");
+  assert.equal(parseRelease("[Group][CHT][1080p][Title][05]").title, "Title");
 });
 
 test("a Batch or Complete pack with an untrustworthy E-range end is never one episode (blind round-4 M5)", () => {

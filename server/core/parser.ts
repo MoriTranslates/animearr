@@ -290,19 +290,16 @@ const GENERIC_TITLE =
   /^(?:movies?|specials?|sp|ova|oad|ona|pv|cm|ncop|nced|bd ?box|bd|tv|ep|episodes?|batch|complete|preview|menu|anime)$/i;
 /** A bracket that is only a season, part or cour: "S2", "Season 2", "Part 2", "Cour 2", 第二季. */
 const SEASON_ONLY = /^(?:S\d{1,2}|Seasons?\b.*|Part\s*\d+|Cour\s*\d+|第.{1,4}[季期部])$/i;
-/** Any season, part or cour hint ("2nd", "Part 1", 2期): an extra bracket with one could hold the season we'd lose. */
-const SEASON_HINT = /\bS\d|season|\bcour\b|\bpart\b|\d(?:st|nd|rd|th)\b|[季期部]/i;
-const CJK_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
-/** Recruiting banner some Chinese groups append: "[招募翻譯]". Not a tag, but never a title or season either. */
-const BANNER = /^招募翻[譯译]$/;
+/** An all-bracket EP number: 2-3 digits and not a resolution (so never 480, 576, 720 or 1080, and never a year). */
+const isBracketEp = (n: string) => /^\d{2,3}$/.test(n) && !/^(?:480|576|720)$/.test(n);
 
 /**
  * The one all-bracket shape that yields a title: "[Title][EP]" (the group is already cut), then only recognised tags.
- * Leading tag brackets may come before the title ("[CHT][Show][01]"); a CJK title may be followed by one romaji name
- * ("[靠死亡游戏混饭吃。][Shibou Yuugi de Meshi wo Kuu.][08]"); a closing "（检索用：...）" search note is allowed. EP is a
- * 2-4 digit number (not a year) with an optional "v2", or a range "01-13". Anything else returns null and the name
- * stays unknown: a season or part bracket anywhere, a bare "[2]", 2期, a generic word as title, an unknown extra
- * bracket. Unknown is safe (nothing is grabbed or imported); a wrong title or season is not.
+ * Leading brackets may come before the title only when every one is a recognised tag ("[CHT][Show][01]"). EP is a
+ * 2-3 digit number with an optional "v2", or a range "01-13" with both ends 2-3 digits, never a resolution; a 4-digit
+ * EP gives unknown (long-runners use other naming). Anything else returns null and the name stays unknown: a season or
+ * part bracket anywhere, a bare "[2]", 2期, a generic word as title, a second name bracket, any extra bracket or text
+ * after the tags. Unknown is safe (nothing is grabbed or imported); a wrong title or season is not.
  * Returns `s` with the title unwrapped ("Title [EP][tags]..."), or null.
  */
 function allBracketTitle(s: string): string | null {
@@ -314,23 +311,21 @@ function allBracketTitle(s: string): string | null {
     brackets.push(m[1].trim());
     end = re.lastIndex;
   }
-  // Only a closing search note may follow the brackets.
-  if (!/^(?:（[检檢]索用[:：][^）]*）)?\s*$/.test(s.slice(end))) return null;
+  // Nothing may follow the brackets.
+  if (s.slice(end).trim() !== "") return null;
   let i = 0;
   while (i < brackets.length && isTagBracket(brackets[i])) i++;
   const isTitle = (t: string) =>
     /\p{L}/u.test(t) && !/^\d/.test(t) && !GENERIC_TITLE.test(t) && !SEASON_ONLY.test(t) && !isTagBracket(t) && !RES_RE.test(t);
   const title = brackets[i];
   if (title === undefined || !isTitle(title)) return null;
-  let next = i + 1;
-  // A romaji name after a CJK title: letters only, no season hint and no number of any kind.
-  const alt = brackets[next];
-  if (alt !== undefined && CJK_CHAR.test(title) && !CJK_CHAR.test(alt) && isTitle(alt) && !/\d/.test(alt) && !SEASON_HINT.test(alt)) next++;
-  const ep = brackets[next];
-  const plain = ep?.match(/^(\d{2,4})(?:v\d)?$/);
-  const epOk = plain ? !(plain[1].length === 4 && isYear(+plain[1])) : /^\d{1,4}\s*[-~]\s*\d{1,4}(?:v\d)?$/.test(ep ?? "");
+  const next = i + 1;
+  const ep = brackets[next] ?? "";
+  const plain = ep.match(/^(\d+)(?:v\d)?$/);
+  const range = ep.match(/^(\d+)\s*[-~]\s*(\d+)(?:v\d)?$/);
+  const epOk = plain ? isBracketEp(plain[1]) : range ? isBracketEp(range[1]) && isBracketEp(range[2]) : false;
   if (!epOk) return null;
-  if (!brackets.slice(next + 1).every((t) => isTagBracket(t) || BANNER.test(t))) return null;
+  if (!brackets.slice(next + 1).every(isTagBracket)) return null;
   // Cut through the title bracket: everything before it is the leading tags.
   let cut = 0;
   for (let k = 0; k <= i; k++) cut = s.indexOf("]", cut) + 1;
