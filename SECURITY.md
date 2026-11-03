@@ -54,10 +54,13 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   only delays a new login. A large flood can refuse one: from thousands of addresses (cheap over IPv6) a browser
   AnimeArr hasn't seen before gets "too many login attempts at once" (429), or waits longer than the browser does.
   Logins whose browser has given up are skipped, not checked. A browser you have logged in with before carries a
-  signed "known device" cookie (a year, httpOnly, kept after logout, void after a password change; a browser already
-  signed in with a password that lacks one is given one when the app loads). It grants nothing by itself, but its
-  logins get their own back-off and their own password-check lane, so floods that name your user name, or come from
-  the address you share, can't lock that browser out.
+  signed "known device" cookie (a year, httpOnly, kept after logout, void after a password change). Only a correct
+  password (a login or a password change) issues one; being signed in does not, so a stolen session cookie can't mint
+  them. It grants nothing by itself, but its logins get their own back-off and their own password-check lane, so
+  floods that name your user name, or come from the address you share, can't lock that browser out.
+  **Known limit:** a browser that was already signed in before device cookies existed has none until its next password
+  login (or password change). Until then, once its session ends, its logins share the lanes of browsers AnimeArr hasn't
+  seen, so a large flood can delay or refuse them. Logging out and back in once gives it a device cookie.
 - **What bounds password guessing:** each address (IPv6: each /64) gets 5 free tries per user name, then waits 2, 4,
   8 and at most 15 seconds between tries. Guesses at your real user name are also limited across **all** addresses
   together: bursts of 60, then 30 a minute (about 43,000 a day at most), however many addresses an attacker uses. A

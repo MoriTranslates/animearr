@@ -36,16 +36,16 @@ export function registerAccountRoutes(app: FastifyInstance) {
 
   app.get("/ping", async () => ({ status: "OK" }));
 
-  app.get("/api/status", { config: { setup: true } }, async (req, reply) => {
+  app.get("/api/status", { config: { setup: true } }, async (req) => {
     const s = getSettings();
     const a = authState(req);
     const base = { version: VERSION, build: webBuild(), setupRequired: a.setupRequired, loggedIn: a.ok };
     // The login screen tells home-network visitors the default login while it's still in use (it only works from home).
     if (!a.ok)
       return (await usingDefaultPassword()) && !defaultLoginRefusal(req, true) ? { ...base, defaultLogin: DEFAULT_LOGIN.username } : base;
-    // A browser signed in before device cookies existed (or whose one expired) gets one now, so it keeps its own login
-    // lane after the session ends (blind review R5). Only a password session: not the API key or the home bypass.
-    if (a.via === "session" && !validDevice(req.cookies[DEVICE_COOKIE])) deviceCookie(req, reply, null);
+    // No device cookie is issued here, even to a session that lacks one (blind review round 3, H1): a session alone
+    // could mint unlimited devices that guess outside the global budget and outlive logout. Only a correct password
+    // (login or password change) issues one. A browser signed in before device cookies existed gets one at its next login.
     return {
       ...base,
       via: a.via,
