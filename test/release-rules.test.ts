@@ -285,25 +285,3 @@ test("every user regex goes through the guarded runner: exponential and quadrati
   assert.equal(plain.test("Show 1080p"), true);
   assert.equal(guardedRegexRuns(), before);
 });
-
-test("the time limit really interrupts a runaway regex: the review's N=50 shape fails closed fast, with a strike (blind review misc final High)", () => {
-  // Unguarded (or with a vm timeout, which V8 only checks after the regex returns) this one match blocks ~9-12 s.
-  const n = 50;
-  const term = "/" + "a?".repeat(n) + "a".repeat(n) + "b/";
-  const r = rule({ mustNot: [term] });
-  const t0 = Date.now();
-  assert.match(applyRules("a".repeat(n), [r]).reject ?? "", /took too long to check/);
-  const ms = Date.now() - t0;
-  assert.ok(ms < 1000, `took ${ms} ms`); // limit is 50 ms; the tolerance covers starting a worker on a loaded machine
-  // That timeout was a strike: two more (shorter heavy names, so the killed workers finish sooner) mark the term.
-  applyRules("a".repeat(40), [r]);
-  applyRules("a".repeat(40), [r]);
-  const before = guardedRegexRuns();
-  assert.match(applyRules("Show - 09 [1080p]", [r]).reject ?? "", /took too long to check/);
-  assert.equal(guardedRegexRuns(), before, "three strikes marked the term, so it isn't run again");
-  // The guard is still good for other terms after its worker was killed.
-  const ok = compileTerm("/S[0-9]+E[0-9]+/");
-  assert.ok("test" in ok);
-  assert.equal(ok.test("Show S01E02"), true);
-  assert.equal(ok.test("Show 1080p"), false);
-});

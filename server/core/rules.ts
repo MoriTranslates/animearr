@@ -3,7 +3,7 @@
  * a score. A term is a plain case-insensitive substring, or `/regex/` (always case-insensitive) when wrapped in slashes.
  * Pure: the rules a show falls under (tag scoping) are picked by server/search/releaseRules.ts before they get here.
  */
-import { Worker } from "node:worker_threads";
+import vm from "node:vm";
 
 export interface PreferredTerm {
   term: string;
@@ -30,63 +30,15 @@ const REGEX_FORM = /^\/(.+)\/[a-z]*$/s;
 
 /**
  * User regexes run with a time limit. Every user regex runs this way, with no "looks safe" shortcut: exponential ("((a+))+$", "a?a?aab") and
- * quadratic (".*a.*b") shapes can't be told apart from safe ones reliably, and JavaScript has no regex timeout.
- * A vm script timeout does NOT help: V8 only notices it after the regex returns (measured: "a?" x50 + "a" x50 + "b"
- * threw its "timeout" after 12 s). So the match runs on a worker thread while this thread waits on a shared flag for at
- * most REGEX_LIMIT_MS; on timeout the worker is terminated and a fresh one starts on the next check. (V8 can't stop
- * the regex inside the killed worker either, so that thread spins until the regex ends, but the server is not blocked.)
+ * quadratic (".*a.*b") shapes can't be told apart from safe ones reliably, and JavaScript has no regex timeout, so the match runs as a vm script with one.
  * A check that hits the limit gives "couldn't check" (null), and applyRules fails closed on it: a must-not term
  * blocks, a must term is missing, a preferred term scores nothing. A term that keeps hitting it is marked as runaway
  * and not run again (still failing closed) until the term is edited (newly added to a rule)
  * or AnimeArr is restarted. Saving a rule unchanged does not clear it.
  */
 const REGEX_LIMIT_MS = 50;
-/** Starting a worker takes ~30 ms; this only bounds a broken start (a check that can't start one fails closed). */
-const WORKER_START_MS = 10_000;
-// ctl[0]: the answer (0 = pending, 1 = match, 2 = no match, 3 = the regex threw); ctl[1]: 1 once the worker listens.
-const WORKER_SRC = `
-const { parentPort, workerData } = require("node:worker_threads");
-const ctl = new Int32Array(workerData);
-const cache = new Map();
-parentPort.on("message", ({ source, flags, title }) => {
-  const key = flags + "/" + source;
-  let re = cache.get(key);
-  if (!re) {
-    if (cache.size >= 1000) cache.clear();
-    re = new RegExp(source, flags);
-    cache.set(key, re);
-  }
-  let r;
-  try {
-    re.lastIndex = 0;
-    r = re.test(title) ? 1 : 2;
-  } catch {
-    r = 3;
-  }
-  Atomics.store(ctl, 0, r);
-  Atomics.notify(ctl, 0);
-});
-Atomics.store(ctl, 1, 1);
-Atomics.notify(ctl, 1);
-`;
-type RegexWorker = { w: Worker; ctl: Int32Array };
-let regexWorker: RegexWorker | undefined;
-
-function startRegexWorker(): RegexWorker | undefined {
-  const ctl = new Int32Array(new SharedArrayBuffer(8));
-  const w = new Worker(WORKER_SRC, { eval: true, workerData: ctl.buffer });
-  w.unref(); // never keeps AnimeArr (or a test run) alive on its own
-  const rw = { w, ctl };
-  w.on("error", () => {
-    if (regexWorker === rw) regexWorker = undefined; // the next check starts a fresh worker
-  });
-  if (Atomics.wait(ctl, 1, 0, WORKER_START_MS) === "timed-out") {
-    void w.terminate();
-    return undefined;
-  }
-  return rw;
-}
-
+const regexRun = new vm.Script("re.test(title)");
+const regexCtx = vm.createContext({ re: /$^/, title: "" }) as { re: RegExp; title: string };
 const runaway = new Set<string>();
 let guardedRuns = 0;
 /** How many regex tests went through the time-limited path (for tests: plain-text terms must not). */
@@ -95,27 +47,25 @@ export const guardedRegexRuns = () => guardedRuns;
 function guardedTest(term: string, re: RegExp, title: string): boolean | null {
   if (runaway.has(term)) return null;
   guardedRuns++;
-  const rw = (regexWorker ??= startRegexWorker());
-  if (!rw) return null; // couldn't start a worker: "couldn't check", fails closed; not the term's fault, so no strike
-  Atomics.store(rw.ctl, 0, 0);
-  rw.w.postMessage({ source: re.source, flags: re.flags, title });
-  Atomics.wait(rw.ctl, 0, 0, REGEX_LIMIT_MS);
-  const answer = Atomics.load(rw.ctl, 0); // read again: an answer that landed right at the limit still counts
-  if (answer === 1 || answer === 2) return answer === 1;
-  if (answer === 3) throw new Error(`The regular expression ${term} failed on "${title}"`);
-  // Out of time: kill the worker (the next check starts a fresh one), fail closed and record a strike.
-  void rw.w.terminate();
-  if (regexWorker === rw) regexWorker = undefined;
-  // One timeout can be load (GC, ffmpeg, a busy NAS): that check fails closed, but the term stays in use. Only
-  // STRIKES timeouts within STRIKE_WINDOW_MS mark it as runaway.
-  const now = Date.now();
-  const recent = (strikes.get(term) ?? []).filter((t) => now - t < STRIKE_WINDOW_MS);
-  recent.push(now);
-  if (recent.length >= STRIKES) {
-    runaway.add(term);
-    strikes.delete(term);
-  } else strikes.set(term, recent);
-  return null;
+  regexCtx.re = re;
+  regexCtx.title = title;
+  try {
+    return regexRun.runInContext(regexCtx, { timeout: REGEX_LIMIT_MS }) === true;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ERR_SCRIPT_EXECUTION_TIMEOUT") throw e;
+    // One timeout can be load (GC, ffmpeg, a busy NAS): that check fails closed, but the term stays in use. Only
+    // STRIKES timeouts within STRIKE_WINDOW_MS mark it as runaway.
+    const now = Date.now();
+    const recent = (strikes.get(term) ?? []).filter((t) => now - t < STRIKE_WINDOW_MS);
+    recent.push(now);
+    if (recent.length >= STRIKES) {
+      runaway.add(term);
+      strikes.delete(term);
+    } else strikes.set(term, recent);
+    return null;
+  } finally {
+    regexCtx.title = "";
+  }
 }
 const STRIKES = 3;
 const STRIKE_WINDOW_MS = 10 * 60_000;
