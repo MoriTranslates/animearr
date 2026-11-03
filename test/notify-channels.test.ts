@@ -155,6 +155,25 @@ test("secrets are masked for the browser and kept when saved back masked", () =>
   assert.equal(cleanChannels(masked, saved)[0].url, "https://other.example.com/x");
 });
 
+test("a masked header value with nothing saved under that name is refused, not dropped (blind review R3)", () => {
+  const saved = full();
+  const masked = saved.map(maskChannel);
+  // Renamed while the value is still masked: the old value isn't moved over, and the header isn't silently dropped.
+  const renamed = { ...masked[0], headers: [{ name: "X-Auth", value: MASK }] };
+  assert.throws(() => cleanChannels([renamed], saved), /webhook: enter the X-Auth header again/i);
+  // A copied channel (new id, so nothing saved) with a masked header: refused too.
+  const copy = { ...masked[0], id: "copy-1", url: saved[0].url, headers: [{ name: "Authorization", value: MASK }] };
+  assert.throws(() => cleanChannels([copy], saved), /webhook: enter the Authorization header again/i);
+  // Renamed with the value typed again: kept under the new name.
+  const [typed] = cleanChannels([{ ...renamed, headers: [{ name: "X-Auth", value: "Bearer NEW" }] }], saved);
+  assert.deepEqual(typed.headers, [{ name: "X-Auth", value: "Bearer NEW" }]);
+  // Only the case changed: still the same header, the saved value stays.
+  const [cased] = cleanChannels([{ ...masked[0], headers: [{ name: "authorization", value: MASK }] }], saved);
+  assert.deepEqual(cased.headers, [{ name: "authorization", value: "Bearer SECRETHDR" }]);
+  // A row whose name was cleared is a removal, not a header to keep: dropped as before.
+  assert.deepEqual(cleanChannels([{ ...masked[0], headers: [{ name: "", value: MASK }] }], saved)[0].headers, []);
+});
+
 test("saved secrets never follow a new destination; left masked, the save is refused (review H5, A6)", () => {
   const saved = full();
   const masked = saved.map(maskChannel);

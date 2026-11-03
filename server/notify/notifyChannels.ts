@@ -186,6 +186,9 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
           if (!isMasked(x.value)) return { name, value: str(x.value, 1000) };
           const saved = old?.headers.find((o) => o.name.toLowerCase() === name.toLowerCase())?.value ?? "";
           if (saved && !sameDest) throw refuse(`${c.name}: enter the ${name} header again for the new address`);
+          // Masked but nothing saved under this name (renamed, or a copied channel): refuse rather than drop the header
+          // silently (blind review R3). A row whose name was cleared is a removal and is dropped below.
+          if (!saved && name) throw refuse(`${c.name}: enter the ${name} header again`);
           return { name, value: saved };
         })
         .filter((h) => /^[\w-]+$/.test(h.name) && h.value !== "" && !/^(host|content-length|transfer-encoding|connection)$/i.test(h.name));

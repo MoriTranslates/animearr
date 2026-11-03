@@ -95,5 +95,7 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
 - Session cookies are HttpOnly and SameSite=Strict.
 - A strict Content-Security-Policy; the page can't be framed by other sites.
 - External tools (ffprobe, ffmpeg, mkvtoolnix, 7-Zip) are run with argument lists, never through a shell.
-- Secrets are masked in the UI and redacted from logs and error messages.
+- Secrets are masked in the UI and redacted from logs and error messages. A masked secret is only kept for the same
+  destination and the same field; when there is nothing saved to keep (a renamed webhook header, a copied channel)
+  the save is refused with "enter it again" instead of silently dropping it.
 - The container starts as root only to fix `/config` ownership, then drops to your PUID:PGID.
