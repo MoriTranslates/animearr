@@ -73,6 +73,10 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   think twice before listing your Tailscale range if you share Tailscale nodes (shared nodes then count as home
   network).
 - API keys and passwords are stored encrypted in `/config` (with `secret.key`); keep backups of that folder private.
+- Known limitation: the calendar (iCal) link's token is derived from the API key. A new API key (Settings → Security)
+  is the only way to revoke a calendar link you shared, and it also changes the link for every subscribed calendar and
+  breaks apps that use the old key (Overseerr, Jellyseerr, nzb360…), which then need the new key. The calendar token
+  itself can only read the calendar.
 
 ## What AnimeArr does
 
