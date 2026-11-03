@@ -113,7 +113,7 @@ export async function setTrackLanguage(input: {
   // For the undo: rows this action created (deleted again), and the user's earlier corrections it changed (put back
   // exactly). A file that already said the same is left out: the undo doesn't touch it.
   const created: number[] = [];
-  const restore: { path: string; trackIndex: number; lang: string | null; forced: number; at: number }[] = [];
+  const restore: OverrideBefore[] = [];
   let marked = 0;
   const subFiles: string[] = [];
   for (const f of files) {
@@ -126,7 +126,8 @@ export async function setTrackLanguage(input: {
     const prev = prevOf.get(f, input.trackIndex) as { lang: string | null; forced: number; at: number } | undefined;
     if (prev && prev.lang === lang && !!prev.forced === !!input.forced) continue; // already so
     const id = (ins.get(f, input.trackIndex, lang, input.forced ? 1 : 0, now) as { id: number }).id;
-    if (prev) restore.push({ path: f, trackIndex: input.trackIndex, ...prev });
+    if (prev)
+      restore.push({ id, path: f, trackIndex: input.trackIndex, ...prev }); // the upsert kept the row's id
     else created.push(id);
   }
   invalidateOverrides();
@@ -155,9 +156,19 @@ export async function setTrackLanguage(input: {
  * is, and its file is returned so the undo can say so. (Entries logged before `restore`/`wrote` were kept only list
  * ids, which may include changed corrections: those are deleted, as before.)
  */
+/** A correction as it was before a mark changed it. `id`: its row (followed through renames); older entries have none. */
+interface OverrideBefore {
+  id?: number;
+  path: string;
+  trackIndex: number;
+  lang: string | null;
+  forced: number;
+  at: number;
+}
+
 export function deleteOverrides(
   ids: number[],
-  restore: { path: string; trackIndex: number; lang: string | null; forced: number; at: number }[] = [],
+  restore: OverrideBefore[] = [],
   wrote?: { trackIndex: number; lang: string | null; forced: number },
 ): string[] {
   const left: string[] = [];
@@ -175,6 +186,17 @@ export function deleteOverrides(
       db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
     }
     for (const r of restore) {
+      if (r.id !== undefined) {
+        // By its row: a rename since moved it to the file's new name, and it is put back there.
+        const cur = db.prepare("SELECT path, lang, forced FROM track_overrides WHERE id = ?").get(r.id) as
+          { path: string; lang: string | null; forced: number } | undefined;
+        if (!still(cur)) {
+          left.push(cur?.path ?? r.path);
+          continue;
+        }
+        db.prepare("UPDATE track_overrides SET lang = ?, forced = ?, at = ? WHERE id = ?").run(r.lang, r.forced, r.at, r.id);
+        continue;
+      }
       const cur = db.prepare("SELECT lang, forced FROM track_overrides WHERE path = ? AND track_index = ?").get(r.path, r.trackIndex) as
         { lang: string | null; forced: number } | undefined;
       if (!still(cur)) {

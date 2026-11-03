@@ -95,3 +95,16 @@ test("an older mark's undo leaves a track the user changed again since, and says
   assert.match(r1.note ?? "", /Show - S01E05\.mkv was changed again after this; left as it is/);
   assert.match(r2.note ?? "", /Show - S01E04\.mkv was changed again after this; left as it is/);
 });
+
+test("L4: a mark's undo still restores the earlier correction after the file was renamed meanwhile", async () => {
+  const { movePathRows } = await import("../server/import/pathRows.js");
+  const F = `${SEASON}/Show - S01E06.mkv`;
+  const G = `${SEASON}/Show - S01E06 renamed.mkv`;
+  await setTrackLanguage({ path: F, trackIndex: 2, lang: "en", tvdbId: 555 }); // the user's earlier correction
+  await setTrackLanguage({ path: F, trackIndex: 2, lang: "ja", tvdbId: 555 }); // the mark to undo
+  movePathRows(F, G); // a rename in between: the rows follow the file
+  const r = await undoNth(0);
+  assert.equal(r.note, undefined, `nothing to report: ${r.note}`);
+  assert.deepEqual(at(G), [{ track: 2, lang: "en", forced: false }], "the earlier correction is back, at the file's new name");
+  assert.deepEqual(at(F), [], "nothing at the old name");
+});
