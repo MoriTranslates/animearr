@@ -70,8 +70,11 @@ const el = (name: string, v: string | number | null | undefined, attrs = "") =>
  * the value, or unquoted), then ">" or "/>". "a <b and c> d", "x<3" and "1 <foo> 2" don't fit and stay text.
  */
 const TAG_NAMES =
-  "a|abbr|b|big|blockquote|br|center|cite|code|del|div|em|font|h[1-6]|hr|i|img|ins|li|ol|p|pre|q|s|small|span|strike|strong|sub|sup|u|ul";
-const TAG = new RegExp(`<\\/?(${TAG_NAMES})((?:\\s+[A-Za-z_:][\\w:.-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'<>=\`]+))*)\\s*\\/?>`, "gi");
+  "a|abbr|b|big|blockquote|br|center|cite|code|dd|del|details|div|dl|dt|em|font|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|pre|q|s|small|span|strike|strong|sub|summary|sup|table|tbody|td|tfoot|th|thead|tr|tt|u|ul|wbr";
+// Valueless attributes are only the HTML boolean ones, so "a <b and c> d" stays text.
+const BOOL_ATTRS = "noshade|ismap|hidden|nowrap|open|compact|disabled|checked|selected|async|controls|loop";
+const ATTR = `(?:\\s*[A-Za-z_:][\\w:.-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'<>=\`]+)|\\s+(?:${BOOL_ATTRS}))`;
+const TAG = new RegExp(`<\\/?(${TAG_NAMES})(${ATTR}*)\\s*\\/?>`, "gi");
 /** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)", comments): plain text for the NFO. */
 export const plainText = (html: string | null | undefined) =>
   (html ?? "")

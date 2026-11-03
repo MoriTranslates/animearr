@@ -60,6 +60,16 @@ test("episode NFO: one block per episode (multi-episode files), season.nfo, .ple
   assert.match(pm, /\ntitle: Frieren: Beyond Journey's End\nyear: 2023\ntvdbid: 424536\ntmdbid: 209867\n$/);
 });
 
+test("plainText strips the other tags AniList/TMDB send: tables, details, boolean attributes, packed attributes", () => {
+  assert.equal(plainText("<table><tr><td>x</td></tr></table>"), "x");
+  assert.equal(plainText("<details><summary>s</summary>d</details>"), "sd");
+  assert.equal(plainText("a<hr noshade>b"), "ab");
+  assert.equal(plainText("<img src=x ismap>after"), "after");
+  assert.equal(plainText('<a href="u"class="c">l</a>'), "l");
+  // The deliberate trade-off stays: unknown words are text.
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+});
+
 test("stripXmlIllegal drops exactly the characters XML 1.0 forbids (code points as numbers)", () => {
   const ch = (cp: number) => String.fromCharCode(cp);
   const dropped = [0x00, 0x01, 0x08, 0x0b, 0x0c, 0x0e, 0x1b, 0x1f, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
