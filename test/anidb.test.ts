@@ -9,7 +9,8 @@ process.env.ANIMEARR_CONFIG = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-te
 process.env.ANIMEARR_NO_LOCK = "1";
 
 const { patchSettings } = await import("../server/system/settings.js");
-const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = await import("../server/metadata/anidb.js");
+const A = await import("../server/metadata/anidb.js");
+const { parseAnime, fetchAnime, anidbStatus, due, storeAnime } = A;
 const DAY_MS = 86_400_000;
 
 const XML = `<?xml version="1.0"?><anime id="1" restricted="false"><type>TV Series</type><episodecount>2</episodecount><enddate>2001-01-01</enddate>
@@ -38,6 +39,24 @@ test("the cache: finished anime weekly, airing daily", () => {
   assert.equal(due(1), false, "finished: not again within a week");
   storeAnime(parseAnime(XML.replace("2001-01-01", "2999-01-01"), 2), Date.now() - 2 * 86_400_000);
   assert.equal(due(2), true, "airing: daily");
+});
+
+test("an answer with no episodes (or none readable) keeps the stored list: couldn't check isn't 'none' (M14)", () => {
+  const { anidbEpisodes } = A;
+  storeAnime(parseAnime(XML.replace('id="1"', 'id="9"'), 9));
+  assert.equal(anidbEpisodes(9).length, 4);
+  // An answer with the anime but an empty episode list, and one whose episodes can't be read (no epno).
+  for (const bad of [
+    `<anime id="9"><type>TV Series</type><episodecount>2</episodecount><episodes></episodes></anime>`,
+    `<anime id="9"><type>TV Series</type><episodes><episode id="1"><title xml:lang="en">?</title></episode></episodes></anime>`,
+  ]) {
+    storeAnime(parseAnime(bad, 9));
+    assert.equal(anidbEpisodes(9).length, 4, "the stored episodes stay");
+    assert.equal(due(9), false, "and it isn't asked again at once (AniDB's budget is strict)");
+  }
+  // A real answer still replaces the list.
+  storeAnime(parseAnime(XML.replace(/<episode id="[34]"[\s\S]*?<\/episode>/g, ""), 9));
+  assert.equal(anidbEpisodes(9).length, 2);
 });
 
 test("one request at a time, gzip handled, and a ban stops everything for a day (persisted)", async () => {
