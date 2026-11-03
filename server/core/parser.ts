@@ -451,6 +451,8 @@ interface Marker {
   weak?: boolean;
   /** An "NxM" season-episode marker ("10x14"), the only form an absolute number may directly precede. */
   cross?: boolean;
+  /** A Batch name whose range end can't be trusted; the number is where the range starts. */
+  untrustedStart?: number;
 }
 
 const range = (a: number, b: number) => (b >= a && b - a < 2000 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]);
@@ -634,7 +636,7 @@ export function parseRelease(input: string): ParsedRelease {
     // pack), never "episode 1", which would import or grab the pack as one episode.
     const untrustedPack = last !== undefined && !trusted && /\b(batch|complete)\b/i.test(s);
     const eps = trusted ? range(+m[2], last!) : untrustedPack ? [] : [+m[2]];
-    push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1) });
+    push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1), ...(untrustedPack ? { untrustedStart: +m[2] } : {}) });
   }
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;
@@ -871,6 +873,10 @@ export function parseRelease(input: string): ParsedRelease {
     batch = false;
     fullSeason = false;
   }
+  // An untrusted range end is a whole-season pack only when it starts at episode 1 and names one season; anything
+  // else is unknown (no episodes, no fullSeason), so it is neither grabbed nor imported.
+  const untrusted = chosen.find((c) => c.untrustedStart !== undefined);
+  if (untrusted && !episodes.length && !absolute.length) fullSeason = untrusted.untrustedStart === 1 && seasons.length <= 1;
 
   // ---- title
   let title = s.slice(0, titleEnd);

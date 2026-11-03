@@ -1279,13 +1279,7 @@ test("a Batch or Complete pack with an untrustworthy E-range end is never one ep
   const p = (name: string) => parseRelease(name);
   // The end looks like a resolution (or is absurd), so the range is unknown: a whole-season pack with no episode list,
   // never "episode 1" (which would import the pack as E1).
-  for (const name of [
-    "Show S01E01-720 Batch",
-    "Show S01E01-480 Complete",
-    "Show S01E01-576 Complete",
-    "Show S01E05-720 Batch 1080p",
-    "Show S01E01-E9999 [Batch]",
-  ]) {
+  for (const name of ["Show S01E01-720 Batch", "Show S01E01-480 Complete", "Show S01E01-576 Complete", "Show S01E01-E9999 [Batch]"]) {
     const r = p(name);
     assert.deepEqual(r.episodes, [], name);
     assert.equal(r.batch, true, name);
@@ -1298,4 +1292,32 @@ test("a Batch or Complete pack with an untrustworthy E-range end is never one ep
   // Real packs stay ranges.
   assert.equal(p("Pokemon S01E01-276 [Batch]").episodes.length, 276);
   assert.equal(p("Show S01E01-E250 [Batch]").episodes.length, 250);
+});
+
+test("an untrustworthy range end is a whole-season pack only from episode 1, one season, Batch word; else unknown (blind round-5 M5)", () => {
+  const p = (name: string) => parseRelease(name);
+  // Unknown: no episodes, not a whole season, so nothing is grabbed or imported.
+  for (const name of [
+    "Show S01E26-E5000 Batch",
+    "Show S01E05-2500 Batch",
+    "Show S01-S03 E01-E2500 Batch",
+    "Show S02E01-E2500 Batch",
+    "Show S01-S03 E01-720 Complete",
+  ]) {
+    const r = p(name);
+    if (name.includes("S02E01")) {
+      // Starts at 1 with one season and a Batch word: the whole season, as in round 4.
+      assert.equal(r.fullSeason, true, name);
+      assert.equal(r.season, 2, name);
+      assert.deepEqual(r.episodes, [], name);
+      continue;
+    }
+    assert.deepEqual(r.episodes, [], name);
+    assert.equal(r.fullSeason, false, name);
+  }
+  // A multi-season name never becomes a whole season, whatever the start.
+  assert.equal(p("Show S01-S03 E01-E2500 Batch").fullSeason, false);
+  // Round-4 rows that start at 1 with one season keep their outcome.
+  assert.equal(p("Show S01E01-720 Batch").fullSeason, true);
+  assert.equal(p("Show S01E01-E9999 [Batch]").fullSeason, true);
 });
