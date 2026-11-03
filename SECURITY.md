@@ -77,6 +77,11 @@ A fresh install starts with the login **captain / morebooty**. It works only on 
   is the only way to revoke a calendar link you shared, and it also changes the link for every subscribed calendar and
   breaks apps that use the old key (Overseerr, Jellyseerr, nzb360…), which then need the new key. The calendar token
   itself can only read the calendar.
+- Known limitation: requests from other sites (or another app on the same address) are refused using the
+  `Sec-Fetch-Site` and `Origin` headers browsers send. Browsers without Fetch Metadata (Safari before 16.4, old
+  embedded webviews) send neither for a plain image or link, so with "No password on my local network" on, a page
+  could still make such a browser start a GET (for example an indexer search). It can't read the answer, and nothing a
+  GET does deletes or changes settings.
 
 ## What AnimeArr does
 

@@ -324,9 +324,13 @@ export async function guard(req: FastifyRequest, reply: FastifyReply) {
       error: "Log in to do this: the API key only works for the Sonarr-compatible API and the stable automation routes",
     });
   if (st.via !== "apikey" && !csrfOk(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
-  // The home-network bypass has no cookie for SameSite to hold back, so a page elsewhere could make the browser send
-  // requests that count as "local" (GETs included: e.g. an indexer search through GET /api/v3/release).
-  if (st.via === "local" && fromOtherSite(req)) return reply.code(403).send({ error: "Cross-site request blocked" });
+  // Browser credentials only count for AnimeArr's own pages. The home-network bypass has no cookie for SameSite to
+  // hold back, and SameSite=Strict still sends the session cookie to same-*site* pages (another app on the same
+  // address and a different port), so either could make the browser send requests that change things (GETs
+  // included: e.g. an indexer search through GET /api/v3/release; blind review M12, B1). The API key isn't a browser
+  // credential. Residual (B2): browsers without Fetch Metadata send no Sec-Fetch-Site on an <img> and no Origin.
+  if ((st.via === "local" || st.via === "session") && fromOtherSite(req))
+    return reply.code(403).send({ error: "Cross-site request blocked" });
 }
 
 // In-memory login throttle per IP + username, with growing back-off instead of a hard lock-out.

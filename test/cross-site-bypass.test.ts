@@ -52,3 +52,34 @@ test("DNS rebinding stays refused, and the API key and sessions are unaffected",
   });
   assert.equal(key.statusCode, 200, "the API key isn't a browser credential");
 });
+
+test("review B1: a signed-in session isn't usable from a sibling service on the same address", async () => {
+  // SameSite=Strict still sends the cookie to same-*site* pages: another app at 192.168.1.5:8989 is same-site here.
+  const login = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    remoteAddress: "192.168.1.20",
+    headers: { host: HOST, "x-animearr": "1" },
+    payload: { username: "captain", password: "pw-test-1" },
+  });
+  const cookie = String([login.headers["set-cookie"]].flat()[0]).split(";")[0];
+  const asSession = (headers: Record<string, string>) =>
+    app
+      .inject({
+        method: "GET",
+        url: "/api/v3/release?seriesId=1",
+        remoteAddress: "192.168.1.20",
+        headers: { host: HOST, cookie, ...headers },
+      })
+      .then((r) => r.statusCode);
+  patchSettings((s) => ({ ...s, auth: { ...s.auth, bypassLocal: false } }));
+  try {
+    assert.equal(await asSession({ "sec-fetch-site": "same-site" }), 403, "an <img> on the sibling service");
+    assert.equal(await asSession({ "sec-fetch-site": "cross-site" }), 403);
+    assert.equal(await asSession({ origin: "http://192.168.1.5:8989" }), 403, "a foreign Origin");
+    for (const ok of [{ "sec-fetch-site": "same-origin" }, { "sec-fetch-site": "none" }, {}])
+      assert.notEqual(await asSession(ok), 403, `AnimeArr's own page: ${JSON.stringify(ok)}`);
+  } finally {
+    patchSettings((s) => ({ ...s, auth: { ...s.auth, bypassLocal: true } }));
+  }
+});
