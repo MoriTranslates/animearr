@@ -38,7 +38,7 @@ import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
 import { importMovie, movieFileOpts, movieNextForRow } from "../library/movies.js";
 import { scanFolder } from "../import/mediafiles.js";
-import { binFolder } from "../import/binpurge.js";
+import { binFolder, binUsable } from "../import/binpurge.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "../library/franchise.js";
 import { inspectFiles } from "./safety.js";
 import {
@@ -160,7 +160,7 @@ export async function startGrab(
       group: c.group ?? null,
       consistency: prof.groupConsistency ?? "prefer",
       profileResolution: prof.resolution,
-      recycleBin: !!getSettings().media.recycleBin.trim(),
+      recycleBin: binUsable(),
       propers: properMode(),
       exclude: new Set(asMovie.keys()),
       existingOf: (_sid, s) => existing.get(s) ?? [],

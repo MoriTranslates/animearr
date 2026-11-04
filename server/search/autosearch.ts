@@ -33,6 +33,7 @@ import { ownedElsewhere, ownedWhy } from "../library/duplicates.js";
 import { properMode } from "./propers.js";
 import { inLane } from "./searchQueue.js";
 import { couldntSearch } from "./indexers.js";
+import { binUsable } from "../import/binpurge.js";
 import crypto from "node:crypto";
 
 export interface AutoDeps {
@@ -157,7 +158,7 @@ export async function autoSearchEpisodes(
   const owned = ownedElsewhere(tvdbId);
   const versionChecks: number[] = [];
   const wrong = wrongLanguageEpisodes(tvdbId);
-  const checkVersions = properMode() === "preferAndUpgrade" && !!getSettings().media.recycleBin.trim();
+  const checkVersions = properMode() === "preferAndUpgrade" && binUsable();
   for (const id of episodeIds) {
     const e = all.get(id);
     if (!e) continue;

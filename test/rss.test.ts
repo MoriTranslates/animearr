@@ -29,7 +29,7 @@ before(() => {
   patchSettings((s) => ({ ...s, prowlarr: { ...s.prowlarr, url: "http://prowlarr", apiKey: "k" } }));
   cache
     .prepare(
-      "INSERT INTO series (id, tvdb_id, title, path, monitored, series_type, synced_at) VALUES (5, 424536, 'Frieren', '/media/Anime/Frieren', 1, 'anime', 0)",
+      "INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, series_type, synced_at) VALUES (5, 424536, 'Frieren', '/media/Anime/Frieren', '/media/Anime', 1, 'anime', 0)",
     )
     .run();
   cache

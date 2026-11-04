@@ -11,6 +11,7 @@ import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { recycleSetting } from "../import/recycle.js";
+import { binUsable } from "../import/binpurge.js";
 import { deletePathRows, movePathRows } from "../import/pathRows.js";
 import { keyOf } from "../system/paths.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
@@ -796,7 +797,7 @@ export const WRONG_LANG_WHY = "the file is in the wrong language";
  */
 export function planWrongLanguage(now = Date.now()) {
   // The old file goes to the recycling bin only after the new one passed its check: no bin, no replacement.
-  if (!getSettings().media.recycleBin.trim()) return 0;
+  if (!binUsable()) return 0;
   const retry = getSettings().backlog.retryDays * 86_400_000;
   let added = 0;
   for (const m of listManaged()) {

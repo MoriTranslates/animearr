@@ -25,7 +25,7 @@ import { isCreditlessTitle } from "../core/resolver.js";
 import { cache, db } from "../system/db.js";
 import { haveRevisions } from "../search/propers.js";
 import { profileFor } from "../library/profiles.js";
-import { getSettings } from "../system/settings.js";
+import { binUsable } from "../import/binpurge.js";
 
 // ---------------------------------------------------------------- batch info on the grab
 
@@ -701,7 +701,7 @@ export async function batchPrefersSingles(
     group: r.group,
     consistency: prof.groupConsistency ?? "prefer",
     profileResolution: prof.resolution,
-    recycleBin: !!getSettings().media.recycleBin.trim(),
+    recycleBin: binUsable(),
     exclude: new Set(),
     existingOf: (_id, season) => existing.get(season) ?? [],
   });

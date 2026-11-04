@@ -35,6 +35,13 @@ export function binFolder(): { local: string } | { error: string } {
 }
 
 /**
+ * Whether the bin can take replaced files right now: set AND passing binFolder's guard. Grab-side checks (upgrades,
+ * propers, wrong-language replacements, batch planning) use this, not "is the setting non-empty": a set bin that the
+ * importer refuses would only lead to downloads it can't import over the old files.
+ */
+export const binUsable = () => "local" in binFolder();
+
+/**
  * A file in the bin by the bin's library-style path (the setting, e.g. /media/Recycle/animearr/Show/x.mkv): the key
  * per-file rows use, like every library path, whatever this machine's own path is.
  */

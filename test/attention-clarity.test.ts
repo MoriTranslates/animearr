@@ -40,7 +40,7 @@ before(() => {
   const now = Date.now();
   cache
     .prepare(
-      "INSERT INTO series (id, tvdb_id, title, path, monitored, status, synced_at) VALUES (7, ?, 'Clover', '/media/AnimeArr/Clover', 1, 'continuing', 0)",
+      "INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, status, synced_at) VALUES (7, ?, 'Clover', '/media/AnimeArr/Clover', '/media/AnimeArr', 1, 'continuing', 0)",
     )
     .run(TVDB);
   const ep = cache.prepare(
@@ -141,6 +141,17 @@ test("a file marked as having burned-in subtitles counts as having the language"
   assert.equal(e6.file!.burnedIn, "en");
   assert.match(e6.file!.lang!.why, /you marked this file as having burned-in en subtitles/);
   assert.throws(() => markBurnedIn("/media/AnimeArr/Clover/not-there.mkv", "en"), /isn't in the library/);
+});
+
+test("a recycling bin AnimeArr refuses (inside a library folder) plans no wrong-language replacement", () => {
+  // Set but unusable: the importer would refuse to move the old file there, so a replacement grab would only be wasted.
+  patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: "/media/AnimeArr/.recycle" } }));
+  try {
+    assert.equal(planWrongLanguage(Date.now()), 0);
+    assert.equal(db.prepare("SELECT 1 FROM search_state WHERE episode_id = 804").get(), undefined, "nothing was queued");
+  } finally {
+    patchSettings((s) => ({ ...s, media: { ...s.media, recycleBin: "/media/Recycle/" } }));
+  }
 });
 
 test("wrong-language files join the search as replacements, once per retry period, and leave it when fixed", () => {

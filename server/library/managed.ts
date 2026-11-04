@@ -32,6 +32,7 @@ import { CATEGORY_NAME, ladderRank, qualityScore } from "../core/quality.js";
 import { hintProper, recheckSoon, upgradeUnits, type Unit } from "../search/qualityUpgrade.js";
 import { missingScoped, scopedEpisodeIds } from "./scope.js";
 import { planWrongLanguage } from "./episodes.js";
+import { binUsable } from "../import/binpurge.js";
 
 const DAY = 86_400_000;
 
@@ -681,7 +682,7 @@ export async function rssTick(now = Date.now(), deps = { search: searchAll }) {
   let hits = 0;
   let upgradeHits = 0;
   let units: Unit[] | null = null; // seasons below their goal, worked out when a release for a file we have first needs them
-  const recycling = !!getSettings().media.recycleBin.trim(); // a replacement needs the recycling bin
+  const recycling = binUsable(); // a replacement needs a recycling bin the importer accepts
   const parseAlt = (s: string) => {
     try {
       return JSON.parse(s) as string[];
