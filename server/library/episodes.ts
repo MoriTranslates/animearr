@@ -26,6 +26,7 @@ import { aliasIndex } from "../metadata/metadata.js";
 import { startGrab } from "../grabs/pipeline.js";
 import { type Candidate } from "../grabs/pipelineState.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "../search/search.js";
+import { couldntSearch } from "../search/indexers.js";
 import { profileFor } from "./profiles.js";
 import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { judge } from "../grabs/verify.js";
@@ -795,7 +796,7 @@ export function planWrongLanguage(now = Date.now()) {
         added += Number(
           db
             .prepare(
-              "UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, next_at = ?, last_why = ? WHERE episode_id = ?",
+              "UPDATE search_state SET state = 'replace', kind = 'new', attempts = 0, outage_streak = 0, next_at = ?, last_why = ? WHERE episode_id = ?",
             )
             .run(now, lastWhy, id).changes,
         );
@@ -828,7 +829,7 @@ export function searchAgainSoon(tvdbId: number, episodeIds: number[], opts: { wh
   const state = opts.replace ? "replace" : "waiting";
   for (const e of ids)
     db.prepare(
-      "INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, last_why = ?",
+      "INSERT INTO search_state (episode_id, tvdb_id, next_at, state) VALUES (?, ?, ?, ?) ON CONFLICT(episode_id) DO UPDATE SET state = excluded.state, kind = 'new', next_at = excluded.next_at, attempts = 0, outage_streak = 0, last_why = ?",
     ).run(e, tvdbId, now, state, opts.replace ? "replacing a file that failed the after-import check" : "search requested");
 }
 
@@ -879,13 +880,16 @@ export async function regrabEpisodes(tvdbId: number, episodeIds: number[], deps:
       const ok = res.results.filter(
         (r) => r.rank.accept && r.coversTarget && r.extra <= 0 && (!current || norm(r.title) !== norm(current)),
       );
+      // Not every indexer answered: say that, not "nothing else acceptable found" (M4).
+      const gap = couldntSearch(res);
+      const none = gap ? `couldn't search fully (${gap.why})` : "nothing else acceptable found";
       if (!ok.length) {
-        out.push({ episodeId: eid, outcome: "nothing else acceptable found; the current file stays" });
+        out.push({ episodeId: eid, outcome: `${none}; the current file stays` });
         logDecision("skip", {
           tvdbId,
           title: s.title,
           episodeIds: [eid],
-          why: `Re-grab S${ep.seasonNumber}E${ep.episodeNumber}: nothing else acceptable found, so the current file stays`,
+          why: `Re-grab S${ep.seasonNumber}E${ep.episodeNumber}: ${none}, so the current file stays`,
         });
         continue;
       }

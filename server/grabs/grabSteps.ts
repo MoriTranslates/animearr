@@ -82,11 +82,24 @@ export function unsafeDownload(deps: Pick<PipelineDeps, "localPath">, row: GrabR
  * with the plain reason; nothing from it is ever imported. The caller then searches the next release (rejectUnsafe in
  * pipeline.ts, or movies.ts for a movie).
  */
-export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: PipelineDeps, when: string) {
-  setState(row.id, "failed", reason);
+export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: PipelineDeps, when: string): Promise<boolean> {
+  // The row was read before awaiting the client: only a grab still in flight is failed here (H2/M1). The release is
+  // blocklisted either way (it is unsafe); one you removed meanwhile is left as you left it, with no next release.
+  const mine = setState(row.id, "failed", reason, {}, ["downloading", "importing"]);
   const bid = blocklist(row, reason);
+  if (!mine) {
+    logDecision("fail", {
+      tvdbId: row.tvdb_id,
+      release: row.release,
+      why: `${row.release} ${reason} (found ${when}, after you removed it). Blocklisted it`,
+      detail: { grabId: row.id, malware: true },
+    });
+    return false;
+  }
   let removed = "";
-  if (row.client && row.client_ref) {
+  // A torrent the client had before AnimeArr's grab isn't AnimeArr's to delete, even an unsafe one: you decide there.
+  if (row.not_ours) removed = "; it was in the download client before AnimeArr's grab, so it was left there for you to delete";
+  else if (row.client && row.client_ref) {
     try {
       await deps.clients.remove({ client: row.client as ClientJob["client"], ref: row.client_ref });
       removed = `; removed it from ${clientName(row.client) || row.client}`;
@@ -103,6 +116,7 @@ export async function rejectUnsafeDownload(row: GrabRow, reason: string, deps: P
     detail: { grabId: row.id, malware: true, ...(row.movie_id ? { movieId: row.movie_id } : {}) },
     undo: { action: "unblock", args: { id: bid, release: row.release } },
   });
+  return true;
 }
 
 /** The file-mapping options of an episode grab (the importer's own mapping, so the import sees the same files). */
@@ -138,18 +152,20 @@ export async function selectAfterAdd(
   magnet: boolean,
   opts?: FileMapOpts,
 ) {
-  if (!job.select) {
+  if (!job.select && !job.paused) {
     // The client can't skip files (or already had this torrent): the whole batch; the import takes what it needs.
-    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files" });
+    writeBatch(grabId, { ...batch, mode: "whole", note: "the download client can't skip files", paused: false });
     return;
   }
+  // (Added stopped but no file choice: applySelection downloads it whole and starts it, reporting a failed start.)
   writeBatch(grabId, { ...batch, paused: !!job.paused });
   const ctx = { grabId, job, clients: deps.clients, opts: opts ?? episodeFileOpts(log.tvdbId!, log.episodeIds), log };
   for (let i = 0; i < (magnet ? 5 : 3); i++) {
     try {
       if ((await applySelection(ctx)) !== "pending") return;
     } catch {
-      /* the tick tries again */
+      // Harmless to lose here: the batch stays "pending", so the pipeline tick runs the selection again and reports
+      // an error that lasts (pipeline.ts reportBatchStep); a client's own answers are handled inside applySelection.
     }
     await deps.sleep(2000);
   }

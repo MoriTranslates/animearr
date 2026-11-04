@@ -1,5 +1,4 @@
-import fs from "node:fs";
-import { localPath } from "../system/paths.js";
+import { fileSurelyGone } from "../system/paths.js";
 /**
  * Import / sync of the existing Sonarr and Radarr libraries into cache.db (companion mode: Sonarr stays the source of
  * truth for files). Read-only towards Sonarr/Radarr: nothing here changes their settings or data.
@@ -19,7 +18,7 @@ import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
-import { materializeAll, rematerializeSeries } from "./native.js";
+import { markListRead, materializeAll, rematerializeSeries, type ArrApp } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 import { getSettings } from "../system/settings.js";
 
@@ -58,11 +57,31 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   );
 }
 
+/**
+ * One sync at a time. A full sync (Rebuild cache) asked for while a plain one runs is queued behind it, not swallowed:
+ * held removals are only applied by a full sync (review L2). Later callers share the queued run.
+ */
+let runningFull = false;
+let queuedFull: Promise<SyncResult> | null = null;
 export function syncLibrary(full = false): Promise<SyncResult> {
-  running ??= doSync(full).finally(() => (running = null));
-  return running;
+  if (queuedFull) return queuedFull;
+  if (!running) {
+    runningFull = full;
+    running = doSync(full).finally(() => (running = null));
+    return running;
+  }
+  if (!full || runningFull) return running;
+  queuedFull = running
+    .catch(() => undefined) // the plain run's own failure is its caller's to see; the full run goes ahead either way
+    .then(() => {
+      queuedFull = null;
+      runningFull = true;
+      running = doSync(true).finally(() => (running = null));
+      return running;
+    });
+  return queuedFull;
 }
-export const syncRunning = () => !!running;
+export const syncRunning = () => !!running || !!queuedFull;
 
 async function doSync(full: boolean): Promise<SyncResult> {
   const res: SyncResult = { series: 0, refreshed: 0, removed: 0, movies: 0, unmatched: 0, errors: [], at: Date.now() };
@@ -72,7 +91,7 @@ async function doSync(full: boolean): Promise<SyncResult> {
     if (radarrConfigured()) {
       setJob("sync", "running", "Reading Radarr");
       try {
-        res.movies = await syncRadarr();
+        res.movies = await syncRadarr(full, res);
       } catch (e) {
         res.errors.push((e as Error).message);
       }
@@ -96,12 +115,33 @@ async function doSync(full: boolean): Promise<SyncResult> {
   return res;
 }
 
+/**
+ * Whether a plain sync must hold back dropping what Sonarr/Radarr no longer lists, and the message why (null = apply).
+ * An empty or half answer (starting up, a restored or wrong instance, the anime tag renamed) looks the same as a mass
+ * removal, and acting on it would close managed searches and let Add and import lists add the same shows and movies
+ * again as native duplicates (review 2026-11-02, H10). So a plain sync only drops a few; all of them, more than half,
+ * or anything while `suspect` names a problem waits for a full sync, which the user starts on purpose.
+ */
+function heldRemoval(app: ArrApp, what: string, had: number, gone: number, full: boolean, suspect: string | null): string | null {
+  if (full || !gone || !(suspect || gone === had || (gone >= 2 && gone * 2 > had))) return null;
+  return `${suspect ? `${suspect}; ` : ""}${app}'s answer lacks ${gone} of the ${had} ${what} AnimeArr knows, so they were kept in case ${app} only half-answered. If you really removed them from ${app}, apply it with Settings → System → Rebuild cache`;
+}
+
 async function syncSonarr(full: boolean, res: SyncResult) {
   const s = getSettings();
   const all = await getSeries();
+  // A malformed answer (a proxy's HTML page, an error object, records without fields) fails the sync: the cache stays.
+  if (!Array.isArray(all) || all.some((x) => !x || typeof x.id !== "number" || !Array.isArray(x.seasons)))
+    throw new Error("Sonarr's series list came back malformed; kept the shows AnimeArr already had");
   let animeTagId: number | null = null;
-  if (s.sonarr.animeTag) animeTagId = (await getTags()).find((t) => t.label.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
-  const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && x.tags.includes(animeTagId)));
+  let tagMissing = false;
+  if (s.sonarr.animeTag) {
+    const tags = await getTags();
+    if (!Array.isArray(tags)) throw new Error("Sonarr's tag list came back malformed; kept the shows AnimeArr already had");
+    animeTagId = tags.find((t) => t.label?.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
+    tagMissing = animeTagId === null;
+  }
+  const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId)));
   res.series = anime.length;
   const prev = new Map(
     (
@@ -187,14 +227,26 @@ async function syncSonarr(full: boolean, res: SyncResult) {
           .run(x.id, a.title, compactKey(a.title), a.seasonNumber ?? null, season);
       }
     }
-    // Series no longer in Sonarr (or no longer anime).
+    // Series no longer in Sonarr (or no longer anime): see heldRemoval.
     const keep = new Set(anime.map((x) => x.id));
-    for (const id of prev.keys())
-      if (!keep.has(id)) {
+    const gone = [...prev.keys()].filter((id) => !keep.has(id));
+    const held = heldRemoval(
+      "Sonarr",
+      "anime shows",
+      prev.size,
+      gone.length,
+      full,
+      tagMissing ? `Sonarr has no tag named "${s.sonarr.animeTag}" (Settings → Sonarr → anime tag)` : null,
+    );
+    if (held) res.errors.push(held);
+    else {
+      for (const id of gone) {
         res.removed++;
         for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id", "alt_titles WHERE series_id"])
           cache.prepare(`DELETE FROM ${t} = ?`).run(id);
       }
+      markListRead("Sonarr", anime.length);
+    }
   });
 
   let done = 0;
@@ -209,10 +261,59 @@ async function syncSonarr(full: boolean, res: SyncResult) {
   });
 }
 
+/**
+ * Is this episode list shorter than Sonarr itself says the show is (review 2026-11-02, H11)? Sonarr's series record
+ * counts every season's episodes (statistics.totalEpisodeCount, cached from the last series read); its episode list
+ * should hold at least that many per season. When Sonarr really removes episodes those counts drop too, so a real
+ * removal still applies. Without counts (an old Sonarr) a list shorter than the cached one can't be told from a half
+ * answer, so it counts as short too. Returns what's missing, or null.
+ * Checked against a live Sonarr (2026-11-02, read-only): over 772 series and 1,824 seasons, every season's
+ * totalEpisodeCount equalled its /episode?seriesId rows exactly, specials included.
+ */
+function shortEpisodeList(seriesId: number, eps: { seasonNumber: number }[]): string | null {
+  const row = cache.prepare("SELECT seasons FROM series WHERE id = ?").get(seriesId) as { seasons: string } | undefined;
+  const seasons = (row ? (JSON.parse(row.seasons) as { season: number; total?: number }[]) : []).filter((s) => (s.total ?? 0) > 0);
+  if (seasons.length) {
+    repeatedShort.delete(seriesId);
+    const got = new Map<number, number>();
+    for (const e of eps) got.set(e.seasonNumber, (got.get(e.seasonNumber) ?? 0) + 1);
+    const lacking = seasons.filter((s) => (got.get(s.season) ?? 0) < s.total!);
+    return lacking.length ? lacking.map((s) => `season ${s.season}: ${got.get(s.season) ?? 0} of ${s.total}`).join(", ") : null;
+  }
+  const cached = (cache.prepare("SELECT COUNT(*) AS n FROM episodes WHERE series_id = ?").get(seriesId) as { n: number }).n;
+  if (eps.length >= cached) {
+    repeatedShort.delete(seriesId);
+    return null;
+  }
+  // Review L4: with no counts, the same shorter list on several reads in a row is a real removal, not a half answer.
+  const seen = repeatedShort.get(seriesId);
+  const count = seen && seen.length === eps.length ? seen.count + 1 : 1;
+  if (count >= SHORT_REPEATS_APPLY) {
+    repeatedShort.delete(seriesId);
+    return null;
+  }
+  repeatedShort.set(seriesId, { length: eps.length, count });
+  return `${eps.length} episodes, ${cached} known`;
+}
+
+/** Without season counts: how many reads in a row came back with the same shorter list, per series (in memory). */
+const repeatedShort = new Map<number, { length: number; count: number }>();
+const SHORT_REPEATS_APPLY = 3;
+
 /** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   if (isNativeSeriesId(seriesId)) return rematerializeSeries(seriesId);
   const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
+  // Keep the cached episodes over a malformed or short answer: a dropped episode closes its managed search. A record
+  // without an id would even become a made-up episode (SQLite numbers a NULL key itself). The files list may be empty.
+  if (
+    !Array.isArray(eps) ||
+    !Array.isArray(files) ||
+    eps.some((e) => !e || typeof e.id !== "number" || typeof e.seasonNumber !== "number" || typeof e.episodeNumber !== "number")
+  )
+    throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
+  const short = shortEpisodeList(seriesId, eps);
+  if (short) throw new Error(`Sonarr's episode list is short (${short}); kept the cached episodes, read again on the next sync`);
   tx(cache, () => {
     cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);
     cache.prepare("DELETE FROM files WHERE series_id = ?").run(seriesId);
@@ -266,19 +367,32 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   });
 }
 
-async function syncRadarr() {
+async function syncRadarr(full: boolean, res: SyncResult) {
   const s = getSettings().radarr;
   const movies = await getMovies();
+  // A malformed answer fails the sync and the cache stays, as for Sonarr.
+  if (!Array.isArray(movies) || movies.some((m) => !m || typeof m.id !== "number" || typeof m.path !== "string"))
+    throw new Error("Radarr's movie list came back malformed; kept the movies AnimeArr already had");
   const roots = s.animeRoots.map((r) => r.replace(/\/+$/, ""));
   const isAnime = (m: (typeof movies)[number]) =>
     roots.some((r) => m.rootFolderPath?.replace(/\/+$/, "") === r || m.path.startsWith(`${r}/`)) ||
     s.animeProfileIds.includes(m.qualityProfileId) ||
     (!roots.length && !s.animeProfileIds.length && (m.genres ?? []).includes("Animation") && m.originalLanguage?.name === "Japanese");
   let n = 0;
+  let held: string | null = null;
   tx(cache, () => {
-    cache.prepare(`DELETE FROM movies WHERE id < ${NATIVE_BASE}`).run(); // native movies (added in AnimeArr) stay
+    // Movies no longer in Radarr go (native movies, added in AnimeArr, always stay); a mass removal waits, see heldRemoval.
+    const keep = new Set(movies.map((m) => m.id));
+    const prev = (cache.prepare(`SELECT id FROM movies WHERE id < ${NATIVE_BASE}`).all() as { id: number }[]).map((r) => r.id);
+    const gone = prev.filter((id) => !keep.has(id));
+    held = heldRemoval("Radarr", "movies", prev.length, gone.length, full, null);
+    if (held) res.errors.push(held);
+    else {
+      for (const id of gone) cache.prepare("DELETE FROM movies WHERE id = ?").run(id);
+      markListRead("Radarr", movies.length);
+    }
     const ins =
-      cache.prepare(`INSERT INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release, genres)
+      cache.prepare(`INSERT OR REPLACE INTO movies (id, tmdb_id, imdb_id, title, original_title, year, path, root_folder, monitored, has_file, runtime, quality_profile_id, tags, alt_titles, file, is_anime, poster, synced_at, status, is_available, in_cinemas, digital_release, physical_release, genres)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const ms = (d?: string) => (d && Number.isFinite(Date.parse(d)) ? Date.parse(d) : null);
     for (const m of movies) {
@@ -329,11 +443,13 @@ async function syncRadarr() {
   });
   // Multi-part movies AnimeArr imported: Radarr doesn't see stacked parts, so its "no file" doesn't count.
   for (const r of db.prepare("SELECT movie_id, file FROM movie_parts").all() as { movie_id: number; file: string }[]) {
-    const parts = ((JSON.parse(r.file) as { parts?: string[] }).parts ?? []).map((p) => localPath(p));
-    // Parts deleted or replaced (or Radarr has its own file now): the record goes.
+    const parts = (JSON.parse(r.file) as { parts?: string[] }).parts ?? [];
+    // Parts deleted or replaced (or Radarr has its own file now): the record goes, but only after an answer the sync
+    // accepted. A held (suspect) answer never deletes it: the record is AnimeArr's own and can't be rebuilt. A part
+    // counts as deleted only when that's certain: an unmounted or unreadable share keeps the record (and the file).
     const has = cache.prepare("SELECT has_file FROM movies WHERE id = ?").get(r.movie_id) as { has_file: number } | undefined;
-    if (has?.has_file || !parts.length || parts.some((p) => !p || !fs.existsSync(p))) {
-      db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
+    if (has?.has_file || !parts.length || parts.some((p) => fileSurelyGone(p))) {
+      if (!held) db.prepare("DELETE FROM movie_parts WHERE movie_id = ?").run(r.movie_id);
       continue;
     }
     cache.prepare("UPDATE movies SET has_file = 1, file = ? WHERE id = ? AND has_file = 0").run(r.file, r.movie_id);

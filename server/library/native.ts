@@ -21,7 +21,9 @@ import { rebuildFranchises, trailerOf, upsertMedia } from "../metadata/catalog.j
 import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
 import { fribb } from "../metadata/covers.js";
-import { cache, db, dbState, tx } from "../system/db.js";
+import { cache, db, dbState, getMeta, setMeta, tx } from "../system/db.js";
+import { sonarrConfigured } from "../arr/sonarr.js";
+import { radarrConfigured } from "../arr/radarr.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
 import { renderMovie, renderSeriesFolder } from "../import/naming.js";
 import { localPath, mappedPath } from "../system/paths.js";
@@ -70,6 +72,32 @@ interface EntryRow {
 
 export const nativeShows = () => db.prepare("SELECT * FROM native_series ORDER BY id").all() as unknown as NativeRow[];
 export const isNativeTvdb = (tvdbId: number) => !!db.prepare("SELECT 1 FROM native_series WHERE tvdb_id = ?").get(tvdbId);
+
+export type ArrApp = "Sonarr" | "Radarr";
+const ARR = {
+  Sonarr: { configured: sonarrConfigured, table: "series", marker: "sonarr-series", item: "show" },
+  Radarr: { configured: radarrConfigured, table: "movies", marker: "radarr-movies", item: "movie" },
+} as const;
+/** Records (cache meta table) that one complete list from Sonarr/Radarr was stored, even one with nothing in it. */
+export const markListRead = (app: ArrApp, count: number) => setMeta(ARR[app].marker, { fetchedAt: Date.now(), info: { count } });
+/**
+ * Can the cache say "Sonarr (Radarr) doesn't have this"? Only once a complete answer was stored. Before that (a fresh
+ * install, or a rebuilt cache while it's down) "not in the cache" means "unknown", and adding it natively would
+ * duplicate one Sonarr (Radarr) already has (review 2026-11-02, H12).
+ */
+export function arrLibraryKnown(app: ArrApp): boolean {
+  const a = ARR[app];
+  if (!a.configured()) return true;
+  if (cache.prepare(`SELECT 1 FROM ${a.table} WHERE id < ${NATIVE_BASE} LIMIT 1`).get()) return true;
+  return !!getMeta(a.marker);
+}
+export const arrUnknownMessage = (app: ArrApp) =>
+  `AnimeArr hasn't read ${app}'s library yet (${app} unreachable since the cache was built), so it can't tell whether ${app} already has this ${ARR[app].item}. Nothing was added; it works again after the next successful library sync`;
+/** Why adding natively must wait (the first app whose library is still unknown), or null. */
+export const libraryUnknownReason = (apps: ArrApp[] = ["Sonarr", "Radarr"]) => {
+  const app = apps.find((x) => !arrLibraryKnown(x));
+  return app ? arrUnknownMessage(app) : null;
+};
 
 const LANG: Record<string, string> = { JP: "Japanese", CN: "Chinese", KR: "Korean", TW: "Chinese" };
 const STATUS: Record<string, string> = {
@@ -648,6 +676,7 @@ async function ensureEntries(anilistId: number, deps: { media: typeof mediaByIds
  */
 export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb }) {
   if (dbState.corrupt) throw err("The database failed its integrity check; restore a backup first", 503);
+  if (!arrLibraryKnown("Sonarr")) throw err(arrUnknownMessage("Sonarr"), 503);
   const root = path.posix.normalize(String(input.rootFolder ?? "").replace(/\\/g, "/")).replace(/\/+$/, "");
   if (!root || !getSettings().allowedRoots.some((a) => a.replace(/\\/g, "/").replace(/\/+$/, "") === root))
     throw err("Pick one of the allowed root folders");
@@ -876,6 +905,7 @@ export function rematerializeMovie(movieId: number) {
 /** Adds a movie natively (no Radarr): catalog entry → native_movies → cache row. */
 export async function addMovie(input: { anilistId: number; rootFolder: string }, deps = { media: mediaByIds, fribb }) {
   if (dbState.corrupt) throw err("The database failed its integrity check; restore a backup first", 503);
+  if (!arrLibraryKnown("Radarr")) throw err(arrUnknownMessage("Radarr"), 503);
   const root = path.posix.normalize(String(input.rootFolder ?? "").replace(/\\/g, "/")).replace(/\/+$/, "");
   if (!root || !getSettings().allowedRoots.some((a) => a.replace(/\\/g, "/").replace(/\/+$/, "") === root))
     throw err("Pick one of the allowed root folders");

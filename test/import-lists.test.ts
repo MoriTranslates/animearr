@@ -472,3 +472,22 @@ test("a failing account is recorded on the list and raised", async () => {
   await assert.rejects(L.syncList(l.id, { deps: bad }), /not found/);
   assert.match(L.getList(l.id).lastResult.error ?? "", /not found/);
 });
+
+test("L3: Radarr's unknown library doesn't block a show-only list, and a preview never needs either app", async () => {
+  wipe();
+  const keep = getSettings().radarr;
+  // Radarr is configured but its list was never read; Sonarr isn't configured at all (nothing to be unsure about).
+  patchSettings((s) => ({ ...s, radarr: { ...s.radarr, url: "http://radarr.invalid", apiKey: "k" } }));
+  try {
+    const l = L.saveList(null, base());
+    account = [{ id: 601, status: "CURRENT" }];
+    const first = await L.syncList(l.id, { deps: deps() });
+    assert.equal(first.preview, true, "the preview runs although Radarr is unknown");
+    assert.equal(first.wouldAdd, 1);
+    const done = await L.syncList(l.id, { confirm: true, deps: deps() });
+    assert.equal(done.added, 1, "a show needs only Sonarr's library, which is known");
+    assert.equal(seriesCount(), 1);
+  } finally {
+    patchSettings((s) => ({ ...s, radarr: keep }));
+  }
+});

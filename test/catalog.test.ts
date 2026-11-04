@@ -169,3 +169,18 @@ test("only one hop out from the library: a chain never crawls further; entries l
   assert.ok(!asked.has(1004), "two hops out is never fetched");
   assert.ok(!db.prepare("SELECT 1 FROM entries WHERE anilist_id = 1004").get());
 });
+
+test("M7: an empty Fribb answer never prunes entries or nulls good mappings (a pin alone keeps seeds non-empty)", async () => {
+  db.prepare("INSERT OR REPLACE INTO catalog_pins (anilist_id, at) VALUES (9999, 0)").run();
+  const before = db.prepare("SELECT anilist_id, tvdb_id FROM entries WHERE tvdb_id IS NOT NULL ORDER BY anilist_id").all();
+  assert.ok(before.length > 0, "earlier tests left mapped entries");
+  const empty = async () => ({
+    at: 0,
+    anidbToAnilist: new Map<number, number>(),
+    anilistToAnidb: new Map<number, number>(),
+    anilistToTmdb: new Map<number, number>(),
+  });
+  await refreshCatalog({ force: true }, { fribb: empty as never, media: async () => [] });
+  const after = db.prepare("SELECT anilist_id, tvdb_id FROM entries WHERE tvdb_id IS NOT NULL ORDER BY anilist_id").all();
+  assert.deepEqual(after, before, "entries and their mappings survive an empty mapping list");
+});

@@ -68,7 +68,21 @@ function takeLock() {
     }
   };
   process.on("exit", release);
-  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => void runShutdown().finally(() => process.exit(0)));
+}
+const shutdownHooks: (() => Promise<unknown> | unknown)[] = [];
+/** Work to finish before the process exits on SIGINT/SIGTERM (e.g. queued media-server scans). */
+export function onShutdown(fn: () => Promise<unknown> | unknown) {
+  shutdownHooks.push(fn);
+}
+/** Runs the hooks (a failure is logged) and gives up after timeoutMs, so a stop never hangs but doesn't drop queued work. */
+export async function runShutdown(timeoutMs = 5000) {
+  const all = Promise.allSettled(shutdownHooks.map(async (h) => h())).then((rs) => {
+    for (const r of rs) if (r.status === "rejected") console.error("Shutdown task failed:", r.reason);
+  });
+  let t: NodeJS.Timeout | undefined;
+  await Promise.race([all, new Promise((res) => (t = setTimeout(res, timeoutMs)))]);
+  clearTimeout(t);
 }
 if (!process.env.ANIMEARR_NO_LOCK) takeLock();
 
@@ -438,6 +452,25 @@ const USER_MIGRATIONS: string[] = [
   // native IDs. A row left over (the DELETE answered too late, or a crash) is finished on the next start or retry.
   // id_map is the Sonarr → AnimeArr episode id map as JSON pairs (Sonarr's rows are gone from the cache after a sync).
   `CREATE TABLE cutover_pending (tvdb_id INTEGER PRIMARY KEY, sonarr_id INTEGER NOT NULL, native_id INTEGER NOT NULL, id_map TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL);`,
+  // 43: grabs left 'sending' by an earlier version: that code never recorded what it handed to a client, so "no
+  // client_ref" can't mean "never sent" for them. '?' = handed over, id unknown (pipelineState SENT_UNKNOWN): the
+  // restart resolution looks an NZB up by name and gives a torrent to the user, never re-sends blind (review M5).
+  `UPDATE grabs SET client_ref = '?' WHERE state = 'sending' AND client_ref IS NULL;`,
+  // 44: a torrent the client already had before AnimeArr's add (a duplicate), or one a restart's lookup adopted: tracked
+  // as usual, but never AnimeArr's to remove or delete (Remove, clean-ups, sweeps). Review of the jobs branch, M4/L6.
+  `ALTER TABLE grabs ADD COLUMN not_ours INTEGER NOT NULL DEFAULT 0;`,
+  // 45: the movie half of the cutover journal (review L21): written before Radarr is asked to delete a movie, cleared once
+  // AnimeArr's movie_* state has moved to the native id.
+  `CREATE TABLE cutover_pending_movies (movie_id INTEGER PRIMARY KEY, native_id INTEGER NOT NULL, at INTEGER NOT NULL);`,
+  // 46: managed searches in a row that couldn't count because an indexer didn't answer: their own backoff (30 min up to
+  // a day) instead of every 30 min forever; back to 0 once a search counts (blind review 2026-11-03, R3).
+  `ALTER TABLE search_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
+  // 47: the same outage streak for the other three search jobs (movie search, dual upgrades for episodes and movies,
+  // quality upgrades): these tables had no column to count it in.
+  `ALTER TABLE movie_search ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE upgrade_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE movie_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE quality_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */

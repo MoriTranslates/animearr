@@ -319,3 +319,55 @@ test("rTorrent: loads stopped with label and folder, lists files, skips with f.p
     restore();
   }
 });
+
+// ---------------------------------------------------------------- a torrent that was already there is marked so (M4)
+
+test("Deluge: adding a torrent it already has says 'duplicate' (so AnimeArr never deletes the earlier one's data)", async () => {
+  let authed = false;
+  const restore = mockFetch((_url, body) => {
+    const { method } = JSON.parse(body) as { method: string };
+    const ok = (result: unknown) => ({ body: JSON.stringify({ result, error: null, id: 1 }) });
+    if (method === "auth.login")
+      return (
+        (authed = true),
+        { body: JSON.stringify({ result: true, error: null, id: 1 }), headers: { "set-cookie": "_session_id=abc; Path=/" } }
+      );
+    if (!authed) return { body: JSON.stringify({ result: null, error: { message: "Not authenticated", code: 1 }, id: 1 }) };
+    if (method === "web.connected") return ok(true);
+    if (method === "core.get_config_value") return ok("/downloads");
+    if (method === "core.add_torrent_file")
+      return { body: JSON.stringify({ result: null, error: { message: "Torrent already in session (abc).", code: 2 }, id: 1 }) };
+    return ok(null);
+  });
+  try {
+    assert.deepEqual(await delugeDriver.add(cfg("deluge", "http://deluge:8112"), { data: torrent }, { paused: true }), {
+      ref: hash,
+      duplicate: true,
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("rTorrent: adding a torrent it already has says 'duplicate' and loads nothing", async () => {
+  const methods: string[] = [];
+  const restore = mockFetch((_url, body) => {
+    const method = /<methodName>([^<]+)</.exec(body)![1];
+    methods.push(method);
+    const row = `<value><array><data><value><string>${hash.toUpperCase()}</string></value></data></array></value>`;
+    if (method === "d.multicall2")
+      return {
+        body: `<?xml version="1.0"?><methodResponse><params><param><value><array><data>${row}</data></array></value></param></params></methodResponse>`,
+      };
+    return { body: `<?xml version="1.0"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>` };
+  });
+  try {
+    assert.deepEqual(await rtorrentDriver.add(cfg("rtorrent", "http://rt/RPC2"), { data: torrent }, { paused: true }), {
+      ref: hash,
+      duplicate: true,
+    });
+    assert.ok(!methods.includes("load.raw"), "nothing loaded");
+  } finally {
+    restore();
+  }
+});

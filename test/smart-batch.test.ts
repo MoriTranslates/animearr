@@ -15,7 +15,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { decideSeason, planFiles, applySelection, batchLine, readBatch, compareQuality } = await import("../server/grabs/batch.js");
-const { startGrab, pipelineTick } = await import("../server/grabs/pipeline.js");
+const { startGrab, pipelineTick, removeGrab } = await import("../server/grabs/pipeline.js");
 const { cleanupGrab, removeJobFolder } = await import("../server/grabs/downloads.js");
 const { transmissionDriver } = await import("../server/arr/moreClients.js");
 type Deps = import("../server/grabs/pipelineState.js").PipelineDeps;
@@ -390,6 +390,151 @@ test("magnet with delayed metadata: pending until the file list appears, then th
   assert.equal(read().mode, "partial");
   assert.equal(calls.select.length, 1);
   assert.equal(calls.start, 1);
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(r.id);
+});
+
+// ---------------------------------------------------------------- a torrent added stopped is always started, or it says so (M6)
+
+const batchOf = (id: number) => readBatch((db.prepare("SELECT batch FROM grabs WHERE id = ?").get(id) as { batch: string }).batch)!;
+const stateOf = (id: number) =>
+  db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null };
+const failLogged = (id: number) =>
+  (db.prepare("SELECT why FROM decisions WHERE kind = 'fail' AND json_extract(detail, '$.grabId') = ?").all(id) as { why: string }[]).map(
+    (r) => r.why,
+  );
+const tickDeps = (clients: Deps["clients"]) =>
+  ({
+    clients,
+    fetchRelease: async () => ({ data: Buffer.from("t"), filename: "x" }),
+    sonarr: {} as Deps["sonarr"],
+    probe: async () => ({}) as never,
+    localPath: () => null,
+    sleep: async () => undefined,
+  }) as Deps;
+const down = async () => {
+  throw new Error("qBittorrent unreachable (connect ECONNREFUSED)");
+};
+
+test("the resume fails on the whole-batch path: kept as 'start pending', reported, and started by the next tick", async () => {
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state = 'downloading'").run();
+  const { clients, calls } = mockClients();
+  clients.canSelectFiles = () => false; // falls back to the whole batch, which must still be started
+  const start = clients.start!;
+  clients.start = down;
+  const id = insertGrab({ client: "qbittorrent", ref: "r1", batch: pendingBatch() });
+  const job = { client: "qbittorrent", ref: "r1", select: true, paused: true };
+  assert.equal(await applySelection({ grabId: id, job, clients, opts, log: { tvdbId: TVDB, release: "x", episodeIds: [] } }), "whole");
+  assert.ok(batchOf(id).startFailed, "the failed start is kept on the batch");
+  assert.ok(
+    failLogged(id).some((w) => /couldn't start/i.test(w)),
+    "and reported",
+  );
+  clients.start = start;
+  await pipelineTick(tickDeps(clients));
+  assert.equal(calls.start, 1, "the next tick starts it");
+  assert.equal(batchOf(id).startFailed ?? null, null);
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(id);
+});
+
+test("the resume fails after the files were skipped: the selection stands (partial), the start is retried", async () => {
+  const { clients, calls } = mockClients();
+  const start = clients.start!;
+  clients.start = down;
+  const id = insertGrab({ client: "qbittorrent", ref: "r2", batch: pendingBatch() });
+  const job = { client: "qbittorrent", ref: "r2", select: true, paused: true };
+  assert.equal(await applySelection({ grabId: id, job, clients, opts, log: { tvdbId: TVDB, release: "x", episodeIds: [] } }), "partial");
+  assert.equal(calls.select.length, 1);
+  assert.ok(batchOf(id).startFailed);
+  clients.start = start;
+  await pipelineTick(tickDeps(clients));
+  assert.equal(calls.start, 1);
+  assert.equal(batchOf(id).mode, "partial");
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(id);
+});
+
+test("the client goes down mid-batch (no file list, no start): started once it's back, never left stopped", async () => {
+  const { clients, calls } = mockClients();
+  const start = clients.start!;
+  clients.listFiles = down;
+  clients.start = down;
+  const id = insertGrab({ client: "qbittorrent", ref: "r3", batch: { ...pendingBatch(), since: Date.now() - 31 * 60_000 } });
+  await pipelineTick(tickDeps(clients)); // gives up on the file list (30 min): the whole batch, but the start fails too
+  assert.equal(batchOf(id).mode, "whole");
+  assert.ok(batchOf(id).startFailed);
+  clients.start = start;
+  await pipelineTick(tickDeps(clients));
+  assert.equal(calls.start, 1);
+  assert.equal(batchOf(id).startFailed ?? null, null);
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(id);
+});
+
+test("a start that keeps failing for an hour needs your attention (never silently stopped forever)", async () => {
+  const { clients } = mockClients();
+  clients.start = down;
+  const id = insertGrab({
+    client: "qbittorrent",
+    ref: "r4",
+    batch: { ...pendingBatch(), mode: "whole", startFailed: { since: Date.now() - 61 * 60_000, why: "unreachable" } },
+  });
+  await pipelineTick(tickDeps(clients));
+  assert.equal(stateOf(id).state, "needs-attention");
+  assert.match(stateOf(id).error ?? "", /stopped|start/);
+  db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(id);
+});
+
+test("removed by you while the start call hangs: it stays removed, never brought back as needs-attention (M1)", async () => {
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state = 'downloading'").run();
+  const { clients } = mockClients();
+  let fail!: (e: Error) => void;
+  clients.start = () => new Promise<void>((_, rej) => (fail = rej));
+  const id = insertGrab({
+    client: "qbittorrent",
+    ref: "r5",
+    batch: { ...pendingBatch(), mode: "whole", startFailed: { since: Date.now() - 61 * 60_000, why: "unreachable" } },
+  });
+  const tick = pipelineTick(tickDeps(clients));
+  await new Promise((r) => setTimeout(r, 20));
+  await removeGrab(id, { blocklist: false, searchNext: false }, tickDeps(clients));
+  fail(new Error("qBittorrent unreachable"));
+  await tick;
+  assert.equal(stateOf(id).state, "failed");
+  assert.match(stateOf(id).error ?? "", /removed by you/);
+});
+
+test("restart while stopped: the 'added stopped' fact is on the grab before the torrent reaches the client", async () => {
+  db.prepare("UPDATE grabs SET state = 'done' WHERE state = 'downloading'").run();
+  const { clients } = mockClients();
+  let seen: unknown = "not asked";
+  const add = clients.addTorrent;
+  clients.addTorrent = async (src, n, op) => {
+    // What a restart right now would find: the grab must already say the torrent is (being) added stopped.
+    const g = db.prepare("SELECT batch FROM grabs WHERE guid = 'sb-restart'").get() as { batch: string };
+    seen = readBatch(g.batch)?.paused;
+    return add(src, n, op);
+  };
+  const r = await startGrab(
+    {
+      tvdbId: TVDB,
+      episodeIds: [9005, 9010, 9015, 9020],
+      candidate: {
+        guid: "sb-restart",
+        title: "[Grp] Batch Show (Batch) restart",
+        indexerId: 1,
+        indexer: "X",
+        protocol: "torrent",
+        size: 1e10,
+        downloadUrl: "http://x",
+        label: "S01",
+        group: "Grp",
+        why: "test",
+        episodeIds: Array.from({ length: 26 }, (_, i) => 9001 + i),
+      },
+      fallbacks: [],
+      origin: "manual",
+    },
+    tickDeps(clients),
+  );
+  assert.equal(seen, true);
   db.prepare("UPDATE grabs SET state = 'done' WHERE id = ?").run(r.id);
 });
 

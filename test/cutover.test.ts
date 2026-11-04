@@ -200,3 +200,51 @@ test("cutover journal: Sonarr removed the show but its answer was lost → the s
   assert.equal(db.prepare("SELECT 1 FROM cutover_pending").get(), undefined);
   assert.deepEqual(await resumeCutovers({ sonarrHasSeries: async () => false }), [], "nothing left to finish");
 });
+
+test("movie cutover journal (L21): Radarr removed the movie but its answer was lost → the switch is finished later", async () => {
+  const { resumeCutovers } = await import("../server/library/cutover.js");
+  cache
+    .prepare(
+      "INSERT INTO movies (id, tmdb_id, title, year, path, root_folder, monitored, has_file, is_anime, synced_at) VALUES (31, 4242, 'Film', 2019, '/media/Movies/Film', '/media/Movies', 1, 0, 1, 0)",
+    )
+    .run();
+  const nid = Number(
+    db
+      .prepare(
+        "INSERT INTO native_movies (anilist_id, tmdb_id, title, year, path, root_folder, added_at) VALUES (990, 4242, 'Film', 2019, '/media/Movies/Film', '/media/Movies', 1)",
+      )
+      .run().lastInsertRowid,
+  );
+  db.prepare("INSERT INTO movie_wanted (movie_id, wanted, at) VALUES (31, 1, 1)").run();
+  const lost = {
+    removeSeries: async () => undefined,
+    removeMovie: async () => {
+      throw new Error("Radarr DELETE /movie/31 timed out");
+    },
+    sonarrQueue: async () => [],
+    radarrQueue: async () => [],
+  };
+  const out = await switchToAnimeArr({ movieIds: [31] }, { ...lost, radarrHasMovie: async () => true } as never);
+  assert.equal(out[0].ok, false);
+  assert.ok(db.prepare("SELECT 1 FROM cutover_pending_movies WHERE movie_id = 31").get(), "journal written before the DELETE");
+  // Radarr unreachable: the row waits, nothing moves.
+  await resumeCutovers({
+    sonarrHasSeries: async () => true,
+    radarrHasMovie: async () => {
+      throw new Error("offline");
+    },
+  });
+  assert.ok(db.prepare("SELECT 1 FROM cutover_pending_movies WHERE movie_id = 31").get());
+  // Radarr still has it: the DELETE never happened; the row goes and nothing moves.
+  await resumeCutovers({ sonarrHasSeries: async () => true, radarrHasMovie: async () => true });
+  assert.equal(db.prepare("SELECT 1 FROM cutover_pending_movies").get(), undefined);
+  assert.ok(db.prepare("SELECT 1 FROM movie_wanted WHERE movie_id = 31").get());
+  // Again; this time Radarr did delete it.
+  await switchToAnimeArr({ movieIds: [31] }, { ...lost, radarrHasMovie: async () => true } as never);
+  assert.ok(db.prepare("SELECT 1 FROM cutover_pending_movies WHERE movie_id = 31").get());
+  await resumeCutovers({ sonarrHasSeries: async () => true, radarrHasMovie: async () => false });
+  assert.equal(db.prepare("SELECT 1 FROM cutover_pending_movies").get(), undefined);
+  assert.equal(db.prepare("SELECT 1 FROM movie_wanted WHERE movie_id = 31").get(), undefined, "old id left behind");
+  assert.ok(db.prepare("SELECT 1 FROM movie_wanted WHERE movie_id = ?").get(NATIVE_BASE + nid), "state moved to the native id");
+  assert.equal(cache.prepare("SELECT 1 FROM movies WHERE id = 31").get(), undefined);
+});

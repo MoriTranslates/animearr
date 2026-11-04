@@ -38,7 +38,7 @@ import { cache, db, dbState, setJob } from "../system/db.js";
 import { isNewerRevision, revisionOf, type HaveRevision, type ProperMode } from "../core/propers.js";
 import { ownedElsewhere } from "../library/duplicates.js";
 import { wantedEpisodeIds } from "../library/scope.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, outageHeld, searchConfigured, type SearchOutage } from "./indexers.js";
 import { listManaged } from "../library/managedList.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
@@ -102,7 +102,11 @@ interface StateRow {
   best_seen: string | null;
   no_bd: number;
   updated_at: number;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
+/** When the pass last tried this season, fully answered or not (every save moves updated_at). */
+const tried = (st: StateRow | undefined) => Math.max(st?.last_at ?? 0, st?.updated_at ?? 0);
 const stateOf = (tvdbId: number, season: number) =>
   db.prepare("SELECT * FROM quality_upgrade WHERE tvdb_id = ? AND season = ?").get(tvdbId, season) as StateRow | undefined;
 function save(
@@ -113,6 +117,8 @@ function save(
     why: string;
     now: number;
     searched?: boolean;
+    /** The indexers didn't all answer: the search doesn't count, and the next one waits longer (30 min … a day). */
+    outage?: boolean;
     release?: string | null;
     grabId?: number | null;
     bestSeen?: string | null;
@@ -121,7 +127,7 @@ function save(
 ) {
   const prev = stateOf(tvdbId, season);
   db.prepare(
-    "INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, attempts, why, release, grab_id, best_seen, no_bd, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR REPLACE INTO quality_upgrade (tvdb_id, season, state, last_at, attempts, why, release, grab_id, best_seen, no_bd, updated_at, outage_streak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     tvdbId,
     season,
@@ -134,6 +140,7 @@ function save(
     v.bestSeen === undefined ? (prev?.best_seen ?? null) : v.bestSeen,
     v.noBd ?? prev?.no_bd ?? 0,
     v.now,
+    v.searched ? 0 : v.outage ? (prev?.outage_streak ?? 0) + 1 : (prev?.outage_streak ?? 0),
   );
 }
 
@@ -183,11 +190,13 @@ export function hintProper(episodeIds: number[], now = Date.now()) {
  * pause switch, the seasons-a-day and size budgets still decide what happens. True when it was waiting out a recheck.
  */
 export function recheckSoon(tvdbId: number, season: number) {
+  // updated_at goes to 0 too, so the pass takes it first (it orders by the last try). An upgraded row keeps its
+  // updated_at: that is when it was upgraded, which the recent-upgrades list shows.
   return (
     Number(
       db
         .prepare(
-          "UPDATE quality_upgrade SET last_at = NULL WHERE tvdb_id = ? AND season = ? AND last_at IS NOT NULL AND state <> 'grabbed'",
+          "UPDATE quality_upgrade SET last_at = NULL, updated_at = CASE WHEN state = 'upgraded' THEN updated_at ELSE 0 END WHERE tvdb_id = ? AND season = ? AND last_at IS NOT NULL AND state <> 'grabbed'",
         )
         .run(tvdbId, season).changes,
     ) > 0
@@ -528,13 +537,17 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     .filter(
       ({ u, st }) =>
         st?.state !== "grabbed" &&
+        // Searches in a row that couldn't ask every indexer: each waits longer than the last, never an attempt.
+        !outageHeld(st?.outage_streak, st?.updated_at, now) &&
         (!st?.last_at ||
           now - st.last_at >=
             (st.state === "budget"
               ? BUDGET_RETRY_MS
               : recheckMs(u, u.target !== goalCategory(u.goal, profileFor(u.tvdbId).resolution), now))),
     )
-    .sort((a, b) => (a.st?.last_at ?? 0) - (b.st?.last_at ?? 0));
+    // Least recently tried first: a search the indexers didn't fully answer leaves last_at (so it isn't pushed back by the
+    // recheck wait) but moves updated_at, so a standing partial outage still rotates through the library (review M2).
+    .sort((a, b) => tried(a.st) - tried(b.st));
   for (const { u, st } of due) {
     if (count("grab", now - DAY) >= s.seasonsPerDay) break;
     if (count("search", now - HOUR) >= s.perHour) break;
@@ -550,14 +563,31 @@ export async function qualityUpgradePass(deps: QualityDeps = realDeps, now = Dat
     note("search", now);
     res.searched++;
     let results: SearchResult[];
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(u.tvdbId, ids, { budget: 8 })).results;
+      const r = await deps.search(u.tvdbId, ids, { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       save(u.tvdbId, u.season, { state: "waiting", why: `search failed: ${(e as Error).message}`, now, searched: true });
       continue;
     }
-    const { bestSeen, noBd, prof, seadex, pick } = analyse(results, u, st, minConfidence);
+    const analysed = analyse(results, u, st, minConfidence);
+    const { bestSeen, prof, seadex, pick } = analysed;
+    // Not every indexer answered: no evidence that no Blu-ray exists (the "no BD" count stays as it was).
+    const noBd = gap ? (st?.no_bd ?? 0) : analysed.noBd;
     const label = `${u.title} S${String(u.season).padStart(2, "0")}`;
+    // ...and not "nothing better", nor a search that waits recheckDays (review 2026-11-02, M4).
+    if (!pick && gap) {
+      save(u.tvdbId, u.season, {
+        state: "waiting",
+        why: `couldn't search fully: ${gap.why}; looking again soon`,
+        now,
+        outage: true,
+        release: null,
+      });
+      continue;
+    }
     if (!pick) {
       save(u.tvdbId, u.season, {
         state: "waiting",
@@ -655,13 +685,19 @@ export async function upgradeSeasonNow(
     )
       return refuse("These episodes are already downloading");
     note("search", now);
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(tvdbId, ids, { budget: 8 })).results;
+      const r = await deps.search(tvdbId, ids, { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       return { status: "failed", why: `Search failed: ${(e as Error).message}` };
     }
-    const a = analyse(results, unit, stateOf(tvdbId, season), getSettings().managed.minConfidence);
+    const prev = stateOf(tvdbId, season);
+    const a = analyse(results, unit, prev, getSettings().managed.minConfidence);
     ({ bestSeen, noBd } = a);
+    if (gap) noBd = prev?.no_bd ?? 0; // an outage is no evidence that no Blu-ray exists
+    if (!a.pick && gap) return { status: "failed", why: `Couldn't search fully: ${gap.why}. Nothing was grabbed; try again later.` };
     if (!a.pick) {
       save(tvdbId, season, {
         state: "waiting",

@@ -171,6 +171,38 @@ test("Jellyfin/Emby/Kodi requests: auth headers, paths and bodies", async () => 
   );
 });
 
+test("L18: a stop sends the queued scans, and a failed scan is queued again instead of lost", async () => {
+  const { runShutdown } = await import("../server/system/db.js");
+  patchSettings((s) => ({
+    ...s,
+    jellyfin: { url: "http://jf:8096", apiKey: "k3y", enabled: true, pathMappings: [] },
+    emby: { ...s.emby, enabled: false },
+    kodi: { ...s.kodi, enabled: false },
+  }));
+  const calls: string[] = [];
+  let down = true;
+  const deps = {
+    scan: async (k: string, folders: string[]) => {
+      if (down) throw new Error("server down");
+      calls.push(`${k}:${folders.join("|")}`);
+    },
+  };
+  // Queued with a long delay, then the process is told to stop: the scan must go out first.
+  notifyMediaServers(["/media/Anime/Stopped"], { scan: async (k, f) => void calls.push(`${k}:${f.join("|")}`) }, 60_000);
+  await runShutdown();
+  assert.deepEqual(calls, ["jellyfin:/media/Anime/Stopped"]);
+  calls.length = 0;
+  // A scan that fails keeps its folders: the next flush sends them.
+  notifyMediaServers(["/media/Anime/Retry"], deps, 60_000);
+  const first = await flushMediaServers(deps);
+  assert.equal(first[0]?.ok, false);
+  down = false;
+  const second = await flushMediaServers(deps);
+  assert.equal(second[0]?.ok, true);
+  assert.deepEqual(calls, ["jellyfin:/media/Anime/Retry"]);
+  patchSettings((s) => ({ ...s, jellyfin: { ...s.jellyfin, enabled: false } })); // leave the next test a clean slate
+});
+
 test("notify: only enabled servers, mapped paths, batched; secrets stay masked", async () => {
   const calls: string[] = [];
   const deps = { scan: async (k: string, folders: string[]) => void calls.push(`${k}:${folders.join("|")}`) };

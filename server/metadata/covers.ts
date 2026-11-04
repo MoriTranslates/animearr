@@ -17,7 +17,11 @@ async function anilistByAnidbDownload() {
     try {
       const res = await fetch(FRIBB_URL, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(120_000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fs.writeFileSync(`${FRIBB_FILE}.tmp`, Buffer.from(await res.arrayBuffer()));
+      const body = Buffer.from(await res.arrayBuffer());
+      // A captive portal or error page can answer 200: only a real mapping (a JSON array with AniDB rows) replaces the cache.
+      const rows: unknown = JSON.parse(body.toString("utf8"));
+      if (!Array.isArray(rows) || !rows.some((r) => r && typeof r === "object" && "anidb_id" in r)) throw new Error("not a mapping");
+      fs.writeFileSync(`${FRIBB_FILE}.tmp`, body);
       fs.renameSync(`${FRIBB_FILE}.tmp`, FRIBB_FILE);
     } catch (e) {
       if (!fs.existsSync(FRIBB_FILE)) throw new Error(`Couldn't download the AniList mapping: ${(e as Error).message}`);

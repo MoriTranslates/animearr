@@ -213,3 +213,19 @@ test("import problems that aren't the release's fault: needs attention, no block
   await pipelineTick(deps);
   assert.equal((db.prepare("SELECT state FROM grabs WHERE id = ?").get(r.id) as { state: string }).state, "done");
 });
+
+test("Retry import refuses a needs-attention row with no download client (a cut-off NZB send): it stays put (L1)", async () => {
+  const { retryImport } = await import("../server/grabs/pipelineState.js");
+  const now = Date.now();
+  const ins = db
+    .prepare(
+      `INSERT INTO grabs (at, updated_at, tvdb_id, episode_ids, release, guid, protocol, client, client_ref, state, dry_run, error)
+       VALUES (?, ?, ?, '[]', 'Cut Off NZB', 'g-l1', 'usenet', NULL, '?', 'needs-attention', 0, 'check the client')`,
+    )
+    .run(now, now, TVDB);
+  const id = Number(ins.lastInsertRowid);
+  assert.throws(() => retryImport(id), /no download client on record/);
+  const row = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string };
+  assert.equal(row.state, "needs-attention");
+  assert.equal(row.error, "check the client");
+});

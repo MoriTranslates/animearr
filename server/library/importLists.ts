@@ -17,7 +17,7 @@ import { droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
 import { animeListEntries, USER_AGENT } from "../metadata/metadata.js";
-import { addMovie, addShow, isNativeTvdb, NATIVE_BASE } from "./native.js";
+import { addMovie, addShow, arrLibraryKnown, isNativeTvdb, libraryUnknownReason, NATIVE_BASE, type ArrApp } from "./native.js";
 import { setMoviePrefs, setSeriesPrefs } from "./profiles.js";
 import { setScope, validateScope, type Scope } from "./scope.js";
 import { getSettings } from "../system/settings.js";
@@ -497,6 +497,8 @@ async function addItem(l: ListCfg, it: PlanItem, deps: ListDeps) {
 }
 
 const running = new Set<number>();
+/** The job already logged that the lists wait for a first good library read (reset by a run that goes ahead). */
+let pausedLogged = false;
 
 export interface SyncOutcome {
   list: ListCfg;
@@ -504,6 +506,14 @@ export interface SyncOutcome {
   added: number;
   wouldAdd: number;
   errors: string[];
+}
+
+/** Why a run that adds can't start: every app this list could add to (shows: Sonarr, movies: Radarr) is unknown. Else null. */
+function addBlockedReason(l: Pick<ListCfg, "rootFolder" | "movieRootFolder">): string | null {
+  const apps: ArrApp[] = [];
+  if (l.rootFolder) apps.push("Sonarr");
+  if (movieRootFor(l)) apps.push("Radarr");
+  return apps.length && apps.every((x) => !arrLibraryKnown(x)) ? libraryUnknownReason(apps) : null;
 }
 
 /**
@@ -514,6 +524,12 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
   const deps = opts.deps ?? realListDeps;
   const l = getList(id);
   if (running.has(id)) throw fail("This list is syncing already", 409);
+  // "Not in the cache" only means "not in the library" once Sonarr's (Radarr's) list was read; until then every entry
+  // would look new and be added as a native duplicate. The list stays due and runs after a good sync. Only the app an
+  // item needs counts (shows: Sonarr, movies: Radarr), and a preview adds nothing, so it needs neither (review L3).
+  const unknownFor = (kind: "show" | "movie") => libraryUnknownReason([kind === "movie" ? "Radarr" : "Sonarr"]);
+  const blocked = opts.confirm || l.confirmed ? addBlockedReason(l) : null;
+  if (blocked) throw fail(blocked, 503);
   running.add(id);
   try {
     let plan: Plan;
@@ -547,7 +563,10 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
         });
       return { list: getList(id), preview: true, added: 0, wouldAdd: would.length, errors: [] };
     }
-    const todo = opts.confirm ? plan.add : plan.add.slice(0, MAX_AUTO);
+    const ready = plan.add.filter((x) => !unknownFor(x.kind));
+    if (plan.add.length && !ready.length) throw fail(unknownFor(plan.add[0].kind) as string, 503);
+    // Items whose app is unknown stay out of this run (and stay in `left`, so they are retried after a good sync).
+    const todo = opts.confirm ? ready : ready.slice(0, MAX_AUTO);
     const errors: string[] = [];
     const added = [...(l.lastResult.added ?? [])];
     let n = 0;
@@ -566,7 +585,7 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
       ...base,
       added: added.slice(0, 30),
       errors: errors.slice(0, 10),
-      wouldAdd: left > 0 ? would.slice(todo.length) : [],
+      wouldAdd: left > 0 ? would.filter((w) => !todo.some((t) => t.anilistId === w.anilistId)) : [],
     };
     db.prepare("UPDATE import_lists SET last_sync_at = ?, last_result = ?, confirmed = 1 WHERE id = ?").run(
       Date.now(),
@@ -586,6 +605,15 @@ export async function syncList(id: number, opts: { confirm?: boolean; deps?: Lis
 /** The background job: lists that are due (every `lists.intervalHours`); an unconfirmed list only gets its first preview. */
 export async function importListsTick(now = Date.now(), deps: ListDeps = realListDeps) {
   const every = getSettings().lists.intervalHours * 3_600_000;
+  // Library not read yet: every list that adds would refuse (see syncList). Say so once, until a good read, not per list per run.
+  const enabled = listLists().filter((l) => l.enabled && l.confirmed);
+  const unknown = enabled.length && enabled.every((l) => addBlockedReason(l)) ? addBlockedReason(enabled[0]) : null;
+  if (unknown) {
+    if (!pausedLogged) logDecision("fail", { why: `Import lists are paused: ${unknown}` });
+    pausedLogged = true;
+    return;
+  }
+  pausedLogged = false;
   for (const l of listLists()) {
     if (!l.enabled || running.has(l.id)) continue;
     if (!(l.lastSyncAt === null || (l.confirmed && now - l.lastSyncAt >= every))) continue;

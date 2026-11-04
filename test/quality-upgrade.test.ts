@@ -11,7 +11,8 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { getSettings, patchSettings } = await import("../server/system/settings.js");
 const { profileFor, saveProfile, defaultProfile } = await import("../server/library/profiles.js");
-const { capOf, pickUpgrade, planState, qualityUpgradePass, startNow, upgradeUnits } = await import("../server/search/qualityUpgrade.js");
+const { capOf, pickUpgrade, planState, qualityUpgradePass, recheckSoon, startNow, upgradeUnits } =
+  await import("../server/search/qualityUpgrade.js");
 const { keepTagFor, locksFor, setLock } = await import("../server/search/qualityLocks.js");
 const { parseSeadex, saveSeadex, seadexForSeason, seadexPass } = await import("../server/metadata/seadex.js");
 const { setScope } = await import("../server/library/scope.js");
@@ -237,6 +238,67 @@ test("auto: the upgrade is a Replace-season grab of the files below the goal, wi
   );
 });
 
+test("indexers down (all or some): not 'nothing better', no 'no Blu-ray' count, not pushed back by recheckDays", async () => {
+  for (const kind of ["all", "partial"] as const) {
+    db.prepare("UPDATE quality_upgrade SET last_at = NULL, no_bd = 0, why = '' WHERE tvdb_id = 700003").run();
+    const d: Deps = {
+      ...deps([]).d,
+      search: (async () => ({ results: [], outage: { kind, why: "O1 didn't answer (HTTP 500)", counts: false } })) as never,
+    };
+    await qualityUpgradePass(d, now + 3 * DAY + (kind === "all" ? 0 : HOUR_MS));
+    const st = db.prepare("SELECT last_at, no_bd, why FROM quality_upgrade WHERE tvdb_id = 700003 AND season = 1").get() as {
+      last_at: number | null;
+      no_bd: number;
+      why: string;
+    };
+    assert.equal(st.last_at, null, `${kind}: not counted as a search`);
+    assert.equal(st.no_bd, 0, `${kind}: an outage isn't evidence that no Blu-ray exists`);
+    assert.match(st.why, /didn't answer/);
+  }
+});
+const HOUR_MS = 3_600_000;
+
+test("a standing partial outage still rotates through the seasons (not the same one every pass) (M2)", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 1, seasonsPerDay: 10 } }));
+  // The two seasons below their goal (700002 is at its goal), both due.
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = 0 WHERE tvdb_id IN (700001, 700003)").run();
+  const searched: number[] = [];
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (
+      searched.push(tvdbId),
+      { results: [], outage: { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false } }
+    )) as never,
+  };
+  const t0 = now + 10 * DAY;
+  await qualityUpgradePass(d, t0);
+  await qualityUpgradePass(d, t0 + 2 * HOUR_MS); // the next hour's budget
+  assert.equal(searched.length, 2, JSON.stringify(searched));
+  assert.notEqual(searched[0], searched[1], `the same season twice: ${JSON.stringify(searched)}`);
+});
+
+test("the RSS watch's 'recheck soon' still goes first, ahead of seasons tried longer ago (M2)", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 1, seasonsPerDay: 10 } }));
+  const t0 = now + 20 * DAY;
+  // 700001: tried an hour ago and still due (a gap). 700003: fully searched more recently, so waiting out its recheck.
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = ? WHERE tvdb_id = 700001").run(t0 - HOUR_MS);
+  db.prepare("UPDATE quality_upgrade SET state = 'waiting', last_at = ?, updated_at = ? WHERE tvdb_id = 700003").run(
+    t0 - HOUR_MS / 2,
+    t0 - HOUR_MS / 2,
+  );
+  assert.equal(recheckSoon(700003, 1), true);
+  const searched: number[] = [];
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (
+      searched.push(tvdbId),
+      { results: [], outage: { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false } }
+    )) as never,
+  };
+  await qualityUpgradePass(d, t0);
+  assert.deepEqual(searched, [700003]);
+});
+
 test("SeaDex: parsed from releases.moe, cached per AniList entry, merged per TVDB season, fetched within a budget", async () => {
   const json = {
     items: [
@@ -277,4 +339,45 @@ test("SeaDex: parsed from releases.moe, cached per AniList entry, merged per TVD
   assert.ok(r.fetched >= 1);
   assert.ok(urls.every((u) => u.startsWith("https://releases.moe/api/collections/entries/records?") && u.includes("alID%3D")));
   assert.ok(seadexForSeason(700002, 1));
+});
+
+test("quality upgrades: indexers that keep a search from counting back it off (30 min up to a day), and a counted search resets it", async () => {
+  patchSettings((s) => ({ ...s, qualityUpgrade: { ...s.qualityUpgrade, perHour: 500, seasonsPerDay: 500 } }));
+  db.prepare(
+    "UPDATE quality_upgrade SET state = 'waiting', last_at = NULL, updated_at = 0, no_bd = 0, attempts = 0, outage_streak = 0",
+  ).run();
+  let outage: unknown = { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false };
+  let calls = 0;
+  const d: Deps = {
+    ...deps([]).d,
+    search: (async (tvdbId: number) => (tvdbId === 700003 && calls++, { results: [], outage })) as never,
+  };
+  const MIN = 60_000;
+  const searchedAt = async (t: number) => {
+    db.prepare("DELETE FROM quality_upgrade_log").run();
+    const before = calls;
+    await qualityUpgradePass(d, t);
+    return calls > before;
+  };
+  let t = now + 10 * DAY;
+  for (const wait of [30, 60, 120, 240, 480, 1440, 1440]) {
+    assert.equal(await searchedAt(t), true, `searched at ${wait}-min step`);
+    assert.equal(await searchedAt(t + (wait - 1) * MIN), false, `still waiting 1 min before ${wait} min`);
+    t += wait * MIN;
+  }
+  const st = () =>
+    db.prepare("SELECT attempts, last_at FROM quality_upgrade WHERE tvdb_id = 700003 AND season = 1").get() as {
+      attempts: number;
+      last_at: number | null;
+    };
+  assert.equal(st().attempts, 0, "an outage uses up no attempt");
+  assert.equal(st().last_at, null);
+  outage = undefined; // every indexer answers: the search counts
+  assert.equal(await searchedAt(t), true);
+  assert.equal(st().attempts, 1);
+  t += 400 * DAY; // past any recheck wait
+  outage = { kind: "partial", why: "O1 didn't answer (HTTP 500)", counts: false };
+  assert.equal(await searchedAt(t), true);
+  assert.equal(await searchedAt(t + 29 * MIN), false);
+  assert.equal(await searchedAt(t + 30 * MIN), true, "the next outage starts from 30 min again");
 });

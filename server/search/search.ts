@@ -5,7 +5,7 @@
  */
 import { indexerHealth } from "./health.js";
 import { type ProwlarrRelease } from "../arr/prowlarr.js";
-import { searchAll } from "./indexers.js";
+import { searchAll, searchOutage, type IndexerFailure } from "./indexers.js";
 import { identify, type IdentifyContext } from "../core/identify.js";
 import { normalizeTitle, splitSeason } from "../core/normalize.js";
 import { rankRelease, compareRanked, type Known, type Profile, type Ranked } from "../core/rank.js";
@@ -397,6 +397,8 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
   const started = Date.now();
   const raw = new Map<string, ProwlarrRelease>();
   const errors: string[] = [];
+  /** Indexers that didn't answer a query others did (by name). */
+  const failed = new Map<string, IndexerFailure>();
   const prof = profileFor(tvdbId);
   const ruleSet = releaseRulesFor("series", tvdbId);
   const targetIds = new Set(targets.map((t) => t.id));
@@ -502,7 +504,11 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
           let skipped = false;
           try {
             // A query still waiting for a slot when the search stops early is dropped without asking the indexers.
-            const rows = await searchAll(q, { ...(allCats.has(q) ? { categories: [] } : {}), skip: () => (skipped = stop()) });
+            const rows = await searchAll(q, {
+              ...(allCats.has(q) ? { categories: [] } : {}),
+              skip: () => (skipped = stop()),
+              onFailed: (fs) => fs.forEach((f) => failed.set(f.name, f)),
+            });
             if (skipped) skippedQueries++;
             for (const r of rows)
               if (!raw.has(r.guid)) {
@@ -558,6 +564,8 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
     matched: final.length,
     skipped,
     errors,
+    /** Whether every, some or no indexer answered (couldn't search is never "found nothing"). */
+    outage: searchOutage(searched, errors, [...failed.values()], started),
     tookMs: Date.now() - started,
     /** Set when the search stopped early (see clearlyBest): why, and how many queries it skipped. */
     stoppedEarly,

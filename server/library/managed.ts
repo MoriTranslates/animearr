@@ -15,7 +15,7 @@ import { episodesAreNew, grabGate, GrabsPausedError } from "../grabs/downloads.j
 import { NATIVE_BASE } from "./nativeIds.js";
 import { listManaged, type ManagedRow } from "./managedList.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "../search/indexers.js";
+import { couldntSearch, outageBackoffMs, searchConfigured } from "../search/indexers.js";
 import { searchAll } from "../search/indexers.js";
 import { setSeriesMonitored } from "../arr/sonarr.js";
 import { identify } from "../core/identify.js";
@@ -198,6 +198,8 @@ interface StateRow {
   state: string;
   last_why: string;
   kind?: string;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
 
 /** Creates/updates search_state rows for aired-or-airing episodes of managed shows that have no file. */
@@ -228,7 +230,7 @@ export function planSchedule(now = Date.now()) {
           "INSERT INTO search_state (episode_id, tvdb_id, air_utc, next_at, state) VALUES (?, ?, ?, ?, 'waiting') ON CONFLICT(episode_id) DO NOTHING",
         )
         .run(e.id, m.tvdbId, e.air_utc, e.air_utc + s.searchDelayMin * 60_000);
-      added += Number(r.changes);
+      added += Number(r.changes) || reopenReturned(e.id, "new", e.air_utc + s.searchDelayMin * 60_000);
     }
   }
   return added;
@@ -318,15 +320,8 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
-  // Prowlarr down: every query failed. Try again later without using up an attempt.
-  if (res.errors.length && res.errors.length >= res.queries.length) {
-    db.prepare("UPDATE search_state SET next_at = ?, last_why = ? WHERE episode_id = ?").run(
-      now + 30 * 60_000,
-      `Prowlarr didn't answer (${res.errors[0]}); trying again in 30 min`,
-      st.episode_id,
-    );
-    return;
-  }
+  // Indexers down (all of them, or some): "nothing found" doesn't count; see below, once the picks are known.
+  const gap = couldntSearch(res);
   const season = res.targets[0]?.season ?? null;
   const ok = automaticPicks(res.results, st.tvdb_id, season, { delays: true });
   // Everything good is still inside its protocol delay: look again when the first one is old enough.
@@ -362,6 +357,23 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     }
   }
   const { best, why } = decisionSummary(ok.length ? ok : res.results);
+  // Nothing to grab, but not every indexer answered: not an attempt (no give-up, no backoff, no retryDays), asked
+  // again soon, and the reason is on the schedule (review 2026-11-02, M4).
+  // Each such search in a row waits longer (30 min … a day), so one flaky indexer doesn't cost a full search every
+  // 30 min forever (blind review 2026-11-03, R3); the streak resets once a search counts.
+  if (gap && !(best && ok.includes(best))) {
+    outagesThisRound++;
+    if (gap.kind === "all") allDownThisRound++;
+    const streak = st.outage_streak ?? 0;
+    const wait = outageBackoffMs(streak);
+    db.prepare("UPDATE search_state SET next_at = ?, last_why = ?, outage_streak = ? WHERE episode_id = ?").run(
+      now + wait,
+      `Couldn't search fully: ${gap.why}; ${res.found} releases seen, trying again in ${Math.round(wait / 60_000)} min`,
+      streak + 1,
+      st.episode_id,
+    );
+    return;
+  }
   const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
   if (best && ok.includes(best)) {
@@ -375,7 +387,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     const failedState = backlog ? "backlog" : "retry";
     const state = out.dryRun ? "would-grab" : out.failed ? failedState : "grabbed";
     db.prepare(
-      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ? WHERE episode_id = ?",
+      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ?, outage_streak = 0 WHERE episode_id = ?",
     ).run(attempts, now, out.failed ? now + (backlog ? DAY : backoff) : now, state, out.message, out.id, st.episode_id);
     return;
   }
@@ -383,13 +395,9 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   if (backlog) {
     // Missing-episode search: no give-up, just try again in retryDays (RSS can still bring it forward).
     const days = getSettings().backlog.retryDays;
-    db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ? WHERE episode_id = ?").run(
-      attempts,
-      now,
-      now + days * DAY,
-      `${why} (${res.found} releases seen)`,
-      st.episode_id,
-    );
+    db.prepare(
+      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ?, outage_streak = 0 WHERE episode_id = ?",
+    ).run(attempts, now, now + days * DAY, `${why} (${res.found} releases seen)`, st.episode_id);
     logDecision("skip", {
       tvdbId: st.tvdb_id,
       title: m.title,
@@ -399,14 +407,9 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     return;
   }
   const gaveUp = attempts >= s.maxAttempts;
-  db.prepare("UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ? WHERE episode_id = ?").run(
-    attempts,
-    now,
-    now + backoff,
-    gaveUp ? "gave-up" : "retry",
-    `${why} (${res.found} releases seen)`,
-    st.episode_id,
-  );
+  db.prepare(
+    "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, outage_streak = 0 WHERE episode_id = ?",
+  ).run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why} (${res.found} releases seen)`, st.episode_id);
   logDecision("skip", {
     tvdbId: st.tvdb_id,
     title: m.title,
@@ -468,6 +471,22 @@ async function decideSafely(st: StateRow, now: number) {
 const HOUR = 3_600_000;
 const BACKLOG_STATES = "('backlog', 'retry')"; // a failed backlog grab comes back as 'retry' but stays in the backlog's budget
 
+const LEFT_SONARR = "no longer in Sonarr";
+/**
+ * A search closed because its episode left Sonarr's list reopens when the episode is back (still missing, in scope):
+ * the close may have come from a cache gap (a rebuilt cache, a half answer), and the schedule's insert never touches
+ * an existing row (review 2026-11-02, H11). Returns 1 when it reopened.
+ */
+function reopenReturned(episodeId: number, kind: "new" | "backlog", nextAt: number): number {
+  return Number(
+    db
+      .prepare(
+        "UPDATE search_state SET state = ?, kind = ?, attempts = 0, outage_streak = 0, next_at = ?, last_why = 'back in Sonarr' WHERE episode_id = ? AND state = 'done' AND last_why = ?",
+      )
+      .run(kind === "new" ? "waiting" : "backlog", kind, nextAt, episodeId, LEFT_SONARR).changes,
+  );
+}
+
 /**
  * Closes schedule rows whose episode got a file in the meantime (Sonarr, a manual import), was unmonitored, left
  * Sonarr or isn't managed any more. Runs even while the missing-episode search is off. 'replace' rows are left
@@ -490,7 +509,7 @@ function closeFound(now = Date.now()) {
   tx(db, () => {
     for (const r of rows) {
       const e = epInfo.get(r.episode_id) as { has_file: number; monitored: number } | undefined;
-      if (!e) close.run("no longer in Sonarr", r.episode_id);
+      if (!e) close.run(LEFT_SONARR, r.episode_id);
       else if (e.has_file) close.run("Sonarr has a file", r.episode_id);
       else if (r.kind === "backlog" && !managedIds.has(r.tvdb_id)) close.run("not managed", r.episode_id);
       else if (managedIds.has(r.tvdb_id) && !inScopeCached(r.tvdb_id, r.episode_id))
@@ -507,7 +526,7 @@ export function planBacklog(now = Date.now()) {
   const b = getSettings().backlog;
   if (b.enabled)
     db.prepare(
-      "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?",
+      "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'back in the missing-episode search' WHERE state = 'gave-up' AND COALESCE(last_at, 0) < ?",
     ).run(now, now - b.retryDays * DAY);
   closeFound(now);
   if (!b.enabled) return 0;
@@ -518,7 +537,7 @@ export function planBacklog(now = Date.now()) {
   // A 'done' episode that is missing again (file deleted) rejoins, but never right after AnimeArr imported it
   // (the cache can lag behind the import until the next refresh).
   const reopen = db.prepare(
-    "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
+    "UPDATE search_state SET state = 'backlog', kind = 'backlog', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'missing again' WHERE episode_id = ? AND state = 'done' AND COALESCE(last_at, 0) < ? AND NOT EXISTS (SELECT 1 FROM grabs g WHERE g.id = search_state.grab_id AND g.updated_at > ?)",
   );
   const listEps = cache.prepare(
     "SELECT id, air_utc FROM episodes WHERE series_id = ? AND has_file = 0 AND air_utc IS NOT NULL AND air_utc < ?",
@@ -529,7 +548,7 @@ export function planBacklog(now = Date.now()) {
       const scoped = scopedEpisodeIds(m.tvdbId, m.seriesId, now);
       for (const e of (listEps.all(m.seriesId, now - 30 * DAY) as { id: number; air_utc: number }[]).filter((x) => scoped.has(x.id))) {
         const n = Number(insert.run(e.id, m.tvdbId, e.air_utc, now).changes);
-        added += n || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
+        added += n || reopenReturned(e.id, "backlog", now) || Number(reopen.run(now, e.id, cutoff, cutoff).changes);
       }
     }
   });
@@ -600,10 +619,16 @@ export function backlogSummary(now = Date.now()) {
 }
 
 let ticking = false;
+/** Searches this round that couldn't ask every indexer (the job's status says so instead of "done" alone). */
+let outagesThisRound = 0;
+/** Of those, searches where no indexer answered at all (a real outage: the job shows "error"). */
+let allDownThisRound = 0;
 /** Scheduler tick: plan, then search episodes that are due (a few per tick, to be gentle on indexers). */
 export async function managedTick(now = Date.now()) {
   if (ticking || dbState.corrupt || !searchConfigured() || !listManaged().length) return;
   ticking = true;
+  outagesThisRound = 0;
+  allDownThisRound = 0;
   try {
     planSchedule(now);
     const due = db
@@ -613,10 +638,15 @@ export async function managedTick(now = Date.now()) {
       .all(now) as unknown as StateRow[];
     for (const st of due) await decideSafely(st, now);
     const backlog = await backlogPass(now);
+    const detail = `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`;
+    // Some indexer missing on a few searches is a warning (those episodes back off), not a failed job; "error" only
+    // when a search got no answer from any indexer.
     setJob(
       "managed",
-      "done",
-      `${listManaged().length} managed shows; ${due.length} episode searches this round${backlog ? ` + ${backlog} missing-episode searches` : ""}${isDryRun(null) ? " (dry-run)" : ""}`,
+      allDownThisRound ? "error" : "done",
+      outagesThisRound
+        ? `${detail}. Warning: ${outagesThisRound} couldn't reach every indexer (each tries again later, backing off)`
+        : detail,
     );
   } finally {
     ticking = false;

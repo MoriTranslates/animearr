@@ -3,8 +3,10 @@
  * and fetching a release. A leaf under pipeline.ts, movies.ts and downloads.ts, so those modules share it without
  * importing each other.
  */
-import type { DownloadClients } from "../arr/clients.js";
-import { isTorrentClient } from "../arr/clients.js";
+import type { ClientJob, DownloadClients } from "../arr/clients.js";
+import { clientName, isTorrentClient } from "../arr/clients.js";
+import { logDecision } from "../system/activity.js";
+import { torrentHash } from "../arr/torrentClients.js";
 import type { ProwlarrRelease } from "../arr/prowlarr.js";
 import type * as radarr from "../arr/radarr.js";
 import type * as sonarr from "../arr/sonarr.js";
@@ -104,20 +106,80 @@ export interface GrabRow {
   strike_why?: string | null;
   /** The indexer's name (blocklist page). */
   indexer?: string | null;
+  /** 1 = the torrent was in the client before AnimeArr's add (or adopted after a restart): never removed or deleted. */
+  not_ours?: number;
 }
 
 /** Grab states that are still in flight (a new grab for the same episode must wait for these). */
 export const ACTIVE = ["sending", "downloading", "importing"];
+
+/**
+ * Grabs this process is sending to a client right now. A 'sending' row not in here was cut off by a restart: the
+ * pipeline asks the client whether it arrived (review 2026-11-02, H9).
+ */
+export const sendingNow = new Set<number>();
+/** client_ref of a cut-off 'sending' row that was handed to a client without an id to look it up by (an NZB). */
+export const SENT_UNKNOWN = "?";
+/**
+ * Records, just before the release is handed to a client, how to find it there after a restart: a torrent's
+ * info-hash, else SENT_UNKNOWN. A row without it was cut off before anything reached a client. False when the grab
+ * isn't 'sending' any more (you removed it while its release was fetched): then nothing may be sent (review M4).
+ */
+export function markHandingOver(id: number, protocol: string, file: { data?: Buffer; magnet?: string }): boolean {
+  const ref = protocol === "torrent" ? (torrentHash(file) ?? SENT_UNKNOWN) : SENT_UNKNOWN;
+  return db.prepare("UPDATE grabs SET client_ref = ? WHERE id = ? AND state = 'sending'").run(ref, id).changes > 0;
+}
+
+/** The user removed this grab while it was being sent (removeGrab claims it, then closes it as "removed by you"). */
+export function removedByYou(id: number): boolean {
+  const r = db.prepare("SELECT state, error FROM grabs WHERE id = ?").get(id) as { state: string; error: string | null } | undefined;
+  return !!r && (r.state === "removing" || (r.state === "failed" && /^removed by you/.test(r.error ?? "")));
+}
+
+/**
+ * A send that finished after the user removed it: out of the client again, or a clear note when that fails. A
+ * torrent the client already had before this add (a duplicate) is someone else's: it is left alone (review M4).
+ */
+export async function takeBackOut(deps: PipelineDeps, job: ClientJob, release: string, tvdbId: number | null) {
+  if (job.duplicate) {
+    logDecision("info", {
+      tvdbId,
+      release,
+      why: `You removed ${release} while it was being sent; ${clientName(job.client)} already had that torrent before, so it was left as it was`,
+    });
+    return;
+  }
+  try {
+    await deps.clients.remove(job);
+  } catch (e) {
+    logDecision("fail", {
+      tvdbId,
+      release,
+      why: `You removed ${release} while it was being sent, but taking it back out of ${clientName(job.client)} failed (${(e as Error).message}); remove it there by hand`,
+    });
+  }
+}
 /** Default stall time (tests); the live value is Settings → queueHealth.stallHours. */
 export const STALL_MS = 6 * 3_600_000;
 export const MAX_ATTEMPTS = 3;
 
-export const setState = (id: number, state: string, error: string | null = null, extra: { client?: string; ref?: string } = {}) =>
+/**
+ * Sets a grab's state. `from` makes it a compare-and-set: only a grab still in one of those states changes (true when
+ * it did). Every change made after an await passes the state it read, so a grab the user removed meanwhile is never
+ * brought back (blind review of the jobs branch, H2/M1).
+ */
+export const setState = (
+  id: number,
+  state: string,
+  error: string | null = null,
+  extra: { client?: string; ref?: string } = {},
+  from?: string[],
+): boolean =>
   db
     .prepare(
-      "UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?",
+      `UPDATE grabs SET state = ?, error = ?, updated_at = ?, client = COALESCE(?, client), client_ref = COALESCE(?, client_ref) WHERE id = ?${from ? ` AND state IN (${from.map(() => "?").join(",")})` : ""}`,
     )
-    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id);
+    .run(state, error, Date.now(), extra.client ?? null, extra.ref ?? null, id, ...(from ?? [])).changes > 0;
 
 export function isBlocked(c: { guid: string; title: string }) {
   return !!db.prepare("SELECT 1 FROM blocklist WHERE release = ? OR (guid IS NOT NULL AND guid = ?) LIMIT 1").get(c.title, c.guid);
@@ -208,10 +270,22 @@ export const importModeFor = (client: string | null): "copy" | "move" => (isTorr
 export function retryImport(id: number) {
   const r = db
     .prepare(
-      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention'",
+      "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, progress_at = ? WHERE id = ? AND state = 'needs-attention' AND client IS NOT NULL",
     )
     .run(Date.now(), Date.now(), id);
-  if (!r.changes) throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
+  if (!r.changes) {
+    const g = db.prepare("SELECT state, client FROM grabs WHERE id = ?").get(id) as { state: string; client: string | null } | undefined;
+    if (g?.state === "needs-attention" && g.client === null)
+      throw Object.assign(
+        new Error(
+          "This grab has no download client on record, so there's nothing to import; check the client, or remove it to search again",
+        ),
+        {
+          statusCode: 409,
+        },
+      );
+    throw Object.assign(new Error("Only grabs that need attention can be retried"), { statusCode: 409 });
+  }
 }
 
 /** A search result as a grab candidate. */

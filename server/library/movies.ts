@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import { type ProwlarrRelease } from "../arr/prowlarr.js";
-import { searchAll } from "../search/indexers.js";
+import { searchAll, searchOutage, type IndexerFailure } from "../search/indexers.js";
 import { langList } from "../core/langs.js";
 import { parseRelease, type ParsedRelease } from "../core/parser.js";
 import { compareRanked, rankRelease } from "../core/rank.js";
@@ -29,10 +29,14 @@ import {
   importModeFor,
   isBlocked,
   isFetchFailure,
+  markHandingOver,
   MAX_ATTEMPTS,
   remainingFallbacks,
+  removedByYou,
   runTimeSec,
+  sendingNow,
   setState,
+  takeBackOut,
   VIDEO,
   type Candidate,
   type GrabRow,
@@ -375,10 +379,13 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
   const results: MovieSearchResult[] = [];
   const started = Date.now();
   const yearQ = m.year ? `${m.title} ${m.year}` : null;
+  const failed = new Map<string, IndexerFailure>();
+  const onFailed = (fs: IndexerFailure[]) => fs.forEach((f) => failed.set(f.name, f));
   await Promise.all(
     queries.map(async (q) => {
       try {
-        for (const r of await search(q, q === yearQ ? { categories: [] } : {})) if (!raw.has(r.guid)) raw.set(r.guid, r);
+        for (const r of await search(q, q === yearQ ? { categories: [], onFailed } : { onFailed }))
+          if (!raw.has(r.guid)) raw.set(r.guid, r);
       } catch (e) {
         errors.push(`${q}: ${(e as Error).message}`);
       }
@@ -520,6 +527,8 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
     matched: results.length,
     skipped,
     errors,
+    /** Whether every, some or no indexer answered (couldn't search is never "found nothing"). */
+    outage: searchOutage(queries.length, errors, [...failed.values()], started),
     tookMs: Date.now() - started,
     results,
   };
@@ -595,6 +604,8 @@ export async function startMovieGrab(
         note: null,
         movie: true,
         since: now,
+        // Sent stopped for the file choice: recorded before it's sent, so a restart still starts it (M6).
+        ...(select ? { paused: true } : {}),
       }
     : null;
   const id = Number(
@@ -629,9 +640,12 @@ export async function startMovieGrab(
     logDecision("would-grab", { title: label, release: c.title, why: `Dry-run: ${msg}`, detail: { grabId: id, movieId: m.id } });
     return { id, dryRun: true, message: `Practice mode: would download ${label}. Nothing was downloaded (details in Activity).` };
   }
+  sendingNow.add(id);
   try {
     const file = await fetchOrNote(deps, c);
     if (c.protocol === "usenet" && !file.data) throw new Error("No NZB data");
+    // Removed by you while the release was fetched: nothing goes to the client (M4).
+    if (!markHandingOver(id, c.protocol, file)) return { id, dryRun: false, message: "Cancelled", failed: true };
     const job =
       c.protocol === "usenet"
         ? await deps.clients.addNzb(file.data!, c.title)
@@ -639,11 +653,12 @@ export async function startMovieGrab(
     if (
       !db
         .prepare(
-          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ? WHERE id = ? AND state = 'sending'",
+          "UPDATE grabs SET state = 'downloading', error = NULL, updated_at = ?, client = ?, client_ref = ?, not_ours = ? WHERE id = ? AND state = 'sending'",
         )
-        .run(Date.now(), job.client, job.ref, id).changes
+        .run(Date.now(), job.client, job.ref, job.duplicate ? 1 : 0, id).changes
     ) {
-      await deps.clients.remove(job).catch(() => undefined);
+      // Closed (removed by you) while it was being sent: take it back out of the client.
+      await takeBackOut(deps, job, c.title, null);
       return { id, dryRun: false, message: "Cancelled", failed: true };
     }
     logDecision("grab", {
@@ -664,6 +679,8 @@ export async function startMovieGrab(
       );
     return { id, dryRun: false, message: `Sent to ${job.client}` };
   } catch (e) {
+    // Removed by you while it was being sent: the removal stands, no next candidate.
+    if (removedByYou(id)) return { id, dryRun: false, message: "Cancelled", failed: true };
     setState(id, "failed", (e as Error).message);
     logDecision("fail", {
       title: label,
@@ -673,6 +690,8 @@ export async function startMovieGrab(
     });
     const next = await movieNext({ ...req, attempt: (req.attempt ?? 1) - (isFetchFailure(e) ? 1 : 0) }, deps, (e as Error).message, e);
     return next ?? { id, dryRun: false, message: (e as Error).message, failed: true };
+  } finally {
+    sendingNow.delete(id);
   }
 }
 
@@ -931,8 +950,7 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   const unsafe = unsafeDownload(deps, row, p0, !single);
   if (unsafe) {
     // Same as pipeline.ts rejectUnsafe for a movie grab: reject the download, then try the movie's next release.
-    await rejectUnsafeDownload(row, unsafe, deps, "before import");
-    if (row.movie_id) await movieNextForRow(row, deps, unsafe);
+    if ((await rejectUnsafeDownload(row, unsafe, deps, "before import")) && row.movie_id) await movieNextForRow(row, deps, unsafe);
     return;
   }
   let listed: { path: string; size?: number; quality?: unknown; languages?: unknown; releaseGroup?: string; indexerFlags?: number }[];

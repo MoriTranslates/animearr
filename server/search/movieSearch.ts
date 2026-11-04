@@ -12,7 +12,7 @@
 import { grabGate } from "../grabs/downloads.js";
 import { isNativeMovieId, nativeMovies } from "../library/native.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, outageBackoffMs, searchConfigured } from "./indexers.js";
 import { radarrConfigured, radarrQueueFor } from "../arr/radarr.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { isReleased, liveAction, releaseAt, searchMovie, startMovieGrab, type MovieRow, isWanted } from "../library/movies.js";
@@ -39,6 +39,8 @@ interface Row {
   last_why: string;
   grab_id: number | null;
   release_at: number | null;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
 
 /** Creates/updates schedule rows for wanted movies; closes the ones that got a file or left scope. */
@@ -88,7 +90,7 @@ export function planMovies(now = Date.now()) {
       // A movie that is wanted again (file deleted) or whose release date moved.
       if (row.state === "done")
         db.prepare(
-          "UPDATE movie_search SET state = 'waiting', attempts = 0, next_at = ?, last_why = 'wanted again' WHERE movie_id = ?",
+          "UPDATE movie_search SET state = 'waiting', attempts = 0, outage_streak = 0, next_at = ?, last_why = 'wanted again' WHERE movie_id = ?",
         ).run(now, m.id);
       else if (row.state === "unreleased" && due !== null)
         db.prepare("UPDATE movie_search SET state = ?, next_at = ?, release_at = ?, last_why = ? WHERE movie_id = ?").run(
@@ -220,15 +222,27 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
           !x.rank.flags.some((f) => f.key === "burnIn") &&
           !(x.protocol === "torrent" && !x.seeders),
       );
-      if (!ok.length) {
-        const why = `nothing acceptable yet (${res.matched} of ${res.found} releases matched)`;
-        db.prepare("UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ? WHERE movie_id = ?").run(
-          attempts,
-          now,
+      // Not every indexer answered: not an attempt and not "nothing acceptable"; asked again soon (M4).
+      const gap = couldntSearch(res);
+      if (!ok.length && gap) {
+        const why = `couldn't search fully: ${gap.why}`;
+        // Each such search in a row waits longer (30 min … a day); the streak resets once a search counts.
+        const streak = r.outage_streak ?? 0;
+        const wait = outageBackoffMs(streak);
+        db.prepare("UPDATE movie_search SET state = 'retry', next_at = ?, last_why = ?, outage_streak = ? WHERE movie_id = ?").run(
           now + wait,
-          why,
+          `${why}; trying again in ${Math.round(wait / 60_000)} min`,
+          streak + 1,
           r.movie_id,
         );
+        logDecision("fail", { title: label, why: `Movie search for ${label}: ${why}`, detail: { movieId: r.movie_id } });
+        continue;
+      }
+      if (!ok.length) {
+        const why = `nothing acceptable yet (${res.matched} of ${res.found} releases matched)`;
+        db.prepare(
+          "UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ?, outage_streak = 0 WHERE movie_id = ?",
+        ).run(attempts, now, now + wait, why, r.movie_id);
         logDecision("skip", {
           title: label,
           why: `Movie search for ${label}: ${why}. Next try in ${Math.round(wait / HOUR)} h.`,
@@ -253,7 +267,7 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
           .get(r.movie_id, sentAt, `${FETCH_PREFIX}%`);
       const used = fetchOnly ? r.attempts : attempts;
       db.prepare(
-        "UPDATE movie_search SET state = ?, attempts = ?, last_at = ?, next_at = ?, last_why = ?, grab_id = ? WHERE movie_id = ?",
+        "UPDATE movie_search SET state = ?, attempts = ?, last_at = ?, next_at = ?, last_why = ?, grab_id = ?, outage_streak = 0 WHERE movie_id = ?",
       ).run(
         state,
         used,
@@ -264,13 +278,9 @@ export async function moviePass(deps: MovieSearchDeps = realDeps, now = Date.now
         r.movie_id,
       );
     } catch (e) {
-      db.prepare("UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ? WHERE movie_id = ?").run(
-        attempts,
-        now,
-        now + (attempts >= 2 ? wait : HOUR),
-        `Error: ${(e as Error).message}`,
-        r.movie_id,
-      );
+      db.prepare(
+        "UPDATE movie_search SET state = 'retry', attempts = ?, last_at = ?, next_at = ?, last_why = ?, outage_streak = 0 WHERE movie_id = ?",
+      ).run(attempts, now, now + (attempts >= 2 ? wait : HOUR), `Error: ${(e as Error).message}`, r.movie_id);
     }
   }
   return { searched };

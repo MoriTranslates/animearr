@@ -56,16 +56,43 @@ const FIELDS = `id idMal title { romaji english native } synonyms format status 
   streamingEpisodes { title }
   trailer { id site thumbnail }`;
 
+/**
+ * The request queue. One request at a time, ≥ 2.1 s apart; a 429 sets a shared pause (its Retry-After, at most 120 s)
+ * instead of sleeping inside the request, so the pause never holds the queue (review 2026-11-02):
+ * - interactive (`priority`) calls go first; during a pause longer than FAST_FAIL_MS they fail at once with "try again
+ *   in N s" (someone is waiting on them), a shorter one they wait out;
+ * - background calls wait the pause out (woken early when an interactive call arrives, which then goes first);
+ * - a call limited MAX_TRIES times gives up with the same message.
+ */
+const SPACING_MS = 2100;
+const FAST_FAIL_MS = 5000;
+const MAX_TRIES = 3;
 let last = 0;
+let pausedUntil = 0;
 interface Job {
   priority: boolean;
   supersede: boolean;
-  run: () => Promise<unknown>;
+  tries: number;
+  /** One request: the data, or the seconds AniList asked to wait (a 429). */
+  once: () => Promise<{ data: unknown } | { retryAfter: number }>;
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
 }
 const queue: Job[] = [];
 let working = false;
+/** Wakes a background wait early (an interactive call arrived). */
+let wake: (() => void) | null = null;
+
+const limitedError = (ms: number) => new Error(`AniList is rate-limiting; try again in ${Math.max(1, Math.ceil(ms / 1000))} s`);
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** For tests: a fresh limiter (no pause, no spacing debt, nothing queued). */
+export function resetAnilistLimiter() {
+  last = 0;
+  pausedUntil = 0;
+  for (const j of queue.splice(0)) j.reject(new Error("AniList queue reset"));
+  wake?.();
+}
 
 async function work() {
   if (working) return;
@@ -74,9 +101,41 @@ async function work() {
     while (queue.length) {
       // Interactive searches (the Add box) go before the catalog refresh's batches.
       const i = queue.findIndex((j) => j.priority);
-      const job = queue.splice(i >= 0 ? i : 0, 1)[0];
+      const job = queue[i >= 0 ? i : 0];
+      const pause = pausedUntil - Date.now();
+      if (pause > 0) {
+        if (job.priority && pause > FAST_FAIL_MS) {
+          queue.splice(queue.indexOf(job), 1);
+          job.reject(limitedError(pause));
+          continue;
+        }
+        if (!job.priority) {
+          // Wait without holding the queue: an interactive call that arrives meanwhile is looked at at once.
+          await new Promise<void>((r) => {
+            const t = setTimeout(r, pause);
+            wake = () => (clearTimeout(t), r());
+          });
+          wake = null;
+          continue;
+        }
+        await sleep(pause); // an interactive call and a short pause: worth the wait
+      }
+      const spacing = Math.max(0, last + SPACING_MS - Date.now());
+      if (spacing) await sleep(spacing);
+      // Superseded by a newer search (or the queue reset) while it waited: it was answered already; look again.
+      const at = queue.indexOf(job);
+      if (at < 0) continue;
+      queue.splice(at, 1);
+      last = Date.now();
       try {
-        job.resolve(await job.run());
+        const r = await job.once();
+        if ("data" in r) {
+          job.resolve(r.data);
+          continue;
+        }
+        pausedUntil = Date.now() + Math.min(120, r.retryAfter) * 1000;
+        if (++job.tries >= MAX_TRIES) job.reject(limitedError(pausedUntil - Date.now()));
+        else queue.unshift(job); // tried again after the pause (an interactive one: if the pause is short)
       } catch (e) {
         job.reject(e);
       }
@@ -88,7 +147,7 @@ async function work() {
 
 /**
  * One GraphQL call, serialised and spaced (AniList allows ~30 per minute). `priority` calls jump the queue, and a
- * newer superseding call (a search) replaces an older one still waiting (someone typing).
+ * newer superseding call (a search) replaces an older one still waiting (someone typing). Rate limits: see the queue.
  */
 export function anilistQuery<T>(
   query: string,
@@ -96,36 +155,36 @@ export function anilistQuery<T>(
   fetcher: typeof fetch = fetch,
   opts: { priority?: boolean; supersede?: boolean } = {},
 ): Promise<T> {
-  const run = async (): Promise<T> => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const wait = Math.max(0, last + 2100 - Date.now());
-      if (wait) await new Promise((r) => setTimeout(r, wait));
-      last = Date.now();
-      const res = await fetcher("https://graphql.anilist.co", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": USER_AGENT },
-        body: JSON.stringify({ query, variables }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (res.status === 429) {
-        const raw = Number(res.headers.get("retry-after"));
-        const after = Number.isFinite(raw) && raw > 0 ? raw : 60;
-        await new Promise((r) => setTimeout(r, Math.min(120, after) * 1000));
-        continue;
-      }
-      if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
-      const j = (await res.json()) as { data?: T; errors?: { message: string }[] };
-      if (j.errors?.length && !j.data) throw new Error(`AniList: ${j.errors[0].message}`);
-      if (!j.data) throw new Error("AniList: empty response");
-      return j.data as T;
+  const once = async (): Promise<{ data: unknown } | { retryAfter: number }> => {
+    const res = await fetcher("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": USER_AGENT },
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.status === 429) {
+      const raw = Number(res.headers.get("retry-after"));
+      return { retryAfter: Number.isFinite(raw) && raw > 0 ? raw : 60 };
     }
-    throw new Error("AniList is rate-limiting us; try again later");
+    if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
+    const j = (await res.json()) as { data?: T; errors?: { message: string }[] };
+    if (j.errors?.length && !j.data) throw new Error(`AniList: ${j.errors[0].message}`);
+    if (!j.data) throw new Error("AniList: empty response");
+    return { data: j.data };
   };
   return new Promise<T>((resolve, reject) => {
     if (opts.supersede)
       for (let i = queue.length - 1; i >= 0; i--)
         if (queue[i].supersede) queue.splice(i, 1)[0].reject(new Error("superseded by a newer search"));
-    queue.push({ priority: !!opts.priority, supersede: !!opts.supersede, run, resolve: resolve as (v: unknown) => void, reject });
+    queue.push({
+      priority: !!opts.priority,
+      supersede: !!opts.supersede,
+      tries: 0,
+      once,
+      resolve: resolve as (v: unknown) => void,
+      reject,
+    });
+    if (opts.priority) wake?.();
     void work();
   });
 }

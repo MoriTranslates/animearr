@@ -1,7 +1,7 @@
 import { getSettings, type ClientCfg, type Settings } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
 import { nzbgetDriver, transmissionDriver } from "./moreClients.js";
-import { delugeDriver, rtorrentDriver } from "./torrentClients.js";
+import { delugeDriver, rtorrentDriver, torrentHash } from "./torrentClients.js";
 import { blackholeDriver, isBlackhole } from "./blackhole.js";
 import { mappedPath } from "../system/paths.js";
 
@@ -19,6 +19,8 @@ export interface ClientJob {
   paused?: boolean;
   /** Freshly added for file selection (never set for a torrent the client already had: its files are left alone). */
   select?: boolean;
+  /** The client already had this torrent before AnimeArr's add: not AnimeArr's to remove or delete (review M4). */
+  duplicate?: boolean;
 }
 
 /** One file of a torrent, as its client lists it (index = the client's file index). */
@@ -150,6 +152,33 @@ export interface DownloadClients {
   selectFiles?(job: ClientJob, wanted: number[], skipped: number[]): Promise<void>;
   /** Starts a job that was added stopped. */
   start?(job: ClientJob): Promise<void>;
+  /**
+   * Which torrent client holds this info-hash (a send cut off by a restart: did it arrive?). null = every torrent client
+   * answered and none has it; throws when one couldn't be asked (down, or a blackhole folder), so "unknown" never reads
+   * as "not there".
+   */
+  findTorrent?(hash: string): Promise<ClientJob | null>;
+  /**
+   * The same for an NZB, by the release name it was sent with (NZBs have no id before they're added): one exact match
+   * in AnimeArr's category, in a Usenet client's queue or history. null = every Usenet client answered and none has it;
+   * throws when one couldn't be asked, or on several matches or only a near match (can't tell which is ours). History
+   * entries that finished before `since` (an earlier grab of the same release) don't count.
+   */
+  findNzb?(name: string, since?: number): Promise<ClientJob | null>;
+}
+
+/** findTorrent/findNzb can't ask at all (a watch folder): unlike a client that is down, asking again never helps. */
+export class CantLookUp extends Error {}
+
+/** A Usenet job as a client's queue or history lists it (for findNzb). */
+export interface NamedJob {
+  ref: string;
+  name: string;
+  /** Other exact names it may go by (SABnzbd's history keeps the uploaded file name when it renamed the job). */
+  altNames?: string[];
+  category: string;
+  /** When a history entry finished (ms); unknown or still queued = null. */
+  doneAt: number | null;
 }
 
 // ---------------------------------------------------------------- SABnzbd
@@ -233,6 +262,14 @@ const primary = {
   },
   async addTorrent(src: { data?: Buffer; magnet?: string }, name: string, opts: AddTorrentOpts = {}): Promise<ClientJob> {
     const s = getSettings().qbittorrent;
+    // qBittorrent doesn't say whether an add was a duplicate: asked first, by the info-hash (one call). A torrent it
+    // already has is left as it is and tracked as "not ours" (never removed or deleted by AnimeArr). A source whose
+    // hash can't be read here isn't checked (review of the jobs branch, M4/L6).
+    const pre = torrentHash(src);
+    if (pre) {
+      const have = (await (await qbit(`/torrents/info?hashes=${pre}`)).json()) as { hash: string }[];
+      if (have.some((t) => t.hash.toLowerCase() === pre)) return { client: "qbittorrent", ref: pre, duplicate: true };
+    }
     const tag = `animearr-${Date.now().toString(36)}`;
     const form = new FormData();
     form.append("category", s.category);
@@ -347,12 +384,39 @@ const primary = {
     // error/missingFiles are often transient (disk full, permissions, a missing save path): the user should look.
     if (/error|missingFiles/.test(t.state))
       return { state: "error", progress: t.progress, message: `qBittorrent reports "${t.state}"`, ...live };
-    if (t.progress >= 1) return { state: "completed", progress: 1, path: t.content_path, ...live };
+    // A finished torrent that qBit is still moving to its final folder is not done: importing now would take a half-copied file.
+    if (t.progress >= 1 && t.state !== "moving") return { state: "completed", progress: 1, path: t.content_path, ...live };
     return {
       state: /queued|metaDL|checking|^paused|^stopped|moving/i.test(t.state) ? "queued" : "downloading",
       progress: t.progress,
       ...live,
     };
+  },
+  /** SABnzbd's queue and (recent) history, by job name (for findNzb). */
+  async sabJobs(): Promise<NamedJob[]> {
+    const q = await sab<{ queue?: { slots?: Record<string, unknown>[] } }>({ mode: "queue", limit: "1000" });
+    const h = await sab<{ history?: { slots?: Record<string, unknown>[] } }>({ mode: "history", limit: "1000" });
+    // A missing list, or a job without its id, name or category, is "can't tell", never "not there" (the queue's
+    // field names weren't seen on a live SABnzbd yet; the history's were: name, nzb_name, category, completed).
+    const has = (s: Record<string, unknown>, ...keys: string[]) => keys.every((k) => typeof s[k] === "string");
+    const qs = q.queue?.slots;
+    const hs = h.history?.slots;
+    if (!Array.isArray(qs) || qs.some((s) => !has(s, "nzo_id", "filename", "cat")))
+      throw new Error("SABnzbd's queue answer doesn't list job names as expected; can't tell what it has");
+    if (!Array.isArray(hs) || hs.some((s) => !has(s, "nzo_id", "name", "category")))
+      throw new Error("SABnzbd's history answer doesn't list job names as expected; can't tell what it has");
+    return [
+      ...qs.map((s) => ({ ref: String(s.nzo_id), name: String(s.filename), category: String(s.cat), doneAt: null })),
+      ...hs.map((s) => ({
+        ref: String(s.nzo_id),
+        name: String(s.name),
+        // The uploaded file name: the job's name as sent, even when SABnzbd renamed the job.
+        altNames: typeof s.nzb_name === "string" ? [s.nzb_name.replace(/\.nzb$/i, "")] : [],
+        category: String(s.category),
+        // SABnzbd gives epoch seconds.
+        doneAt: typeof s.completed === "number" && s.completed > 0 ? s.completed * 1000 : null,
+      })),
+    ];
   },
   async remove(job: ClientJob): Promise<void> {
     // Only ever AnimeArr's own jobs: the job must still be in AnimeArr's category. Not found = already gone (fine).
@@ -449,7 +513,7 @@ interface Driver {
     src: { data?: Buffer; magnet?: string },
     name: string,
     opts: AddTorrentOpts,
-  ): Promise<{ ref: string; paused?: boolean; select?: boolean }>;
+  ): Promise<{ ref: string; paused?: boolean; select?: boolean; duplicate?: boolean }>;
   listFiles?(c: ClientCfg, ref: string): Promise<ClientFile[] | null>;
   selectFiles?(c: ClientCfg, ref: string, wanted: number[], skipped: number[]): Promise<void>;
   start?(c: ClientCfg, ref: string): Promise<void>;
@@ -540,6 +604,56 @@ export const realClients: DownloadClients = {
     if (job.client === "qbittorrent") return qbitFiles.start(job.ref);
     const f = fileDriver(job);
     if (f) await f.d.start(f.cfg, job.ref);
+  },
+  async findTorrent(hash) {
+    let unsure: Error | null = null;
+    let blind: CantLookUp | null = null;
+    for (const c of clientsFor("torrent")) {
+      if (isBlackhole(c.type)) {
+        blind ??= new CantLookUp(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
+        continue;
+      }
+      const job = { client: c.id, ref: hash.toLowerCase() };
+      try {
+        if ((await realClients.status(job)).state !== "missing") return job;
+      } catch (e) {
+        unsure ??= e as Error;
+      }
+    }
+    if (unsure) throw unsure; // a client down: worth asking again
+    if (blind) throw blind; // a watch folder: asking again never helps
+    return null;
+  },
+  async findNzb(name, since = 0) {
+    // As sent: SABnzbd takes the name as is; NZBGet gets it as a file name (the same characters replaced).
+    const exact = new Set([name, name.replace(/[\\/:*?"<>|]/g, "_")]);
+    const loose = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const hits: ClientJob[] = [];
+    let near = false;
+    let unsure: Error | null = null;
+    for (const c of clientsFor("usenet")) {
+      if (isBlackhole(c.type)) {
+        unsure ??= new Error(`${c.name} is a watch folder; AnimeArr can't ask it what it has`);
+        continue;
+      }
+      try {
+        const jobs = c.type === "sabnzbd" ? await primary.sabJobs() : await nzbgetDriver.jobs(c.cfg!);
+        for (const j of jobs) {
+          if (c.category && j.category !== c.category) continue; // not AnimeArr's
+          if (j.doneAt !== null && j.doneAt < since) continue; // an earlier grab of the same release, finished before this one
+          const names = [j.name, ...(j.altNames ?? [])];
+          if (names.some((n) => exact.has(n))) hits.push({ client: c.id, ref: j.ref });
+          else if (names.some((n) => loose(n) === loose(name))) near = true;
+        }
+      } catch (e) {
+        unsure ??= e as Error;
+      }
+    }
+    if (hits.length > 1) throw new Error(`${hits.length} jobs in the download clients are named ${name}; can't tell which is AnimeArr's`);
+    if (hits.length) return hits[0];
+    if (near) throw new Error(`a job in the download client has a similar name but not exactly ${name}`);
+    if (unsure) throw unsure;
+    return null;
   },
 };
 

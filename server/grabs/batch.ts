@@ -50,8 +50,69 @@ export interface BatchInfo {
   since: number;
   /** Failed attempts at reading/applying the file list. */
   tries?: number;
-  /** The job was added stopped (it must be started after the selection). */
+  /** The job was added stopped (it must be started after the selection). Set before it is sent, so a restart knows. */
   paused?: boolean;
+  /** Starting the stopped job failed: the pipeline tick tries again; after START_GIVE_UP it needs a look (M6). */
+  startFailed?: { since: number; why: string } | null;
+}
+
+/** How long a stopped batch torrent may fail to start before it needs your attention. */
+export const START_GIVE_UP_MS = 60 * 60_000;
+
+/**
+ * Starts a batch torrent that was added stopped. Never swallowed: the error message comes back (null = started, or
+ * nothing to start), and the caller keeps it on the batch so the pipeline tick tries again (review 2026-11-02, M6).
+ */
+async function startStopped(c: Pick<SelectContext, "job" | "clients">): Promise<string | null> {
+  if (!c.job.paused) return null;
+  if (!c.clients.start) return "the download client can't be told to start it";
+  try {
+    await c.clients.start(c.job);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
+/** The batch after a start attempt: the failure kept (with when it began), or cleared. Reports the first failure. */
+function afterStart(c: Pick<SelectContext, "grabId" | "log">, b: BatchInfo, failed: string | null, now: number): BatchInfo {
+  if (!failed) return { ...b, startFailed: null };
+  if (!b.startFailed)
+    logDecision("fail", {
+      tvdbId: c.log.tvdbId,
+      title: c.log.title,
+      episodeIds: c.log.episodeIds,
+      release: c.log.release,
+      why: `Couldn't start ${c.log.release} in the download client after choosing its files (${failed}); it was added stopped, so AnimeArr keeps trying`,
+      detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) },
+    });
+  return { ...b, startFailed: { since: b.startFailed?.since ?? now, why: failed } };
+}
+
+/**
+ * Pipeline tick: a stopped batch torrent whose start failed is started again. "attention" when it kept failing for
+ * START_GIVE_UP_MS: the grab needs a look (it would otherwise sit stopped, looking merely queued, forever).
+ */
+export async function retryStart(
+  c: Pick<SelectContext, "grabId" | "job" | "clients" | "log">,
+  now = Date.now(),
+): Promise<"started" | "waiting" | "attention" | "nothing"> {
+  const b = readBatch((db.prepare("SELECT batch FROM grabs WHERE id = ?").get(c.grabId) as { batch: string | null } | undefined)?.batch);
+  if (!b?.startFailed) return "nothing";
+  const failed = await startStopped({ job: { ...c.job, paused: true }, clients: c.clients });
+  writeBatch(c.grabId, afterStart(c, b, failed, now));
+  if (!failed) {
+    logDecision("info", {
+      tvdbId: c.log.tvdbId,
+      title: c.log.title,
+      episodeIds: c.log.episodeIds,
+      release: c.log.release,
+      why: `Started ${c.log.release} in the download client (the earlier start had failed)`,
+      detail: { grabId: c.grabId, ...(c.log.movieId ? { movieId: c.log.movieId } : {}) },
+    });
+    return "started";
+  }
+  return now - b.startFailed.since >= START_GIVE_UP_MS ? "attention" : "waiting";
 }
 
 export function readBatch(raw: string | null | undefined): BatchInfo | null {
@@ -544,8 +605,8 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   const b = readBatch((db.prepare("SELECT batch FROM grabs WHERE id = ?").get(c.grabId) as { batch: string | null } | undefined)?.batch);
   if (!b) return "whole";
   const finishWhole = async (why: string) => {
-    if (c.job.paused && c.clients.start) await c.clients.start(c.job).catch(() => undefined);
-    writeBatch(c.grabId, { ...b, mode: "whole", note: why, leftovers: b.wanted < b.total || !!b.movie });
+    const failed = await startStopped(c);
+    writeBatch(c.grabId, afterStart(c, { ...b, mode: "whole", note: why, leftovers: b.wanted < b.total || !!b.movie }, failed, now));
     logDecision("info", {
       tvdbId: c.log.tvdbId,
       title: c.log.title,
@@ -587,12 +648,18 @@ export async function applySelection(c: SelectContext, now = Date.now()): Promis
   }
   try {
     await c.clients.selectFiles(c.job, plan.wanted, plan.skipped);
-    if (c.job.paused && c.clients.start) await c.clients.start(c.job);
   } catch (e) {
     return finishWhole(`couldn't skip files (${(e as Error).message})`);
   }
+  // The files are skipped: the selection stands even when the start fails (kept, retried by the tick, reported).
+  const failed = await startStopped(c);
   const skippedEpisodes = [...new Set([...b.skippedEpisodes, ...plan.skippedEpisodes])];
-  const next: BatchInfo = { ...b, mode: "partial", skippedFiles: plan.skipped.length, skippedEpisodes, leftovers: false, note: null };
+  const next = afterStart(
+    c,
+    { ...b, mode: "partial", skippedFiles: plan.skipped.length, skippedEpisodes, leftovers: false, note: null },
+    failed,
+    now,
+  );
   writeBatch(c.grabId, next);
   logDecision("info", {
     tvdbId: c.log.tvdbId,

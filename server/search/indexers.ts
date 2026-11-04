@@ -5,7 +5,7 @@
  * Mixing with Prowlarr is fine; Prowlarr stays optional.
  */
 import { ensureProwlarrSelection } from "./indexerPick.js";
-import { describeFetchError, noteSeen, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
+import { describeFetchError, indexerOffBefore, noteSeen, recordIndexerFailure, recordIndexerSuccess } from "./health.js";
 import crypto from "node:crypto";
 import { getSettings, type IndexerCfg } from "../system/settings.js";
 import { prowlarrConfigured, prowlarrIndexers, prowlarrSearch, type ProwlarrRelease } from "../arr/prowlarr.js";
@@ -243,7 +243,11 @@ function prowlarrIndexerList() {
  * own lets a slow one be left out after the limit instead of holding up the query. A failure (time-out included) counts
  * against that indexer's search health, but only when another indexer answered (Prowlarr itself down blames nobody).
  */
-async function prowlarrPerIndexer(query: string, opts: { limit?: number; categories?: number[]; fresh?: boolean; timeoutMs?: number }) {
+async function prowlarrPerIndexer(
+  query: string,
+  opts: { limit?: number; categories?: number[]; fresh?: boolean; timeoutMs?: number },
+  failed: (f: IndexerFailure) => void,
+) {
   const chosen = getSettings().prowlarr.indexerIds;
   let list: { id: number; name: string }[];
   try {
@@ -254,12 +258,58 @@ async function prowlarrPerIndexer(query: string, opts: { limit?: number; categor
   const settled = await Promise.allSettled(list.map((x) => prowlarrSearch(query, { ...opts, indexerIds: [x.id] })));
   const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
   if (list.length && !ok.length) throw (settled[0] as PromiseRejectedResult).reason;
-  if (query.trim())
-    settled.forEach((r, i) => {
-      if (r.status === "fulfilled") recordIndexerSuccess(list[i].id, "search");
-      else recordIndexerFailure(list[i].id, redactUrl((r.reason as Error).message), Date.now(), { name: list[i].name, kind: "search" });
-    });
+  settled.forEach((r, i) => {
+    if (r.status === "fulfilled") {
+      if (query.trim()) recordIndexerSuccess(list[i].id, "search");
+      return;
+    }
+    const why = redactUrl((r.reason as Error).message);
+    if (query.trim()) recordIndexerFailure(list[i].id, why, Date.now(), { name: list[i].name, kind: "search" });
+    failed({ indexerId: list[i].id, name: list[i].name, why });
+  });
   return ok.flatMap((r) => r.value);
+}
+
+/** An indexer (or Prowlarr as a whole) that didn't answer a query that others did answer. */
+export interface IndexerFailure {
+  indexerId: number | null;
+  name: string;
+  why: string;
+}
+/**
+ * Whether a search heard from its indexers (review 2026-11-02, M4): "couldn't search" is never "found nothing".
+ * - all: no indexer answered; partial: some didn't (named in `why`); none: every one did.
+ * - counts: whether "nothing found" may count as a completed try. A complete search counts; so does one whose silent
+ *   indexers were already off for grabbing before it started (their results couldn't be picked anyway, and a standing
+ *   gap would otherwise keep every search from ever counting).
+ */
+export interface SearchOutage {
+  kind: "none" | "partial" | "all";
+  why: string;
+  counts: boolean;
+}
+/** The next try after a search the indexers didn't (fully) answer, instead of the job's usual wait. */
+export const OUTAGE_RETRY_MS = 30 * 60_000;
+/** Wait after the 1st, 2nd, … search in a row that couldn't ask every indexer: 30 min, 1 h, 2 h, 4 h, 8 h, then a day at most. */
+const OUTAGE_BACKOFF_MIN = [OUTAGE_RETRY_MS / 60_000, 60, 120, 240, 480, 1440];
+/** `streak` = searches in a row that didn't count before this one (0 = the first outage). Never an attempt, never a give-up. */
+export const outageBackoffMs = (streak: number) =>
+  OUTAGE_BACKOFF_MIN[Math.min(Math.max(streak, 0), OUTAGE_BACKOFF_MIN.length - 1)] * 60_000;
+/** Whether a row whose last `streak` searches hit an outage (row last written at `updatedAt`) is still waiting out its backoff. */
+export const outageHeld = (streak: number | null | undefined, updatedAt: number | null | undefined, now: number) =>
+  (streak ?? 0) > 0 && now - (updatedAt ?? 0) < outageBackoffMs((streak ?? 0) - 1);
+/** The outage when a search's "nothing found" must not count (it couldn't ask every indexer), else null. */
+export const couldntSearch = (r: { outage?: SearchOutage }) => (r.outage && !r.outage.counts ? r.outage : null);
+export function searchOutage(asked: number, failedQueries: string[], failed: IndexerFailure[], startedAt: number): SearchOutage {
+  if (asked > 0 && failedQueries.length >= asked)
+    return { kind: "all", why: `the indexers didn't answer (${failedQueries[0]})`, counts: false };
+  if (!failed.length && !failedQueries.length) return { kind: "none", why: "", counts: true };
+  const names = [...new Set(failed.map((f) => f.name))];
+  const why = names.length
+    ? `${names.join(", ")} didn't answer (${failed[0].why})`
+    : `the indexers didn't answer some queries (${failedQueries[0]})`;
+  const counts = !failedQueries.length && failed.every((f) => f.indexerId !== null && indexerOffBefore(f.indexerId, startedAt));
+  return { kind: "partial", why, counts };
 }
 
 /**
@@ -279,6 +329,8 @@ export async function searchAll(
     fresh?: boolean;
     perIndexer?: boolean;
     /** Checked when the slot comes: true = not needed any more (answers nothing). */ skip?: () => boolean;
+    /** Told which indexers didn't answer when others did (when none answers, the search throws). */
+    onFailed?: (failed: IndexerFailure[]) => void;
   } = {},
 ): Promise<ProwlarrRelease[]> {
   return querySlot(() => (opts.skip?.() ? Promise.resolve([]) : searchAllNow(query, opts)));
@@ -286,14 +338,23 @@ export async function searchAll(
 
 async function searchAllNow(
   query: string,
-  opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean },
+  opts: { limit?: number; categories?: number[]; fresh?: boolean; perIndexer?: boolean; onFailed?: (failed: IndexerFailure[]) => void },
 ): Promise<ProwlarrRelease[]> {
   const jobs: Promise<ProwlarrRelease[]>[] = [];
+  const failures: IndexerFailure[] = [];
   const timeoutMs = indexerTimeoutMs();
   if (prowlarrConfigured()) {
     await ensureProwlarrSelection();
     const o = { ...opts, ...(timeoutMs ? { timeoutMs } : {}) };
-    jobs.push(opts.perIndexer || (timeoutMs && query.trim()) ? prowlarrPerIndexer(query, o) : prowlarrSearch(query, o));
+    jobs.push(
+      (opts.perIndexer || (timeoutMs && query.trim())
+        ? prowlarrPerIndexer(query, o, (f) => failures.push(f))
+        : prowlarrSearch(query, o)
+      ).catch((e: Error) => {
+        failures.push({ indexerId: null, name: "Prowlarr", why: redactUrl(e.message) });
+        throw e;
+      }),
+    );
   }
   for (const ix of directIndexers()) {
     // A search-URL template needs words; the empty "latest releases" poll skips it.
@@ -316,6 +377,7 @@ async function searchAllNow(
           const why = redactUrl(describeFetchError(e));
           lastErrors.set(ix.id, { at: Date.now(), why: `${ix.name}: ${why}` });
           recordIndexerFailure(indexerNumId(ix.id), why, Date.now(), { name: ix.name, kind: "search" });
+          failures.push({ indexerId: indexerNumId(ix.id), name: ix.name, why });
           return Promise.reject(new Error(`${ix.name}: ${why}`));
         },
       ),
@@ -325,6 +387,7 @@ async function searchAllNow(
   const settled = await Promise.allSettled(jobs);
   const ok = settled.filter((r): r is PromiseFulfilledResult<ProwlarrRelease[]> => r.status === "fulfilled");
   if (!ok.length) throw (settled[0] as PromiseRejectedResult).reason;
+  if (failures.length) opts.onFailed?.(failures);
   const all = ok.flatMap((r) => r.value);
   for (const r of all)
     noteSeen(r.indexerId, {

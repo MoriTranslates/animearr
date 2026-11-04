@@ -14,7 +14,7 @@
  */
 import { isWanted } from "../library/movies.js";
 import { logDecision } from "../system/activity.js";
-import { searchConfigured } from "./indexers.js";
+import { couldntSearch, outageHeld, searchConfigured, type SearchOutage } from "./indexers.js";
 import { langList } from "../core/langs.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
@@ -133,7 +133,18 @@ interface Row {
   grab_id: number | null;
   release: string | null;
   file_id: number | null;
+  /** Last time this row was written: also after a search the indexers didn't fully answer (last_at isn't). */
+  updated_at: number | null;
+  /** Searches in a row that didn't count because an indexer didn't answer (0 once one counts). */
+  outage_streak?: number;
 }
+/**
+ * The order the passes take due items in: least recently looked at first. A search the indexers didn't fully answer
+ * doesn't move last_at (so it isn't pushed back by recheckDays) but does move updated_at, so a standing partial outage
+ * still rotates through the library instead of spending every hour's budget on the same items (review M2).
+ */
+const rotationKey = (r: { last_at: number | null; updated_at?: number | null } | undefined) =>
+  Math.max(r?.last_at ?? 0, r?.updated_at ?? 0);
 function save(
   episodeId: number,
   tvdbId: number,
@@ -142,6 +153,8 @@ function save(
     why: string;
     now: number;
     searched?: boolean;
+    /** The indexers didn't all answer: the search doesn't count, and the next one waits longer (30 min … a day). */
+    outage?: boolean;
     grabId?: number | null;
     release?: string | null;
     fileId?: number | null;
@@ -149,7 +162,7 @@ function save(
 ) {
   const prev = db.prepare("SELECT * FROM upgrade_state WHERE episode_id = ?").get(episodeId) as (Row & { attempts: number }) | undefined;
   db.prepare(
-    "INSERT OR REPLACE INTO upgrade_state (episode_id, tvdb_id, state, last_at, attempts, why, grab_id, release, file_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR REPLACE INTO upgrade_state (episode_id, tvdb_id, state, last_at, attempts, why, grab_id, release, file_id, updated_at, outage_streak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     episodeId,
     tvdbId,
@@ -161,6 +174,7 @@ function save(
     v.release === undefined ? (prev?.release ?? null) : v.release,
     v.fileId === undefined ? (prev?.file_id ?? null) : v.fileId,
     v.now,
+    v.searched ? 0 : v.outage ? (prev?.outage_streak ?? 0) + 1 : (prev?.outage_streak ?? 0),
   );
 }
 
@@ -215,13 +229,15 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
   let found = 0;
   const minConf = getSettings().managed.minConfidence;
   const rows = new Map((db.prepare("SELECT * FROM upgrade_state").all() as unknown as Row[]).map((r) => [r.episode_id, r]));
-  const due = [...waiting].sort((a, b) => (rows.get(a.episodeId)?.last_at ?? 0) - (rows.get(b.episodeId)?.last_at ?? 0));
+  const due = [...waiting].sort((a, b) => rotationKey(rows.get(a.episodeId)) - rotationKey(rows.get(b.episodeId)));
   for (const w of due) {
     const row = rows.get(w.episodeId);
     if (row?.state === "grabbed") continue;
     // Upgraded, but the cache still shows the placeholder file: wait for the refresh.
     if (row?.state === "upgraded" && row.file_id === w.fileId) continue;
     if (row?.last_at && now - row.last_at < s.recheckDays * DAY && row.file_id === w.fileId) continue;
+    // Searches in a row that couldn't ask every indexer: each waits longer than the last, never an attempt.
+    if (outageHeld(row?.outage_streak, row?.updated_at, now)) continue;
     if (searchesLastHour(now) >= s.perHour) break;
     if (
       db
@@ -234,8 +250,11 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
     db.prepare("INSERT INTO upgrade_searches (at) VALUES (?)").run(now);
     searched++;
     let results: SearchResult[];
+    let gap: SearchOutage | null;
     try {
-      results = (await deps.search(w.tvdbId, [w.episodeId], { budget: 8 })).results;
+      const r = await deps.search(w.tvdbId, [w.episodeId], { budget: 8 });
+      results = r.results;
+      gap = couldntSearch(r);
     } catch (e) {
       save(w.episodeId, w.tvdbId, {
         state: "waiting",
@@ -248,6 +267,18 @@ export async function upgradePass(deps: UpgradeDeps = realUpgradeDeps, now = Dat
       continue;
     }
     const ok = results.filter((r) => qualifies(r, minConf, w.height));
+    // Not every indexer answered: not "no dual-audio release yet", and not a search that waits recheckDays (M4).
+    if (!ok.length && gap) {
+      save(w.episodeId, w.tvdbId, {
+        state: "waiting",
+        why: `couldn't search fully: ${gap.why}; looking again soon`,
+        now,
+        outage: true,
+        fileId: w.fileId,
+        release: null,
+      });
+      continue;
+    }
     if (!ok.length) {
       save(w.episodeId, w.tvdbId, {
         state: "waiting",
@@ -374,12 +405,12 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
     movieId: number,
     state: string,
     why: string,
-    extra: { searched?: boolean; release?: string | null; filePath?: string | null } = {},
+    extra: { searched?: boolean; outage?: boolean; release?: string | null; filePath?: string | null } = {},
   ) => {
     const prev = db.prepare("SELECT * FROM movie_upgrade WHERE movie_id = ?").get(movieId) as
-      { last_at: number | null; attempts: number; release: string | null; file_path: string | null } | undefined;
+      { last_at: number | null; attempts: number; release: string | null; file_path: string | null; outage_streak: number } | undefined;
     db.prepare(
-      "INSERT OR REPLACE INTO movie_upgrade (movie_id, state, last_at, attempts, why, release, file_path, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO movie_upgrade (movie_id, state, last_at, attempts, why, release, file_path, updated_at, outage_streak) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       movieId,
       state,
@@ -389,6 +420,7 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
       extra.release === undefined ? (prev?.release ?? null) : extra.release,
       extra.filePath === undefined ? (prev?.file_path ?? null) : extra.filePath,
       now,
+      extra.searched ? 0 : extra.outage ? (prev?.outage_streak ?? 0) + 1 : (prev?.outage_streak ?? 0),
     );
   };
   // Follow-ups first.
@@ -411,12 +443,24 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
     if (!byId.has(r.movie_id)) save(r.movie_id, "done", "no longer a sub-only placeholder (has the dub now, or out of scope)");
   }
   const minConf = getSettings().managed.minConfidence;
-  for (const w of waiting) {
+  // Least recently tried first, like the episodes (review M2).
+  const tries = new Map(
+    (
+      db.prepare("SELECT movie_id, last_at, updated_at FROM movie_upgrade").all() as {
+        movie_id: number;
+        last_at: number | null;
+        updated_at: number;
+      }[]
+    ).map((r) => [r.movie_id, r]),
+  );
+  const due = [...waiting].sort((a, b) => rotationKey(tries.get(a.movieId)) - rotationKey(tries.get(b.movieId)));
+  for (const w of due) {
     const row = db.prepare("SELECT * FROM movie_upgrade WHERE movie_id = ?").get(w.movieId) as
-      { state: string; last_at: number | null; file_path: string | null } | undefined;
+      { state: string; last_at: number | null; file_path: string | null; updated_at: number; outage_streak: number } | undefined;
     if (row?.state === "grabbed") continue;
     if (row?.state === "upgraded" && row.file_path === w.filePath) continue; // cache not refreshed yet
     if (row?.last_at && now - row.last_at < s.recheckDays * DAY && row.file_path === w.filePath) continue;
+    if (outageHeld(row?.outage_streak, row?.updated_at, now)) continue; // backing off after searches that couldn't ask every indexer
     if (searchesLastHour(now) >= s.perHour) break;
     if (
       db
@@ -440,6 +484,15 @@ async function upgradeMovies(deps: UpgradeDeps, now: number) {
           !(x.protocol === "torrent" && !x.seeders)
         );
       });
+      const gap = couldntSearch(r);
+      if (!ok.length && gap) {
+        save(w.movieId, "waiting", `couldn't search fully: ${gap.why}; looking again soon`, {
+          outage: true,
+          filePath: w.filePath,
+          release: null,
+        });
+        continue;
+      }
       if (!ok.length) {
         save(w.movieId, "waiting", `no dual-audio release yet (${r.matched} releases matched); next look in ${s.recheckDays} days`, {
           searched: true,

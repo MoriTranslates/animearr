@@ -217,6 +217,17 @@ export function fetchAnime(aid: number, deps = { fetch }, origin = "tick"): Prom
 
 export function storeAnime(a: AnidbAnime, now = Date.now()) {
   const ended = !!a.endDate && Date.parse(a.endDate) < now;
+  // No (readable) episodes where AniDB gave some before: a half answer, not "the anime has none" (review 2026-11-02,
+  // M14). The stored list and entry stay; it's looked at again at the usual interval, not at once (AniDB's budget is
+  // strict and a ban lasts a day).
+  const stored = (db.prepare("SELECT COUNT(*) AS n FROM anidb_episodes WHERE aid = ?").get(a.aid) as { n: number }).n;
+  if (!a.episodes.length && stored) {
+    db.prepare("UPDATE anidb_anime SET fetched_at = ? WHERE aid = ?").run(now, a.aid);
+    logDecision("fail", {
+      why: `AniDB answered anime ${a.aid} without any episodes it could read; kept the ${stored} stored ones`,
+    });
+    return;
+  }
   tx(db, () => {
     db.prepare("INSERT OR REPLACE INTO anidb_anime (aid, fetched_at, ended, type, episode_count, missing) VALUES (?, ?, ?, ?, ?, 0)").run(
       a.aid,
