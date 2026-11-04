@@ -21,7 +21,7 @@ import { langList } from "../core/langs.js";
 import { parseRelease, type ParsedRelease } from "../core/parser.js";
 import { compareRanked, rankRelease } from "../core/rank.js";
 import { allRows, cache, db, dbState } from "../system/db.js";
-import { learnedFor, learnFromVerify, sourceKey } from "./library.js";
+import { learnedFor, learnedForPlatform, learnFromVerify, sourceKey } from "./library.js";
 import {
   ACTIVE,
   blocklist,
@@ -487,6 +487,7 @@ export async function searchMovie(id: number, search: typeof searchAll = searchA
         indexerHealth: indexerHealth(r.indexerId),
         tiers: animeTiers(),
         rules: movieRules,
+        platformLearned: learnedForPlatform(p.platform),
       },
     );
     if (subtitles.length && !namesSubtitle(r.title, subtitles)) unnamed.add(r.guid);

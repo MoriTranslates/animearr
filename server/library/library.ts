@@ -18,6 +18,7 @@ import { logDecision } from "../system/activity.js";
 import { langList } from "../core/langs.js";
 import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
+import { PLATFORM_MIN, type LearnedLang } from "../core/rank.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
 import { detachedTmdbIds, detachedTvdbIds, markListRead, materializeAll, rematerializeSeries, type ArrApp } from "./native.js";
@@ -551,37 +552,56 @@ export function backfillLearning() {
     audio_langs: string;
     sub_langs: string;
   }[];
-  const agg = new Map<string, { total: number; subs: Record<string, number>; audio: Record<string, number> }>();
+  type Agg = { grp: string; src: string; total: number; subs: Record<string, number>; audio: Record<string, number> };
+  const agg = new Map<string, Agg>();
+  const add = (grp: string, src: string, r: (typeof rows)[number]) => {
+    const key = JSON.stringify([grp, src]);
+    const a = agg.get(key) ?? { grp, src, total: 0, subs: {}, audio: {} };
+    a.total++;
+    for (const l of r.sub_langs.split("/").filter(Boolean)) a.subs[l] = (a.subs[l] ?? 0) + 1;
+    for (const l of r.audio_langs.split("/").filter(Boolean)) a.audio[l] = (a.audio[l] ?? 0) + 1;
+    agg.set(key, a);
+  };
   for (const r of rows) {
-    const grp = (r.release_group || (r.scene_name ? parseRelease(r.scene_name).group : null) || "").toLowerCase();
+    const p = r.scene_name ? parseRelease(r.scene_name) : null;
+    const src = p?.platform ?? sourceKey(null, r.quality, r.source);
+    // The platform as a whole (every group, and files without one): only a named streaming service, never "web"/"bluray".
+    if (p?.platform) add(PLATFORM_ROW, p.platform, r);
+    const grp = (r.release_group || p?.group || "").toLowerCase();
     if (!grp) continue;
-    const src = sourceKey(r.scene_name, r.quality, r.source);
-    for (const key of [`${grp}\u0000${src}`, `${grp}\u0000*`]) {
-      const a = agg.get(key) ?? { total: 0, subs: {}, audio: {} };
-      a.total++;
-      for (const l of r.sub_langs.split("/").filter(Boolean)) a.subs[l] = (a.subs[l] ?? 0) + 1;
-      for (const l of r.audio_langs.split("/").filter(Boolean)) a.audio[l] = (a.audio[l] ?? 0) + 1;
-      agg.set(key, a);
-    }
+    add(grp, src, r);
+    add(grp, "*", r);
   }
   tx(db, () => {
     db.prepare("DELETE FROM group_langs WHERE origin = 'library'").run();
     const ins = db.prepare(
       "INSERT INTO group_langs (grp, source, origin, total, subs, audio, updated_at) VALUES (?, ?, 'library', ?, ?, ?, ?)",
     );
-    for (const [k, v] of agg) {
-      const [grp, src] = k.split("\u0000");
-      ins.run(grp, src, v.total, JSON.stringify(v.subs), JSON.stringify(v.audio), Date.now());
-    }
+    for (const v of agg.values()) ins.run(v.grp, v.src, v.total, JSON.stringify(v.subs), JSON.stringify(v.audio), Date.now());
   });
   return agg.size;
 }
 
-/** Records one verification result (stage 2 feedback into stage 1). */
+/**
+ * The group_langs "group" that holds a whole streaming platform's counts (source = the platform, e.g. CR). A release
+ * group can't be called "*" (the parser never yields it), so these rows never mix with a real group's.
+ */
+export const PLATFORM_ROW = "*";
+/** sourceKey()'s fallbacks when no streaming platform is named: not a platform, so no platform-wide row. */
+const NOT_A_PLATFORM = new Set(["bluray", "web", "hdtv", "dvd", "any", "*"]);
+
+/** Records one verification result (stage 2 feedback into stage 1), for the group and for the platform as a whole. */
 export function learnFromVerify(group: string | null, source: string, subs: string[], audio: string[]) {
   const grp = (group ?? "").toLowerCase();
-  if (!grp || dbState.corrupt) return;
-  for (const src of [source, "*"]) {
+  if (dbState.corrupt) return;
+  const rows: [string, string][] = grp
+    ? [
+        [grp, source],
+        [grp, "*"],
+      ]
+    : [];
+  if (!NOT_A_PLATFORM.has(source)) rows.push([PLATFORM_ROW, source]);
+  for (const [grp, src] of rows) {
     const row = db
       .prepare("SELECT total, subs, audio FROM group_langs WHERE grp = ? AND source = ? AND origin = 'verify'")
       .get(grp, src) as { total: number; subs: string; audio: string } | undefined;
@@ -602,27 +622,42 @@ export function learnedFor(
   source: string | null,
 ): { total: number; subs: Record<string, number>; audio: Record<string, number>; origin: string } | null {
   const grp = (group ?? "").toLowerCase();
-  if (!grp) return null;
+  if (!grp || grp === PLATFORM_ROW) return null;
   for (const src of [source ?? "any", "*"]) {
-    const rows = db.prepare("SELECT origin, total, subs, audio FROM group_langs WHERE grp = ? AND source = ?").all(grp, src) as {
-      origin: string;
-      total: number;
-      subs: string;
-      audio: string;
-    }[];
-    if (!rows.length) continue;
-    const subs: Record<string, number> = {};
-    const audio: Record<string, number> = {};
-    let total = 0;
-    for (const r of rows) {
-      total += r.total;
-      for (const [l, n] of Object.entries(JSON.parse(r.subs) as Record<string, number>)) subs[l] = (subs[l] ?? 0) + n;
-      for (const [l, n] of Object.entries(JSON.parse(r.audio) as Record<string, number>)) audio[l] = (audio[l] ?? 0) + n;
-    }
-    if (total >= 3)
-      return { total, subs, audio, origin: rows.map((r) => (r.origin === "verify" ? "verified" : "in your library")).join(" + ") };
+    const l = combinedLangs(grp, src);
+    if (l && l.total >= 3) return l;
   }
   return null;
+}
+
+/**
+ * Learned languages of every file from a streaming platform (all groups), library and verification counts together;
+ * null below PLATFORM_MIN files (rank.ts uses it only when the group has no stat of its own).
+ */
+export function learnedForPlatform(platform: string | null): LearnedLang | null {
+  if (!platform || NOT_A_PLATFORM.has(platform)) return null;
+  const l = combinedLangs(PLATFORM_ROW, platform);
+  return l && l.total >= PLATFORM_MIN ? l : null;
+}
+
+/** The library and verify rows of one (group, source) added up, or null when there are none. */
+function combinedLangs(grp: string, src: string) {
+  const rows = db.prepare("SELECT origin, total, subs, audio FROM group_langs WHERE grp = ? AND source = ?").all(grp, src) as {
+    origin: string;
+    total: number;
+    subs: string;
+    audio: string;
+  }[];
+  if (!rows.length) return null;
+  const subs: Record<string, number> = {};
+  const audio: Record<string, number> = {};
+  let total = 0;
+  for (const r of rows) {
+    total += r.total;
+    for (const [l, n] of Object.entries(JSON.parse(r.subs) as Record<string, number>)) subs[l] = (subs[l] ?? 0) + n;
+    for (const [l, n] of Object.entries(JSON.parse(r.audio) as Record<string, number>)) audio[l] = (audio[l] ?? 0) + n;
+  }
+  return { total, subs, audio, origin: rows.map((r) => (r.origin === "verify" ? "verified" : "in your library")).join(" + ") };
 }
 
 export function lastSync() {

@@ -77,6 +77,11 @@ export interface Known {
   tiers?: CompiledTiers | null;
   /** The release rules that fall under this show (core/rules.ts): must / must-not terms reject, preferred terms nudge the score. */
   rules?: ReleaseRule[];
+  /**
+   * Learned languages of every file in the library from the release's streaming platform (all groups together, e.g. CR):
+   * used for P(sub) only when the group itself has no learned stat (see PLATFORM_MIN).
+   */
+  platformLearned?: LearnedLang | null;
   /** The file the library has for the release's episodes (group, version, locked) and the "Propers and repacks" setting (core/propers.ts). */
   have?: HaveRevision | null;
   propers?: ProperMode;
@@ -134,6 +139,14 @@ function learnedProb(counts: Record<string, number> | undefined, total: number, 
 
 type Est = { lang: string; p: number; src: string };
 
+/** P(sub) when nothing in the name, the library or the seed lists says anything about the subtitles. */
+export const SUB_UNKNOWN = 0.35;
+/**
+ * A whole platform's stat counts only from this many files: it pools many groups and shows, so a handful of files from
+ * one show shouldn't speak for the platform (10/10 smooths to 92%, 3/3 would already give 80%).
+ */
+export const PLATFORM_MIN = 10;
+
 export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profile, learned: LearnedLang | null, known: Known = {}): Ranked {
   const flags: Flag[] = [];
   const h = p.hints;
@@ -155,21 +168,36 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   );
 
   // ---- P(sub)
-  let sub: Est = { lang: subWanted[0], p: 0.35, src: "no language info in the name" };
+  let sub: Est = { lang: subWanted[0], p: SUB_UNKNOWN, src: "no language info in the name" };
   const considerSub = (lang: string, prob: number, src: string) => {
     if (prob > sub.p + 0.001 || (Math.abs(prob - sub.p) < 0.001 && subWanted.indexOf(lang) < subWanted.indexOf(sub.lang)))
       sub = { lang, p: prob, src };
   };
   const explicitOther = h.subs.filter((l) => !subWanted.includes(l));
+  // What the library learned replaces the "nothing known" 35%, also when it's lower (a group whose files had no English
+  // isn't unknown; the last-resort grab relies on that). The platform's stat (all groups on e.g. CR) stands in only for
+  // a group with no stat of its own: what this group did with the platform's files (e.g. kept only Spanish) is the
+  // closer evidence, so the platform as a whole never outvotes it. The name's own hints below can still raise it.
+  const groupKnown = !!learned && learned.total >= 3;
+  const plat =
+    !groupKnown && p.platform && known.platformLearned && known.platformLearned.total >= PLATFORM_MIN ? known.platformLearned : null;
+  const stat = groupKnown
+    ? { l: learned!, who: `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}` }
+    : plat
+      ? { l: plat, who: p.platform! }
+      : null;
+  if (stat) {
+    sub = { lang: subWanted[0], p: -1, src: "" };
+    for (const lang of subWanted)
+      considerSub(
+        lang,
+        learnedProb(stat.l.subs, stat.l.total, lang),
+        `${stat.who}: ${stat.l.subs[lang] ?? 0}/${stat.l.total} ${stat.l.origin}`,
+      );
+  }
   for (const lang of subWanted) {
     if (h.subs.includes(lang)) considerSub(lang, h.hardsub && h.hardsubLang === lang ? 0.92 : 0.97, "named in the title");
     else if (h.multiSubs) considerSub(lang, MULTI_SET.has(lang) ? 0.9 : 0.45, "Multi-Subs");
-    if (learned && learned.total >= 3)
-      considerSub(
-        lang,
-        learnedProb(learned.subs, learned.total, lang),
-        `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}: ${learned.subs[lang] ?? 0}/${learned.total} ${learned.origin}`,
-      );
     if (lang === "en" && EN_GROUPS.includes(group) && !h.jpMarket && !explicitOther.length)
       considerSub(lang, 0.88, `${p.group} usually has English subs`);
     if (lang === "en" && h.dualAudio && !h.jpMarket) considerSub(lang, 0.85, "dual audio (usually with English subs)");

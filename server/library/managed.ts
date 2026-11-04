@@ -5,7 +5,8 @@
  *   the backoff list until `maxAttempts`. A cheap "RSS" pass reads Prowlarr's recent releases and triggers an episode
  *   as soon as a matching release shows up.
  * - Decide: Deep Search + ranking. Automatic grabs need an accepted release, mapping confidence ≥ minConfidence and
- *   P(profile language) ≥ 50%.
+ *   P(profile language) ≥ 50%. A missing episode with nothing better takes a release of unknown language as a last
+ *   resort (lastResortPicks: the subtitle check after the download decides, at most LAST_RESORT_CAP per episode).
  * - DRY-RUN by default (global switch AND per show): the log says "would grab X".
  */
 import { isDropped } from "./dropped.js";
@@ -27,6 +28,7 @@ import { getSettings, isDryRun, underAllowedRoot } from "../system/settings.js";
 import { burnedInFact } from "./audit.js";
 import { coverFor } from "../metadata/covers.js";
 import { profileFor } from "./profiles.js";
+import { SUB_UNKNOWN } from "../core/rank.js";
 import { newerVersionOf } from "../search/propers.js";
 import { CATEGORY_NAME, ladderRank, qualityScore } from "../core/quality.js";
 import { hintProper, recheckSoon, upgradeUnits, type Unit } from "../search/qualityUpgrade.js";
@@ -278,19 +280,82 @@ export function automaticPicks(
   season: number | null,
   opts: { allowPacks?: boolean; allowExtras?: boolean; delays?: boolean } = {},
 ) {
+  const fits = pickable(tvdbId, season, opts);
+  const ok = results.filter((r) => fits(r) && r.rank.langProb >= 0.5);
+  return opts.delays ? ok.filter((r) => delayLeftMin(r) === 0) : ok;
+}
+
+/** Everything automaticPicks() asks of a release except the language. */
+function pickable(tvdbId: number, season: number | null, opts: { allowPacks?: boolean; allowExtras?: boolean } = {}) {
   const s = getSettings().managed;
   const burnedOk = profileFor(tvdbId).subLangs.some((l) => !!burnedInFact(tvdbId, season, l));
-  const ok = results.filter(
-    (r) =>
-      r.rank.accept &&
-      r.confidence >= s.minConfidence &&
-      r.rank.langProb >= 0.5 &&
-      (opts.allowPacks ? r.episodeIds.length > 0 : r.coversTarget) &&
-      (r.extra <= 0 || !!opts.allowExtras) &&
-      (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
-      !(r.protocol === "torrent" && r.seeders === 0),
-  );
-  return opts.delays ? ok.filter((r) => delayLeftMin(r) === 0) : ok;
+  return (r: SearchResult) =>
+    r.rank.accept &&
+    r.confidence >= s.minConfidence &&
+    (opts.allowPacks ? r.episodeIds.length > 0 : r.coversTarget) &&
+    (r.extra <= 0 || !!opts.allowExtras) &&
+    (burnedOk || !r.rank.flags.some((f) => f.key === "burnIn")) &&
+    !(r.protocol === "torrent" && r.seeders === 0);
+}
+
+/**
+ * Last-resort downloads per missing episode before AnimeArr stops and leaves it to you. Each one is a whole download
+ * that the subtitle check may refuse; three is one full grab chain (pipeline MAX_ATTEMPTS), enough to get past one or
+ * two subtitle-less uploads without letting a show with only raws-in-disguise burn through dozens.
+ */
+export const LAST_RESORT_CAP = 3;
+/** Starts the "why" of a last-resort grab (also how earlier ones are counted against the cap). */
+export const LAST_RESORT_TAG = "Last resort";
+/** A new episode gets a last resort only this long after it aired: the usual subbers post within hours. */
+export const LAST_RESORT_AFTER_MS = 24 * 3_600_000;
+
+/** Last-resort grabs AnimeArr already sent for an episode (dry-run ones downloaded nothing and don't count). */
+export function lastResortsUsed(episodeId: number) {
+  return (
+    db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND why LIKE ? AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?)",
+      )
+      .get(`${LAST_RESORT_TAG}:%`, episodeId) as { n: number }
+  ).n;
+}
+
+/**
+ * The user's choice (2026-11-04): a missing episode is better off with a release of unknown language than with nothing.
+ * When nothing passes automaticPicks(), a MISSING episode (no file; never a replacement or upgrade) may take a release
+ * whose subtitle language is merely unknown: everything else automaticPicks() asks, P(sub) at least the "nothing
+ * known" level (lower means the name, the library or the group says no), no explicit rejection (raw, JP market,
+ * Chinese/foreign-only subs, dub without the original audio, blocklisted: those aren't accepted at all). Sub or either
+ * watch modes only (in dub/dual mode an unknown release is no sign of a dub). Highest P(sub) first, then the ranking.
+ * The subtitle check after the download decides: a file without the profile's subtitles is refused, blocklisted and
+ * the next one tried, at most LAST_RESORT_CAP downloads per episode in all. Each pick's "why" says it's a last resort.
+ */
+export function lastResortPicks(
+  results: SearchResult[],
+  tvdbId: number,
+  season: number | null,
+  episodeId: number,
+): { picks: SearchResult[]; capped: string | null } {
+  const has = cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(episodeId) as { has_file: number } | undefined;
+  const mode = profileFor(tvdbId).watchMode ?? "sub";
+  if (!has || has.has_file || (mode !== "sub" && mode !== "either")) return { picks: [], capped: null };
+  const fits = pickable(tvdbId, season);
+  const unknown = results
+    .filter((r) => fits(r) && r.rank.langProb < 0.5 && r.rank.langProb >= SUB_UNKNOWN - 0.001)
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => b.r.rank.langProb - a.r.rank.langProb || a.i - b.i)
+    .map(({ r }) => ({
+      ...r,
+      rank: { ...r.rank, why: `${LAST_RESORT_TAG}: nothing better found, the subtitle check decides · ${r.rank.why}` },
+    }));
+  if (!unknown.length) return { picks: [], capped: null };
+  const used = lastResortsUsed(episodeId);
+  if (used >= LAST_RESORT_CAP)
+    return {
+      picks: [],
+      capped: `${used} last-resort downloads were already tried for this episode without giving it a file, so no more are tried automatically; pick one by hand`,
+    };
+  return { picks: unknown.slice(0, LAST_RESORT_CAP - used), capped: null };
 }
 
 /**
@@ -305,7 +370,7 @@ export function delayLeftMin(r: { protocol: "usenet" | "torrent"; ageHours: numb
 }
 
 /** Searches one episode of a managed show and grabs (or, in dry-run, logs) the best acceptable release. */
-export async function decideEpisode(st: StateRow, now = Date.now()) {
+export async function decideEpisode(st: StateRow, now = Date.now(), deps = { search: deepSearch, grab: startGrab }) {
   const s = getSettings().managed;
   const backlog = st.kind === "backlog" && st.state !== "replace";
   const m = listManaged().find((x) => x.tvdbId === st.tvdb_id);
@@ -320,7 +385,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     );
     return;
   }
-  const res = await deepSearch(st.tvdb_id, [st.episode_id], { budget: 8 });
+  const res = await deps.search(st.tvdb_id, [st.episode_id], { budget: 8 });
   // Indexers down (all of them, or some): "nothing found" doesn't count; see below, once the picks are known.
   const gap = couldntSearch(res);
   const season = res.targets[0]?.season ?? null;
@@ -378,7 +443,7 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
   const attempts = st.attempts + 1;
   const backoff = s.backoffMin[Math.min(attempts - 1, s.backoffMin.length - 1)] * 60_000;
   if (best && ok.includes(best)) {
-    const out = await startGrab({
+    const out = await deps.grab({
       tvdbId: st.tvdb_id,
       episodeIds: [st.episode_id],
       candidate: toCandidate(best),
@@ -392,30 +457,54 @@ export async function decideEpisode(st: StateRow, now = Date.now()) {
     ).run(attempts, now, out.failed ? now + (backlog ? DAY : backoff) : now, state, out.message, out.id, st.episode_id);
     return;
   }
+  // Nothing passes, but the episode has no file at all: a release of unknown language beats none (the subtitle check
+  // decides). Never for a wrong-language replacement, and a new episode first gets a day for the usual subbers.
+  const last =
+    st.state === "replace" || (!backlog && (st.air_utc ?? 0) + LAST_RESORT_AFTER_MS > now)
+      ? null
+      : lastResortPicks(res.results, st.tvdb_id, season, st.episode_id);
+  const lr = (last?.picks ?? []).filter((r) => delayLeftMin(r) === 0);
+  if (lr.length) {
+    const out = await deps.grab({
+      tvdbId: st.tvdb_id,
+      episodeIds: [st.episode_id],
+      candidate: toCandidate(lr[0]),
+      fallbacks: lr.slice(1).map(toCandidate),
+      origin: "managed",
+    });
+    const state = out.dryRun ? "would-grab" : out.failed ? (backlog ? "backlog" : "retry") : "grabbed";
+    db.prepare(
+      "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, grab_id = ?, outage_streak = 0 WHERE episode_id = ?",
+    ).run(attempts, now, out.failed ? now + (backlog ? DAY : backoff) : now, state, out.message, out.id, st.episode_id);
+    return;
+  }
+  const capped = last?.capped ? `; ${last.capped}` : "";
   const label = `${m.title} ${res.targets[0] ? `S${res.targets[0].season}E${res.targets[0].episode}` : ""}`;
   if (backlog) {
     // Missing-episode search: no give-up, just try again in retryDays (RSS can still bring it forward).
     const days = getSettings().backlog.retryDays;
     db.prepare(
       "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = 'backlog', last_why = ?, outage_streak = 0 WHERE episode_id = ?",
-    ).run(attempts, now, now + days * DAY, `${why} (${res.found} releases seen)`, st.episode_id);
+    ).run(attempts, now, now + days * DAY, `${why}${capped} (${res.found} releases seen)`, st.episode_id);
     logDecision("skip", {
       tvdbId: st.tvdb_id,
       title: m.title,
       episodeIds: [st.episode_id],
-      why: `Missing-episode search, ${label}: ${why}. Next try in ${days} days.`,
+      why: `Missing-episode search, ${label}: ${why}${capped}. Next try in ${days} days.`,
+      ...(capped ? { detail: { needsLook: true } } : {}),
     });
     return;
   }
   const gaveUp = attempts >= s.maxAttempts;
   db.prepare(
     "UPDATE search_state SET attempts = ?, last_at = ?, next_at = ?, state = ?, last_why = ?, outage_streak = 0 WHERE episode_id = ?",
-  ).run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why} (${res.found} releases seen)`, st.episode_id);
+  ).run(attempts, now, now + backoff, gaveUp ? "gave-up" : "retry", `${why}${capped} (${res.found} releases seen)`, st.episode_id);
   logDecision("skip", {
     tvdbId: st.tvdb_id,
     title: m.title,
     episodeIds: [st.episode_id],
-    why: `${label}: ${why}. ${gaveUp ? `Gave up after ${attempts} searches.` : `Next try in ${Math.round(backoff / 60_000)} min.`}`,
+    why: `${label}: ${why}${capped}. ${gaveUp ? `Gave up after ${attempts} searches.` : `Next try in ${Math.round(backoff / 60_000)} min.`}`,
+    ...(capped ? { detail: { needsLook: true } } : {}),
   });
 }
 

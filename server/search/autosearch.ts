@@ -17,7 +17,7 @@
 import { logDecision } from "../system/activity.js";
 import { cache, db } from "../system/db.js";
 import { radarrMovieSpecials } from "../library/franchise.js";
-import { automaticPicks } from "../library/managed.js";
+import { automaticPicks, lastResortPicks } from "../library/managed.js";
 import { toCandidate } from "../grabs/pipelineState.js";
 import { startGrab } from "../grabs/pipeline.js";
 import { deepSearch, episodesFor, seriesByTvdb, type SearchResult } from "./search.js";
@@ -309,8 +309,14 @@ async function searchTargets(
         });
         continue;
       }
+      // A missing episode (no file; never a wrong-language replacement) with nothing better: unknown language beats none.
+      const last = !ok.length && !e.hasFile ? lastResortPicks(res.results, tvdbId, e.season, id) : null;
+      if (last?.picks.length) {
+        out.push(await grabOne(deps, tvdbId, [id], last.picks, label));
+        continue;
+      }
       if (!ok.length) {
-        const why = gateWhy(res.results, minConf);
+        const why = `${gateWhy(res.results, minConf)}${last?.capped ? `; ${last.capped}` : ""}`;
         out.push({ episodeIds: [id], label, outcome: "needs-look", why: `${why} (${res.results.length} results)` });
         logDecision("info", {
           tvdbId,

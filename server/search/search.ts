@@ -14,7 +14,7 @@ import type { LibEpisode, NumberingRule } from "../core/resolver.js";
 import { burnedInFact, seasonResolution } from "../library/audit.js";
 import { coverFor } from "../metadata/covers.js";
 import { cache, db } from "../system/db.js";
-import { learnedFor, sourceKey } from "../library/library.js";
+import { learnedFor, learnedForPlatform, sourceKey } from "../library/library.js";
 import { aliasIndex } from "../metadata/metadata.js";
 import { profileFor } from "../library/profiles.js";
 import { releaseRulesFor } from "./releaseRules.js";
@@ -436,6 +436,7 @@ async function deepSearchNow(tvdbId: number, episodeIds: number[], opts: Paramet
     const ss = eps[0]?.season ?? null;
     const known = knownFor(r, series, ss, !id.parsed.group, groups, ruleSet);
     known.propers = propers;
+    known.platformLearned = learnedForPlatform(id.parsed.platform);
     known.have = combineHave(
       haveOf,
       eps.map((e) => e.id),
