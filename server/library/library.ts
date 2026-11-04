@@ -1,4 +1,6 @@
-import { fileSurelyGone } from "../system/paths.js";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { fileSurelyGone, mappedPath } from "../system/paths.js";
 /**
  * Import / sync of the existing Sonarr and Radarr libraries into cache.db (companion mode: Sonarr stays the source of
  * truth for files). Read-only towards Sonarr/Radarr: nothing here changes their settings or data.
@@ -305,10 +307,40 @@ function shortEpisodeList(seriesId: number, eps: { seasonNumber: number }[]): st
 const repeatedShort = new Map<number, { length: number; count: number }>();
 const SHORT_REPEATS_APPLY = 3;
 
+/**
+ * Sonarr file ids of a managed show whose file is surely not on disk (listings are read once per folder, async).
+ * A folder that can't be listed, is empty (maybe an unmounted share) or is missing is decided by fileSurelyGone.
+ */
+async function goneFileIds(seriesId: number, files: { id: number; path: string }[]): Promise<Set<number>> {
+  const gone = new Set<number>();
+  if (!files.length || !db.prepare("SELECT 1 FROM managed WHERE series_id = ?").get(seriesId)) return gone;
+  const listings = new Map<string, Promise<Set<string> | null>>();
+  const list = (dir: string) => {
+    let p = listings.get(dir);
+    if (!p) {
+      p = fsp.readdir(dir).then(
+        (n) => new Set(n),
+        () => null, // unreadable or missing: fileSurelyGone decides below
+      );
+      listings.set(dir, p);
+    }
+    return p;
+  };
+  for (const f of files) {
+    if (typeof f.path !== "string" || !f.path) continue;
+    const local = mappedPath(f.path);
+    const names = await list(path.dirname(local));
+    if (names && names.size) {
+      if (!names.has(path.basename(local))) gone.add(f.id);
+    } else if (fileSurelyGone(f.path)) gone.add(f.id);
+  }
+  return gone;
+}
+
 /** Re-reads one series' episodes and files from Sonarr into the cache (after an import or a delete). */
 export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   if (isNativeSeriesId(seriesId)) return rematerializeSeries(seriesId);
-  const [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
+  let [eps, files] = await Promise.all([getEpisodes(seriesId), getEpisodeFiles(seriesId)]);
   // Keep the cached episodes over a malformed or short answer: a dropped episode closes its managed search. A record
   // without an id would even become a made-up episode (SQLite numbers a NULL key itself). The files list may be empty.
   if (
@@ -319,6 +351,13 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
     throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
   const short = shortEpisodeList(seriesId, eps);
   if (short) throw new Error(`Sonarr's episode list is short (${short}); kept the cached episodes, read again on the next sync`);
+  // AnimeArr's own delete moves the file to its bin; Sonarr lists it until its next rescan. For a managed show a file
+  // that is surely gone from disk is never accepted, so its episode stays missing. "Can't tell" keeps Sonarr's answer.
+  const gone = await goneFileIds(seriesId, files);
+  if (gone.size) {
+    files = files.filter((f) => !gone.has(f.id));
+    for (const e of eps) if (e.episodeFileId && gone.has(e.episodeFileId)) (e.hasFile = false), (e.episodeFileId = undefined);
+  }
   tx(cache, () => {
     // Forgotten while Sonarr was answering (a show dropped and removed meanwhile): its episodes don't come back.
     if (!cache.prepare("SELECT 1 FROM series WHERE id = ?").get(seriesId)) return;
