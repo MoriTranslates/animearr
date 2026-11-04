@@ -5,11 +5,23 @@
  */
 import crypto from "node:crypto";
 import { logDecision } from "../system/activity.js";
-import { applyRules, cleanTerms, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
+import { applyRules, cleanTerms, setUnusableTermReporter, type PreferredTerm, type ReleaseRule } from "../core/rules.js";
 import { db, dbState, tx } from "../system/db.js";
 import { tagRows, tagsOf, type TagKind } from "../library/tags.js";
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+// A stored term that can't be run is already handled safely by core/rules.ts (it fails closed); say so once.
+setUnusableTermReporter((rule, term, error) => {
+  const why = `Release rule "${rule}": the term ${term} is skipped and fails closed: a must-not term blocks, a must term counts as missing, a preferred term with a negative score still penalises (a positive one gives no bonus). ${error}. Edit the term in this rule to fix it.`;
+  console.warn(why);
+  try {
+    logDecision("rule", { why });
+  } catch (e) {
+    // Harmless to lose: the release was already blocked, and the warning above reached the log.
+    console.warn(`(could not add it to Activity: ${(e as Error).message})`);
+  }
+});
 
 interface Row {
   id: string;
@@ -43,11 +55,12 @@ export function listRules(): ReleaseRule[] {
   }));
 }
 
-function cleanPreferred(v: unknown): PreferredTerm[] {
+function cleanPreferred(v: unknown, stored: PreferredTerm[] = []): PreferredTerm[] {
   const list = Array.isArray(v) ? (v as Partial<PreferredTerm>[]) : [];
   const terms = cleanTerms(
     list.map((p) => p?.term),
     "Preferred",
+    stored.map((p) => p.term),
   );
   return terms.map((term) => {
     const p = list.find(
@@ -73,9 +86,9 @@ export function validateRule(input: Partial<ReleaseRule>, base: ReleaseRule): Re
     id: base.id,
     name,
     enabled: typeof input.enabled === "boolean" ? input.enabled : base.enabled,
-    must: input.must !== undefined ? cleanTerms(input.must, "Must contain") : base.must,
-    mustNot: input.mustNot !== undefined ? cleanTerms(input.mustNot, "Must not contain") : base.mustNot,
-    preferred: input.preferred !== undefined ? cleanPreferred(input.preferred) : base.preferred,
+    must: input.must !== undefined ? cleanTerms(input.must, "Must contain", base.must) : base.must,
+    mustNot: input.mustNot !== undefined ? cleanTerms(input.mustNot, "Must not contain", base.mustNot) : base.mustNot,
+    preferred: input.preferred !== undefined ? cleanPreferred(input.preferred, base.preferred) : base.preferred,
     tags:
       input.tags !== undefined
         ? [...new Set((Array.isArray(input.tags) ? input.tags : []).map(Number).filter((t) => known.has(t)))]

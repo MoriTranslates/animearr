@@ -212,6 +212,17 @@ test("XML-RPC: encodes calls and decodes rTorrent's responses (arrays, i8, strin
   );
 });
 
+test("XML-RPC: strings and struct names drop characters XML 1.0 forbids, so the request stays parseable (review misc #5)", () => {
+  const ch = (cp: number) => String.fromCharCode(cp);
+  const name = "Show" + ch(0x01) + " - 05" + ch(0xfffe) + ch(0xd800) + " " + String.fromCodePoint(0x1f389);
+  const xml = encodeCall("d.custom1.set", ["hash", name, { ["k" + ch(0x1b)]: "v" + ch(0x0b) }]);
+  for (const bad of [0x01, 0x0b, 0x1b, 0xfffe, 0xd800]) assert.ok(!xml.includes(ch(bad)), `U+${bad.toString(16)} left in the request`);
+  assert.ok(xml.includes("<string>Show - 05 " + String.fromCodePoint(0x1f389) + "</string>"), xml);
+  assert.ok(xml.includes("<name>k</name>"), xml);
+  // Ordinary escaping is unchanged.
+  assert.match(encodeCall("m", ["a & b < c"]), /<string>a &amp; b &lt; c<\/string>/);
+});
+
 test("rTorrent: loads stopped with label and folder, lists files, skips with f.priority.set + d.update_priorities, starts, erases with data", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "animearr-rt-"));
   patchSettings((s) => ({

@@ -15,6 +15,7 @@ const { tvshowNfo, episodeNfo, seasonNfo, plexmatch, plainText, syncSeriesFiles,
 const { embyRequest, kodiRequest, testEmbyLike, testKodi, notifyMediaServers, flushMediaServers } =
   await import("../server/media/mediaservers.js");
 const { renderSeriesFolder, serverIdHint } = await import("../server/import/naming.js");
+const { stripXmlIllegal } = await import("../server/core/xml.js");
 
 const show = {
   title: "Frieren: Beyond Journey's End",
@@ -57,6 +58,108 @@ test("episode NFO: one block per episode (multi-episode files), season.nfo, .ple
   const pm = plexmatch(show);
   assert.match(pm, /^# Written by AnimeArr/);
   assert.match(pm, /\ntitle: Frieren: Beyond Journey's End\nyear: 2023\ntvdbid: 424536\ntmdbid: 209867\n$/);
+});
+
+test("plainText strips the other tags AniList/TMDB send: tables, details, boolean attributes, packed attributes", () => {
+  assert.equal(plainText("<table><tr><td>x</td></tr></table>"), "x");
+  assert.equal(plainText("<details><summary>s</summary>d</details>"), "sd");
+  assert.equal(plainText("a<hr noshade>b"), "ab");
+  assert.equal(plainText("<img src=x ismap>after"), "after");
+  assert.equal(plainText('<a href="u"class="c">l</a>'), "l");
+  // The deliberate trade-off stays: unknown words are text.
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+});
+
+test("plainText is linear: unclosed tags and other hostile plots finish fast (blind review misc H1)", () => {
+  // The old tag regex took about 22 s on the n=18 input and more than 30 s on n=22. Tolerance, not exact numbers.
+  const KB100 = 100 * 1024;
+  const fill = (unit: string) => unit.repeat(Math.ceil(KB100 / unit.length));
+  const inputs = [
+    "<a x=" + "aaaa=".repeat(18) + "zzzz",
+    "<a x=" + "aaaa=".repeat(22) + "zzzz",
+    "<a x=" + fill("aaaa="),
+    fill("<a x=aaaa "),
+    fill('<a x="'),
+    fill("<a x='y' "),
+    fill("<!--"),
+    fill("<"),
+    fill("<script>"),
+    fill("<b open "),
+    fill("<spoiler>"),
+    fill("</x>"),
+  ];
+  for (const s of inputs) {
+    const t0 = performance.now();
+    const out = plainText(s);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 1000, `${s.slice(0, 20)}... (${s.length} chars) took ${ms.toFixed(0)} ms`);
+    assert.equal(typeof out, "string");
+  }
+});
+
+test("plainText removes unknown tags only when they clearly are tags; script and style lose their contents", () => {
+  assert.equal(plainText("<spoiler>x</spoiler>"), "x");
+  assert.equal(plainText("<section>hi</section>"), "hi");
+  assert.equal(plainText("<video src=x></video>after"), "after");
+  assert.equal(plainText("<ruby>x</ruby>"), "x");
+  assert.equal(plainText("a<script>alert(1)</script>b"), "ab");
+  assert.equal(plainText('a<style type="text/css">p { color: red }</style>b'), "ab");
+  assert.equal(plainText("a<script>never closed"), "anever closed", "an unclosed script loses only its tag");
+  assert.equal(plainText("a<custom-tag/>b"), "ab", "self-closing is clearly a tag");
+  assert.equal(plainText("x<br/ >y"), "x\ny", "space after the slash");
+  // Still text: lone unknown names, tag-like words, comparisons, an unclosed comment.
+  assert.equal(plainText("1 <foo> 2"), "1 <foo> 2");
+  assert.equal(plainText("a </foo> b"), "a </foo> b");
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+  assert.equal(plainText("a <spoiler and c> d </spoiler>"), "a <spoiler and c> d </spoiler>");
+  assert.equal(plainText("x<3 and y>2"), "x<3 and y>2");
+  assert.equal(plainText("a <!-- open"), "a <!-- open");
+  // A failed tag does not hide a real one after it.
+  assert.equal(plainText('<a x="never closed <i>ok</i>'), '<a x="never closed ok');
+});
+
+test("stripXmlIllegal drops exactly the characters XML 1.0 forbids (code points as numbers)", () => {
+  const ch = (cp: number) => String.fromCharCode(cp);
+  const dropped = [0x00, 0x01, 0x08, 0x0b, 0x0c, 0x0e, 0x1b, 0x1f, 0xfffe, 0xffff, 0xd800, 0xdbff, 0xdc00, 0xdfff];
+  for (const cp of dropped) assert.equal(stripXmlIllegal("a" + ch(cp) + "b"), "ab", `U+${cp.toString(16)}`);
+  const kept = [0x09, 0x0a, 0x0d, 0x20, 0x7f, 0xe9, 0x2028, 0xfeff, 0xfffd];
+  for (const cp of kept) assert.equal(stripXmlIllegal("a" + ch(cp) + "b"), "a" + ch(cp) + "b", `U+${cp.toString(16)}`);
+  // A surrogate pair (an emoji) is one valid character; a high half at the very end is not.
+  const emoji = String.fromCodePoint(0x1f389);
+  assert.equal(stripXmlIllegal("x" + emoji + "y"), "x" + emoji + "y");
+  assert.equal(stripXmlIllegal("x" + ch(0xd83c)), "x");
+  assert.equal(stripXmlIllegal(ch(0xdf89) + ch(0xd83c) + "z"), "z", "halves in the wrong order are two lone surrogates");
+  const plain = "no change";
+  assert.equal(stripXmlIllegal(plain), plain);
+});
+
+test("NFO and .plexmatch writers: control bytes, '<' in plain text and newlines in titles (review L15)", () => {
+  // A stray control byte (or a lone surrogate) makes the whole NFO unparseable: it is dropped.
+  const nfo = tvshowNfo({ ...show, title: "Bad\u0001Title\u0000", plot: "Plot\u000Bwith\u001Fbytes \uD800 end" });
+  assert.equal(stripXmlIllegal(nfo), nfo, JSON.stringify(nfo));
+  assert.match(nfo, /<title>BadTitle<\/title>/);
+  const ep = episodeNfo("Show\u0007", [{ season: 1, episode: 1, title: "Ep\u0002 one", plot: "x\u0008y" }]);
+  assert.equal(stripXmlIllegal(ep), ep, JSON.stringify(ep));
+  // Tabs, newlines and ordinary Unicode survive.
+  assert.match(tvshowNfo({ ...show, plot: "Line one\nLine two\tend 葬送 🎉" }), /<plot>Line one\nLine two\tend 葬送 🎉<\/plot>/);
+  // plainText only removes real tags: "a < b and c > d" is text.
+  assert.equal(plainText("a < b and c > d"), "a < b and c > d");
+  assert.equal(plainText("x<3 and y>2"), "x<3 and y>2");
+  assert.equal(plainText("Hi<br>there <i>you</i> <b class='x'>all</b>"), "Hi\nthere you all");
+  // Review (misc) #3: tag-like text, a ">" inside a quoted attribute, and HTML comments.
+  assert.equal(plainText("a <b and c> d"), "a <b and c> d");
+  assert.equal(plainText('1<a href="x>y">z</a>'), "1z");
+  assert.equal(plainText("<!-- c -->x"), "x");
+  assert.equal(plainText("a<!-- multi\nline -->b"), "ab");
+  assert.equal(plainText('<p>One</p><p>Two <span style="color:red">red</span></p>'), "OneTwo red");
+  assert.equal(plainText("<i>(Source: Crunchyroll)</i>"), "(Source: Crunchyroll)");
+  assert.equal(plainText("<img src='a.png' alt=\"x > y\"/>after"), "after");
+  assert.equal(plainText("1 <foo> 2"), "1 <foo> 2", "unknown tag names are text");
+  // .plexmatch is one "key: value" per line: a newline in a title can't add a line of its own.
+  const pm = plexmatch({ ...show, title: "Evil\ntvdbid: 1\r\nimdbid: tt0", year: 2023 });
+  assert.equal(pm.split("\n").filter((l) => l.startsWith("tvdbid:")).length, 1, pm);
+  assert.ok(!/^imdbid: tt0$/m.test(pm), pm);
+  assert.match(pm, /\ntitle: Evil tvdbid: 1 imdbid: tt0\n/);
 });
 
 test("sync: writes, leaves the user's own files alone, doesn't rewrite unchanged ones, removes stale NFOs", async () => {

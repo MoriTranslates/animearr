@@ -3,7 +3,7 @@
  * as two escapes, which is valid JSON). The parsed value is identical; only a client that guesses the wrong charset
  * can no longer garble it (UTF-8 "…" read as cp1252 is "â€¦").
  */
-const NON_ASCII = /[\u007f-￿]/g;
+const NON_ASCII = /[\u007f-\uFFFF]/g;
 
 export function asciiJson(value: unknown): string {
   const s = JSON.stringify(value);

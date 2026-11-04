@@ -24,6 +24,8 @@ import { enrichEpisodes, ffmpegFrame, type MetaDeps } from "../metadata/episodem
 import { allowedImage } from "../metadata/img.js";
 import { notifyMediaServers } from "./mediaservers.js";
 import { mappedPath } from "../system/paths.js";
+import { stripXmlIllegal } from "../core/xml.js";
+import { stripTags } from "./htmltext.js";
 import { notifyPlex } from "./plex.js";
 import { getSettings, underAllowedRoot } from "../system/settings.js";
 import { safeFetch } from "../system/safeFetch.js";
@@ -61,14 +63,15 @@ export interface EpisodeMeta {
   stillSource?: "tmdb" | "sonarr";
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s: string) => stripXmlIllegal(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const el = (name: string, v: string | number | null | undefined, attrs = "") =>
   v === null || v === undefined || v === "" ? "" : `  <${name}${attrs}>${esc(String(v))}</${name}>\n`;
-/** AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)"): plain text for the NFO. */
+/**
+ * AniList descriptions are HTML ("<br>", "<i>…</i>", "(Source: …)", comments): plain text for the NFO. Tags and
+ * comments are removed by a linear-time scanner (htmltext.ts), never a regex: "a <b and c> d" and "x<3" stay text.
+ */
 export const plainText = (html: string | null | undefined) =>
-  (html ?? "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+  stripTags(html ?? "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -138,10 +141,12 @@ export function episodeNfo(showTitle: string, eps: EpisodeMeta[]) {
 }
 
 export function plexmatch(m: ShowMeta) {
+  // One "key: value" per line: line breaks and other control characters in the title become spaces.
+  const title = m.title.replace(/[\u0000-\u001F\u007F\u2028\u2029]+/g, " ").trim();
   return (
     [
       `# ${NOTE}`,
-      `title: ${m.title}`,
+      `title: ${title}`,
       m.year ? `year: ${m.year}` : "",
       m.ids.tvdb ? `tvdbid: ${m.ids.tvdb}` : "",
       m.ids.tmdb ? `tmdbid: ${m.ids.tmdb}` : "",
