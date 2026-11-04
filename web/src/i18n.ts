@@ -1236,8 +1236,11 @@ const en = {
   "dual.state.upgraded": "Upgraded",
   "dual.state.done": "Done",
   "dual.audioNow": "Audio now: {audio} · wanted: + {dub}",
-  "recycle.goesTo": "The file goes to the recycling bin ({path}) and is kept there for {days} days.",
-  "recycle.goesToForever": "The file goes to the recycling bin ({path}); it isn't emptied automatically.",
+  "recycle.goesTo":
+    "The file and its subtitles go to AnimeArr's recycling bin ({path}) and are kept there for {days} days. Sonarr isn't asked to do anything.",
+  "recycle.goesToForever":
+    "The file and its subtitles go to AnimeArr's recycling bin ({path}); it isn't emptied automatically. Sonarr isn't asked to do anything.",
+  "recycle.unusable": "AnimeArr's recycling bin can't be used ({why}), so nothing will be deleted. Set it in Settings → Media management.",
   "recycle.none":
     "Sonarr has no recycle bin set up, so deleted and replaced files are gone for good. You can set one in Sonarr → Settings → Media Management → Recycling Bin.",
   "recycle.intro":
@@ -1252,7 +1255,7 @@ const en = {
   "recycle.purge": "emptied around {when}",
   "recycle.refresh": "Check again",
   "recycle.truncated": "Showing the newest {n}.",
-  "recycle.maybe": "If Sonarr has a recycle bin, the file goes there.",
+  "recycle.maybe": "The file and its subtitles go to AnimeArr's recycling bin.",
   "repair.title": "After-import check",
   "repair.help":
     "Every file that lands in your allowed root folders (Sonarr's own imports too) is checked against the show's language profile with ffprobe. With \"Repair automatically\", a file that fails on two signals is blocklisted: for managed shows AnimeArr searches for a replacement; for other shows the grab is marked failed in Sonarr (Sonarr only grabs a replacement if Redownload Failed is on). Files are never deleted. Dry-run is respected: nothing is changed while it's on.",
@@ -1436,8 +1439,8 @@ const en = {
   "ep.regrabBodyNoFile": "AnimeArr searches and grabs the best release for this episode.",
   "ep.regrabDry": "Practice mode is on: AnimeArr only notes what it would download.",
   "ep.deleteTitle": "Delete this file?",
-  "ep.deleteBody": "This deletes {file} through Sonarr. The episode becomes missing.",
-  "ep.deleteMany": "This deletes {n} {n|file|files} through Sonarr. The episodes become missing.",
+  "ep.deleteBody": "This moves {file} to AnimeArr's recycling bin. The episode becomes missing.",
+  "ep.deleteMany": "This moves {n} {n|file|files} to AnimeArr's recycling bin. The episodes become missing.",
   "ep.searchAgainTitle": "Search again?",
   "ep.searchAgainBody": "This show is managed and live. Should AnimeArr search for a new copy now?",
   "ep.deleted": "Deleted {n} {n|file|files}",
@@ -1445,7 +1448,7 @@ const en = {
   "ep.notMonitoredHelp": "You don't monitor this episode, so AnimeArr doesn't look for it or warn about it.",
   "season.delete": "Delete season files…",
   "season.deleteTitle": "Delete the files of {season}?",
-  "season.deleteBody": "This deletes {n} {n|file|files} ({bytes}) of {season} through Sonarr. The episodes become missing.",
+  "season.deleteBody": "This moves {n} {n|file|files} ({bytes}) of {season} to AnimeArr's recycling bin. The episodes become missing.",
   "season.deleteShared": "A file that also holds an episode of another season is skipped; delete it on its own.",
   "season.deleteConfirm": "Delete {n} {n|file|files}",
   "season.deleted": "Deleted {n} {n|file|files} of {season}",

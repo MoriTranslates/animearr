@@ -954,17 +954,14 @@ export function EpisodeSheet({
   );
 }
 
-/** Where a deleted file goes: Sonarr's recycle bin (and for how long), or nowhere. */
+/** Where a deleted file goes: AnimeArr's own recycling bin (and for how long); never Sonarr's, never a hard delete. */
 export function RecycleNote() {
-  const r = useLoad(() => api<{ configured: boolean; path: string; cleanupDays: number; error?: string }>("/recycle/setting"), []);
-  if (!r.data || r.data.error) return <p className="small muted">{t("recycle.maybe")}</p>;
-  return r.data.configured ? (
+  const r = useLoad(() => api<{ path: string; days: number; error: string | null }>("/recycle/animearr"), []);
+  if (!r.data) return <p className="small muted">{t("recycle.maybe")}</p>;
+  if (r.data.error) return <p className="small warn-text">⚠ {t("recycle.unusable", { why: r.data.error })}</p>;
+  return (
     <p className="small">
-      {r.data.cleanupDays
-        ? t("recycle.goesTo", { path: r.data.path, days: r.data.cleanupDays })
-        : t("recycle.goesToForever", { path: r.data.path })}
+      {r.data.days > 0 ? t("recycle.goesTo", { path: r.data.path, days: r.data.days }) : t("recycle.goesToForever", { path: r.data.path })}
     </p>
-  ) : (
-    <p className="small warn-text">⚠ {t("recycle.none")}</p>
   );
 }

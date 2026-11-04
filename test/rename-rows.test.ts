@@ -258,34 +258,11 @@ test("a replaced file's corrections and marks never stick to the new file that t
   assert.deepEqual(rowsAt(binned[0]), NONE, "no orphan rows left for the purged file");
 });
 
-// ---------------------------------------------------------------- episode delete (through Sonarr, into its bin)
+// ---------------------------------------------------------------- episode delete (into AnimeArr's own bin, never Sonarr)
 
 const { deleteEpisodeFiles } = await import("../server/library/episodes.js");
-type EpisodeDeps = import("../server/library/episodes.js").EpisodeDeps;
-const sonarrDelete = (fileId: number, arr: string, bin: { configured: boolean; path: string } | null): EpisodeDeps =>
-  ({
-    episode: async (id: number) => ({
-      id,
-      seriesId: 10,
-      seasonNumber: 1,
-      episodeNumber: id - 100,
-      monitored: true,
-      hasFile: true,
-      episodeFileId: fileId,
-    }),
-    episodeFile: async (id: number) => ({ id, seriesId: 10, seasonNumber: 1, path: arr, size: 1, sceneName: null, quality: null }),
-    deleteFile: async () => {
-      fs.rmSync(path.join(LIB, arr.slice("/media/AnimeArr".length))); // what Sonarr does (to its bin)
-      cache.prepare("UPDATE episodes SET file_id = NULL, has_file = 0 WHERE file_id = ?").run(fileId);
-      cache.prepare("DELETE FROM files WHERE id = ?").run(fileId);
-    },
-    refresh: async () => undefined,
-    search: (async () => []) as unknown as EpisodeDeps["search"],
-    grab: (async () => ({})) as unknown as EpisodeDeps["grab"],
-    recycle: async () => (bin ? { ...bin, cleanupDays: 7 } : Promise.reject(new Error("Sonarr unreachable"))),
-  }) as EpisodeDeps;
 
-test("a file deleted into Sonarr's bin takes its rows along; a new file imported at that name inherits nothing", async () => {
+test("a file deleted into AnimeArr's bin takes its rows along; a new file imported at that name inherits nothing", async () => {
   const probe = async () =>
     ({
       duration: 1440,
@@ -298,11 +275,13 @@ test("a file deleted into Sonarr's bin takes its rows along; a new file imported
   const src = { tvdbId: 424536, path: "/data/d/Frieren.S01E09.1080p.WEB-DL-GRP.mkv", episodeIds: [109], client: "sabnzbd" };
   const dest = (await planImport(src, { probe, minBytes: 0 })).items[0].destArr;
   libraryFile(509, path.posix.basename(dest), [109]);
-  const r = await deleteEpisodeFiles(424536, [109], sonarrDelete(509, dest, { configured: true, path: "/media/SonarrBin" }));
+  const r = await deleteEpisodeFiles(424536, [109]);
   assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
   assert.deepEqual(rowsAt(dest), NONE, "nothing left at the deleted file's name");
-  // Sonarr's bin keeps the show folder: <bin>/<show folder>/<path inside the show>.
-  assert.deepEqual(rowsAt(`/media/SonarrBin/Frieren (2023)/Season 01/${path.posix.basename(dest)}`), ALL, "kept, at the bin");
+  // The bin keeps the show folder: <bin>/<show folder>/<path inside the show>.
+  const inBin = `/media/Recycle/animearr/Frieren (2023)/Season 01/${path.posix.basename(dest)}`;
+  assert.deepEqual(rowsAt(inBin), ALL, "kept, at the bin");
+  assert.ok(fs.existsSync(path.join(BIN, "animearr", "Frieren (2023)", "Season 01", path.posix.basename(dest))), "the file is there too");
   // A new file at the same name.
   const res = await executeImport(await planImport(src, { probe, minBytes: 0 }));
   assert.equal(res[0].done, true, res[0].why);
@@ -314,26 +293,17 @@ test("a file deleted into Sonarr's bin takes its rows along; a new file imported
 const lastLogAbout = (name: string) =>
   (db.prepare("SELECT why FROM decisions WHERE why LIKE ? ORDER BY id DESC LIMIT 1").get(`%${name}%`) as { why: string }).why;
 
-test("M3: a permanent delete (Sonarr has no bin) drops the file's rows; a new file at that name starts clean", async () => {
-  const arr = libraryFile(510, "frieren 510.mkv", [106]);
-  const r = await deleteEpisodeFiles(424536, [106], sonarrDelete(510, arr, { configured: false, path: "" }));
-  assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
-  assert.deepEqual(rowsAt(arr), NONE, "nothing about the deleted file is left at its name");
-  assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
-  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM file_marks WHERE path LIKE '%frieren 510%'").get() as { n: number }).n, 0, "dropped");
-  assert.match(lastLogAbout("frieren 510.mkv"), /track corrections and burned-in mark .*dropped/);
-});
-
-test("M3: a delete whose bin Sonarr didn't report sets the rows aside (recoverable), never at the old name", async () => {
+test("M3: a delete of a file already gone from the disk sets the rows aside (recoverable), never at the old name", async () => {
   const arr = libraryFile(511, "frieren 511.mkv", [102]);
-  const r = await deleteEpisodeFiles(424536, [102], sonarrDelete(511, arr, null));
+  fs.rmSync(path.join(SEASON, "frieren 511.mkv")); // gone by hand: the folder still lists other files, so surely gone
+  const r = await deleteEpisodeFiles(424536, [102]);
   assert.equal(r.deleted.length, 1, JSON.stringify(r.skipped));
   assert.deepEqual(rowsAt(arr), NONE, "nothing left at its name");
   assert.equal(overridesFor(arr).length, 0, "a new file at that name gets no inherited track corrections");
   const aside = (db.prepare("SELECT path FROM file_marks WHERE path LIKE 'deleted:%'").get() as { path: string } | undefined)?.path;
   assert.ok(aside && aside.endsWith(`:${arr}`), `kept under a reserved key: ${aside}`);
   assert.deepEqual(rowsAt(aside!), ALL, "every row kept, under that key");
-  assert.match(lastLogAbout("frieren 511.mkv"), /set aside/);
+  assert.match(lastLogAbout("frieren 511.mkv"), /already gone/);
 });
 
 // ---------------------------------------------------------------- rename undo: only the file AnimeArr renamed (L9)

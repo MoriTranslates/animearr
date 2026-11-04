@@ -1479,7 +1479,7 @@ function ReplaceSeason({ tvdbId, season, onClose }: { tvdbId: number; season: nu
 }
 
 /**
- * "Delete season files…": how many files and how much space, where they go (Sonarr's recycle bin), then the server's
+ * "Delete season files…": how many files and how much space, where they go (AnimeArr's recycling bin), then the server's
  * guarded season delete. What it couldn't delete is said, per reason, never hidden.
  */
 function DeleteSeason({

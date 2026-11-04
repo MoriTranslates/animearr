@@ -10,10 +10,9 @@ import { NATIVE_BASE } from "./nativeIds.js";
 import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
-import { recycleSetting } from "../import/recycle.js";
-import { binUsable } from "../import/binpurge.js";
-import { deletePathRows, movePathRows } from "../import/pathRows.js";
+import { binArrPath, binUsable } from "../import/binpurge.js";
 import { keyOf } from "../system/paths.js";
+import { binEpisodeFile, binTarget, recordBinned, withDeleteLock } from "./episodeBin.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "../import/mediafiles.js";
 import { catalogLookup, entriesForSeries } from "../metadata/catalog.js";
@@ -616,21 +615,16 @@ export function currentRelease(episodeId: number, sceneName: string | null): str
 export interface EpisodeDeps {
   episode: typeof sonarr.getEpisode;
   episodeFile: typeof sonarr.getEpisodeFile;
-  deleteFile: typeof sonarr.deleteEpisodeFile;
   refresh(seriesId: number): Promise<void>;
   search: typeof deepSearch;
   grab: typeof startGrab;
-  /** Sonarr's recycle-bin setting, for the delete log line. */
-  recycle?: () => Promise<{ configured: boolean; path: string; cleanupDays: number }>;
 }
 export const realEpisodeDeps: EpisodeDeps = {
   episode: sonarr.getEpisode,
   episodeFile: sonarr.getEpisodeFile,
-  deleteFile: sonarr.deleteEpisodeFile,
   refresh: (id) => refreshSeriesEpisodes(id),
   search: deepSearch,
   grab: startGrab,
-  recycle: () => recycleSetting(undefined, Date.now(), true),
 };
 
 function guard(tvdbId: number) {
@@ -663,109 +657,98 @@ export function insideFolder(file: string, folder: string) {
 }
 
 /**
- * Deletes the files of the given episodes through Sonarr (its recycle bin), each one re-checked live: an episode of
- * this show, a file of this show, inside the allowed roots and inside the show's folder. With `onlySeason`, a file
- * that also holds an episode of another season is skipped (deleting a season never takes a neighbour's episode).
- * Returns what was deleted, what was skipped and why, and whether a managed, live show should search again.
+ * Moves the files of the given episodes (each with its sidecars) to AnimeArr's own recycling bin. Never Sonarr: no
+ * Sonarr lookup, delete or rescan; AnimeArr's own records say which file an episode has (episodeBin.ts has the moves
+ * and the guards). Refused as a whole (409, nothing changes) when the bin can't be used or the show's folder isn't a
+ * show folder inside a library root. Per file: an episode of this show, a file of this show, inside the allowed roots
+ * and inside the show's folder (as recorded and by real path). With `onlySeason`, a file that also holds an episode of
+ * another season is skipped (deleting a season never takes a neighbour's episode). Returns what went to the bin, what
+ * was skipped and why (a file that failed to move stays where it was, and recorded), and whether a managed, live show
+ * should search again.
  */
-export async function deleteEpisodeFiles(
-  tvdbId: number,
-  episodeIds: number[],
-  deps: EpisodeDeps = realEpisodeDeps,
-  opts: { onlySeason?: number } = {},
-) {
+export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], opts: { onlySeason?: number } = {}) {
   const s = guard(tvdbId);
   if (s.id >= NATIVE_BASE)
     throw Object.assign(
       new Error("Deleting files of a show added in AnimeArr comes with AnimeArr's own clean-up (next steps); nothing was deleted"),
       { statusCode: 409 },
     );
-  const all = episodesFor(tvdbId);
-  const own = new Set(all.map((e) => e.id));
-  const deleted: { episodeId: number; file: string; episodes: string[] }[] = [];
-  const skipped: { episodeId: number; why: string }[] = [];
-  const done = new Set<number>();
-  const bin = deps.recycle ? await deps.recycle().catch(() => null) : null;
-  const where = !bin
-    ? "if Sonarr has a recycle bin, the file is there"
-    : bin.configured
-      ? `it is in Sonarr's recycle bin (${bin.path})${bin.cleanupDays ? ` for ${bin.cleanupDays} days` : ""}`
-      : "Sonarr has no recycle bin, so it is gone for good";
-  for (const eid of episodeIds) {
-    if (!own.has(eid)) {
-      skipped.push({ episodeId: eid, why: "not an episode of this show" });
-      continue;
-    }
-    try {
-      // Live re-checks: the cache could be stale, or the series may have moved in Sonarr.
-      const ep = await deps.episode(eid);
-      if (ep.seriesId !== s.id) throw new Error("Sonarr says this episode belongs to another series");
-      if (!ep.episodeFileId) {
-        skipped.push({ episodeId: eid, why: "no file" });
+  return withDeleteLock(tvdbId, async () => {
+    const t = binTarget(s.path);
+    const all = episodesFor(tvdbId);
+    const own = new Set(all.map((e) => e.id));
+    const deleted: { episodeId: number; file: string; episodes: string[]; note?: string }[] = [];
+    const skipped: { episodeId: number; why: string }[] = [];
+    const covered = new Set<number>(); // episodes whose (multi-episode) file already went in this request
+    const days = getSettings().media.recycleBinCleanupDays ?? 0;
+    for (const eid of episodeIds) {
+      if (covered.has(eid)) continue;
+      if (!own.has(eid)) {
+        skipped.push({ episodeId: eid, why: "not an episode of this show" });
         continue;
       }
-      if (done.has(ep.episodeFileId)) continue; // multi-episode file already deleted
-      const f = await deps.episodeFile(ep.episodeFileId);
-      if (f.seriesId !== s.id) throw new Error("Sonarr says this file belongs to another series");
-      if (!underAllowedRoot(f.path)) throw new Error(`the file is outside the allowed root folders (${f.path})`);
-      if (!insideFolder(f.path, s.path)) throw new Error(`the file is outside the show's folder (${f.path})`);
-      const sharing = cache
-        .prepare("SELECT id, season, episode FROM episodes WHERE file_id = ? ORDER BY season, episode")
-        .all(ep.episodeFileId) as { id: number; season: number; episode: number }[];
-      const labels = sharing.length ? sharing.map((x) => sxe(x.season, x.episode)) : [sxe(ep.seasonNumber, ep.episodeNumber)];
-      if (opts.onlySeason !== undefined) {
-        const other = sharing.filter((x) => x.season !== opts.onlySeason);
-        if (ep.seasonNumber !== opts.onlySeason || other.length)
-          throw new Error(
-            `the file also holds ${other.map((x) => sxe(x.season, x.episode)).join(" + ") || "another season"}; delete it on its own`,
-          );
-      }
-      await deps.deleteFile(ep.episodeFileId);
-      done.add(ep.episodeFileId);
-      deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
-      // Its per-file rows (track corrections, burned-in mark, release details) never stay at its name: a new file there
-      // would inherit them. With Sonarr's bin they go to the bin with it (<bin>/<show folder>/…), kept. Sonarr has no
-      // bin (gone for good): they describe a file that no longer exists, so they are dropped. Sonarr didn't say
-      // (unknown): the file may be in its bin, so they are only detached, to a key no file can have.
-      let rowsNote = "";
       try {
-        if (bin?.configured && bin.path) {
-          const show = keyOf(s.path);
-          movePathRows(f.path, `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`);
-        } else if (bin && !bin.configured) {
-          if (deletePathRows(f.path))
-            rowsNote = " Its track corrections and burned-in mark (if any) were dropped with it, so a new file at this name starts clean.";
-        } else if (movePathRows(f.path, `deleted:${Date.now()}:${keyOf(f.path)}`))
-          rowsNote = ` Its track corrections and burned-in mark (if any) were set aside (kept as "deleted:…:${keyOf(f.path)}"), so a new file at this name starts clean.`;
+        const ep = cache.prepare("SELECT season, episode, file_id FROM episodes WHERE id = ? AND series_id = ?").get(eid, s.id) as
+          { season: number; episode: number; file_id: number | null } | undefined;
+        if (!ep) throw new Error("not an episode of this show");
+        if (!ep.file_id) {
+          skipped.push({ episodeId: eid, why: "no file" });
+          continue;
+        }
+        const f = cache.prepare("SELECT path, scene_name FROM files WHERE id = ? AND series_id = ?").get(ep.file_id, s.id) as
+          { path: string; scene_name: string | null } | undefined;
+        if (!f) throw new Error("AnimeArr has no record of this episode's file; nothing was moved");
+        if (!underAllowedRoot(f.path)) throw new Error(`the file is outside the allowed root folders (${f.path})`);
+        if (!insideFolder(f.path, s.path)) throw new Error(`the file is outside the show's folder (${f.path})`);
+        const sharing = cache
+          .prepare("SELECT id, season, episode FROM episodes WHERE series_id = ? AND file_id = ? ORDER BY season, episode")
+          .all(s.id, ep.file_id) as { id: number; season: number; episode: number }[];
+        const labels = sharing.length ? sharing.map((x) => sxe(x.season, x.episode)) : [sxe(ep.season, ep.episode)];
+        if (opts.onlySeason !== undefined) {
+          const other = sharing.filter((x) => x.season !== opts.onlySeason);
+          if (ep.season !== opts.onlySeason || other.length)
+            throw new Error(
+              `the file also holds ${other.map((x) => sxe(x.season, x.episode)).join(" + ") || "another season"}; delete it on its own`,
+            );
+        }
+        const outcome = await binEpisodeFile(f.path, t);
+        const note = recordBinned({ seriesId: s.id, fileId: ep.file_id, fileArr: f.path, outcome, binLocal: t.binLocal });
+        for (const x of sharing) covered.add(x.id);
+        covered.add(eid);
+        const name = path.posix.basename(keyOf(f.path));
+        deleted.push({ episodeId: eid, file: name, episodes: labels, ...(note ? { note } : {}) });
+        const video = outcome.kind === "moved" ? outcome.moved.find((m) => m.from === outcome.video) : undefined;
+        const where = video
+          ? `it is in AnimeArr's recycling bin (${binArrPath(video.to, t.binLocal)})${days > 0 ? ` for ${days} days` : ""}` +
+            (outcome.kind === "moved" && outcome.moved.length > 1
+              ? `, with ${outcome.moved.length - 1} sidecar file${outcome.moved.length === 2 ? "" : "s"}`
+              : "")
+          : "it was already gone from the disk, so only AnimeArr's records changed";
+        logDecision("info", {
+          tvdbId,
+          title: s.title,
+          episodeIds: sharing.length ? sharing.map((x) => x.id) : [eid],
+          release: f.scene_name ?? null,
+          why: `Deleted the ${labels.join(" + ")} file ${name} (you confirmed); ${where}. Sonarr wasn't asked to change anything.${note ? ` But ${note}.` : ""}`,
+          detail: { kind: "delete", fileId: ep.file_id, path: f.path },
+        });
       } catch (e) {
-        rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
+        skipped.push({ episodeId: eid, why: (e as Error).message });
       }
-      logDecision("info", {
-        tvdbId,
-        title: s.title,
-        episodeIds: sharing.length ? sharing.map((x) => x.id) : [eid],
-        release: f.sceneName ?? null,
-        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.${rowsNote}`,
-        detail: { kind: "delete", fileId: ep.episodeFileId, path: f.path },
-      });
-    } catch (e) {
-      skipped.push({ episodeId: eid, why: (e as Error).message });
     }
-  }
-  // Harmless to lose: the deletes are done and logged; a failed refresh only leaves the cache stale until the next sync.
-  await deps.refresh(s.id).catch(() => undefined);
-  if (deleted.length) await afterLibraryChange({ tvdbId, folders: [s.path] });
-  const m = listManaged().find((x) => x.tvdbId === tvdbId);
-  const affected = all.filter((e) => deleted.some((d) => d.episodes.includes(sxe(e.season, e.episode)))).map((e) => e.id);
-  return { deleted, skipped, affected, askSearch: !!m && !isDryRun(m.dryRun) && deleted.length > 0 };
+    if (deleted.length) await afterLibraryChange({ tvdbId: null, folders: [s.path] }); // media servers rescan; no Sonarr
+    const m = listManaged().find((x) => x.tvdbId === tvdbId);
+    const affected = all.filter((e) => deleted.some((d) => d.episodes.includes(sxe(e.season, e.episode)))).map((e) => e.id);
+    return { deleted, skipped, affected, askSearch: !!m && !isDryRun(m.dryRun) && deleted.length > 0 };
+  });
 }
 
 /**
- * Deletes every file of one season through the same guarded path as the episode delete (deleteEpisodeFiles): only
- * that season's episodes with a file are asked for, and a file shared with another season is skipped. Partial
- * failures come back in `skipped`, one line per episode, never hidden.
+ * Moves every file of one season to AnimeArr's recycling bin through the same guarded path as the episode delete
+ * (deleteEpisodeFiles): only that season's episodes with a file are asked for, and a file shared with another season
+ * is skipped. Partial failures come back in `skipped`, one line per episode, never hidden.
  */
-export async function deleteSeasonFiles(tvdbId: number, season: number, deps: EpisodeDeps = realEpisodeDeps) {
+export async function deleteSeasonFiles(tvdbId: number, season: number) {
   const s = guard(tvdbId);
   const ids = (
     cache.prepare("SELECT id FROM episodes WHERE series_id = ? AND season = ? AND has_file = 1 ORDER BY episode").all(s.id, season) as {
@@ -773,7 +756,7 @@ export async function deleteSeasonFiles(tvdbId: number, season: number, deps: Ep
     }[]
   ).map((r) => r.id);
   if (!ids.length) throw Object.assign(new Error(`Season ${season} has no files to delete`), { statusCode: 409 });
-  return { season, asked: ids.length, ...(await deleteEpisodeFiles(tvdbId, ids, deps, { onlySeason: season })) };
+  return { season, asked: ids.length, ...(await deleteEpisodeFiles(tvdbId, ids, { onlySeason: season })) };
 }
 
 /** Episodes of a managed show whose file is in the wrong language (not kept as is): id → why. */

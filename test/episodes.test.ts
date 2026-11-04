@@ -68,7 +68,6 @@ function deps(calls: { deleted: number[]; searched: number[]; grabbed: string[] 
       sceneName: "[SubsPlease] Pilot Show - 01 (1080p) [ABCD1234]",
       quality: { quality: { name: "HDTV-1080p" } },
     }),
-    deleteFile: async (id) => void calls.deleted.push(id),
     refresh: async () => undefined,
     search: (async (_tvdb: number, eps: number[]) => {
       calls.searched.push(...eps);
@@ -135,20 +134,12 @@ test("series header: counts, next airing, language health", () => {
   assert.equal(h.overview, "A show.");
 });
 
-test("delete: guarded by allowed roots; deletes through Sonarr; asks to search again for a managed live show", async () => {
-  const calls = { deleted: [] as number[], searched: [] as number[], grabbed: [] as string[] };
-  await assert.rejects(deleteEpisodeFiles(600002, [601], deps(calls)), /outside the allowed root folders/);
-  const r = await deleteEpisodeFiles(TVDB, [501, 502, 601], deps(calls));
-  assert.deepEqual(calls.deleted, [9001]);
-  assert.deepEqual(
-    r.deleted.map((d) => d.episodeId),
-    [501],
-  );
-  assert.deepEqual(
-    r.skipped.map((d) => d.why),
-    ["no file", "not an episode of this show"],
-  );
-  assert.equal(r.askSearch, true);
+test("delete: guarded by allowed roots; without a usable recycling bin it is refused and nothing changes", async () => {
+  // The moves themselves (AnimeArr's own bin, never Sonarr) are covered in delete-episodes-own-bin.test.ts.
+  await assert.rejects(deleteEpisodeFiles(600002, [601]), /outside the allowed root folders/);
+  await assert.rejects(deleteEpisodeFiles(TVDB, [501, 502, 601]), /recycling bin can't be used/);
+  const row = cache.prepare("SELECT has_file, file_id FROM episodes WHERE id = 501").get() as { has_file: number; file_id: number };
+  assert.deepEqual({ ...row }, { has_file: 1, file_id: 9001 });
 });
 
 test("re-grab: blocklists the current release and grabs the next best one", async () => {
@@ -184,15 +175,6 @@ test("re-grab never blocklists in dry-run, or when nothing else was found", asyn
   const r = await regrabEpisodes(TVDB, [501], none);
   assert.match(r[0].outcome, /nothing else acceptable/);
   assert.equal((db.prepare("SELECT COUNT(*) n FROM blocklist").get() as { n: number }).n, before);
-});
-
-test("delete re-checks Sonarr live: a stale cache can't delete another series' file", async () => {
-  const calls = { deleted: [] as number[], searched: [] as number[], grabbed: [] as string[] };
-  const d = deps(calls);
-  d.episode = async (id) => ({ id, seriesId: 999, seasonNumber: 1, episodeNumber: 1, monitored: true, hasFile: true, episodeFileId: 9001 });
-  const r = await deleteEpisodeFiles(TVDB, [501], d);
-  assert.deepEqual(calls.deleted, []);
-  assert.match(r.skipped[0].why, /another series/);
 });
 
 test("re-grab is capped at 10 episodes per request", async () => {
