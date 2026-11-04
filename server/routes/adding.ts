@@ -8,9 +8,11 @@ import {
   autoMatchMovies,
   cutoverCachedAt,
   cutoverPlan,
+  detach,
   matchMovieManual,
   matchShow,
   setArrWrites,
+  setWithoutArr,
   switchToAnimeArr,
   unmatch,
 } from "../library/cutover.js";
@@ -106,6 +108,25 @@ export function registerAddingRoutes(app: FastifyInstance) {
     writable();
     setArrWrites(req.body?.allowArrWrites === true);
     return getSettings().cutover;
+  });
+  // Detach: AnimeArr takes adopted shows and movies over without any call to Sonarr/Radarr (all: everything adopted).
+  app.post<{ Body: { tvdbIds?: number[]; movieIds?: number[]; all?: boolean; acceptSpecials?: boolean } }>(
+    "/api/cutover/detach",
+    async (req) => {
+      writable();
+      const b = req.body ?? {};
+      const pos = (xs: unknown[] | undefined) => (xs ?? []).map(Number).filter((x) => Number.isInteger(x) && x > 0);
+      const tvdbIds = pos(b.tvdbIds);
+      const movieIds = pos(b.movieIds);
+      if (!tvdbIds.length && !movieIds.length && b.all !== true) throw fail("Pick what to detach, or ask for all of it");
+      const results = await detach({ tvdbIds, movieIds, all: b.all === true, acceptSpecials: b.acceptSpecials === true });
+      invalidateIndex();
+      return { results };
+    },
+  );
+  app.put<{ Body: { on?: boolean } }>("/api/cutover/without-arr", async (req) => {
+    writable();
+    return setWithoutArr(req.body?.on === true);
   });
 
   // ---------------------------------------------------------------- native Add (no Sonarr/Radarr)

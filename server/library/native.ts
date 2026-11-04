@@ -45,6 +45,8 @@ interface NativeRow {
   path: string;
   root_folder: string;
   added_at: number;
+  /** AnimeArr owns it for good (detached, switched or added here): Sonarr's copy of the series is ignored. */
+  detached_at?: number | null;
 }
 interface EntryRow {
   anilist_id: number;
@@ -73,6 +75,11 @@ interface EntryRow {
 
 export const nativeShows = () => db.prepare("SELECT * FROM native_series ORDER BY id").all() as unknown as NativeRow[];
 export const isNativeTvdb = (tvdbId: number) => !!db.prepare("SELECT 1 FROM native_series WHERE tvdb_id = ?").get(tvdbId);
+/** TVDB ids AnimeArr owns for good: the library sync never takes these from Sonarr again (Sonarr keeps its record). */
+export const detachedTvdbIds = () =>
+  new Set(
+    (db.prepare("SELECT tvdb_id FROM native_series WHERE detached_at IS NOT NULL").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id),
+  );
 
 export type ArrApp = "Sonarr" | "Radarr";
 const ARR = {
@@ -127,8 +134,8 @@ function showEntries(n: NativeRow): (EntryRow & { season: number; offset: number
     .map((r) => ({ ...r, season: r.tvdb_season === "a" ? 1 : Number(r.tvdb_season), offset: r.tvdb_offset }));
 }
 
-/** Writes one native show's cache rows (series, episodes, files from AnimeArr's own records, alt titles). */
-const clearRows = (sid: number) =>
+/** Drops one show's cache rows (series, episodes, files, alt titles); the cache is rebuildable, nothing else is touched. */
+export const clearRows = (sid: number) =>
   tx(cache, () => {
     for (const t of ["series WHERE id", "episodes WHERE series_id", "files WHERE series_id", "alt_titles WHERE series_id"])
       cache.prepare(`DELETE FROM ${t} = ?`).run(sid);
@@ -137,6 +144,12 @@ const clearRows = (sid: number) =>
 /** Sonarr has this TVDB series too (added there after AnimeArr): Sonarr's copy is the one used; the native one is parked. */
 export const ownedBySonarr = (tvdbId: number) =>
   !!cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ? AND id < ?").get(tvdbId, NATIVE_BASE);
+
+/** Sonarr's cached rows of a series (left over by a sync, or a switch cut off before the cache step). */
+export function dropSonarrCopy(tvdbId: number) {
+  for (const r of cache.prepare("SELECT id FROM series WHERE tvdb_id = ? AND id < ?").all(tvdbId, NATIVE_BASE) as { id: number }[])
+    clearRows(r.id);
+}
 
 /** "2023-09-29" → ms (null when unknown or partial). */
 const dateMs = (d: string | null | undefined) => {
@@ -242,7 +255,9 @@ export function buildEpisodes(n: Pick<NativeRow, "id" | "tvdb_id" | "anilist_id"
 
 export function materialize(n: NativeRow, now = Date.now()) {
   const sid = NATIVE_BASE + n.id;
-  if (ownedBySonarr(n.tvdb_id)) {
+  // A show AnimeArr owns for good never yields to Sonarr's copy: any cached Sonarr rows of it are leftovers.
+  if (n.detached_at) dropSonarrCopy(n.tvdb_id);
+  else if (ownedBySonarr(n.tvdb_id)) {
     clearRows(sid);
     return { episodes: 0, files: 0, parked: true };
   }
@@ -734,9 +749,9 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
     rowId = Number(
       db
         .prepare(
-          "INSERT INTO native_series (tvdb_id, anilist_id, synthetic, title, year, path, root_folder, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO native_series (tvdb_id, anilist_id, synthetic, title, year, path, root_folder, added_at, detached_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(tvdbId, e.anilist_id, synthetic ? 1 : 0, title, year, showPath, root, Date.now()).lastInsertRowid,
+        .run(tvdbId, e.anilist_id, synthetic ? 1 : 0, title, year, showPath, root, Date.now(), Date.now()).lastInsertRowid,
     );
   } catch {
     throw err("That show is already in your library", 409); // a double click: the UNIQUE tvdb_id
@@ -802,7 +817,17 @@ interface NativeMovieRow {
   path: string;
   root_folder: string;
   added_at: number;
+  /** AnimeArr owns it for good (detached, switched or added here): Radarr's copy of the movie is ignored. */
+  detached_at?: number | null;
 }
+
+/** TMDB ids of movies AnimeArr owns for good: the library sync never takes these from Radarr again. */
+export const detachedTmdbIds = () =>
+  new Set(
+    (
+      db.prepare("SELECT tmdb_id FROM native_movies WHERE detached_at IS NOT NULL AND tmdb_id IS NOT NULL").all() as { tmdb_id: number }[]
+    ).map((r) => r.tmdb_id),
+  );
 
 export const nativeMovies = () => db.prepare("SELECT * FROM native_movies ORDER BY id").all() as unknown as NativeMovieRow[];
 /** Radarr has this movie too (by TMDB id): Radarr's copy is used; the native one is parked. */
@@ -813,7 +838,9 @@ const movieOwnedByRadarr = (tmdbId: number | null) =>
 export function materializeMovie(n: NativeMovieRow, now = Date.now()) {
   const mid = NATIVE_BASE + n.id;
   cache.prepare("DELETE FROM movies WHERE id = ?").run(mid);
-  if (movieOwnedByRadarr(n.tmdb_id)) return { parked: true, hasFile: false };
+  // A movie AnimeArr owns for good never yields to Radarr's copy: any cached Radarr row of it is a leftover.
+  if (n.detached_at && n.tmdb_id) cache.prepare("DELETE FROM movies WHERE tmdb_id = ? AND id < ?").run(n.tmdb_id, NATIVE_BASE);
+  else if (movieOwnedByRadarr(n.tmdb_id)) return { parked: true, hasFile: false };
   const e = db.prepare("SELECT * FROM entries WHERE anilist_id = ?").get(n.anilist_id) as unknown as EntryRow | undefined;
   const base = n.path.replace(/\/+$/, "");
   const rec = db
@@ -952,8 +979,10 @@ export async function addMovie(input: { anilistId: number; rootFolder: string },
   try {
     rowId = Number(
       db
-        .prepare("INSERT INTO native_movies (anilist_id, tmdb_id, title, year, path, root_folder, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(e.anilist_id, tmdb, title, e.season_year, moviePath, root, Date.now()).lastInsertRowid,
+        .prepare(
+          "INSERT INTO native_movies (anilist_id, tmdb_id, title, year, path, root_folder, added_at, detached_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(e.anilist_id, tmdb, title, e.season_year, moviePath, root, Date.now(), Date.now()).lastInsertRowid,
     );
   } catch {
     throw err("That movie is already in your library", 409);

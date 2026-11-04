@@ -9,7 +9,6 @@ import { anidbSpecialKind } from "../metadata/anidb.js";
 import { NATIVE_BASE } from "./nativeIds.js";
 import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
-import * as sonarr from "../arr/sonarr.js";
 import { binArrPath, binUsable } from "../import/binpurge.js";
 import { keyOf } from "../system/paths.js";
 import { binEpisodeFile, binTarget, recordBinned, withDeleteLock } from "./episodeBin.js";
@@ -613,15 +612,26 @@ export function currentRelease(episodeId: number, sceneName: string | null): str
 // ---------------------------------------------------------------- actions (injectable for tests)
 
 export interface EpisodeDeps {
-  episode: typeof sonarr.getEpisode;
-  episodeFile: typeof sonarr.getEpisodeFile;
+  episode(id: number): Promise<{ seasonNumber: number; episodeNumber: number; episodeFileId?: number | null }>;
+  episodeFile(id: number): Promise<{ sceneName?: string | null }>;
   refresh(seriesId: number): Promise<void>;
   search: typeof deepSearch;
   grab: typeof startGrab;
 }
+/** An episode and its file from AnimeArr's own records (the same for Sonarr's and AnimeArr's shows; Sonarr isn't asked). */
+async function ownEpisode(id: number) {
+  const e = cache.prepare("SELECT season, episode, file_id FROM episodes WHERE id = ?").get(id) as
+    { season: number; episode: number; file_id: number | null } | undefined;
+  if (!e) throw new Error("not an episode AnimeArr knows");
+  return { seasonNumber: e.season, episodeNumber: e.episode, episodeFileId: e.file_id };
+}
+async function ownEpisodeFile(id: number) {
+  const f = cache.prepare("SELECT scene_name FROM files WHERE id = ?").get(id) as { scene_name: string | null } | undefined;
+  return { sceneName: f?.scene_name ?? null };
+}
 export const realEpisodeDeps: EpisodeDeps = {
-  episode: sonarr.getEpisode,
-  episodeFile: sonarr.getEpisodeFile,
+  episode: ownEpisode,
+  episodeFile: ownEpisodeFile,
   refresh: (id) => refreshSeriesEpisodes(id),
   search: deepSearch,
   grab: startGrab,
@@ -664,15 +674,11 @@ export function insideFolder(file: string, folder: string) {
  * and inside the show's folder (as recorded and by real path). With `onlySeason`, a file that also holds an episode of
  * another season is skipped (deleting a season never takes a neighbour's episode). Returns what went to the bin, what
  * was skipped and why (a file that failed to move stays where it was, and recorded), and whether a managed, live show
- * should search again.
+ * should search again. Shows AnimeArr owns (added here or detached from Sonarr) go the same way: their records are
+ * AnimeArr's own, and the file's scan record goes with it, so the next rebuild of the show doesn't bring it back.
  */
 export async function deleteEpisodeFiles(tvdbId: number, episodeIds: number[], opts: { onlySeason?: number } = {}) {
   const s = guard(tvdbId);
-  if (s.id >= NATIVE_BASE)
-    throw Object.assign(
-      new Error("Deleting files of a show added in AnimeArr comes with AnimeArr's own clean-up (next steps); nothing was deleted"),
-      { statusCode: 409 },
-    );
   return withDeleteLock(tvdbId, async () => {
     const t = binTarget(s.path);
     const all = episodesFor(tvdbId);

@@ -20,7 +20,7 @@ import { compactKey } from "../core/normalize.js";
 import { parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
-import { markListRead, materializeAll, rematerializeSeries, type ArrApp } from "./native.js";
+import { detachedTmdbIds, detachedTvdbIds, markListRead, materializeAll, rematerializeSeries, type ArrApp } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
 import { blockedIds } from "./dropped.js";
 import { getSettings } from "../system/settings.js";
@@ -88,9 +88,12 @@ export const syncRunning = () => !!running || !!queuedFull;
 
 async function doSync(full: boolean): Promise<SyncResult> {
   const res: SyncResult = { series: 0, refreshed: 0, removed: 0, movies: 0, unmatched: 0, errors: [], at: Date.now() };
-  setJob("sync", "running", "Reading Sonarr");
+  setJob("sync", "running", "Updating the library");
   try {
-    if (sonarrConfigured()) await syncSonarr(full, res);
+    if (sonarrConfigured()) {
+      setJob("sync", "running", "Reading Sonarr");
+      await syncSonarr(full, res);
+    }
     if (radarrConfigured()) {
       setJob("sync", "running", "Reading Radarr");
       try {
@@ -144,20 +147,29 @@ async function syncSonarr(full: boolean, res: SyncResult) {
     animeTagId = tags.find((t) => t.label?.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
     tagMissing = animeTagId === null;
   }
-  // A show the user dropped and removed (blocked) is never shown again from Sonarr's list, until it's unblocked.
+  // A show the user dropped and removed (blocked) is never shown again from Sonarr's list, until it's unblocked. A show
+  // AnimeArr detached (owns for good) is never taken from Sonarr again: Sonarr keeps its record as the user's backup.
   const blocked = blockedIds();
+  const detached = detachedTvdbIds();
   const anime = all.filter(
-    (x) => (x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId))) && !blocked.has(x.tvdbId),
+    (x) =>
+      (x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId))) &&
+      !blocked.has(x.tvdbId) &&
+      !detached.has(x.tvdbId),
   );
   res.series = anime.length;
+  // Cached Sonarr rows of a detached show are leftovers (materializeAll drops them below); they don't count as removals.
   const prev = new Map(
     (
-      cache.prepare(`SELECT id, sig, synced_at FROM series WHERE id < ${NATIVE_BASE}`).all() as {
+      cache.prepare(`SELECT id, tvdb_id, sig, synced_at FROM series WHERE id < ${NATIVE_BASE}`).all() as {
         id: number;
+        tvdb_id: number;
         sig: string | null;
         synced_at: number;
       }[]
-    ).map((r) => [r.id, r]),
+    )
+      .filter((r) => !detached.has(r.tvdb_id))
+      .map((r) => [r.id, r]),
   );
   const byTvdb = new Map<number, { aid: number; season: number | "a" | null; offset: number }[]>();
   for (const e of animeListEntries().values())
@@ -416,10 +428,13 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
 
 async function syncRadarr(full: boolean, res: SyncResult) {
   const s = getSettings().radarr;
-  const movies = await getMovies();
+  const answer = await getMovies();
   // A malformed answer fails the sync and the cache stays, as for Sonarr.
-  if (!Array.isArray(movies) || movies.some((m) => !m || typeof m.id !== "number" || typeof m.path !== "string"))
+  if (!Array.isArray(answer) || answer.some((m) => !m || typeof m.id !== "number" || typeof m.path !== "string"))
     throw new Error("Radarr's movie list came back malformed; kept the movies AnimeArr already had");
+  // A movie AnimeArr detached (owns for good) is never taken from Radarr again: Radarr keeps its record as the backup.
+  const detached = detachedTmdbIds();
+  const movies = answer.filter((m) => !detached.has(m.tmdbId));
   const roots = s.animeRoots.map((r) => r.replace(/\/+$/, ""));
   const isAnime = (m: (typeof movies)[number]) =>
     roots.some((r) => m.rootFolderPath?.replace(/\/+$/, "") === r || m.path.startsWith(`${r}/`)) ||
@@ -430,7 +445,12 @@ async function syncRadarr(full: boolean, res: SyncResult) {
   tx(cache, () => {
     // Movies no longer in Radarr go (native movies, added in AnimeArr, always stay); a mass removal waits, see heldRemoval.
     const keep = new Set(movies.map((m) => m.id));
-    const prev = (cache.prepare(`SELECT id FROM movies WHERE id < ${NATIVE_BASE}`).all() as { id: number }[]).map((r) => r.id);
+    // Cached Radarr rows of a detached movie are leftovers (materializeAll drops them); they don't count as removals.
+    const prev = (
+      cache.prepare(`SELECT id, tmdb_id FROM movies WHERE id < ${NATIVE_BASE}`).all() as { id: number; tmdb_id: number | null }[]
+    )
+      .filter((r) => r.tmdb_id === null || !detached.has(r.tmdb_id))
+      .map((r) => r.id);
     const gone = prev.filter((id) => !keep.has(id));
     held = heldRemoval("Radarr", "movies", prev.length, gone.length, full, null);
     if (held) res.errors.push(held);

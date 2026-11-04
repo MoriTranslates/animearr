@@ -498,6 +498,14 @@ const USER_MIGRATIONS: string[] = [
   `ALTER TABLE dropped ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE dropped ADD COLUMN was_managed INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE import_list_exclusions ADD COLUMN tvdb_id INTEGER;`,
+  // 49: detach (a cutover without any Sonarr/Radarr call): when AnimeArr took a show or movie over for good. From then
+  // on Sonarr's copy of that TVDB series (Radarr's of that TMDB movie) is ignored: they keep their records as the
+  // user's backup, AnimeArr never reads or writes them. The journal rows say whether it's a detach, so a restart
+  // finishes it without asking Sonarr/Radarr anything.
+  `ALTER TABLE native_series ADD COLUMN detached_at INTEGER;
+   ALTER TABLE cutover_pending ADD COLUMN detach INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE native_movies ADD COLUMN detached_at INTEGER;
+   ALTER TABLE cutover_pending_movies ADD COLUMN detach INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */
