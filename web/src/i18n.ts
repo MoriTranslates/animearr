@@ -1702,13 +1702,13 @@ const en = {
   "cut.removed": "Removed {n} from Sonarr/Radarr",
   "cut.detachTitle": "AnimeArr on its own",
   "cut.detachHelp":
-    "Detaching makes adopted shows and movies AnimeArr's own. Sonarr and Radarr keep their records untouched as your backup; AnimeArr never asks them anything about these again.",
+    "Detaching makes adopted shows and movies AnimeArr's own. Sonarr and Radarr keep their records untouched as your backup; AnimeArr never asks them anything about these again, so unmonitor them there first.",
   "cut.detachSummary": "{detached} detached, {toDetach} adopted and not detached yet.",
   "cut.detachAll": "Detach all adopted shows and movies ({n})",
   "cut.detachConfirmTitle": "Detach from Sonarr/Radarr?",
   "cut.detachConfirm": "Detach",
   "cut.detachBody":
-    "AnimeArr takes these over: its own copy is live at once and its schedule, upgrades and history move with them. Nothing is sent to Sonarr or Radarr: they keep their records as they are (your backup), and AnimeArr won't read, change or remove them. Anything AnimeArr is still downloading or importing is skipped and listed.",
+    "AnimeArr takes these over: its own copy is live at once and its schedule, upgrades and history move with them. Nothing is sent to Sonarr or Radarr: they keep their records as they are (your backup), and AnimeArr won't read, change or remove them. Anything AnimeArr is still downloading or importing is skipped and listed. Before you detach, set these to unmonitored in Sonarr/Radarr (or stop them): AnimeArr can't do that for you, and if they still monitor a show they will keep grabbing it into the same folder, alongside AnimeArr.",
   "cut.detached": "Detached {n}",
   "cut.detachRefused": "{n} not detached",
   "cut.withoutArr": "AnimeArr runs without Sonarr/Radarr (never contacts them)",
