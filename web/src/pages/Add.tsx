@@ -441,7 +441,11 @@ export function RemoveNative({
             }
           }}
         >
-          <p>{t(movieId ? "add.removeMovieBody" : "add.removeBody")}</p>
+          <p>
+            {withFiles && p?.canDelete
+              ? t(movieId ? "add.removeMovieBodyFiles" : "add.removeBodyFiles")
+              : t(movieId ? "add.removeMovieBody" : "add.removeBody")}
+          </p>
           {!movieId && !!lists.data?.lists.length && <Toggle checked={exclude} onChange={setExclude} label={t("lists.removeExclude")} />}
           {p?.canDelete && (
             <Toggle

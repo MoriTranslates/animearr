@@ -1572,6 +1572,10 @@ const en = {
   "add.removeTitle": "Remove {title}?",
   "add.removeMovieBody": "AnimeArr forgets this movie (its search schedule and settings). Its files on disk are left alone.",
   "add.removeBody": "AnimeArr forgets this show (episodes, schedule, settings). Its files on disk are left alone.",
+  "add.removeMovieBodyFiles":
+    "AnimeArr forgets this movie (its search schedule and settings) and moves its folder and files to AnimeArr's recycling bin.",
+  "add.removeBodyFiles":
+    "AnimeArr forgets this show (episodes, schedule, settings) and moves its folder and files to AnimeArr's recycling bin.",
   "add.removeFiles": "Also delete this show's folder and files",
   "add.removeMovieFiles": "Also delete this movie's folder and files",
   "add.removeFilesHelp":
