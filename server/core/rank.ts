@@ -179,8 +179,16 @@ export function rankRelease(p: ParsedRelease, info: ReleaseInfo, profile: Profil
   // a group with no stat of its own: what this group did with the platform's files (e.g. kept only Spanish) is the
   // closer evidence, so the platform as a whole never outvotes it. The name's own hints below can still raise it.
   const groupKnown = !!learned && learned.total >= 3;
+  // A name that names other subtitle languages and none of the wanted ones says what it has: the platform's English stat
+  // doesn't apply to it. The parser reads a bare "ITA Hardsub" as audio "it" with no subtitle language, so a hardsub release that names a
+  // language that is neither wanted nor the original counts as naming another language too.
+  const namesOnlyOthers =
+    !subWanted.some((l) => h.subs.includes(l)) &&
+    (explicitOther.length > 0 || (h.hardsub && !h.hardsubLang && h.audio.some((a) => !subWanted.includes(a) && !original.includes(a))));
   const plat =
-    !groupKnown && p.platform && known.platformLearned && known.platformLearned.total >= PLATFORM_MIN ? known.platformLearned : null;
+    !groupKnown && !namesOnlyOthers && p.platform && known.platformLearned && known.platformLearned.total >= PLATFORM_MIN
+      ? known.platformLearned
+      : null;
   const stat = groupKnown
     ? { l: learned!, who: `${p.group ?? "no group"}${p.platform ? ` ${p.platform}` : ""}` }
     : plat

@@ -18,7 +18,7 @@ process.env.ANIMEARR_NO_LOCK = "1";
 const { cache, db } = await import("../server/system/db.js");
 const { patchSettings } = await import("../server/system/settings.js");
 const { autoSearchEpisodes } = await import("../server/search/autosearch.js");
-const { decideEpisode, LAST_RESORT_CAP } = await import("../server/library/managed.js");
+const { decideEpisode, lastResortPicks, lastResortsUsed, LAST_RESORT_CAP } = await import("../server/library/managed.js");
 const { startGrab, importAndVerify } = await import("../server/grabs/pipeline.js");
 const { invalidateIndex } = await import("../server/metadata/metadata.js");
 type SR = import("../server/search/search.js").SearchResult;
@@ -36,7 +36,7 @@ before(() => {
       "INSERT INTO series (id, tvdb_id, title, year, series_type, path, root_folder, monitored, synced_at) VALUES (90, ?, 'Last Show', 2026, 'anime', '/media/Anime/Last Show', '/media/Anime', 1, 0)",
     )
     .run(TVDB);
-  for (const ep of [1, 2, 3, 4, 5, 6])
+  for (const ep of [1, 2, 3, 4, 5, 6, 7, 8, 9])
     cache
       .prepare(
         "INSERT INTO episodes (id, series_id, season, episode, absolute, title, monitored, has_file, air_utc, runtime) VALUES (?, 90, 1, ?, ?, ?, 1, ?, 0, 24)",
@@ -162,8 +162,10 @@ test("managed search: a new episode gets a day for the usual subbers before a la
     { id: 1, dryRun: false, message: "Sent" }
   )) as never;
   const now = Date.now();
+  cache.prepare("UPDATE episodes SET air_utc = ? WHERE id = 9005").run(now - 3 * 3_600_000);
   await decideEpisode(stRow(9005, "new", now - 3 * 3_600_000), now, { search: managedSearch([r("Last.Show.S01E05-GRP", [9005])]), grab });
   assert.deepEqual(sent, []);
+  cache.prepare("UPDATE episodes SET air_utc = ? WHERE id = 9005").run(now - 25 * 3_600_000);
   await decideEpisode(stRow(9005, "new", now - 25 * 3_600_000), now, { search: managedSearch([r("Last.Show.S01E05-GRP", [9005])]), grab });
   assert.deepEqual(sent, ["Last.Show.S01E05-GRP"]);
 });
@@ -240,4 +242,95 @@ test("managed search: a last-resort file without English is refused and blocklis
   };
   assert.match(note.why, /pick one by hand/);
   assert.equal(JSON.parse(note.detail).needsLook, true);
+});
+
+// ---------------------------------------------------------------- review fixes (2026-11-04)
+
+const setAir = (epId: number, air: number | null) => cache.prepare("UPDATE episodes SET air_utc = ? WHERE id = ?").run(air, epId);
+
+test("⚡: the day for the usual subbers applies here too; an unknown air time counts as not yet eligible", async () => {
+  const EP = 9006;
+  const now = Date.now();
+  const only = (ids: number[]) => [r("Last.Show.S01E06.1080p.WEB-DL-GRP", ids)];
+  for (const [air, grabs] of [
+    [now - 3 * 3_600_000, 0],
+    [null, 0],
+    [now + 3_600_000, 0],
+    [now - 25 * 3_600_000, 1],
+  ] as const) {
+    setAir(EP, air);
+    const { d, grabbed } = autoDeps(only);
+    await autoSearchEpisodes(TVDB, [EP], d);
+    assert.equal(grabbed.length, grabs, `air time ${air}`);
+  }
+});
+
+test("managed search: an unknown air time in the search row counts as not yet eligible, not as aired in 1970", async () => {
+  const sent: string[] = [];
+  const grab = (async (req: { candidate: { title: string } }) => (
+    sent.push(req.candidate.title),
+    { id: 1, dryRun: false, message: "Sent" }
+  )) as never;
+  const now = Date.now();
+  setAir(9006, null);
+  const row = { ...stRow(9006, "new", 0), air_utc: null } as never;
+  await decideEpisode(row, now, { search: managedSearch([r("Last.Show.S01E06-GRP", [9006])]), grab });
+  assert.deepEqual(sent, []);
+});
+
+/** Pipeline deps whose download client can be switched off: a refused send leaves a failed grab row that never reached it. */
+function flakyClient() {
+  const flaky = { down: true };
+  const pdeps = {
+    clients: {
+      addNzb: async () => ({ client: "sabnzbd", ref: "x" }),
+      addTorrent: async (_f: unknown, title: string) => {
+        if (flaky.down) throw new Error("connection refused");
+        return { client: "qbittorrent", ref: `h-${title}` };
+      },
+      remove: async () => undefined,
+      status: async () => ({ state: "downloading", progress: 0.1, path: "" }),
+    },
+    fetchRelease: async () => ({ data: Buffer.from("d8:announce0:e"), filename: "x.torrent" }),
+    sleep: async () => undefined,
+    refreshSeries: async () => undefined,
+    cleanup: async () => null,
+  } as unknown as PDeps;
+  return { flaky, grab: ((req: Parameters<typeof startGrab>[0]) => startGrab(req, pdeps)) as typeof startGrab };
+}
+
+test("send failures (client down) don't use up the cap: once it answers again a last resort is still allowed", async () => {
+  const EP = 9007;
+  const names = [1, 2, 3, 4].map((n) => `Last.Show.S01E07.1080p.WEB-DL-SND${n}`);
+  const { flaky, grab } = flakyClient();
+  const results = () => names.map((n) => r(n, [EP]));
+  setAir(EP, 0);
+  await decideEpisode(stRow(EP, "backlog", 0), Date.now(), { search: managedSearch(results()), grab });
+  const rows = db.prepare("SELECT state, client FROM grabs WHERE episode_ids = ?").all(`[${EP}]`) as {
+    state: string;
+    client: string | null;
+  }[];
+  assert.ok(rows.length >= LAST_RESORT_CAP, `${rows.length} send attempts`);
+  assert.ok(rows.every((x) => x.state === "failed" && x.client === null));
+  assert.equal(lastResortsUsed(EP), 0, "nothing reached the client");
+  flaky.down = false;
+  await decideEpisode(stRow(EP, "backlog", 0), Date.now(), { search: managedSearch(results()), grab });
+  assert.ok(
+    db.prepare("SELECT 1 FROM grabs WHERE state = 'downloading' AND episode_ids = ?").get(`[${EP}]`),
+    "sent after the client recovered",
+  );
+  assert.equal(lastResortsUsed(EP), 1);
+});
+
+test("a last resort covers exactly the one target episode: a season pack of unknown language is never picked", () => {
+  const EP = 9008;
+  setAir(EP, 0);
+  const pack = r("Last.Show.S01.1080p.WEB-DL-PACK", [9001, 9002, 9003, 9004, 9005, 9006, EP, 9009]);
+  const single = r("Last.Show.S01E08.1080p.WEB-DL-ONE", [EP], { p: 0.35 });
+  const both = lastResortPicks([{ ...pack, rank: { ...pack.rank, langProb: 0.4 } }, single], TVDB, 1, EP);
+  assert.deepEqual(
+    both.picks.map((x) => x.title),
+    [single.title],
+  );
+  assert.deepEqual(lastResortPicks([pack], TVDB, 1, EP).picks, []);
 });

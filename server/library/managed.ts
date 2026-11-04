@@ -309,12 +309,15 @@ export const LAST_RESORT_TAG = "Last resort";
 /** A new episode gets a last resort only this long after it aired: the usual subbers post within hours. */
 export const LAST_RESORT_AFTER_MS = 24 * 3_600_000;
 
-/** Last-resort grabs AnimeArr already sent for an episode (dry-run ones downloaded nothing and don't count). */
+/**
+ * Last-resort grabs that actually reached a download client for an episode. Dry-run rows downloaded nothing, and a
+ * send that failed (client down, indexer link dead) never set the client on its row: neither uses up the cap.
+ */
 export function lastResortsUsed(episodeId: number) {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND why LIKE ? AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?)",
+        "SELECT COUNT(*) AS n FROM grabs WHERE dry_run = 0 AND client IS NOT NULL AND why LIKE ? AND EXISTS (SELECT 1 FROM json_each(grabs.episode_ids) WHERE value = ?)",
       )
       .get(`${LAST_RESORT_TAG}:%`, episodeId) as { n: number }
   ).n;
@@ -335,13 +338,28 @@ export function lastResortPicks(
   tvdbId: number,
   season: number | null,
   episodeId: number,
+  opts: { now?: number; airUtc?: number | null; skipWait?: boolean } = {},
 ): { picks: SearchResult[]; capped: string | null } {
-  const has = cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(episodeId) as { has_file: number } | undefined;
+  const has = cache.prepare("SELECT has_file, air_utc FROM episodes WHERE id = ?").get(episodeId) as
+    { has_file: number; air_utc: number | null } | undefined;
   const mode = profileFor(tvdbId).watchMode ?? "sub";
   if (!has || has.has_file || (mode !== "sub" && mode !== "either")) return { picks: [], capped: null };
+  // A new episode first gets a day for the usual subbers (not a backlog one). The episode's current air time wins over
+  // a stale copy; an unknown one is "not yet", never "aired long ago".
+  if (!opts.skipWait) {
+    const air = has.air_utc ?? opts.airUtc ?? null;
+    if (air === null || air + LAST_RESORT_AFTER_MS > (opts.now ?? Date.now())) return { picks: [], capped: null };
+  }
   const fits = pickable(tvdbId, season);
   const unknown = results
-    .filter((r) => fits(r) && r.rank.langProb < 0.5 && r.rank.langProb >= SUB_UNKNOWN - 0.001)
+    .filter(
+      (r) =>
+        fits(r) &&
+        r.episodeIds.length === 1 &&
+        r.episodeIds[0] === episodeId &&
+        r.rank.langProb < 0.5 &&
+        r.rank.langProb >= SUB_UNKNOWN - 0.001,
+    )
     .map((r, i) => ({ r, i }))
     .sort((a, b) => b.r.rank.langProb - a.r.rank.langProb || a.i - b.i)
     .map(({ r }) => ({
@@ -460,9 +478,9 @@ export async function decideEpisode(st: StateRow, now = Date.now(), deps = { sea
   // Nothing passes, but the episode has no file at all: a release of unknown language beats none (the subtitle check
   // decides). Never for a wrong-language replacement, and a new episode first gets a day for the usual subbers.
   const last =
-    st.state === "replace" || (!backlog && (st.air_utc ?? 0) + LAST_RESORT_AFTER_MS > now)
+    st.state === "replace"
       ? null
-      : lastResortPicks(res.results, st.tvdb_id, season, st.episode_id);
+      : lastResortPicks(res.results, st.tvdb_id, season, st.episode_id, { now, airUtc: st.air_utc, skipWait: backlog });
   const lr = (last?.picks ?? []).filter((r) => delayLeftMin(r) === 0);
   if (lr.length) {
     const out = await deps.grab({

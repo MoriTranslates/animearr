@@ -145,3 +145,13 @@ test("a rebuild keeps the per-group rows exactly as before (same keys and counts
     ],
   );
 });
+
+test("a name that explicitly names other subtitle languages (hardsub too) gets no boost from the platform's English stat", () => {
+  files(20, (i) => `[SubsPlease] Show ${i} - 01 (1080p) [CR WEB-DL]`, "en", "SubsPlease");
+  backfillLearning();
+  const name = "Show - 05 [CR WEB 1080p] [ITA Hardsub]";
+  assert.equal(parseRelease(name).platform, "CR");
+  const r = rankOf(name);
+  assert.ok(r.langProb < 0.5, `P(en) ${r.langProb}`);
+  assert.doesNotMatch(r.langSource, /in your library/);
+});
