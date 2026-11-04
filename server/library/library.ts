@@ -308,12 +308,13 @@ const repeatedShort = new Map<number, { length: number; count: number }>();
 const SHORT_REPEATS_APPLY = 3;
 
 /**
- * Sonarr file ids of a managed show whose file is surely not on disk (listings are read once per folder, async).
+ * Sonarr file ids of a show whose file is surely not on disk (listings are read once per folder, async). Every synced
+ * show is checked: AnimeArr's episode delete works on managed and unmanaged shows alike, and Sonarr isn't told.
  * A folder that can't be listed, is empty (maybe an unmounted share) or is missing is decided by fileSurelyGone.
  */
-async function goneFileIds(seriesId: number, files: { id: number; path: string }[]): Promise<Set<number>> {
+async function goneFileIds(files: { id: number; path: string }[]): Promise<Set<number>> {
   const gone = new Set<number>();
-  if (!files.length || !db.prepare("SELECT 1 FROM managed WHERE series_id = ?").get(seriesId)) return gone;
+  if (!files.length) return gone;
   const listings = new Map<string, Promise<Set<string> | null>>();
   const list = (dir: string) => {
     let p = listings.get(dir);
@@ -351,12 +352,12 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
     throw new Error("Sonarr's episode list came back malformed; kept the cached episodes");
   const short = shortEpisodeList(seriesId, eps);
   if (short) throw new Error(`Sonarr's episode list is short (${short}); kept the cached episodes, read again on the next sync`);
-  // AnimeArr's own delete moves the file to its bin; Sonarr lists it until its next rescan. For a managed show a file
-  // that is surely gone from disk is never accepted, so its episode stays missing. "Can't tell" keeps Sonarr's answer.
-  const gone = await goneFileIds(seriesId, files);
+  // AnimeArr's own delete moves the file to its bin; Sonarr lists it until its next rescan. A file that is surely gone
+  // from disk is never accepted, so its episode stays missing. "Can't tell" keeps Sonarr's answer.
+  const gone = await goneFileIds(files);
   if (gone.size) {
     files = files.filter((f) => !gone.has(f.id));
-    for (const e of eps) if (e.episodeFileId && gone.has(e.episodeFileId)) (e.hasFile = false), (e.episodeFileId = undefined);
+    for (const e of eps) if (e.episodeFileId && gone.has(e.episodeFileId)) ((e.hasFile = false), (e.episodeFileId = undefined));
   }
   tx(cache, () => {
     // Forgotten while Sonarr was answering (a show dropped and removed meanwhile): its episodes don't come back.

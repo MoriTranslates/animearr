@@ -1,10 +1,11 @@
 /**
  * Sonarr's file list is only a backup record and lags behind AnimeArr's own delete: until Sonarr rescans, it still
  * lists a file AnimeArr moved to its bin. The sync (refreshSeriesEpisodes) must not mark that episode "have" again.
- * A Sonarr-listed file that isn't on disk is never accepted for a managed show; one that exists still is.
+ * A Sonarr-listed file that isn't on disk is never accepted for any synced show; one that exists still is.
  *
  * Failure modes, one test each: deleted then synced with Sonarr still listing it, a real file, a never-there file
- * (while a neighbour exists), an unmounted/empty folder (can't tell: kept), an unmanaged show (untouched).
+ * (while a neighbour exists), an unmounted/empty folder (can't tell: kept), an unmanaged show (same check: AnimeArr's
+ * episode delete works on unmanaged Sonarr shows too, so their deletes must not come back either).
  */
 import { test, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -72,9 +73,11 @@ function seed(managed = true) {
       "INSERT INTO series (id, tvdb_id, title, path, root_folder, monitored, series_type, synced_at) VALUES (?, ?, 'Sync Show', ?, '/media/Anime', 1, 'anime', 0)",
     )
     .run(SID, TVDB, SHOW);
-  if (managed) db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, 'Sync Show', 0, 0)").run(TVDB, SID);
+  if (managed)
+    db.prepare("INSERT INTO managed (tvdb_id, series_id, title, dry_run, since) VALUES (?, ?, 'Sync Show', 0, 0)").run(TVDB, SID);
 }
-const have = (id: number) => (cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
+const have = (id: number) =>
+  (cache.prepare("SELECT has_file FROM episodes WHERE id = ?").get(id) as { has_file: number } | undefined)?.has_file;
 const fileRow = (id: number) => !!cache.prepare("SELECT 1 FROM files WHERE id = ?").get(id);
 
 beforeEach(() => {
@@ -142,10 +145,11 @@ test("can't tell (the show's folder is an unmounted, empty share): Sonarr's answ
   assert.equal(have(3202), 1);
 });
 
-test("a show AnimeArr doesn't manage keeps Sonarr's answer untouched", async () => {
+test("a show AnimeArr doesn't manage gets the same check: AnimeArr's delete works on it, so a gone file stays gone", async () => {
   seed(false);
   write(local(F2), "video");
   await refreshSeriesEpisodes(SID);
-  assert.equal(have(3201), 1);
-  assert.equal(fileRow(3301), true);
+  assert.equal(have(3201), 0);
+  assert.equal(fileRow(3301), false);
+  assert.equal(have(3202), 1);
 });
