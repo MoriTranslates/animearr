@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import { CONFIG_DIR, db, dbState } from "./db.js";
 import { rootRefusal } from "./roots.js";
@@ -380,7 +382,8 @@ export interface Settings {
   /** URL base for a reverse proxy on a sub-path ("/animearr"); the URL_BASE env wins; needs a restart. */
   urlBase: string;
   ui: { language: string; /** Text size for devices that haven't picked their own (sm/md/lg/xl). */ textScale?: string };
-  auth: { username: string; passwordHash: string; bypassLocal: boolean };
+  /** sessionGen: session tokens carry it and only the current one is valid; logout bumps it (signs out everywhere). */
+  auth: { username: string; passwordHash: string; bypassLocal: boolean; sessionGen: number };
   /** Admin API key, accepted only in the X-Api-Key header. */
   apiKey: string;
   secret: string;
@@ -509,7 +512,7 @@ const DEFAULTS: Settings = {
   externalUrl: "",
   urlBase: "",
   ui: { language: "en", textScale: "md" },
-  auth: { username: "", passwordHash: "", bypassLocal: false },
+  auth: { username: "", passwordHash: "", bypassLocal: false, sessionGen: 0 },
   apiKey: "",
   secret: "",
 };
@@ -797,6 +800,100 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
 }
 
 let cache: Settings | null = null;
+/** For tests: the next getSettings() reads the database again (as after a restart). */
+export function forgetSettingsCache() {
+  cache = null;
+}
+
+/*
+ * A backup restore brings back the backup's settings, including the signing secret and the session generation, so a
+ * session ended by "Log out" after the backup was taken (say, to kill a stolen cookie) would be valid again (blind
+ * review A9). Before a restore the restore routes write a floor (the current generation + 1) to a small file; the next
+ * settings load raises the restored generation past both the floor and the backup's own generation, which ends every
+ * session from before the restore. The floor never lowers protection (blind review round 3, L2): when the live
+ * generation can't be read (a corrupt database), the file holds END_ALL instead of a number, and the next load also
+ * replaces the signing secret, so no older token can be valid whatever generation it carries.
+ */
+const SESSION_FLOOR_FILE = path.join(CONFIG_DIR, "session-floor");
+const END_ALL = "end-all";
+/** The pending floor: a generation, END_ALL, or null when no restore is pending. */
+function sessionFloor(): number | typeof END_ALL | null {
+  try {
+    const text = fs.readFileSync(SESSION_FLOOR_FILE, "utf8").trim();
+    // Fail safe (blind review R8): a file that exists but isn't a whole number (empty, cut short, garbage, or END_ALL)
+    // means a restore was under way, so end every session rather than let old ones back in.
+    if (!/^\d{1,15}$/.test(text)) return END_ALL;
+    return Number(text);
+  } catch (e) {
+    // No floor file is the normal case (no restore pending); any other read error is reported, not swallowed.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
+}
+/** The live database's session generation, or null when it can't be known (a corrupt database whose row won't read). */
+function liveSessionGen(): number | null {
+  if (!dbState.corrupt) return Number(getSettings().auth.sessionGen) || 0;
+  // getSettings() falls back to the defaults (generation 0) on a corrupt database, so read the row itself.
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'settings'").get() as { value: string } | undefined;
+    if (!row) return null;
+    const gen = Number((JSON.parse(open(row.value)) as { auth?: { sessionGen?: unknown } }).auth?.sessionGen);
+    return Number.isSafeInteger(gen) && gen >= 0 ? gen : null;
+  } catch {
+    // Harmless to drop: an unreadable row is exactly the "unknown" answer, and the caller then writes END_ALL (the
+    // strictest floor), so the error can only make the restore end more sessions, never fewer.
+    return null;
+  }
+}
+/**
+ * Makes a finished rename durable before the next step (blind review round 3, L3): without it, after a power cut the
+ * later database rename can be on disk while the floor's isn't. Skipped on Windows: Node can't open a folder there
+ * (fs.openSync on a directory fails), and NTFS writes renames to its metadata journal in order, so the floor's rename
+ * can't land after the database rename that follows it.
+ */
+function flushFolder(dir: string) {
+  if (process.platform === "win32") return;
+  const fd = fs.openSync(dir, "r");
+  try {
+    fs.fsyncSync(fd);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    // Harmless to drop only these: the filesystem can't sync a folder at all (some network and FUSE mounts), so the
+    // rename is already as durable as it can make it. Anything else (an I/O error) stops the restore.
+    if (code !== "EINVAL" && code !== "ENOTSUP") throw e;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+/** Call right before restoring a backup. Throws if the floor can't be written (the restore must then not go ahead). */
+export function keepSessionsEndedAcrossRestore() {
+  const gen = liveSessionGen();
+  const pending = sessionFloor();
+  // Never lower: a pending END_ALL stays, and a number only goes up.
+  const floor = gen === null || pending === END_ALL ? END_ALL : String(Math.max(pending ?? 0, gen) + 1);
+  // Temp file in the same folder, flushed, then renamed over the old floor: a crash leaves the old or the new one whole.
+  // The folder is flushed too, so the floor is on disk before the database swap that follows.
+  const tmp = `${SESSION_FLOOR_FILE}.tmp`;
+  try {
+    const fd = fs.openSync(tmp, "w");
+    try {
+      fs.writeFileSync(fd, floor);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, SESSION_FLOOR_FILE);
+    // If this throws the restore stops; the floor already written only signs everyone out at the next start (safe).
+    flushFolder(CONFIG_DIR);
+  } catch (e) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Only the leftover temp file; the original error below is what matters, and the next write overwrites it.
+    }
+    throw e;
+  }
+}
 
 export function getSettings(): Settings {
   if (cache) return cache;
@@ -839,7 +936,18 @@ export function getSettings(): Settings {
   if (!s.profiles.some((p) => p.id === s.defaultProfileId)) s = { ...s, defaultProfileId: s.profiles[0].id };
   const missing = !s.apiKey || !s.secret || migrated;
   if (missing) s = { ...s, apiKey: s.apiKey || rand(16), secret: s.secret || rand(32) };
-  if (missing && !dbState.corrupt) write(s);
+  // After a restore: sessions ended before it stay ended (see keepSessionsEndedAcrossRestore).
+  // The new generation is past the floor (the live one before the restore) and past the restored one, so no token of
+  // either can match; END_ALL (live generation unknown) also replaces the signing secret, which ends every token.
+  const floor = sessionFloor();
+  const raised = floor !== null;
+  if (floor !== null) {
+    const sessionGen = Math.max(floor === END_ALL ? 0 : floor, (Number(s.auth.sessionGen) || 0) + 1);
+    s = { ...s, ...(floor === END_ALL ? { secret: rand(32) } : {}), auth: { ...s.auth, sessionGen } };
+  }
+  if ((missing || raised) && !dbState.corrupt) write(s);
+  // Only once it is saved; on a database that can't be written the floor file stays and applies at the next load.
+  if (raised && !dbState.corrupt) fs.rmSync(SESSION_FLOOR_FILE, { force: true });
   cache = s;
   return s;
 }
@@ -917,6 +1025,12 @@ export function updateSettings(patch: unknown) {
 
 export function setBypassLocal(on: boolean) {
   write({ ...getSettings(), auth: { ...getSettings().auth, bypassLocal: on } });
+}
+
+/** Ends every browser session (logout): tokens carry the generation, and only the current one is accepted. */
+export function endAllSessions() {
+  const s = getSettings();
+  write({ ...s, auth: { ...s.auth, sessionGen: (Number(s.auth.sessionGen) || 0) + 1 } });
 }
 
 /** Internal update that skips sanitising. */

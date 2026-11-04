@@ -2,14 +2,24 @@
 import { wizardState } from "../system/wizard.js";
 import { airingShowCount } from "../library/home.js";
 import { downloadsStatus } from "../grabs/downloads.js";
-import { authState, COOKIE, csrfOk, defaultLoginRefusal, loginAllowed, loginSucceeded } from "../system/auth.js";
+import {
+  authState,
+  checkPasswordLimited,
+  COOKIE,
+  csrfOk,
+  defaultLoginRefusal,
+  DEVICE_COOKIE,
+  loginAllowed,
+  loginSucceeded,
+  validDevice,
+} from "../system/auth.js";
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
 
 import {
-  checkPassword,
   DEFAULT_LOGIN,
+  endAllSessions,
   getSettings,
   usingDefaultPassword,
   patchSettings,
@@ -19,7 +29,7 @@ import {
 } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
-import { fail, writable, sessionCookie, webBuild } from "./common.js";
+import { deviceCookie, fail, writable, sessionCookie, webBuild } from "./common.js";
 
 export function registerAccountRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- status & account
@@ -33,6 +43,9 @@ export function registerAccountRoutes(app: FastifyInstance) {
     // The login screen tells home-network visitors the default login while it's still in use (it only works from home).
     if (!a.ok)
       return (await usingDefaultPassword()) && !defaultLoginRefusal(req, true) ? { ...base, defaultLogin: DEFAULT_LOGIN.username } : base;
+    // No device cookie is issued here, even to a session that lacks one (blind review round 3, H1): a session alone
+    // could mint unlimited devices that guess outside the global budget and outlive logout. Only a correct password
+    // (login or password change) issues one. A browser signed in before device cookies existed gets one at its next login.
     return {
       ...base,
       via: a.via,
@@ -105,32 +118,63 @@ export function registerAccountRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post<{ Body: { username?: string; password?: string } }>("/api/auth/login", { config: { setup: true } }, async (req, reply) => {
-    if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
-    if (!loginAllowed(req.ip, String(req.body?.username ?? ""))) throw fail("Too many attempts, wait a few seconds and try again", 429);
-    const a = getSettings().auth;
-    const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
-    const okPass = await checkPassword(String(req.body?.password ?? ""), a.passwordHash || "00:00");
-    if (!okUser || !okPass) throw fail("Wrong username or password", 401);
-    // Safety rule: the default password only works from the home network, until it's changed.
-    const refused = defaultLoginRefusal(req, await usingDefaultPassword());
-    if (refused) throw fail(refused, 403);
-    loginSucceeded(req.ip, a.username);
-    sessionCookie(req, reply, a.username);
-    return { ok: true };
-  });
+  // Reachable without a login, so it reads at most a few KB (a username and a password).
+  app.post<{ Body: { username?: string; password?: string } }>(
+    "/api/auth/login",
+    { config: { setup: true }, bodyLimit: 8 * 1024 },
+    async (req, reply) => {
+      if (!csrfOk(req)) throw fail("Cross-site request blocked", 403);
+      // A browser the owner logged in with before has its own throttle entry and password lane (review B4).
+      const device = validDevice(req.cookies[DEVICE_COOKIE]);
+      if (!loginAllowed(req.ip, String(req.body?.username ?? ""), device))
+        throw fail("Too many attempts, wait a few seconds and try again", 429);
+      const a = getSettings().auth;
+      const okUser = safeEqual(String(req.body?.username ?? ""), a.username);
+      // A login that waited so long its browser hung up isn't checked at all (blind review R6).
+      const gone = () => req.raw.socket?.destroyed === true;
+      const okPass = await checkPasswordLimited(String(req.body?.password ?? ""), a.passwordHash || "00:00", req.ip, { device, gone });
+      if (!okUser || !okPass) throw fail("Wrong username or password", 401);
+      // Safety rule: the default password only works from the home network, until it's changed.
+      const refused = defaultLoginRefusal(req, await usingDefaultPassword());
+      if (refused) throw fail(refused, 403);
+      loginSucceeded(req.ip, a.username, device);
+      sessionCookie(req, reply, a.username);
+      deviceCookie(req, reply, device);
+      return { ok: true };
+    },
+  );
 
-  app.post("/api/auth/logout", async (_req, reply) => {
+  app.post("/api/auth/logout", async (req, reply) => {
     reply.clearCookie(COOKIE, { path: "/" });
-    return { ok: true };
+    // Session tokens are signed, not stored, so a logout ends them all: a copied token stops working too (review L1).
+    // Only a browser session does this; the API key or the home-network bypass can't sign the owner out.
+    if (authState(req).via !== "session") return { ok: true, otherSessionsEnded: false };
+    try {
+      endAllSessions();
+    } catch (e) {
+      // The database can't be written (flagged corrupt, read-only): this browser is still logged out (its cookie is
+      // cleared above), but other sessions stay valid. Not swallowed: logged, and said in the answer (blind review A11).
+      req.log.error({ err: e }, "Logout couldn't end the other sessions");
+      return {
+        ok: true,
+        otherSessionsEnded: false,
+        warning: `Logged out here, but other browsers stay logged in: the database can't be written (${(e as Error).message}).`,
+      };
+    }
+    return { ok: true, otherSessionsEnded: true };
   });
 
   app.put<{ Body: { currentPassword?: string; username?: string; password?: string } }>("/api/auth/account", async (req, reply) => {
     writable();
     const a = getSettings().auth;
-    if (!loginAllowed(req.ip, a.username)) throw fail("Too many attempts, wait a few seconds and try again", 429);
-    if (!(await checkPassword(String(req.body?.currentPassword ?? ""), a.passwordHash))) throw fail("Current password is wrong", 403);
-    loginSucceeded(req.ip, a.username);
+    // Signed in already: throttled on the device, or on one "signed-in" entry, never on the anonymous real-name budget
+    // a login flood can use up (review B7, R1). A stolen session guessing the current password still backs off there.
+    const device = validDevice(req.cookies[DEVICE_COOKIE]);
+    if (!loginAllowed(req.ip, a.username, device ?? "signed-in")) throw fail("Too many attempts, wait a few seconds and try again", 429);
+    // Signed in already: never queued behind anonymous logins (review B7).
+    if (!(await checkPasswordLimited(String(req.body?.currentPassword ?? ""), a.passwordHash, req.ip, { signedIn: true })))
+      throw fail("Current password is wrong", 403);
+    loginSucceeded(req.ip, a.username, device ?? "signed-in"); // clear the lane loginAllowed counted it in
     const username = String(req.body?.username ?? a.username).trim() || a.username;
     const password = String(req.body?.password ?? "");
     if (password && password.length < 8) throw fail("New password must be at least 8 characters");
@@ -138,6 +182,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
     if (password) await setAccount(username, password);
     else patchSettings((s) => ({ ...s, auth: { ...s.auth, username } }));
     sessionCookie(req, reply, username);
+    deviceCookie(req, reply, device); // a new password voids old device cookies; this browser stays known
     return { ok: true };
   });
 

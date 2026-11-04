@@ -5,18 +5,21 @@ import { t } from "./i18n";
 import type { Tag } from "./rules";
 import { ErrorText, Modal, NumberInput, Spinner, Toggle, useLoad, useToast } from "./ui";
 
-/** The calendar's iCal link: built from this address and the API key (calendar apps can't log in), with Sonarr's options. */
+/**
+ * The calendar's iCal link: built from this address and the feed's own read-only token (calendar apps can't log in;
+ * the API key never goes into the link), with Sonarr's options.
+ */
 export function IcalLink({ onClose }: { onClose: () => void }) {
   const toast = useToast();
-  const key = useLoad(() => api<{ apiKey: string | null }>("/settings/apikey"), []);
+  const key = useLoad(() => api<{ token: string }>("/calendar/ical-token"), []);
   const tags = useLoad(() => api<{ tags: Tag[] }>("/tags"), []);
   const [past, setPast] = useState(7);
   const [future, setFuture] = useState(28);
   const [unmonitored, setUnmonitored] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
-  const k = key.data?.apiKey;
+  const k = key.data?.token;
   const q = new URLSearchParams();
-  if (k) q.set("apikey", k);
+  if (k) q.set("token", k);
   if (past !== 7) q.set("pastDays", String(past));
   if (future !== 28) q.set("futureDays", String(future));
   if (unmonitored) q.set("unmonitored", "true");
@@ -27,7 +30,7 @@ export function IcalLink({ onClose }: { onClose: () => void }) {
       <div className="stack">
         <p className="muted small">{t("ical.help")}</p>
         {!key.data && !key.error && <Spinner label={t("app.loading")} />}
-        {key.data && k === null && <ErrorText msg={t("ical.loginNeeded")} />}
+        {key.error && <ErrorText msg={key.error} />}
         {k && (
           <>
             <div className="form">

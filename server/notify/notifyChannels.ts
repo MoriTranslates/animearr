@@ -174,17 +174,22 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
       const why = c.url ? badUrl(c.url) : null;
       if (why) throw refuse(`${c.name}: ${why}`);
       c.method = pick(r.method, ["POST", "PUT"] as const, "POST");
+      // Saved header values only follow the same address: pointed elsewhere, they have to be typed again (otherwise a
+      // changed URL plus "Test" would send the stored Authorization header to the new host). Left masked, the save is
+      // refused rather than the header silently dropped (blind review A6), like the other services' API keys.
+      const sameDest = !!old && c.url === old.url;
       c.headers = (Array.isArray(r.headers) ? r.headers : [])
         .slice(0, 10)
         .map((h) => {
           const x = (h ?? {}) as Record<string, unknown>;
           const name = str(x.name, 80);
-          return {
-            name,
-            value: isMasked(x.value)
-              ? (old?.headers.find((o) => o.name.toLowerCase() === name.toLowerCase())?.value ?? "")
-              : str(x.value, 1000),
-          };
+          if (!isMasked(x.value)) return { name, value: str(x.value, 1000) };
+          const saved = old?.headers.find((o) => o.name.toLowerCase() === name.toLowerCase())?.value ?? "";
+          if (saved && !sameDest) throw refuse(`${c.name}: enter the ${name} header again for the new address`);
+          // Masked but nothing saved under this name (renamed, or a copied channel): refuse rather than drop the header
+          // silently (blind review R3). A row whose name was cleared is a removal and is dropped below.
+          if (!saved && name) throw refuse(`${c.name}: enter the ${name} header again`);
+          return { name, value: saved };
         })
         .filter((h) => /^[\w-]+$/.test(h.name) && h.value !== "" && !/^(host|content-length|transfer-encoding|connection)$/i.test(h.name));
     } else if (type === "telegram") {
@@ -205,6 +210,14 @@ export function cleanChannels(input: unknown, saved: NotifyChannel[]): NotifyCha
       c.port = Math.min(65535, Math.max(1, Math.round(Number(r.port) || 587)));
       c.secure = pick(r.secure, ["none", "starttls", "tls"] as const, "starttls");
       c.username = str(r.username, 200);
+      // The saved password only follows the same server and port at the same or a safer security setting (blind review
+      // A7: an upgrade is fine): a new host, or a downgrade towards plain text, with the password left masked would
+      // hand it to whoever answers there. Then the save is refused, not the password silently dropped (A6).
+      const safety = { none: 0, starttls: 1, tls: 2 } as const;
+      const sameServer =
+        !!old && c.host.toLowerCase() === old.host.toLowerCase() && c.port === old.port && safety[c.secure] >= safety[old.secure];
+      if (isMasked(r.password) && old?.password && !sameServer)
+        throw refuse(`${c.name}: enter the password again for the new server, port or security setting`);
       c.password = keep(r.password, old?.password ?? "");
       c.from = str(r.from, 200);
       c.to = str(r.to, 1000);

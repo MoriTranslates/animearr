@@ -1,9 +1,10 @@
 /**
  * The calendar as an iCalendar (RFC 5545) feed, the way Sonarr offers one: episodes at their air time, anime movies on
- * their release dates. Calendar apps can't log in, so the route (ical.ts registerIcal) takes the API key as ?apikey=.
+ * their release dates. Calendar apps can't log in, so the route (registerIcal) takes its own read-only ?token=.
  */
+import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { authState } from "../system/auth.js";
+import { getSettings, safeEqual } from "../system/settings.js";
 import { cache, db } from "../system/db.js";
 import { calendar } from "../library/episodes.js";
 import { movieCalendar } from "../library/movies.js";
@@ -151,11 +152,26 @@ export function buildIcal(opts: IcalOptions, now = Date.now()): string {
   return lines.map(icalFold).join("\r\n") + "\r\n";
 }
 
-/** The feed route. It sits outside /api (so the login guard doesn't see it) and checks the API key itself: ?apikey= or X-Api-Key. */
+/**
+ * The feed's own read-only token (?token=). Calendar apps store the link, so it must not carry the API key, and the
+ * token opens nothing but this feed. It is derived from the API key (one-way), so making a new API key in Settings →
+ * Security also replaces it: that is how a shared calendar link is revoked.
+ */
+export function icalToken() {
+  return crypto.createHmac("sha256", getSettings().apiKey).update("animearr-ical-feed").digest("base64url").slice(0, 32);
+}
+
+/** The feed route. It sits outside /api (so the login guard doesn't see it) and checks the calendar token itself. */
 export function registerIcal(app: FastifyInstance) {
+  // For the calendar dialog: any logged-in caller may read the token (it can do less than they can).
+  app.get("/api/calendar/ical-token", async () => ({ token: icalToken() }));
   app.get<{ Querystring: Record<string, string> }>("/feed/calendar/animearr.ics", async (req, reply) => {
-    if (authState(req).via !== "apikey")
-      return reply.code(401).type("text/plain; charset=utf-8").send("API key required: add ?apikey=… (Settings → Security)");
+    const token = req.query.token;
+    if (typeof token !== "string" || !safeEqual(token, icalToken()))
+      return reply
+        .code(401)
+        .type("text/plain; charset=utf-8")
+        .send("This calendar link is missing its token or is out of date: copy a new one from Calendar → iCal link in AnimeArr.");
     return reply
       .header("Cache-Control", "no-store")
       .header("Content-Disposition", 'inline; filename="animearr.ics"')

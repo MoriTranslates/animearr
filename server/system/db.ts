@@ -190,55 +190,40 @@ export function listBackups() {
     .sort((a, b) => b.at - a.at);
 }
 
-/** Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind. */
-export function backupNow(kind: BackupKind, label = ""): string | null {
+/** Removes the oldest copies of one kind beyond how many are kept, never `keep` (a backup just restored). */
+export function pruneBackups(kind: BackupKind, keep?: string) {
+  for (const old of listBackups()
+    .filter((b) => b.kind === kind && b.name !== keep)
+    .slice(KEEP[kind]))
+    fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+}
+
+/**
+ * Consistent copy via VACUUM INTO (safe while the app runs). Prunes old copies of the same kind unless `prune` is false:
+ * safety copies are pruned only after a restore has succeeded (rounds 6 and 7, see pruneSafetyCopies).
+ */
+export function backupNow(kind: BackupKind, label = "", prune = true): string | null {
   if (dbState.corrupt) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const name = `animearr-${kind}-${stamp}${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`;
   const file = path.join(BACKUP_DIR, name);
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  for (const old of listBackups()
-    .filter((b) => b.kind === kind)
-    .slice(KEEP[kind]))
-    fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+  if (prune) pruneBackups(kind);
   return name;
 }
 
-/** Replaces animearr.db with a backup. The process must restart afterwards (the caller exits). */
-export function restoreBackup(name: string) {
-  const b = listBackups().find((x) => x.name === name);
-  if (!b) throw new Error("Unknown backup");
-  const src = path.join(BACKUP_DIR, b.name);
-  const check = new DatabaseSync(src, { readOnly: true });
-  const r = quickCheck(check);
-  check.close();
-  if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
-  // The current database is kept first; without that copy nothing is replaced (unless it's the damaged one).
-  if (!dbState.corrupt) {
-    try {
-      backupNow("prerestore");
-    } catch (e) {
-      throw new Error(`Couldn't save a copy of the current database first (${(e as Error).message}); nothing was restored`, { cause: e });
-    }
-  }
-  // Copied next to the live file and checked there, then renamed over it in one step: a crash or a full disk mid-copy
-  // leaves the old database as it was, never a half-written or missing one.
-  const tmp = `${USER_DB}.restore-tmp`;
-  fs.rmSync(tmp, { force: true });
-  try {
-    fs.copyFileSync(src, tmp);
-    const t = new DatabaseSync(tmp, { readOnly: true });
-    const tr = quickCheck(t);
-    t.close();
-    if (tr !== "ok") throw new Error(`the copy failed its check (${tr})`);
-  } catch (e) {
-    fs.rmSync(tmp, { force: true });
-    throw new Error(`Couldn't restore ${name}: ${(e as Error).message}; nothing was changed`, { cause: e });
-  }
-  db.close();
-  for (const f of [`${USER_DB}-wal`, `${USER_DB}-shm`]) fs.rmSync(f, { force: true });
-  fs.renameSync(tmp, USER_DB);
+/**
+ * A restore that failed AFTER the live database was closed (blind review round 4, M1). The handle can't be reopened in
+ * this process, so a retry can't work: the caller must not offer one, and must restart the app so it opens whatever the
+ * folder now holds. `message` says exactly what state the folder was left in. Errors without this mark came before
+ * anything live was touched (nothing changed, a retry is fine).
+ */
+export function restoreStopped(message: string, cause: unknown) {
+  return Object.assign(new Error(message, { cause }), { statusCode: 500, restartNeeded: true as const });
 }
+export const restartNeeded = (e: unknown) => (e as { restartNeeded?: unknown } | null)?.restartNeeded === true;
+
+// Restoring a named backup lives in backupTransfer.ts (restoreBackup): it must swap secret.key with the database.
 
 // ---------------------------------------------------------------- migrations (transactional; backup first)
 

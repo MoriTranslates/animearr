@@ -91,7 +91,7 @@ export const listsStrings = {
   "ical.help":
     "Subscribe to this link in Google Calendar, Apple Calendar, Outlook or any calendar app to see episode air times and movie releases there.",
   "ical.warn":
-    "The link contains your API key. Treat it like a password: anyone with it can read your calendar and use the API. A new key (Settings → Security) stops old links working.",
+    "Anyone with this link can read your calendar (nothing else). Making a new API key (Settings → Security) also changes this link and stops old ones working.",
   "ical.pastDays": "Days back",
   "ical.futureDays": "Days ahead",
   "ical.unmonitored": "Include shows and movies that aren't monitored",
@@ -99,5 +99,4 @@ export const listsStrings = {
   "ical.copy": "Copy link",
   "ical.copied": "Link copied",
   "ical.copyFailed": "Couldn't copy; select the link and copy it by hand",
-  "ical.loginNeeded": "Log in with your password to see the link.",
 } as const;

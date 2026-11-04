@@ -144,8 +144,8 @@ Then open `http://<server>:8484`, log in, and follow the setup wizard ("I'm new"
 > proxy, a tunnel) are refused. The wizard's first step offers to change it ("Later" is fine), and a banner reminds you
 > until you do (Settings → Security). Installs that already have an account keep it.
 >
-> "Home network" is judged by the address a connection comes from (10.x, 192.168.x, private IPv6 including Tailscale,
-> so shared Tailscale nodes count too). Internet traffic that reaches AnimeArr *from* a LAN address looks local: a
+> "Home network" is judged by the address a connection comes from (10.x, 192.168.x and IPv6 link-local; private IPv6
+> such as Tailscale's only when listed in `ANIMEARR_LOCAL_NETWORKS`, see SECURITY.md). Internet traffic that reaches AnimeArr *from* a LAN address looks local: a
 > router port-forward with NAT/masquerade, or a plain TCP forwarder (nginx `stream`, HAProxy tcp mode, frp, `ssh -R`,
 > socat). So **change the password on first run**, don't port-forward AnimeArr directly, and expose it only through an
 > HTTP reverse proxy (which adds `X-Forwarded-For`) or a VPN. Details in [SECURITY.md](SECURITY.md).
@@ -168,7 +168,10 @@ same paths your download clients (and Sonarr/Radarr) use. One `/data` folder hol
 | **Raspberry Pi / ARM** | The image is multi-arch (amd64 + arm64). |
 
 Environment: `PUID`, `PGID`, `UMASK` (default 002), `TZ`, `URL_BASE` (reverse proxy on a sub-path, e.g. `/animearr`),
-`TRUST_PROXY` (your proxy's IP/CIDR, so real client IPs are seen), `ANIMEARR_LOCAL_NETWORKS` (what counts as "home"
+`TRUST_PROXY` (your proxy's IP/CIDR, e.g. `172.18.0.0/16`, so real client IPs are seen; a hop count such as `1` is
+accepted but gives no real client IPs: logs show only the proxy and everyone behind it shares one login back-off, so
+prefer the IP/CIDR form; while it is set the default login is off, so change the password first),
+`ANIMEARR_LOCAL_NETWORKS` (what counts as "home"
 for the default login and the optional no-password-at-home setting).
 
 </details>

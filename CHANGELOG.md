@@ -21,6 +21,48 @@ All notable changes, newest first. The commit history has the crew's version of 
 - **Cutover:** if Sonarr removes a show but its answer never arrives, AnimeArr finishes the switch on its next start (or
   when you switch the show again) instead of leaving it half done.
 - Service addresses refuse link-local and cloud metadata addresses in every IPv6 spelling too.
+- **The calendar link no longer contains your API key.** The iCal feed has its own read-only token that opens nothing
+  else. **Re-subscribe once:** copy the new link from Calendar → iCal link into Google, Apple or Outlook; old links with
+  `?apikey=` stop working. Making a new API key also changes the calendar link. If you shared an old calendar link,
+  make a new API key (Settings → Security), since the old one was in it.
+- **The API key only works where integrations need it.** It works for the Sonarr-compatible API (`/api/v3`) and the
+  stable automation routes in `docs/API.md` (search, grab, add, queue, calendar, tags and their reads). Everything
+  else, including settings, profiles, rules, cutover, renames, file deletes and the internal API, now needs a
+  signed-in browser. **If you script against an internal route with the API key, it now gets 403.**
+- **Notification secrets don't follow a new address.** Pointing a webhook at a new URL, or an email channel at a new
+  server, port or a less safe security setting, now asks you to type the saved header values or SMTP password again
+  (the save is refused until you do, or clear them). Switching to a safer setting (to STARTTLS or TLS) keeps it.
+- **"No password on my local network" ignores forwarded traffic with a `TRUST_PROXY` list too.** Before, setting
+  `TRUST_PROXY` to your proxy's address let any LAN device that sent `X-Forwarded-For` (a second tunnel or proxy, such
+  as cloudflared) in without a password.
+- **The login page can't be used to tie up the server.** It reads at most 8 KB per request (before, anyone could make
+  AnimeArr hold up to 256 MB in memory per request), and the record of failed logins is capped: one address trying
+  many user names, or a flood of addresses, can't grow it without limit or wipe the back-off of a real guesser.
+  IPv6 clients are counted per /64 (one home or server), so rotating through their own addresses doesn't help.
+  Junk logins can't lock you out: your own user name keeps its own back-off, password checks run a few at a time and
+  are shared fairly between addresses (one address queuing too many gets "too many attempts"), and a browser you have
+  logged in with before (a signed "known device" cookie) has its own back-off and lane, so even a flood that uses your
+  user name can't refuse it. A signed-in password change never waits behind anonymous logins. Filling the record of
+  failed logins (for example from thousands of IPv6 addresses) no longer refuses everyone new.
+- **Private IPv6 (ULA, `fd…`/`fc…`) no longer counts as your home network by default**, just like Docker's 172.16/12:
+  Docker's own IPv6 networks use it, so traffic through a Docker gateway could look local. **If you reach AnimeArr
+  over Tailscale or a ULA address** and use "No password on my local network" (or still have the default password),
+  list the range in `ANIMEARR_LOCAL_NETWORKS`, which now takes IPv6 too, e.g.
+  `ANIMEARR_LOCAL_NETWORKS=10.0.0.0/8,192.168.0.0/16,fd7a:115c:a1e0::/48`. Plain IPv4 home networks and IPv6
+  link-local are unchanged.
+- **With `TRUST_PROXY` set, the default login (captain / morebooty) is off.** A TCP forwarder or tunnel inside a
+  `TRUST_PROXY` entry passes a client's forged `X-Forwarded-For` through, and AnimeArr can't tell it from a proxy, so
+  no proxy can vouch for a home client. A refused login says how to set a password: remove `TRUST_PROXY`, restart, open
+  AnimeArr directly from a browser at home, change the password, then set `TRUST_PROXY` again. `TRUST_PROXY=0` now
+  counts as unset (before, it blocked the default login everywhere). Logins with your own password are unchanged.
+- **Logging out really ends the session.** Before, the session stayed valid for 30 days after "Log out" (only the
+  browser forgot it), so a copied session cookie kept working. Logging out now signs out **every** browser, like a
+  password change does; log in again on your other devices.
+- **Other websites can't use "No password on my local network" or your login.** With it on, a page you visited could
+  make your browser call AnimeArr (for example start an indexer search through an image link), and while logged in,
+  another app on the same address (a different port) could do the same with your session. Browser requests must now
+  come from AnimeArr's own pages, a typed address, or a script. This relies on the Fetch Metadata headers every
+  current browser sends; very old browsers (Safari before 16.4) are not covered for plain links and images.
 
 ### Fixed
 - The Sonarr-compatible API matches query names in any case (`seriesID` works like `seriesId`), and answers
@@ -113,7 +155,7 @@ All notable changes, newest first. The commit history has the crew's version of 
   shows imported through Sonarr keep Sonarr's behaviour.
 - **Release rules.** Settings → Release rules works like Sonarr's release profiles: a rule lists terms a release name
   must contain (any one of them) and terms it must not contain, plus optional preferred terms with a score. A term is
-  plain text (capitals don't matter) or a regular expression between slashes, like `/(x265|hevc)/`; a
+  plain text (capitals don't matter) or a regular expression between slashes, like `/\b(x265|hevc)\b/`; a
   regular expression that doesn't work is refused when you save. A release a rule blocks is skipped everywhere
   (searches, automatic grabs, upgrades, movies) and shown with the reason: "Blocked by release rule 'No HEVC':
   contains 'x265'". Preferred terms only nudge the order (at most 8 points), after language, quality and SeaDex, so

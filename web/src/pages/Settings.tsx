@@ -1481,7 +1481,9 @@ function System({ status }: { status: Status }) {
             className="self-start"
             onClick={async () => {
               try {
-                await api("/auth/logout", { body: {} });
+                const r = await api<{ warning?: string }>("/auth/logout", { body: {} });
+                // Rare (the database can't be written): other browsers stay signed in, so say it before leaving.
+                if (r?.warning) window.alert(r.warning);
                 location.href = withBase("/");
               } catch (e) {
                 toast((e as Error).message, true);

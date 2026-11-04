@@ -38,8 +38,8 @@ curl "http://animearr:8484/api/status?apikey=YOUR_API_KEY"
 ```
 
 The key is in AnimeArr under **Settings -> Security -> API key for other apps**. Prefer the header. The query
-parameter exists for clients that cannot set headers (calendar apps, request apps), but URLs end up in logs and browser
-history. Regenerating the key (a signed-in browser can do this on the same page) invalidates the old one immediately.
+parameter exists for clients that cannot set headers (request apps), but URLs end up in logs and browser history.
+Calendar apps use the feed's own read-only token instead (see "The iCalendar feed"). Regenerating the key (a signed-in browser can do this on the same page) invalidates the old one immediately.
 
 What you get without a valid credential:
 
@@ -51,11 +51,13 @@ What you get without a valid credential:
 
 To check that a key works, call `GET /api/status` and read `loggedIn` and `via` (`"apikey"` when your key was used).
 
-A few operations are refused when called with an API key and need a signed-in browser session (or the account password):
-regenerating the API key, turning the local-network mode on or off, backup download, upload and restore, and the cache
-rebuild. They answer `403`. In `openapi.yaml` they carry `x-refused-for-api-key: true`. (`GET /api/settings/apikey`
-answers `{ "apiKey": null }` to an API-key caller: the key is only shown to a browser session.) Likewise `POST
-/api/system/restore` and `/api/system/backup/restore-upload` always need the account password in the body.
+**What the API key can call:** the Sonarr-compatible API (`/api/v3`, see below) and the **stable** operations, the ones
+marked `*` in the endpoint index (`x-stability: stable` in `openapi.yaml`). Every other operation answers `403` to the
+API key and needs a signed-in browser session: settings, the account, profiles, rules, notification channels, indexers,
+download clients, the wizard, cutover, renames, file deletes, backups and the rest of the internal API. Operations
+marked `x-refused-for-api-key: true` in `openapi.yaml` are a few of these, called out because they change settings or
+delete files. `POST /api/system/restore` and `/api/system/backup/restore-upload` also always need the account
+password in the body.
 
 ### Browser sessions and CSRF
 
@@ -68,7 +70,7 @@ origin, use the API key from a server-side component rather than a session cooki
 ### "No password on my local network"
 
 AnimeArr has an optional setting that lets devices on the home network in without logging in. When it is on, a request
-from a private address (`10.0.0.0/8`, `192.168.0.0/16`, IPv6 ULA/link-local, or the networks listed in
+from a private address (`10.0.0.0/8`, `192.168.0.0/16`, IPv6 link-local, or exactly the IPv4/IPv6 networks listed in
 `ANIMEARR_LOCAL_NETWORKS`) is accepted without a key, as long as it did not pass through a reverse proxy and addressed
 AnimeArr by IP or a LAN name. `via` in `/api/status` then says `"local"`.
 
@@ -374,12 +376,17 @@ it. Tags also filter the iCal feed.
 Subscribe a calendar app to:
 
 ```
-http://animearr:8484/feed/calendar/animearr.ics?apikey=YOUR_API_KEY
+http://animearr:8484/feed/calendar/animearr.ics?token=YOUR_CALENDAR_TOKEN
 ```
+
+Copy the link from **Calendar -> iCal link** in AnimeArr, or read the token from `GET /api/calendar/ical-token`. The token
+is read-only and opens nothing but this feed; it is not the API key, and the API key is not accepted here (links made
+before this change, with `?apikey=`, answer `401` and must be replaced once). Making a new API key also replaces the
+calendar token, which is how you revoke a calendar link you shared.
 
 Episodes appear at their air time (length from the show's runtime, 24 minutes if unknown); anime movies as all-day events.
 Optional parameters: `pastDays` (default 7), `futureDays` (default 28), `unmonitored=true`, and `tags=3,5` to limit it to
-shows and movies with one of those tags. The feed always requires the key (calendar apps cannot log in), whatever the
+shows and movies with one of those tags. The feed always requires the token (calendar apps cannot log in), whatever the
 local-network setting.
 
 ## Endpoint index
@@ -421,7 +428,7 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 | --- | --- | --- |
 |  | `POST /api/auth/login` | Sign in and get a session cookie |
 |  | `POST /api/auth/logout` | Clear the session cookie |
-|  | `PUT /api/auth/account` | Change username and password |
+|  | `PUT /api/auth/account` | Change username and password (not with the API key) |
 |  | `PUT /api/auth/mode` | Turn the local-network no-password mode on or off (session or password only) |
 
 ### Settings
@@ -429,15 +436,15 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 | | Operation | What it does |
 | --- | --- | --- |
 |  | `GET /api/settings` | All settings (secrets masked) |
-|  | `PUT /api/settings` | Update settings |
+|  | `PUT /api/settings` | Update settings (not with the API key) |
 |  | `GET /api/settings/apikey` | Read the API key |
 |  | `POST /api/settings/apikey/regenerate` | Make a new API key (session or password only) |
 |  | `POST /api/test/{service}` | Test a service connection with unsaved values |
 |  | `POST /api/test/tmdb` | Test a TMDB key |
 |  | `GET /api/wizard` | First-run wizard state |
-|  | `PUT /api/wizard` | Save wizard progress |
+|  | `PUT /api/wizard` | Save wizard progress (not with the API key) |
 |  | `GET /api/wizard/arr-preview` | Preview of what Sonarr/Radarr clients could be reused |
-|  | `POST /api/wizard/arr-apply` | Apply the Sonarr/Radarr preview |
+|  | `POST /api/wizard/arr-apply` | Apply the Sonarr/Radarr preview (not with the API key) |
 |  | `POST /api/wizard/category` | Create a download-client category |
 |  | `GET /api/fs/folders` | Browse folders on the server |
 
@@ -471,7 +478,7 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 |  | `POST /api/series/{tvdbId}/rename` | Rename a show's files |
 |  | `POST /api/series/{tvdbId}/mediaout` | Write NFO/.plexmatch/artwork for a show |
 |  | `GET /api/episodes/{id}` | One episode with its file and history |
-|  | `POST /api/episodes/delete` | Delete episode files |
+|  | `POST /api/episodes/delete` | Delete episode files (not with the API key) |
 |  | `POST /api/episodes/regrab` | Delete and re-download episodes |
 |  | `POST /api/episodes/search-soon` | Queue episodes for the next scheduled search |
 |  | `PUT /api/franchise/link` | Link or unlink a movie to a show's franchise |
@@ -535,7 +542,8 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 | | Operation | What it does |
 | --- | --- | --- |
 | * | `GET /api/calendar` | Episodes and movies by air/release date |
-| * | `GET /feed/calendar/animearr.ics` | iCalendar feed of upcoming episodes and movies |
+|  | `GET /api/calendar/ical-token` | The iCalendar feed's read-only token |
+| * | `GET /feed/calendar/animearr.ics` | iCalendar feed of upcoming episodes and movies (`?token=`, not the API key) |
 
 ### Wanted
 
@@ -654,11 +662,11 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 |  | `GET /api/downloads/status` | Free-space and seeding rules status |
 |  | `POST /api/downloads/cleanup/plan` | Plan cleaning finished downloads |
 |  | `POST /api/downloads/cleanup/run` | Clean finished downloads |
-|  | `PUT /api/downloads/allow-delete` | Allow AnimeArr to delete finished downloads |
+|  | `PUT /api/downloads/allow-delete` | Allow AnimeArr to delete finished downloads (not with the API key) |
 |  | `POST /api/downloads/rules/disable` | Switch off a folder rule |
 |  | `GET /api/recycle` | Recycle-bin status |
 |  | `GET /api/recycle/animearr` | AnimeArr's own recycle bin |
-|  | `POST /api/recycle/animearr/empty` | Empty AnimeArr's recycle bin (pinned files stay) |
+|  | `POST /api/recycle/animearr/empty` | Empty AnimeArr's recycle bin (pinned files stay; not with the API key) |
 |  | `POST /api/recycle/animearr/unpin` | `{ path }`: release a file pinned after an import couldn't put it back |
 |  | `GET /api/recycle/setting` | Recycle-bin setting |
 
@@ -667,20 +675,20 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 | | Operation | What it does |
 | --- | --- | --- |
 |  | `GET /api/indexers` | Direct indexers |
-|  | `POST /api/indexers` | Add a direct indexer |
-|  | `PUT /api/indexers/{id}` | Update a direct indexer |
-|  | `DELETE /api/indexers/{id}` | Delete a direct indexer |
+|  | `POST /api/indexers` | Add a direct indexer (not with the API key) |
+|  | `PUT /api/indexers/{id}` | Update a direct indexer (not with the API key) |
+|  | `DELETE /api/indexers/{id}` | Delete a direct indexer (not with the API key) |
 |  | `POST /api/indexers/test` | Test an indexer |
 |  | `POST /api/indexers/prowlarr/{id}/use` | Use or skip a Prowlarr indexer |
 |  | `GET /api/indexers/breaker` | Indexer circuit-breaker state |
 |  | `POST /api/indexers/breaker/{id}` | Test, re-enable or keep an indexer off |
 |  | `POST /api/jackett/trackers` | List a Jackett instance's trackers |
-|  | `POST /api/jackett/add` | Add a Jackett tracker as an indexer |
+|  | `POST /api/jackett/add` | Add a Jackett tracker as an indexer (not with the API key) |
 |  | `GET /api/clients` | Extra download clients |
-|  | `POST /api/clients` | Add a download client |
-|  | `PUT /api/clients/{id}` | Update a download client |
-|  | `DELETE /api/clients/{id}` | Delete a download client |
-|  | `PUT /api/clients/{id}/prefs` | Set a client's priority and on/off |
+|  | `POST /api/clients` | Add a download client (not with the API key) |
+|  | `PUT /api/clients/{id}` | Update a download client (not with the API key) |
+|  | `DELETE /api/clients/{id}` | Delete a download client (not with the API key) |
+|  | `PUT /api/clients/{id}/prefs` | Set a client's priority and on/off (not with the API key) |
 |  | `POST /api/clients/test` | Test a download client |
 
 ### Notification channels
@@ -688,7 +696,7 @@ is internal and can change. (This list is generated from the OpenAPI file.)
 | | Operation | What it does |
 | --- | --- | --- |
 |  | `GET /api/notify/channels` | List notification channels |
-|  | `PUT /api/notify/channels` | Replace the notification channels |
+|  | `PUT /api/notify/channels` | Replace the notification channels (not with the API key) |
 |  | `POST /api/notify/channels/{id}/test` | Send a test through one channel |
 
 ### Import lists

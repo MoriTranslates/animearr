@@ -151,7 +151,63 @@ test("secrets are masked for the browser and kept when saved back masked", () =>
   const back = cleanChannels(masked, getSettings().notify.channels);
   assert.deepEqual(back, saved, "masked values come back as the saved ones");
   masked[0].url = "https://other.example.com/x";
+  masked[0].headers = []; // a new address can't keep the saved header (see the next test)
   assert.equal(cleanChannels(masked, saved)[0].url, "https://other.example.com/x");
+});
+
+test("a masked header value with nothing saved under that name is refused, not dropped (blind review R3)", () => {
+  const saved = full();
+  const masked = saved.map(maskChannel);
+  // Renamed while the value is still masked: the old value isn't moved over, and the header isn't silently dropped.
+  const renamed = { ...masked[0], headers: [{ name: "X-Auth", value: MASK }] };
+  assert.throws(() => cleanChannels([renamed], saved), /webhook: enter the X-Auth header again/i);
+  // A copied channel (new id, so nothing saved) with a masked header: refused too.
+  const copy = { ...masked[0], id: "copy-1", url: saved[0].url, headers: [{ name: "Authorization", value: MASK }] };
+  assert.throws(() => cleanChannels([copy], saved), /webhook: enter the Authorization header again/i);
+  // Renamed with the value typed again: kept under the new name.
+  const [typed] = cleanChannels([{ ...renamed, headers: [{ name: "X-Auth", value: "Bearer NEW" }] }], saved);
+  assert.deepEqual(typed.headers, [{ name: "X-Auth", value: "Bearer NEW" }]);
+  // Only the case changed: still the same header, the saved value stays.
+  const [cased] = cleanChannels([{ ...masked[0], headers: [{ name: "authorization", value: MASK }] }], saved);
+  assert.deepEqual(cased.headers, [{ name: "authorization", value: "Bearer SECRETHDR" }]);
+  // A row whose name was cleared is a removal, not a header to keep: dropped as before.
+  assert.deepEqual(cleanChannels([{ ...masked[0], headers: [{ name: "", value: MASK }] }], saved)[0].headers, []);
+});
+
+test("saved secrets never follow a new destination; left masked, the save is refused (review H5, A6)", () => {
+  const saved = full();
+  const masked = saved.map(maskChannel);
+
+  // Webhook pointed elsewhere with the header left masked: refused, like the other services ("enter it again").
+  const hook = { ...masked[0], url: "https://attacker.example.net/collect" };
+  assert.throws(() => cleanChannels([hook], saved), /webhook: enter the Authorization header again/i);
+  // A header typed again for the new address is kept.
+  const [h2] = cleanChannels([{ ...hook, headers: [{ name: "Authorization", value: "Bearer NEW" }] }], saved);
+  assert.deepEqual(h2.headers, [{ name: "Authorization", value: "Bearer NEW" }]);
+  assert.ok(!JSON.stringify(buildRequest(h2, note)).includes("SECRETHDR"));
+  // Dropping the header on purpose (not sent at all) is fine.
+  assert.deepEqual(cleanChannels([{ ...hook, headers: [] }], saved)[0].headers, []);
+  // Same address (masked or typed out identically): the header stays.
+  assert.equal(cleanChannels([masked[0]], saved)[0].headers[0].value, "Bearer SECRETHDR");
+  assert.equal(cleanChannels([{ ...masked[0], url: saved[0].url }], saved)[0].headers[0].value, "Bearer SECRETHDR");
+
+  // Email: a new server, port or a weaker security setting with the password left masked is refused.
+  for (const patch of [{ host: "smtp.attacker.example.net" }, { port: 587 }, { secure: "none" }, { secure: "starttls" }])
+    assert.throws(() => cleanChannels([{ ...masked[3], ...patch }], saved), /email: enter the password again/i, JSON.stringify(patch));
+  const [e2] = cleanChannels([{ ...masked[3], host: "smtp.attacker.example.net", password: "typed-again" }], saved);
+  assert.equal(e2.password, "typed-again");
+  // Unchanged server (host compared without case): the password stays.
+  assert.equal(cleanChannels([masked[3]], saved)[0].password, "SMTPPASSWORD");
+  assert.equal(cleanChannels([{ ...masked[3], host: "SMTP.Example.com" }], saved)[0].password, "SMTPPASSWORD");
+});
+
+test("review A7: making the SMTP connection safer keeps the saved password", () => {
+  const saved = full().map((c) => (c.type === "email" ? { ...c, secure: "none" as const } : c));
+  const masked = saved.map(maskChannel);
+  for (const secure of ["starttls", "tls"] as const)
+    assert.equal(cleanChannels([{ ...masked[3], secure }], saved)[0].password, "SMTPPASSWORD", `none → ${secure}`);
+  const starttls = full().map((c) => (c.type === "email" ? { ...c, secure: "starttls" as const } : c));
+  assert.equal(cleanChannels([{ ...starttls.map(maskChannel)[3], secure: "tls" }], starttls)[0].password, "SMTPPASSWORD");
 });
 
 test("channel input is validated", () => {

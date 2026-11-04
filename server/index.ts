@@ -12,7 +12,7 @@ import path from "node:path";
 import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
-import { guard, trustProxyOption } from "./system/auth.js";
+import { guard, trustProxyOption, warnNetworkSettings } from "./system/auth.js";
 import { backupNow, cache, listBackups } from "./system/db.js";
 import { logDecision, pruneDecisions } from "./system/activity.js";
 import { redactUrl } from "./arr/http.js";
@@ -303,6 +303,7 @@ every(
 // so a port forward doesn't open a known password to the internet. Installs that already have an account are untouched.
 // (This replaces the old one-time setup code: with a home-network-only default there is nothing left to claim remotely.)
 export { app };
+warnNetworkSettings((msg) => app.log.warn(msg)); // a typo there silently matches nothing: say so at startup
 if (TEST_APP) await app.ready();
 else if (await ensureDefaultAccount())
   app.log.warn(

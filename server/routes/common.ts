@@ -8,7 +8,7 @@ import { indexerNumId, searchIndexer } from "../search/indexers.js";
 import fs from "node:fs";
 import path from "node:path";
 import { type FastifyReply, type FastifyRequest } from "fastify";
-import { COOKIE, makeSession } from "../system/auth.js";
+import { COOKIE, DEVICE_COOKIE, makeDevice, makeSession } from "../system/auth.js";
 import { dbState, setJob } from "../system/db.js";
 import { fetchReleaseFile, prowlarrConfigured, prowlarrSearch } from "../arr/prowlarr.js";
 import { refreshCatalog, tmdbEpisodes } from "../metadata/catalog.js";
@@ -73,6 +73,17 @@ export function sessionCookie(req: FastifyRequest, reply: FastifyReply, username
     sameSite: "strict",
     secure: req.protocol === "https",
     maxAge: 30 * 86400,
+  });
+}
+
+/** The known-device cookie (see validDevice in auth.ts): set on every successful login, kept after logout. */
+export function deviceCookie(req: FastifyRequest, reply: FastifyReply, id: string | null) {
+  reply.setCookie(DEVICE_COOKIE, makeDevice(id), {
+    path: "/",
+    httpOnly: true,
+    sameSite: "strict",
+    secure: req.protocol === "https",
+    maxAge: 365 * 86400,
   });
 }
 
