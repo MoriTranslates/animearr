@@ -345,10 +345,11 @@ export function lastResortPicks(
   const mode = profileFor(tvdbId).watchMode ?? "sub";
   if (!has || has.has_file || (mode !== "sub" && mode !== "either")) return { picks: [], capped: null };
   // A new episode first gets a day for the usual subbers (not a backlog one). The episode's current air time wins over
-  // a stale copy; an unknown one is "not yet", never "aired long ago".
+  // a stale copy. No air time at all (specials, OVAs TVDB never dated) means it isn't known to be new: no wait, else it
+  // could never get a last resort.
   if (!opts.skipWait) {
     const air = has.air_utc ?? opts.airUtc ?? null;
-    if (air === null || air + LAST_RESORT_AFTER_MS > (opts.now ?? Date.now())) return { picks: [], capped: null };
+    if (air !== null && air + LAST_RESORT_AFTER_MS > (opts.now ?? Date.now())) return { picks: [], capped: null };
   }
   const fits = pickable(tvdbId, season);
   const unknown = results

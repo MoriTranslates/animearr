@@ -248,13 +248,13 @@ test("managed search: a last-resort file without English is refused and blocklis
 
 const setAir = (epId: number, air: number | null) => cache.prepare("UPDATE episodes SET air_utc = ? WHERE id = ?").run(air, epId);
 
-test("⚡: the day for the usual subbers applies here too; an unknown air time counts as not yet eligible", async () => {
+test("⚡: the day for the usual subbers applies here too; an undated episode (special/OVA) isn't held back forever", async () => {
   const EP = 9006;
   const now = Date.now();
   const only = (ids: number[]) => [r("Last.Show.S01E06.1080p.WEB-DL-GRP", ids)];
   for (const [air, grabs] of [
     [now - 3 * 3_600_000, 0],
-    [null, 0],
+    [null, 1],
     [now + 3_600_000, 0],
     [now - 25 * 3_600_000, 1],
   ] as const) {
@@ -265,14 +265,14 @@ test("⚡: the day for the usual subbers applies here too; an unknown air time c
   }
 });
 
-test("managed search: an unknown air time in the search row counts as not yet eligible, not as aired in 1970", async () => {
+test("managed search: a just-aired episode waits even when the search row's air time copy is missing", async () => {
   const sent: string[] = [];
   const grab = (async (req: { candidate: { title: string } }) => (
     sent.push(req.candidate.title),
     { id: 1, dryRun: false, message: "Sent" }
   )) as never;
   const now = Date.now();
-  setAir(9006, null);
+  setAir(9006, now - 3_600_000); // the episode's own air time (aired an hour ago) wins over the row's missing copy
   const row = { ...stRow(9006, "new", 0), air_utc: null } as never;
   await decideEpisode(row, now, { search: managedSearch([r("Last.Show.S01E06-GRP", [9006])]), grab });
   assert.deepEqual(sent, []);
