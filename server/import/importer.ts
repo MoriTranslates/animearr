@@ -17,7 +17,7 @@
  * under a temporary name, and comes back if the swap fails.
  */
 import { binArrPath, binFolder, noteBinned, pinBinned } from "./binpurge.js";
-import { movePathRows } from "./pathRows.js";
+import { movePathRows, saveFileMeta, type FileMeta } from "./pathRows.js";
 import { copyNoClobber, moveNoClobber } from "./fileMoves.js";
 import { touchesProtected } from "./protectedPaths.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
@@ -59,6 +59,7 @@ export interface PlanItem {
   sidecars: { source: string; dest: string }[];
   replaces: string | null; // local path of the file it replaces (goes to the recycle bin)
   replacesArr?: string | null; // its library path (its per-file rows go to the bin with it)
+  meta?: FileMeta; // the release details kept for the new file (file_meta), once it is placed
   problem: string | null; // set → this item is skipped
 }
 export interface ImportPlan {
@@ -79,6 +80,17 @@ export const namingOptions = (): NamingOptions => {
     multiEpisodeStyle: m.multiEpisodeStyle,
   };
 };
+
+/** The release details kept for a file the importer places: release name, its group, the quality label used, its version. */
+export function releaseMeta(release: string, quality: string): FileMeta {
+  const p = parseRelease(release);
+  return {
+    scene_name: release,
+    release_group: p.group,
+    quality,
+    revision: JSON.stringify({ version: p.version ?? 1, real: 0, isRepack: false }),
+  };
+}
 
 /** Sonarr-style quality name from a release name / probe ("WEBDL-1080p", "Bluray-1080p Remux"). */
 export const qualityName = (release: string, height: number | null) => sonarrQualityName(release, height);
@@ -409,11 +421,14 @@ export async function planImport(
       probe = null;
     }
     let destArr: string;
+    const release = input.release ?? path.basename(f).replace(/\.[^.]+$/, "");
+    const quality = qualityName(release, probe?.video?.height ?? null);
     try {
       destArr = episodeDestination(input.tvdbId, list, {
-        release: input.release ?? path.basename(f).replace(/\.[^.]+$/, ""),
+        release,
         ext: path.extname(f).toLowerCase(),
         probe,
+        quality,
         originalName: path.basename(f).replace(/\.[^.]+$/, ""),
       });
     } catch (e) {
@@ -457,6 +472,7 @@ export async function planImport(
       sidecars: m.importExtraFiles ? sidecarsFor(f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix })) : [],
       replaces: currentLocal,
       replacesArr: currentLocal ? current : null,
+      meta: releaseMeta(release, quality),
       problem,
     });
   }
@@ -742,6 +758,19 @@ async function placeItems(
             why: `Imported ${it.label}, but the replaced file's track corrections and marks couldn't be moved off ${it.replacesArr} (${(e as Error).message}): check the new file's tracks`,
           });
         }
+      // The release details (group, quality, release name) of the new file; an upgrade at the same path overwrites the old
+      // file's. Its own try: a failure here must not skip the episode links below.
+      if (it.meta)
+        try {
+          saveFileMeta(it.destArr, it.meta);
+        } catch (e) {
+          logDecision("fail", {
+            tvdbId: target.tvdbId ?? null,
+            title: target.title,
+            episodeIds: it.episodeIds,
+            why: `Imported ${it.label}, but its release details (group, quality) couldn't be saved (${(e as Error).message})`,
+          });
+        }
       try {
         setPerms(path.dirname(it.dest));
         if (target.tvdbId && it.episodeIds.length) applyFileDate(it.dest, it.episodeIds); // "Change file date"
@@ -945,13 +974,14 @@ export async function planMovieImport(
   const release = input.release ?? path.basename(main.f).replace(/\.[^.]+$/, "");
   const ext = path.extname(main.f).toLowerCase();
   const opts = namingOptions();
+  const movieQuality = qualityName(release, probe?.video?.height ?? null);
   const name0 = m.renameMovies
     ? renderMovie(
         m.movieFormat,
         {
           movieTitle: mv.title,
           year: mv.year,
-          quality: qualityName(release, probe?.video?.height ?? null),
+          quality: movieQuality,
           mediaInfo: mediaInfoOf(probe),
           releaseGroup: parseRelease(release).group,
           imdbId: mv.imdb_id,
@@ -994,6 +1024,7 @@ export async function planMovieImport(
         ...base,
         dest,
         destArr,
+        meta: releaseMeta(release, movieQuality),
         sidecars: m.importExtraFiles
           ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix }))
           : [],

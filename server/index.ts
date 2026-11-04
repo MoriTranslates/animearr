@@ -35,6 +35,7 @@ import { registerSonarrApi } from "./api/sonarrApi.js";
 import { sonarrConfigured } from "./arr/sonarr.js";
 import { radarrConfigured } from "./arr/radarr.js";
 import { materializeAll } from "./library/native.js";
+import { backfillFileMeta } from "./library/fileMetaBackfill.js";
 import { DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, usingDefaultPassword } from "./system/settings.js";
 import { TEST_APP, later, WEB_DIR, PORT, fail, id, writable, breakerDeps, catalogTick } from "./routes/common.js";
 import { registerAccountRoutes } from "./routes/account.js";
@@ -202,6 +203,11 @@ async function startup() {
 }
 if (!TEST_APP) {
   recoverGrabs();
+  try {
+    backfillFileMeta(); // release details of files AnimeArr imported before it kept them
+  } catch (e) {
+    app.log.warn(`file details backfill: ${(e as Error).message}`);
+  }
   materializeAll(); // native shows into the (rebuildable) cache
 }
 later(() => void startup(), 3_000);
@@ -229,7 +235,15 @@ every(10 * 60_000, () => seadexTick(), "SeaDex");
 every(10 * 60_000, () => movieTick(), "movie search");
 every(15 * 60_000, () => breakerTick(breakerDeps), "indexer re-tests");
 every(60 * 60_000, async () => binTick(), "recycling bin purge");
-every(30 * 60_000, async () => (await fileScanTick(), void materializeAll()), "file scan");
+every(
+  30 * 60_000,
+  async () => {
+    await fileScanTick();
+    backfillFileMeta(); // shows detached since the last run
+    materializeAll();
+  },
+  "file scan",
+);
 every(30 * 60_000, () => fillInTick(), "fill-in");
 every(15 * 60_000, () => importListsTick(), "import lists"); // (each list syncs every lists.intervalHours)
 every(6 * 3_600_000, () => catalogTick(), "catalog");

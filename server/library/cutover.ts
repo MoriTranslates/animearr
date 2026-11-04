@@ -32,6 +32,7 @@ import {
 } from "./native.js";
 import { ACTIVE } from "../grabs/pipelineState.js";
 import { isBlocked } from "./dropped.js";
+import { saveFileMeta } from "../import/pathRows.js";
 import { getSettings, patchSettings } from "../system/settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
@@ -414,13 +415,7 @@ function linkFiles(sonarrSeriesId: number, tvdbId: number, nativeRow: number, an
         JSON.stringify(ids),
         Date.now(),
       );
-    db.prepare("INSERT OR REPLACE INTO file_meta (path, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?)").run(
-      f.path,
-      f.scene_name,
-      f.release_group,
-      f.quality,
-      f.revision,
-    );
+    saveFileMeta(f.path, f);
   }
   return built;
 }

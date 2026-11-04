@@ -43,3 +43,22 @@ export function deletePathRows(p: string) {
   invalidateOverrides();
   return dropped;
 }
+
+/** What is known about a file's release, kept by library path (file_meta); a native show's files row is built from it. */
+export interface FileMeta {
+  scene_name: string | null;
+  release_group: string | null;
+  quality: string | null;
+  revision: string | null;
+}
+
+/** The one writer of file_meta: a file placed or adopted now replaces whatever an earlier file at that path had. */
+export function saveFileMeta(p: string, m: FileMeta) {
+  db.prepare("INSERT OR REPLACE INTO file_meta (path, scene_name, release_group, quality, revision) VALUES (?, ?, ?, ?, ?)").run(
+    keyOf(p),
+    m.scene_name,
+    m.release_group,
+    m.quality,
+    m.revision,
+  );
+}

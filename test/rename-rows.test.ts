@@ -243,7 +243,14 @@ test("a replaced file's corrections and marks never stick to the new file that t
   const at = rowsAt(dest);
   assert.equal(at.track_overrides, 0, "the old file's track corrections don't apply to the new file");
   assert.equal(at.file_marks, 0, "nor its burned-in mark");
-  assert.equal(at.file_meta, 0, "nor its release details");
+  // Its release details are the new file's own now (written by the import), not the old file's.
+  const newMeta = db.prepare("SELECT scene_name, revision FROM file_meta WHERE path = ?").get(dest) as {
+    scene_name: string;
+    revision: string | null;
+  };
+  assert.equal(at.file_meta, 1);
+  assert.equal(newMeta.scene_name, "Frieren.S01E08.1080p.WEB-DL-GRP", "the new release's name, not the old file's 'Scene.Name'");
+  assert.ok(newMeta.revision, "the new file's version, not the old row's empty one");
   assert.equal(linkOf(dest), JSON.stringify([108]), "the new file is linked to its episode");
   // The old file's rows went with it to the bin (kept, not deleted), keyed by the bin's library-style path (L1).
   const binned = (
