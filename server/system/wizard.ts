@@ -6,7 +6,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getSettings, patchSettings, type ClientCfg } from "./settings.js";
-import { jsonCall } from "../arr/http.js";
+import { sonarrConfigured, sonarrGet } from "../arr/sonarr.js";
+import { radarrConfigured, radarrGet } from "../arr/radarr.js";
 import { safeFetch } from "./safeFetch.js";
 import { logDecision } from "./activity.js";
 import { cache, CONFIG_DIR } from "./db.js";
@@ -139,16 +140,15 @@ const field = (fs_: ArrField[] | undefined, n: string) => fs_?.find((f) => f.nam
 
 /** What an existing Sonarr/Radarr has (read-only): anime counts, root folders, download clients, indexers, Plex, tags. */
 export async function arrPreview() {
-  const s = getSettings();
   const out: Record<string, unknown> = {};
-  if (s.sonarr.url && s.sonarr.apiKey) {
+  if (sonarrConfigured()) {
     // A wrong key or address must say so (not look like an empty Sonarr).
-    const reach = await jsonCall<{ version: string }>("Sonarr", s.sonarr, "/api/v3", "GET", "/system/status").then(
+    const reach = await sonarrGet<{ version: string }>("/system/status").then(
       () => null,
       (e: Error) => e.message,
     );
     if (reach) return { ...out, sonarrError: reach };
-    const call = <T>(p: string) => jsonCall<T>("Sonarr", s.sonarr, "/api/v3", "GET", p).catch(() => null);
+    const call = <T>(p: string) => sonarrGet<T>(p).catch(() => null);
     const [roots, clients, indexers, notes, tags] = await Promise.all([
       call<{ path: string; freeSpace?: number }[]>("/rootfolder"),
       call<{ name: string; implementation: string; enable: boolean; protocol: string; fields: ArrField[] }[]>("/downloadclient"),
@@ -188,13 +188,13 @@ export async function arrPreview() {
       tags: (tags ?? []).map((t) => t.label),
     };
   }
-  if (s.radarr.url && s.radarr.apiKey) {
-    const reach = await jsonCall<{ version: string }>("Radarr", s.radarr, "/api/v3", "GET", "/system/status").then(
+  if (radarrConfigured()) {
+    const reach = await radarrGet<{ version: string }>("/system/status").then(
       () => null,
       (e: Error) => e.message,
     );
     if (reach) return { ...out, radarrError: reach };
-    const call = <T>(p: string) => jsonCall<T>("Radarr", s.radarr, "/api/v3", "GET", p).catch(() => null);
+    const call = <T>(p: string) => radarrGet<T>(p).catch(() => null);
     const roots = await call<{ path: string }[]>("/rootfolder");
     const animeMovies = (cache.prepare("SELECT COUNT(*) AS n FROM movies WHERE is_anime = 1").get() as { n: number }).n;
     out.radarr = { animeMovies, roots: (roots ?? []).map((r) => r.path) };

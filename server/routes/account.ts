@@ -17,6 +17,8 @@ import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
 import { binWarnings } from "../import/binpurge.js";
+import { sonarrConfigured } from "../arr/sonarr.js";
+import { radarrConfigured } from "../arr/radarr.js";
 
 import {
   DEFAULT_LOGIN,
@@ -52,8 +54,8 @@ export function registerAccountRoutes(app: FastifyInstance) {
       ...base,
       via: a.via,
       connected: {
-        sonarr: !!(s.sonarr.url && s.sonarr.apiKey),
-        radarr: !!(s.radarr.url && s.radarr.apiKey),
+        sonarr: sonarrConfigured(),
+        radarr: radarrConfigured(),
         prowlarr: !!(s.prowlarr.url && s.prowlarr.apiKey),
         sabnzbd: !!(s.sabnzbd.url && s.sabnzbd.apiKey),
         qbittorrent: !!s.qbittorrent.url,

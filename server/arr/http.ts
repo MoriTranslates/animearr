@@ -16,6 +16,10 @@ export class HttpError extends Error {
   }
 }
 
+/** The refusal while "AnimeArr runs without Sonarr/Radarr" is on (no request was sent). */
+export const arrOffError = (app: string) =>
+  Object.assign(new Error(`AnimeArr runs without Sonarr/Radarr (Settings → Cutover), so ${app} wasn't contacted`), { statusCode: 409 });
+
 export async function jsonCall<T>(
   app: string,
   conn: Conn,

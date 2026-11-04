@@ -32,6 +32,8 @@ import { fillInTick } from "./library/fillin.js";
 
 import { importMediaDefaultsOnce } from "./import/mediadefaults.js";
 import { registerSonarrApi } from "./api/sonarrApi.js";
+import { sonarrConfigured } from "./arr/sonarr.js";
+import { radarrConfigured } from "./arr/radarr.js";
 import { materializeAll } from "./library/native.js";
 import { DEFAULT_LOGIN, ensureDefaultAccount, getSettings, URL_BASE_RE, usingDefaultPassword } from "./system/settings.js";
 import { TEST_APP, later, WEB_DIR, PORT, fail, id, writable, breakerDeps, catalogTick } from "./routes/common.js";
@@ -193,7 +195,7 @@ async function startup() {
     app.log.warn(`metadata: ${(e as Error).message}`);
   }
   const last = lastSync();
-  if (getSettings().sonarr.url && (!last || Date.now() - last > getSettings().sync.intervalHours * 3_600_000))
+  if ((sonarrConfigured() || radarrConfigured()) && (!last || Date.now() - last > getSettings().sync.intervalHours * 3_600_000))
     await syncLibrary()
       .then(() => refreshCovers())
       .catch(() => undefined);
@@ -208,7 +210,9 @@ every(
   async () => {
     const s = getSettings();
     const last = lastSync();
-    if (s.sonarr.url && (!last || Date.now() - last > s.sync.intervalHours * 3_600_000)) await syncLibrary().then(() => refreshCovers());
+    // Neither set up (or AnimeArr runs without them): nothing to read; native shows are rebuilt by the file scan job.
+    if ((sonarrConfigured() || radarrConfigured()) && (!last || Date.now() - last > s.sync.intervalHours * 3_600_000))
+      await syncLibrary().then(() => refreshCovers());
     await refreshMetadata();
     // Nightly backup (keeps 7) and log pruning.
     const nightly = listBackups().find((b) => b.kind === "nightly");

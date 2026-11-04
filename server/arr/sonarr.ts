@@ -1,5 +1,5 @@
-import { getSettings } from "../system/settings.js";
-import { jsonCall, type Conn } from "./http.js";
+import { arrOff, getSettings } from "../system/settings.js";
+import { arrOffError, jsonCall, type Conn } from "./http.js";
 
 /**
  * Sonarr v3 API client. READ calls are used everywhere; the few WRITE calls (ManualImport, unmonitor) are grouped at the
@@ -93,10 +93,18 @@ export interface ManualImportItem {
 }
 
 const conn = (): Conn => getSettings().sonarr;
-const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) =>
-  jsonCall<T>("Sonarr", c, "/api/v3", method, path, body, timeout);
+/**
+ * "AnimeArr runs without Sonarr/Radarr" (Settings → Cutover): Sonarr keeps its records as the user's backup and is
+ * treated as if it didn't exist. Every request to Sonarr goes through `call` below, which refuses before anything is
+ * sent; and sonarrConfigured() says no, so the callers that check it (sync, queue, rename route, …) skip it quietly.
+ */
+const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number): Promise<T> =>
+  arrOff() ? Promise.reject(arrOffError("Sonarr")) : jsonCall<T>("Sonarr", c, "/api/v3", method, path, body, timeout);
 
-export const sonarrConfigured = () => !!(getSettings().sonarr.url && getSettings().sonarr.apiKey);
+export const sonarrConfigured = () => !arrOff() && !!(getSettings().sonarr.url && getSettings().sonarr.apiKey);
+
+/** Read-only GET of any Sonarr path, through the same gate (the setup wizard's preview of an existing Sonarr). */
+export const sonarrGet = <T>(path: string) => call<T>("GET", path);
 
 export async function testSonarr(c: Conn) {
   const s = await call<{ version: string; appName?: string }>("GET", "/system/status", undefined, c);

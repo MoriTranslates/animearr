@@ -371,7 +371,7 @@ let running: Promise<CheckOutcome[]> | null = null;
 /** Runs one check (shared if one is already running). Returns null when the check is off or Sonarr isn't set up. */
 export function repairTick(): Promise<CheckOutcome[]> | null {
   if (running) return running;
-  if (getSettings().repair.mode === "off" || !getSettings().sonarr.url) return null;
+  if (getSettings().repair.mode === "off" || !sonarr.sonarrConfigured()) return null;
   running = (async () => {
     try {
       const r = await checkNewImports();

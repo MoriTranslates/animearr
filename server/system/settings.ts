@@ -313,8 +313,13 @@ export interface Settings {
     events: { grabbed: boolean; imported: boolean; failed: boolean; paused: boolean; indexer: boolean };
     /** Webhook, Telegram, Pushover and email channels (edited through /api/notify/channels only). */ channels: NotifyChannel[];
   };
-  /** Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed). */
-  cutover: { allowArrWrites: boolean };
+  /**
+   * Cutover: removing adopted shows/movies from Sonarr/Radarr (the only writes to them; off until reviewed).
+   * withoutArr: "AnimeArr runs without Sonarr/Radarr": no request of any kind goes to either, whatever their addresses
+   * and keys say (sonarr.ts, radarr.ts: arrOff). Only switched on through its own endpoint, once every anime show and
+   * movie is detached (cutover.ts).
+   */
+  cutover: { allowArrWrites: boolean; withoutArr: boolean };
   /** Plex: partial scans after AnimeArr's own imports/renames. The token is stored encrypted. */
   plex: { url: string; token: string; enabled: boolean; pathMappings: PathMapping[] };
   /** Jellyfin and Emby: "media updated" for the changed folder after imports/renames. API keys are stored encrypted. */
@@ -436,7 +441,7 @@ const DEFAULTS: Settings = {
   kodi: { url: "", username: "", password: "", enabled: false, pathMappings: [] },
   // Off for existing installs (they add files to every show folder); the new-user wizard turns them on.
   mediaOutput: { main: "none", nfo: false, plexmatch: false, artwork: false, episodeThumbs: true, episodeThumbsFromVideo: false },
-  cutover: { allowArrWrites: false },
+  cutover: { allowArrWrites: false, withoutArr: false },
   notify: {
     discordWebhook: "",
     ntfyUrl: "",
@@ -687,7 +692,7 @@ function sanitize(shape: unknown, patch: unknown, path = ""): unknown {
   }
   if (path === "profiles") return undefined; // edited through /api/profiles only
   if (path === "notify.channels") return undefined; // edited through /api/notify/channels only
-  if (path === "downloads.allowDelete" || path === "cutover.allowArrWrites") return undefined; // own confirmed endpoints only
+  if (path === "downloads.allowDelete" || path.startsWith("cutover.")) return undefined; // own confirmed endpoints only
   // Service addresses are web addresses (a javascript: link would be clickable in the UI).
   if (/(^|\.)url$/i.test(path) || path === "externalUrl") {
     const v = String(patch ?? "").trim();
@@ -927,6 +932,9 @@ function settingsFromBackup(): Record<string, unknown> | null {
   }
   return null;
 }
+
+/** "AnimeArr runs without Sonarr/Radarr": both clients refuse every request before anything is sent. */
+export const arrOff = () => getSettings().cutover?.withoutArr === true;
 
 export function getSettings(): Settings {
   if (cache) return cache;

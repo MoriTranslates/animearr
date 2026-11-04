@@ -13,6 +13,7 @@
 import { cache, db } from "../system/db.js";
 import { aliasIndex } from "../metadata/metadata.js";
 import { getSettings } from "../system/settings.js";
+import { sonarrConfigured } from "../arr/sonarr.js";
 
 /** AnimeArr's own shows have ids from here up (native.ts NATIVE_BASE; not imported to keep scope.ts free of import cycles). */
 const NATIVE_SERIES_BASE = 900_000_000;
@@ -254,7 +255,7 @@ const range = (list: { season: number; episode: number }[]) => {
  */
 export function duplicateListings() {
   const managed = new Set((db.prepare("SELECT tvdb_id FROM managed").all() as { tvdb_id: number }[]).map((r) => r.tvdb_id));
-  const sonarrUrl = getSettings().sonarr.url;
+  const sonarrUrl = sonarrConfigured() ? getSettings().sonarr.url : ""; // no "Open Sonarr" link while AnimeArr runs without it
   const out: {
     tvdbId: number;
     title: string;

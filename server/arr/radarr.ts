@@ -1,5 +1,5 @@
-import { getSettings } from "../system/settings.js";
-import { jsonCall, type Conn } from "./http.js";
+import { arrOff, getSettings } from "../system/settings.js";
+import { arrOffError, jsonCall, type Conn } from "./http.js";
 
 /** Radarr v3 API client: reads everywhere; the only write is ManualImport for AnimeArr's own movie grabs. */
 
@@ -36,10 +36,14 @@ export interface RadarrMovie {
 }
 
 const conn = (): Conn => getSettings().radarr;
-const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number) =>
-  jsonCall<T>("Radarr", c, "/api/v3", method, path, body, timeout);
+/** "AnimeArr runs without Sonarr/Radarr": refused before anything is sent (as in sonarr.ts); Radarr keeps its records. */
+const call = <T>(method: string, path: string, body?: unknown, c: Conn = conn(), timeout?: number): Promise<T> =>
+  arrOff() ? Promise.reject(arrOffError("Radarr")) : jsonCall<T>("Radarr", c, "/api/v3", method, path, body, timeout);
 
-export const radarrConfigured = () => !!(getSettings().radarr.url && getSettings().radarr.apiKey);
+export const radarrConfigured = () => !arrOff() && !!(getSettings().radarr.url && getSettings().radarr.apiKey);
+
+/** Read-only GET of any Radarr path, through the same gate (the setup wizard's preview of an existing Radarr). */
+export const radarrGet = <T>(path: string) => call<T>("GET", path);
 
 export async function testRadarr(c: Conn) {
   const s = await call<{ version: string; appName?: string }>("GET", "/system/status", undefined, c);

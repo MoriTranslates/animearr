@@ -9,8 +9,8 @@ import { getSettings } from "./settings.js";
 import { testProwlarr } from "../arr/prowlarr.js";
 import { testQbit, testSab } from "../arr/clients.js";
 import { humanizeError } from "./errors.js";
-import { testSonarr } from "../arr/sonarr.js";
-import { testRadarr } from "../arr/radarr.js";
+import { sonarrConfigured, testSonarr } from "../arr/sonarr.js";
+import { radarrConfigured, testRadarr } from "../arr/radarr.js";
 import { testPlex } from "../media/plex.js";
 import { testEmbyLike, testKodi } from "../media/mediaservers.js";
 import { redactUrl } from "../arr/http.js";
@@ -101,8 +101,8 @@ async function build() {
     jellyfin: !!(s.jellyfin.url && s.jellyfin.apiKey),
     emby: !!(s.emby.url && s.emby.apiKey),
     kodi: !!s.kodi.url,
-    sonarr: !!(s.sonarr.url && s.sonarr.apiKey),
-    radarr: !!(s.radarr.url && s.radarr.apiKey),
+    sonarr: sonarrConfigured(), // "runs without Sonarr": not probed (and shown as not set up)
+    radarr: radarrConfigured(),
   };
   const [sab, qbit, prow, plex, sonarr, radarr, jellyfin, emby, kodi] = await Promise.all([
     conf.sabnzbd ? probe(() => testSab(s.sabnzbd)) : null,

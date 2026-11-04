@@ -40,7 +40,10 @@ const SHOWN = 300;
 
 let cached: { at: number; v: { recycleBin?: string; recycleBinCleanupDays?: number } } | null = null;
 /** Sonarr's recycle-bin setting. `fresh` skips the 1-minute cache (used right before and after a delete). */
-export async function recycleSetting(get = sonarr.getMediaManagement, now = Date.now(), fresh = false) {
+/** Sonarr's setting, or none at all when Sonarr isn't set up (or AnimeArr runs without it): never an error. */
+const sonarrBin = (): ReturnType<typeof sonarr.getMediaManagement> =>
+  sonarr.sonarrConfigured() ? sonarr.getMediaManagement() : Promise.resolve({});
+export async function recycleSetting(get = sonarrBin, now = Date.now(), fresh = false) {
   if (fresh || !cached || now - cached.at > TTL) cached = { at: now, v: await get() };
   const bin = (cached.v.recycleBin ?? "").trim();
   return { configured: !!bin, path: bin, cleanupDays: cached.v.recycleBinCleanupDays ?? 0 };
@@ -72,11 +75,7 @@ async function walk(root: string, rel: string, depth: number, out: { rel: string
 }
 
 /** What's in Sonarr's recycle bin for anime shows in the allowed root folders, newest first. */
-export async function recycleStatus(
-  deps = { get: sonarr.getMediaManagement, localPath },
-  now = Date.now(),
-  fresh = false,
-): Promise<RecycleStatus> {
+export async function recycleStatus(deps = { get: sonarrBin, localPath }, now = Date.now(), fresh = false): Promise<RecycleStatus> {
   const empty = { reachable: false, items: [], totalCount: 0, totalBytes: 0, truncated: false };
   let s: Awaited<ReturnType<typeof recycleSetting>>;
   try {

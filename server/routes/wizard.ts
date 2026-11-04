@@ -19,7 +19,7 @@ import { testEmbyLike, testKodi } from "../media/mediaservers.js";
 import { CONFIG_DIR } from "../system/db.js";
 import { testProwlarr } from "../arr/prowlarr.js";
 import { radarrConfigured, radarrOptions, radarrRootFolders, testRadarr } from "../arr/radarr.js";
-import { sonarrOptions, testSonarr } from "../arr/sonarr.js";
+import { sonarrConfigured, sonarrOptions, testSonarr } from "../arr/sonarr.js";
 import { testQbit, testSab } from "../arr/clients.js";
 import { rootRefusal } from "../system/roots.js";
 
@@ -175,7 +175,9 @@ export function registerWizardRoutes(app: FastifyInstance) {
    * `/api/rootfolders` is the documented name (docs/API.md); `/api/sonarr/rootfolders` stays for older callers.
    */
   const rootFolders = async () => {
-    const o = await sonarrOptions().catch(() => ({ roots: [] as { id: number; path: string; freeSpace?: number }[] }));
+    // Sonarr's root folders only while AnimeArr may talk to it (never asked otherwise).
+    const none = { roots: [] as { id: number; path: string; freeSpace?: number }[] };
+    const o = sonarrConfigured() ? await sonarrOptions().catch(() => none) : none;
     // Radarr's root folders too (movies), when Radarr is set up.
     const movieRoots = radarrConfigured() ? await radarrRootFolders().catch(() => []) : [];
     const roots = [
