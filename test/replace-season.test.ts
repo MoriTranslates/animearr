@@ -47,7 +47,7 @@ test("Replace season: verified episodes swap (old file → recycle bin), a faili
   }));
   cache
     .prepare(
-      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, monitored, synced_at) VALUES (77, ?, 'Absolute Duo', 2015, 'anime', '/media/Anime/Absolute Duo', 1, 0)",
+      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, root_folder, monitored, synced_at) VALUES (77, ?, 'Absolute Duo', 2015, 'anime', '/media/Anime/Absolute Duo', '/media/Anime', 1, 0)",
     )
     .run(TVDB);
   for (const e of [1, 2, 3]) {

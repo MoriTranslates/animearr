@@ -7,11 +7,12 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CACHE_DIR, cache, db } from "../system/db.js";
+import { CACHE_DIR, cache, db, tx } from "../system/db.js";
 import { underAllowedRoot } from "../system/settings.js";
 import { keyOf, localPath } from "../system/paths.js";
 import { probeFile, recordFor } from "./mediafiles.js";
 import { invalidateOverrides, overridesFor } from "./trackOverrides.js";
+import { moveNoClobber } from "./fileMoves.js";
 import { logDecision } from "../system/activity.js";
 import { learnFromVerify } from "../library/library.js";
 
@@ -108,7 +109,12 @@ export async function setTrackLanguage(input: {
   const ins = db.prepare(
     "INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path, track_index) DO UPDATE SET lang = excluded.lang, forced = excluded.forced, at = excluded.at RETURNING id",
   );
-  const ids: number[] = [];
+  const prevOf = db.prepare("SELECT lang, forced, at FROM track_overrides WHERE path = ? AND track_index = ?");
+  // For the undo: rows this action created (deleted again), and the user's earlier corrections it changed (put back
+  // exactly). A file that already said the same is left out: the undo doesn't touch it.
+  const created: number[] = [];
+  const restore: OverrideBefore[] = [];
+  let marked = 0;
   const subFiles: string[] = [];
   for (const f of files) {
     // Only files whose track at that index is a subtitle track (season/group: the same layout).
@@ -116,7 +122,13 @@ export async function setTrackLanguage(input: {
     const isSub = !!rec?.subs.some((s) => s.index === input.trackIndex);
     if (f !== keyOf(input.path) && !isSub) continue;
     if (isSub) subFiles.push(f);
-    ids.push((ins.get(f, input.trackIndex, lang, input.forced ? 1 : 0, now) as { id: number }).id);
+    marked++;
+    const prev = prevOf.get(f, input.trackIndex) as { lang: string | null; forced: number; at: number } | undefined;
+    if (prev && prev.lang === lang && !!prev.forced === !!input.forced) continue; // already so
+    const id = (ins.get(f, input.trackIndex, lang, input.forced ? 1 : 0, now) as { id: number }).id;
+    if (prev)
+      restore.push({ id, path: f, trackIndex: input.trackIndex, ...prev }); // the upsert kept the row's id
+    else created.push(id);
   }
   invalidateOverrides();
   if (scope === "group" && input.group && lang && !input.forced) learnFromVerify(input.group, "*", [lang], []);
@@ -129,15 +141,75 @@ export async function setTrackLanguage(input: {
   logDecision("fact", {
     tvdbId: input.tvdbId ?? null,
     title: input.title,
-    why: `You marked subtitle track ${input.trackIndex} as ${what} in ${ids.length} file${ids.length === 1 ? "" : "s"} (${scope === "file" ? path.posix.basename(input.path) : scope === "season" ? `season ${input.season}` : `release group ${input.group}`})${tagged.length ? `; the tag was also written into ${tagged.length} file${tagged.length === 1 ? "" : "s"}` : ""}`,
-    undo: { action: "delete-overrides", args: { ids: ids.join(",") } },
+    why: `You marked subtitle track ${input.trackIndex} as ${what} in ${marked} file${marked === 1 ? "" : "s"} (${scope === "file" ? path.posix.basename(input.path) : scope === "season" ? `season ${input.season}` : `release group ${input.group}`})${tagged.length ? `; the tag was also written into ${tagged.length} file${tagged.length === 1 ? "" : "s"}` : ""}`,
+    undo: {
+      action: "delete-overrides",
+      args: { ids: created.join(","), restore, wrote: { trackIndex: input.trackIndex, lang, forced: input.forced ? 1 : 0 } },
+    },
   });
-  return { files: ids.length, tagged: tagged.length };
+  return { files: marked, tagged: tagged.length };
 }
 
-export function deleteOverrides(ids: number[]) {
-  for (const id of ids) db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
+/**
+ * The undo of a track-language mark: the rows it created go, the corrections it changed come back as they were, but
+ * only where the row still holds what that mark wrote (`wrote`): a track the user changed again since is left as it
+ * is, and its file is returned so the undo can say so. (Entries logged before `restore`/`wrote` were kept only list
+ * ids, which may include changed corrections: those are deleted, as before.)
+ */
+/** A correction as it was before a mark changed it. `id`: its row (followed through renames); older entries have none. */
+interface OverrideBefore {
+  id?: number;
+  path: string;
+  trackIndex: number;
+  lang: string | null;
+  forced: number;
+  at: number;
+}
+
+export function deleteOverrides(
+  ids: number[],
+  restore: OverrideBefore[] = [],
+  wrote?: { trackIndex: number; lang: string | null; forced: number },
+): string[] {
+  const left: string[] = [];
+  const still = (cur: { lang: string | null; forced: number } | undefined) =>
+    !wrote || (!!cur && cur.lang === wrote.lang && !!cur.forced === !!wrote.forced);
+  tx(db, () => {
+    for (const id of ids) {
+      const cur = db.prepare("SELECT path, lang, forced FROM track_overrides WHERE id = ?").get(id) as
+        { path: string; lang: string | null; forced: number } | undefined;
+      if (!cur) continue; // already gone
+      if (!still(cur)) {
+        left.push(cur.path);
+        continue;
+      }
+      db.prepare("DELETE FROM track_overrides WHERE id = ?").run(id);
+    }
+    for (const r of restore) {
+      if (r.id !== undefined) {
+        // By its row: a rename since moved it to the file's new name, and it is put back there.
+        const cur = db.prepare("SELECT path, lang, forced FROM track_overrides WHERE id = ?").get(r.id) as
+          { path: string; lang: string | null; forced: number } | undefined;
+        if (!still(cur)) {
+          left.push(cur?.path ?? r.path);
+          continue;
+        }
+        db.prepare("UPDATE track_overrides SET lang = ?, forced = ?, at = ? WHERE id = ?").run(r.lang, r.forced, r.at, r.id);
+        continue;
+      }
+      const cur = db.prepare("SELECT lang, forced FROM track_overrides WHERE path = ? AND track_index = ?").get(r.path, r.trackIndex) as
+        { lang: string | null; forced: number } | undefined;
+      if (!still(cur)) {
+        left.push(r.path);
+        continue;
+      }
+      db.prepare(
+        "INSERT INTO track_overrides (path, track_index, lang, forced, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path, track_index) DO UPDATE SET lang = excluded.lang, forced = excluded.forced, at = excluded.at",
+      ).run(r.path, r.trackIndex, r.lang, r.forced, r.at);
+    }
+  });
   invalidateOverrides();
+  return left;
 }
 
 /** Writes the language (and forced flag) into the MKV header in place (mkvpropedit; no remux). MKV only. */
@@ -169,7 +241,7 @@ function writeTag(p: string, trackIndex: number, lang: string, forced: boolean):
 }
 
 /** "Use this as English": renames a sidecar to "<video>.<lang>.<ext>" next to the video (undoable). */
-export function useSidecar(input: { video: string; file: string; lang: string; tvdbId?: number | null; title?: string }) {
+export async function useSidecar(input: { video: string; file: string; lang: string; tvdbId?: number | null; title?: string }) {
   const local = localPath(input.video);
   if (!local || !underAllowedRoot(input.video)) throw bad("That file isn't in an allowed root folder");
   const dir = path.dirname(local);
@@ -179,7 +251,7 @@ export function useSidecar(input: { video: string; file: string; lang: string; t
   if (!/^[a-z]{2,3}$/.test(lang)) throw bad("Pick a language code like en");
   const to = `${path.basename(local).replace(/\.[^.]+$/, "")}.${lang}${path.extname(name).toLowerCase()}`;
   if (fs.existsSync(path.join(dir, to))) throw bad(`${to} already exists`, 409);
-  fs.renameSync(path.join(dir, name), path.join(dir, to));
+  await renameNoClobber(path.join(dir, name), path.join(dir, to), `${to} already exists`);
   logDecision("fact", {
     tvdbId: input.tvdbId ?? null,
     title: input.title,
@@ -189,12 +261,22 @@ export function useSidecar(input: { video: string; file: string; lang: string; t
   return { renamed: to };
 }
 
-export function renameSidecarBack(a: { dir: string; from: string; to: string }) {
+export async function renameSidecarBack(a: { dir: string; from: string; to: string }) {
   const local = localPath(`${a.dir}/${a.from}`);
   if (!local) throw bad("Can't reach that folder");
   const target = path.join(path.dirname(local), path.basename(a.to));
   if (fs.existsSync(target)) throw bad(`${a.to} exists again; leaving both`, 409);
-  fs.renameSync(local, target);
+  await renameNoClobber(local, target, `${a.to} exists again; leaving both`);
+}
+
+/** A rename that never overwrites: a file that appeared at the target after the check above is left alone (409). */
+async function renameNoClobber(from: string, to: string, exists: string) {
+  try {
+    await moveNoClobber(from, to);
+  } catch (e) {
+    if (/already exists/.test((e as Error).message)) throw bad(exists, 409);
+    throw e;
+  }
 }
 
 /** Probes one file again now (stale scan). */

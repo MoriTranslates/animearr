@@ -14,15 +14,15 @@ process.env.ANIMEARR_NO_LOCK = "1";
 
 const { setAccount } = await import("../server/system/settings.js");
 await setAccount("captain", "pw-test-1");
-const { BACKUP_DIR, restartNeeded } = await import("../server/system/db.js");
-const { KEY_FILE } = await import("../server/system/secretbox.js");
+const { BACKUP_DIR, restartNeeded, USER_DB } = await import("../server/system/db.js");
 const { createBackup, parseBackup, restoreUploaded } = await import("../server/system/backupTransfer.js");
 
 test("H2: a failure after the swap began keeps this attempt's safety copy and its key", async () => {
   const upload = await parseBackup((await createBackup()).data);
   const real = fs.renameSync;
   (fs as { renameSync: unknown }).renameSync = (from: fs.PathLike, to: fs.PathLike) => {
-    if (path.resolve(String(to)) === path.resolve(KEY_FILE)) throw Object.assign(new Error("EPERM: rename refused"), { code: "EPERM" });
+    // The database rename: the swap's first live step (database, then key).
+    if (path.resolve(String(to)) === path.resolve(USER_DB)) throw Object.assign(new Error("EPERM: rename refused"), { code: "EPERM" });
     return real(from, to);
   };
   let caught: unknown;

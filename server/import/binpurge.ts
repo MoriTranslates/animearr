@@ -8,11 +8,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_DIR, db } from "../system/db.js";
+import { db } from "../system/db.js";
 import { logDecision } from "../system/activity.js";
 import { getSettings } from "../system/settings.js";
 import { mappedPath } from "../system/paths.js";
 import { libraryRoots } from "./mediafiles.js";
+import { configFolder, libraryFolders, overlaps, realish } from "./protectedPaths.js";
+import { deletePathRows } from "./pathRows.js";
 
 const DAY = 86_400_000;
 
@@ -25,13 +27,34 @@ export function binFolder(): { local: string } | { error: string } {
   const local = path.resolve(mappedPath(bin));
   const depth = local.split(/[\\/]+/).filter(Boolean).length;
   if (bin === "" || bin === "/" || depth < 2) return { error: `the recycling bin "${bin}" is too close to the root of the disk` };
-  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => path.resolve(mappedPath(r.replace(/\/+$/, ""))));
-  if (roots.some((r) => r === local || r.startsWith(local + path.sep)))
-    return { error: `the recycling bin "${bin}" is (or contains) a library folder` };
-  const conf = path.resolve(CONFIG_DIR);
-  if (local === conf || conf.startsWith(local + path.sep) || local.startsWith(conf + path.sep))
-    return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
+  // Both directions (a bin inside a library folder gets real episodes purged), by real path (protectedPaths.ts).
+  const real = realish(local);
+  if (libraryFolders().some((r) => overlaps(real, r))) return { error: `the recycling bin "${bin}" is in (or contains) a library folder` };
+  if (overlaps(real, configFolder())) return { error: `the recycling bin "${bin}" is in (or contains) AnimeArr's own data folder` };
   return { local };
+}
+
+/**
+ * A file in the bin by the bin's library-style path (the setting, e.g. /media/Recycle/animearr/Show/x.mkv): the key
+ * per-file rows use, like every library path, whatever this machine's own path is.
+ */
+export function binArrPath(local: string, binLocal: string) {
+  const rel = path.relative(binLocal, path.resolve(local)).split(path.sep).join("/");
+  return `${getSettings().media.recycleBin.trim().replace(/\/+$/, "")}/${rel}`;
+}
+
+/**
+ * For the status warnings: a recycling bin that is set but refused (e.g. inside a library folder, which earlier
+ * versions accepted). No bin, or a library not synced yet, isn't a warning.
+ */
+export function binWarnings(): string[] {
+  if (!getSettings().media.recycleBin.trim() || !libraryRoots().length) return [];
+  const bin = binFolder();
+  return "error" in bin
+    ? [
+        `AnimeArr's recycling bin can't be used: ${bin.error}. Upgrades and Replace season keep the old files until it's changed (Settings → Media management).`,
+      ]
+    : [];
 }
 
 /** Called by the importer for every file it moves into the bin. */
@@ -126,7 +149,13 @@ export async function purgeBin(opts: { all?: boolean; now?: number } = {}) {
       deleted++;
       bytes += size;
     } catch {
-      /* next run */
+      continue; // still there: tried again next run (its rows stay with it)
+    }
+    // Gone for good: the per-file rows that went into the bin with it go too.
+    try {
+      deletePathRows(binArrPath(p, bin.local));
+    } catch {
+      /* orphan rows at a bin path apply to no file: harmless, tidied with the next purge of that name */
     }
   }
   // Rows for files that are gone (restored by hand) go too.

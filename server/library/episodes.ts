@@ -11,6 +11,8 @@ import path from "node:path";
 import { listDecisions, logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { recycleSetting } from "../import/recycle.js";
+import { deletePathRows, movePathRows } from "../import/pathRows.js";
+import { keyOf } from "../system/paths.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "./franchise.js";
 import { ownFile, probeOf, recordFor } from "../import/mediafiles.js";
 import { catalogLookup, entriesForSeries } from "../metadata/catalog.js";
@@ -720,12 +722,29 @@ export async function deleteEpisodeFiles(
       await deps.deleteFile(ep.episodeFileId);
       done.add(ep.episodeFileId);
       deleted.push({ episodeId: eid, file: path.posix.basename(f.path), episodes: labels });
+      // Its per-file rows (track corrections, burned-in mark, release details) never stay at its name: a new file there
+      // would inherit them. With Sonarr's bin they go to the bin with it (<bin>/<show folder>/…), kept. Sonarr has no
+      // bin (gone for good): they describe a file that no longer exists, so they are dropped. Sonarr didn't say
+      // (unknown): the file may be in its bin, so they are only detached, to a key no file can have.
+      let rowsNote = "";
+      try {
+        if (bin?.configured && bin.path) {
+          const show = keyOf(s.path);
+          movePathRows(f.path, `${keyOf(bin.path)}/${path.posix.relative(path.posix.dirname(show), keyOf(f.path))}`);
+        } else if (bin && !bin.configured) {
+          if (deletePathRows(f.path))
+            rowsNote = " Its track corrections and burned-in mark (if any) were dropped with it, so a new file at this name starts clean.";
+        } else if (movePathRows(f.path, `deleted:${Date.now()}:${keyOf(f.path)}`))
+          rowsNote = ` Its track corrections and burned-in mark (if any) were set aside (kept as "deleted:…:${keyOf(f.path)}"), so a new file at this name starts clean.`;
+      } catch (e) {
+        rowsNote = ` Its track corrections and marks couldn't be moved off its name (${(e as Error).message}): a new file there would inherit them.`;
+      }
       logDecision("info", {
         tvdbId,
         title: s.title,
         episodeIds: sharing.length ? sharing.map((x) => x.id) : [eid],
         release: f.sceneName ?? null,
-        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.`,
+        why: `Deleted the ${labels.join(" + ")} file ${path.posix.basename(f.path)} (you confirmed). It can't be undone here; ${where}.${rowsNote}`,
         detail: { kind: "delete", fileId: ep.episodeFileId, path: f.path },
       });
     } catch (e) {

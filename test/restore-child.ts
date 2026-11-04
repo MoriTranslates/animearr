@@ -1,0 +1,63 @@
+/**
+ * One AnimeArr "start" for test/restore-safety.test.ts: the database, key and settings load as they would at startup
+ * (ANIMEARR_CONFIG is set by the caller), then one action runs and its result is printed as the last line (JSON).
+ * Not a test file itself.
+ */
+const [action, arg = ""] = process.argv.slice(2);
+const out = (v: unknown) => {
+  process.stdout.write(`\n${JSON.stringify(v)}\n`);
+  process.exit(0);
+};
+try {
+  const { db, dbState, backupNow, USER_DB, KEY_FILE } = await import("../server/system/db.js");
+  const settings = await import("../server/system/settings.js");
+  const { getSettings, patchSettings, setAccount, checkPassword, keepSessionsEndedAcrossRestore } = settings;
+  const bt = await import("../server/system/backupTransfer.js");
+  const fs = (await import("node:fs")).default;
+  if (action === "setup") {
+    // arg: a marker that identifies this state after a restore.
+    await setAccount("captain", "pw-" + arg);
+    patchSettings((s) => ({ ...s, externalUrl: `http://${arg}.lan`, auth: { ...s.auth, bypassLocal: true } }));
+    out({ backup: backupNow("nightly") });
+  } else if (action === "status") {
+    const s = getSettings();
+    const standIn = (settings as { settingsStandIn?: () => unknown }).settingsStandIn?.() ?? null;
+    out({
+      corrupt: dbState.corrupt,
+      marker: s.externalUrl,
+      passwordOk: await checkPassword(arg, s.auth.passwordHash),
+      hasHash: !!s.auth.passwordHash,
+      bypassLocal: s.auth.bypassLocal,
+      standIn,
+    });
+  } else if (action === "restore" || action === "restore-crash") {
+    if (action === "restore-crash") {
+      // A power cut between the restore's two live renames: the first one (database or key) lands, then the process
+      // dies on the spot. No catch, rollback or exit handler runs, exactly as after a crash.
+      const real = fs.renameSync;
+      fs.renameSync = ((from: string, to: string) => {
+        real(from, to);
+        if (to === USER_DB || to === KEY_FILE) process.kill(process.pid, "SIGKILL");
+      }) as typeof fs.renameSync;
+    }
+    try {
+      bt.restoreBackup(arg, keepSessionsEndedAcrossRestore);
+      out({ ok: true });
+    } catch (e) {
+      out({ ok: false, error: (e as Error).message });
+    }
+  } else if (action === "export") {
+    fs.writeFileSync(arg, (await bt.createBackup()).data);
+    out({ ok: true });
+  } else if (action === "upload") {
+    try {
+      bt.restoreUploaded(await bt.parseBackup(fs.readFileSync(arg)), keepSessionsEndedAcrossRestore);
+      out({ ok: true });
+    } catch (e) {
+      out({ ok: false, error: (e as Error).message });
+    }
+  } else out({ error: `unknown action ${action}` });
+  void db;
+} catch (e) {
+  out({ crashed: (e as Error).message });
+}

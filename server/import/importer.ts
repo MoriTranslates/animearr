@@ -16,7 +16,10 @@
  * overwritten (link-then-unlink, or exclusive copy); a replaced file is only binned after the new one is in place
  * under a temporary name, and comes back if the swap fails.
  */
-import { noteBinned, pinBinned } from "./binpurge.js";
+import { binArrPath, binFolder, noteBinned, pinBinned } from "./binpurge.js";
+import { movePathRows } from "./pathRows.js";
+import { copyNoClobber, moveNoClobber } from "./fileMoves.js";
+import { touchesProtected } from "./protectedPaths.js";
 import { inExtrasFolder, isCreditlessTitle } from "../core/resolver.js";
 import { isTorrentClient } from "../arr/clients.js";
 import fs from "node:fs";
@@ -28,9 +31,9 @@ import { identify } from "../core/identify.js";
 import { parseRelease } from "../core/parser.js";
 import { sonarrQualityName } from "../core/quality.js";
 import { keepTagFor } from "../search/qualityLocks.js";
-import { allRows, cache, CONFIG_DIR, db } from "../system/db.js";
+import { allRows, cache, db } from "../system/db.js";
 import { catalogLookup } from "../metadata/catalog.js";
-import { libraryRoots, probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
+import { probeFile, scanFolder, type MediaRecord } from "./mediafiles.js";
 import { renderEpisode, renderMovie, renderSeasonFolder, type NamingOptions } from "./naming.js";
 import { rematerializeMovie, rematerializeSeries } from "../library/native.js";
 import { isNativeMovieId, isNativeSeriesId } from "../library/nativeIds.js";
@@ -55,6 +58,7 @@ export interface PlanItem {
   action: "hardlink" | "copy" | "move";
   sidecars: { source: string; dest: string }[];
   replaces: string | null; // local path of the file it replaces (goes to the recycle bin)
+  replacesArr?: string | null; // its library path (its per-file rows go to the bin with it)
   problem: string | null; // set → this item is skipped
 }
 export interface ImportPlan {
@@ -218,19 +222,12 @@ const under = (p: string, root: string) => {
   return a === r || a.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
 };
 
-/** Where an import may NOT come from: the library, the recycle bin, AnimeArr's own config. */
+/**
+ * Where an import may NOT come from: the library, the recycle bin, AnimeArr's own config, anything inside them, or a
+ * folder that holds one of them (a source above the library would move other shows' files).
+ */
 function forbiddenSource(real: string) {
-  const s = getSettings();
-  const roots = [...s.allowedRoots, ...libraryRoots()].map(mappedPath);
-  if (s.media.recycleBin) roots.push(mappedPath(s.media.recycleBin.replace(/\/+$/, "")));
-  roots.push(CONFIG_DIR);
-  return roots.some((r) => {
-    try {
-      return under(real, fs.existsSync(r) ? fs.realpathSync(r) : r);
-    } catch {
-      return under(real, r);
-    }
-  });
+  return touchesProtected(real, { bin: true });
 }
 
 /** Automatic imports: the source must be inside one of AnimeArr's own category folders (never Sonarr's/Radarr's/others). */
@@ -354,7 +351,7 @@ export async function planImport(
   const ctx = identifyContext();
   const minConf = getSettings().managed.minConfidence;
   const torrent = isTorrentClient(input.client);
-  const binSet = !!m.recycleBin.trim();
+  const binProblem = recycleBinProblem();
   const items: PlanItem[] = [];
   const taken = new Set<string>();
   // Files the user picked (the hand import): only those count for "two files would get the same name".
@@ -446,7 +443,7 @@ export async function planImport(
     else if (fileIds.length > 1) problem = "these episodes are in separate files now: import this one by hand";
     else if (others) problem = "the current file also holds other episodes: import this one by hand";
     else if (current && !currentLocal) problem = "AnimeArr can't reach the episode's current file, so it can't replace it";
-    else if (currentLocal && !binSet) problem = "no recycling bin is set, so the current file can't be replaced safely";
+    else if (currentLocal && binProblem) problem = `${binProblem}, so the current file can't be replaced safely`;
     else if (picked(f) && taken.has(dest)) problem = "two files would get the same name";
     else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
       problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
@@ -459,6 +456,7 @@ export async function planImport(
       destArr,
       sidecars: m.importExtraFiles ? sidecarsFor(f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix })) : [],
       replaces: currentLocal,
+      replacesArr: currentLocal ? current : null,
       problem,
     });
   }
@@ -499,38 +497,9 @@ function freeSpaceOk(dest: string, size: number, opts: { source?: string; action
   }
 }
 
-// ---------------------------------------------------------------- file operations that never overwrite
+// ---------------------------------------------------------------- file operations that never overwrite (fileMoves.ts)
 
-/** Renames a → b; fails if b exists (link + unlink; exclusive copy across disks). */
-export async function moveNoClobber(a: string, b: string) {
-  fs.mkdirSync(path.dirname(b), { recursive: true });
-  try {
-    fs.linkSync(a, b); // EEXIST if b exists: never overwritten
-    fs.unlinkSync(a);
-    return;
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
-    if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") throw e;
-  }
-  await copyNoClobber(a, b);
-  fs.unlinkSync(a);
-}
-
-/**
- * Copies a → b; fails if b exists; a failed copy leaves nothing behind. Asynchronous: a 1.5 GB copy between shares
- * takes ~20 s, and the web UI must keep answering meanwhile.
- */
-async function copyNoClobber(a: string, b: string) {
-  fs.mkdirSync(path.dirname(b), { recursive: true });
-  try {
-    await fs.promises.copyFile(a, b, fs.constants.COPYFILE_EXCL);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`${path.basename(b)} already exists: not overwritten`);
-    fs.rmSync(b, { force: true }); // ours: COPYFILE_EXCL created it
-    throw e;
-  }
-}
+export { moveNoClobber };
 
 /** Places a file; returns what was actually done (a hardlink across disks becomes a copy). */
 async function placeFile(action: PlanItem["action"], a: string, b: string): Promise<PlanItem["action"]> {
@@ -551,14 +520,31 @@ async function placeFile(action: PlanItem["action"], a: string, b: string): Prom
   return "copy";
 }
 
+/** Why the recycling bin can't take a replaced file (the same checks as its purge), or null when it can. */
+function recycleBinProblem() {
+  const bin = binFolder();
+  return "error" in bin ? bin.error : null;
+}
+
+/** A recycle that failed part-way: what it had moved went back, except `stranded` (still in the bin). */
+export class RecycleFailed extends Error {
+  stranded: { from: string; to: string; why: string }[];
+  constructor(message: string, stranded: { from: string; to: string; why: string }[]) {
+    super(message);
+    this.stranded = stranded;
+  }
+}
+
 /**
- * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set (never
- * deletes). Returns where each file went, so it can be put back.
+ * Moves a file (and its sidecars) into the recycle bin, keeping its show folder. Refuses when no bin is set or the bin
+ * is unsafe (in or holding a library folder, relative, too near the disk root): then nothing moves. Never deletes.
+ * Returns where each file went, so it can be put back. If one of the files can't be moved, the ones already moved go
+ * back first; any that can't go back are in the RecycleFailed's `stranded`.
  */
 export async function recycle(localFile: string, seriesLocal: string) {
-  const bin = getSettings().media.recycleBin.trim();
-  if (!bin) throw new Error("no recycling bin is set; nothing was replaced");
-  const binLocal = mappedPath(bin.replace(/\/+$/, ""));
+  const bin = binFolder();
+  if ("error" in bin) throw new Error(`${bin.error}; nothing was replaced, the old file is where it was`);
+  const binLocal = bin.local;
   let rel = path.relative(path.dirname(seriesLocal), localFile);
   if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) rel = path.basename(localFile);
   const moved: { from: string; to: string }[] = [];
@@ -567,7 +553,21 @@ export async function recycle(localFile: string, seriesLocal: string) {
     const r = f === localFile ? rel : path.join(path.dirname(rel), path.basename(f));
     let target = path.join(binLocal, r);
     if (fs.existsSync(target)) target = target.replace(/(\.[^.]+)$/, `.${stamp}$1`);
-    await moveNoClobber(f, target);
+    try {
+      await moveNoClobber(f, target);
+    } catch (e) {
+      // Part-way (a locked subtitle, no permission, disk full): put back what already went, newest first.
+      const stranded: { from: string; to: string; why: string }[] = [];
+      for (const b of [...moved].reverse()) {
+        try {
+          await moveNoClobber(b.to, b.from);
+        } catch (re) {
+          stranded.push({ ...b, why: (re as Error).message });
+        }
+      }
+      const cause = `couldn't move ${path.basename(f)} to the recycling bin (${(e as Error).message})`;
+      throw new RecycleFailed(stranded.length ? cause : `${cause}; nothing was replaced, the old file is where it was`, stranded);
+    }
     try {
       noteBinned(target, fs.statSync(target).size); // the bin's retention counts from now
     } catch {
@@ -657,7 +657,8 @@ async function placeItems(
   if (real && (getSettings().importer.realBudget ?? 0) === 0)
     throw err("AnimeArr's importer is paused for a review of its last real import (Settings → Media management → Importer)", 409);
   const rootLocal = mappedPath(target.arrRoot);
-  const out: { label: string; done: boolean; why: string }[] = [];
+  // stranded: the item failed AND part of its old file is stuck in the recycling bin (not back in the library).
+  const out: { label: string; done: boolean; why: string; stranded?: boolean }[] = [];
   for (const it of items) {
     if (opts.only && !opts.only.includes(it.source)) continue;
     if (it.problem) {
@@ -726,6 +727,21 @@ async function placeItems(
         done: true,
         why: `${verb} to ${it.destArr}${binned.length ? "; the old file is in the recycling bin" : ""}`,
       });
+      // The replaced file's own rows (track corrections, burned-in mark, release details) go to the bin with it: the new
+      // file, often at the same name, must not inherit them. Keyed by the bin's library-style path, like every file
+      // (the bin's purge removes them with the file).
+      if (binned.length && it.replacesArr)
+        try {
+          const bin = binFolder();
+          movePathRows(it.replacesArr, "error" in bin ? binned[0].to : binArrPath(binned[0].to, bin.local));
+        } catch (e) {
+          logDecision("fail", {
+            tvdbId: target.tvdbId ?? null,
+            title: target.title,
+            episodeIds: it.episodeIds,
+            why: `Imported ${it.label}, but the replaced file's track corrections and marks couldn't be moved off ${it.replacesArr} (${(e as Error).message}): check the new file's tracks`,
+          });
+        }
       try {
         setPerms(path.dirname(it.dest));
         if (target.tvdbId && it.episodeIds.length) applyFileDate(it.dest, it.episodeIds); // "Change file date"
@@ -749,7 +765,13 @@ async function placeItems(
         title: target.title,
         episodeIds: it.episodeIds,
         why: `Imported ${it.label} → ${it.destArr} (AnimeArr's importer, ${verb})${binned.length ? `; replaced file moved to ${binned[0].to}` : ""}`,
-        detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
+        // dest/source: a retry of a multi-part movie knows which parts this grab already placed (movies.ts).
+        detail: {
+          ...(target.movieId ? { movieId: target.movieId } : {}),
+          ...(opts.grabId ? { grabId: opts.grabId } : {}),
+          dest: it.destArr,
+          source: it.source,
+        },
       }); // a grab's import notifies once, at the end
     } catch (e) {
       // Nothing half-done stays: the temporary file goes (a moved source goes back first).
@@ -761,6 +783,7 @@ async function placeItems(
           /* left as *.animearr-part for a look */
         }
       }
+      if (e instanceof RecycleFailed) stranded.push(...e.stranded); // part of the old file went to the bin and stuck
       let why = (e as Error).message;
       if (stranded.length) {
         // The old file is in the bin and not back in the library: say where both files are, and keep the old one out of
@@ -785,8 +808,16 @@ async function placeItems(
           why: `Import of ${it.label} failed and ${why}`,
           detail: { ...(target.movieId ? { movieId: target.movieId } : {}), ...(opts.grabId ? { grabId: opts.grabId } : {}) },
         });
-      }
-      out.push({ label: it.label, done: false, why });
+      } else if (!opts.grabId)
+        // A manual import that failed while moving files: in Activity too (a grab's import reports its own outcome).
+        logDecision("fail", {
+          tvdbId: target.tvdbId ?? null,
+          title: target.title,
+          episodeIds: it.episodeIds,
+          why: `Import of ${it.label} failed: ${why}`,
+          detail: target.movieId ? { movieId: target.movieId } : {},
+        });
+      out.push({ label: it.label, done: false, why, ...(stranded.length ? { stranded: true } : {}) });
     } finally {
       inFlight.delete(tmp);
     }
@@ -944,12 +975,13 @@ export async function planMovieImport(
   const dest = mappedPath(destArr);
   const currentArr = mv.file ? ((JSON.parse(mv.file) as { path: string | null }).path ?? null) : null;
   const currentLocal = currentArr ? localPath(currentArr) : null;
+  const binProblem = currentLocal ? recycleBinProblem() : null;
   if (problem) {
     /* keep the first problem */
   } else if (!underAllowedRoot(mv.path)) problem = "outside the allowed root folders";
   else if (currentArr && !currentLocal) problem = "AnimeArr can't reach the movie's current file, so it can't replace it";
   else if (currentLocal && input.part) problem = "the movie already has a file: replacing it with a multi-part release is done by hand";
-  else if (currentLocal && !m.recycleBin.trim()) problem = "no recycling bin is set, so the current file can't be replaced safely";
+  else if (currentLocal && binProblem) problem = `${binProblem}, so the current file can't be replaced safely`;
   else if (fs.existsSync(dest) && path.resolve(dest) !== path.resolve(currentLocal ?? ""))
     problem = `a different file already has that name (${path.basename(dest)}): never overwritten`;
   else if (!freeSpaceOk(dest, main.size, { source: main.f, action: base.action, ledger: deps.space }))
@@ -966,6 +998,7 @@ export async function planMovieImport(
           ? sidecarsFor(main.f).map((s) => ({ source: s.file, dest: dest.replace(/\.[^.]+$/, "") + s.suffix }))
           : [],
         replaces: currentLocal,
+        replacesArr: currentLocal ? currentArr : null,
         problem,
       },
     ],
@@ -1146,6 +1179,14 @@ export async function applyRenameRouted(
     done: status === "completed" && !still.has(i.fileId),
     why: status === "completed" ? (still.has(i.fileId) ? "Sonarr didn't rename it" : "renamed by Sonarr") : `Sonarr's rename ${status}`,
   }));
+  // Sonarr renamed them: their per-file rows follow (the files are already renamed, so a failure is reported).
+  for (const r of results.filter((x) => x.done))
+    try {
+      movePathRows(r.from, r.to);
+    } catch (e) {
+      r.why = `renamed by Sonarr, but its episode links and track corrections couldn't follow (${(e as Error).message})`;
+      logDecision("fail", { tvdbId, title: s.title, why: `${path.posix.basename(r.to)} was ${r.why}` });
+    }
   const n = results.filter((r) => r.done).length;
   if (n)
     logDecision("info", {
@@ -1159,6 +1200,28 @@ export async function applyRenameRouted(
     });
   void scanFolder(s.path).catch(() => undefined);
   return { route, results };
+}
+
+/**
+ * Renames a library file (local paths a → b) and moves its per-file rows (library paths) with it. If the rows can't
+ * follow, the file goes back to its old name, so the file and its track corrections never part.
+ */
+async function renameWithRows(a: string, b: string, fromArr: string | undefined, toArr: string | undefined) {
+  await moveNoClobber(a, b);
+  if (!fromArr || !toArr) return; // an undo logged before the rows moved with renames: only the file goes back
+  try {
+    movePathRows(fromArr, toArr);
+  } catch (e) {
+    try {
+      await moveNoClobber(b, a);
+    } catch (re) {
+      throw new Error(
+        `renamed to ${path.basename(b)}, but its episode links and track corrections couldn't follow (${(e as Error).message}) and it couldn't be renamed back (${(re as Error).message})`,
+        { cause: e },
+      );
+    }
+    throw new Error(`not renamed: its episode links and track corrections couldn't be moved (${(e as Error).message})`, { cause: e });
+  }
 }
 
 /** Renames the chosen files (and their sidecars); every rename is logged with undo. */
@@ -1179,7 +1242,7 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
       const a = localPath(it.from)!;
       const b = mappedPath(it.to);
       if (!under(a, seriesLocal) || !under(b, seriesLocal)) throw new Error("outside the show's folder");
-      await moveNoClobber(a, b);
+      await renameWithRows(a, b, it.from, it.to);
       applyFileDate(
         b,
         (cache.prepare("SELECT id FROM episodes WHERE file_id = ?").all(it.fileId) as { id: number }[]).map((e) => e.id),
@@ -1205,7 +1268,19 @@ export async function applyRename(tvdbId: number, fileIds: number[]) {
         tvdbId,
         title: s.title,
         why: `Renamed ${path.posix.basename(it.from)} → ${path.posix.basename(it.to)}`,
-        undo: { action: "rename-back", args: { tvdbId, from: b, to: a, size: st.size, mtime: st.mtimeMs, sidecars: sides } },
+        undo: {
+          action: "rename-back",
+          args: {
+            tvdbId,
+            from: b,
+            to: a,
+            fromArr: it.to,
+            toArr: it.from,
+            size: st.size,
+            mtime: st.mtimeMs,
+            sidecars: sides,
+          },
+        },
       });
     } catch (e) {
       out.push({ from: it.from, to: it.to, done: false, why: (e as Error).message });
@@ -1225,8 +1300,11 @@ export async function renameBack(args: {
   tvdbId?: number;
   from: string;
   to: string;
+  fromArr?: string;
+  toArr?: string;
   size?: number;
   mtime?: number;
+  ino?: number; // recorded by an earlier build; not compared (unstable on shfs)
   sidecars?: { from: string; to: string }[];
 }) {
   const s = args.tvdbId ? seriesRow(args.tvdbId) : undefined;
@@ -1234,9 +1312,19 @@ export async function renameBack(args: {
   const root = mappedPath(s.path);
   const all = [args, ...(args.sidecars ?? [])];
   if (all.some((x) => !under(x.from, root) || !under(x.to, root))) throw new Error("outside the show's folder; not renamed back");
+  // Only the file AnimeArr renamed goes back: same size and same time. Not the inode: Unraid's /mnt/user (shfs) and
+  // other FUSE/network filesystems may give the same file another inode number later, which would block every undo.
   const st = fs.statSync(args.from);
   if (args.size !== undefined && st.size !== args.size) throw new Error("the file changed since the rename; not renamed back");
-  await moveNoClobber(args.from, args.to);
+  if (args.mtime !== undefined && Math.abs(st.mtimeMs - args.mtime) > 1)
+    throw new Error("the file changed since the rename (its date is different); not renamed back");
+  await renameWithRows(args.from, args.to, args.fromArr, args.toArr);
+  if (args.mtime === undefined)
+    logDecision("info", {
+      tvdbId: args.tvdbId ?? null,
+      title: s.title,
+      why: `Renamed ${path.basename(args.from)} back to ${path.basename(args.to)}. This undo entry is from an older version, so the file was checked by its size only`,
+    });
   for (const x of args.sidecars ?? []) {
     try {
       if (fs.existsSync(x.from)) await moveNoClobber(x.from, x.to);

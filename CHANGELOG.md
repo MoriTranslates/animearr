@@ -4,6 +4,10 @@ All notable changes, newest first. The commit history has the crew's version of 
 
 ## Unreleased
 
+### Known limits
+- If Sonarr finishes a rename after AnimeArr stops waiting, AnimeArr's per-file notes stay with the old name until the
+  next library rescan.
+
 ### Safety
 - **A replace that can't be undone says where both files are.** If an import replaced a file, failed, and then couldn't
   put the old file back, the message now names the old file's place in the recycling bin and where the new file is. The

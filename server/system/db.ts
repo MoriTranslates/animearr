@@ -19,6 +19,8 @@ export const CONFIG_DIR = path.resolve(process.env.ANIMEARR_CONFIG ?? (isProd ? 
 export const BACKUP_DIR = path.join(CONFIG_DIR, "backups");
 export const CACHE_DIR = path.join(CONFIG_DIR, "cache");
 export const USER_DB = path.join(CONFIG_DIR, "animearr.db");
+/** The key that seals the settings (secretbox.ts). Here so a restore can swap it together with the database. */
+export const KEY_FILE = path.join(CONFIG_DIR, "secret.key");
 const CACHE_DB = path.join(CONFIG_DIR, "cache.db");
 const LOCK = path.join(CONFIG_DIR, "animearr.lock");
 
@@ -204,6 +206,23 @@ export function listBackups() {
     .sort((a, b) => b.at - a.at);
 }
 
+/**
+ * A name in BACKUP_DIR that nothing has yet: the time to the millisecond, then -2, -3, ... (two backups of one kind in
+ * the same moment must both work: a safety copy that fails on a name clash aborts the restore it protects). The names
+ * a copy's companions take (its saved key, a raw copy's WAL: the name's ".db" swapped for each of `companions`) must be
+ * free too. `ext` ends in ".db".
+ */
+export function freeBackupName(prefix: string, ext: string, companions: readonly string[] = [".secret.key", ".db-wal"]) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
+  for (let i = 1; i < 1000; i++) {
+    const name = `${prefix}${stamp}${i > 1 ? `-${i}` : ""}${ext}`;
+    const stem = name.replace(/\.db$/, "");
+    const taken = [name, ...companions.map((c) => `${stem}${c}`)].some((n) => fs.existsSync(path.join(BACKUP_DIR, n)));
+    if (!taken) return name;
+  }
+  throw new Error(`no free backup name for ${prefix}${stamp}`);
+}
+
 /** Removes the oldest copies of one kind beyond how many are kept, never `keep` (a backup just restored). */
 export function pruneBackups(kind: BackupKind, keep?: string) {
   for (const old of listBackups()
@@ -218,8 +237,8 @@ export function pruneBackups(kind: BackupKind, keep?: string) {
  */
 export function backupNow(kind: BackupKind, label = "", prune = true): string | null {
   if (dbState.corrupt) return null;
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const name = `animearr-${kind}-${stamp}${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`;
+  // VACUUM INTO refuses an existing file, so the name below is never overwritten; nor is a key saved beside it.
+  const name = freeBackupName(`animearr-${kind}-`, `${label ? `-${label.replace(/[^\w.]/g, "")}` : ""}.db`);
   const file = path.join(BACKUP_DIR, name);
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   if (prune) pruneBackups(kind);
@@ -531,7 +550,16 @@ export function migrateUserDb(d: DatabaseSync, steps: readonly string[] = USER_M
 
 function migrateUser() {
   if (dbState.corrupt) return;
-  migrateUserDb(db, USER_MIGRATIONS, (v) => backupNow("premigration", `v${v}`));
+  // A database from a newer AnimeArr (after a downgrade, or a backup copied in by hand): this build doesn't know its
+  // tables, so it doesn't run on it at all. Nothing is written; the next start of a newer version uses it as it was.
+  const v = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (v > USER_MIGRATIONS.length) {
+    console.error(
+      `${USER_DB} is from a newer AnimeArr (database version ${v}; this version understands up to ${USER_MIGRATIONS.length}). AnimeArr won't run on it, so nothing in it is changed: update AnimeArr, or put back a backup made by this version (from ${BACKUP_DIR}).`,
+    );
+    process.exit(1);
+  }
+  migrateUserDb(db, USER_MIGRATIONS, (from) => backupNow("premigration", `v${from}`));
 }
 
 function migrateCache() {

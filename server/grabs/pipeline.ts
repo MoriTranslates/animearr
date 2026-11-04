@@ -38,6 +38,7 @@ import { judge } from "./verify.js";
 import { cleanUnpacked, UNPACK_DIR } from "./extract.js";
 import { importMovie, movieFileOpts, movieNextForRow } from "../library/movies.js";
 import { scanFolder } from "../import/mediafiles.js";
+import { binFolder } from "../import/binpurge.js";
 import { radarrMovieSpecials, refuseMovieSpecials } from "../library/franchise.js";
 import { inspectFiles } from "./safety.js";
 import {
@@ -894,6 +895,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     });
   };
   if (!series || !underAllowedRoot(series.path)) return attention("the series is outside the allowed root folders");
+  // Replace season swaps the old files into AnimeArr's bin: a bin it can't use (none, or one in or holding a library
+  // folder) stops it here with that reason, before anything is listed or touched (the per-file check would refuse each).
+  if (row.purpose === "replace") {
+    const bin = binFolder();
+    if ("error" in bin)
+      return attention(
+        `Replace season needs a usable recycling bin (Settings → Media management): ${bin.error}. Nothing in your library changed`,
+      );
+  }
   const sonarrPath0 = clientToSonarr(clientPath);
   const singleArchive = /\.(rar|zip|7z)$/i.test(sonarrPath0);
   // A single-file torrent that is an archive: its folder is the shared category folder.
@@ -1007,8 +1017,11 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
       `${replaceLabel} stopped: the download was only ${n ? `episode ${n}` : "one episode"}, not the whole season. Nothing in your library changed.`,
     );
   }
-  /** Replace season: episodes that keep their old file (new one failed its check, or isn't in the pack). */
-  const kept: { id: number; why: string }[] = replacing
+  /**
+   * Replace season: episodes that weren't swapped (new one failed its check, or isn't in the pack). `lost`: the import
+   * failed AND the old file couldn't be put back from the recycling bin, so it did NOT keep its old file.
+   */
+  const kept: { id: number; why: string; lost?: boolean }[] = replacing
     ? wanted.filter((e) => !mapped.includes(e)).map((id) => ({ id, why: "not in the pack" }))
     : [];
 
@@ -1102,16 +1115,15 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
     if (!imp.allowReal) return attention("real imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
     if (!budgetOk) return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
     const keptIds = new Set(kept.map((k) => k.id));
-    // Retry import of a replace that stopped part-way: episodes this grab already placed are not copied again.
-    const placed = replacing ? placedByGrab(row.id) : new Set<number>();
+    // Retry import of an import that stopped part-way (a replace or not): episodes this grab already placed are not
+    // copied again (their file is in place under the new name, so planning them again would refuse them).
+    const placed = placedByGrab(row.id);
     const done = plan.filter((p) => p.episodeIds.every((e) => placed.has(e)));
     const toPlace = plan.filter((p) => !p.episodeIds.some((e) => keptIds.has(e)) && !done.includes(p));
     if (!toPlace.every((p) => preVerified.has(p.item.path)))
       return attention("AnimeArr couldn't check every file before importing (check Settings → Paths)");
     if (replacing && !toPlace.length && !done.length)
       return fail(`none of the pack's files passed the check (${[...new Set(kept.map((k) => k.why))].join("; ")})`, false);
-    if (replacing && !getSettings().media.recycleBin.trim())
-      return attention("Replace season needs AnimeArr's recycling bin (Settings → Media management), so the old files can come back");
     let swapped = 0;
     for (const p of toPlace) {
       try {
@@ -1129,7 +1141,7 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         if (bad || !res.length) {
           // Replace season: one episode that can't be placed keeps its old file; the others carry on.
           if (replacing) {
-            for (const id of p.episodeIds) kept.push({ id, why: bad?.why ?? "nothing to import" });
+            for (const id of p.episodeIds) kept.push({ id, why: bad?.why ?? "nothing to import", lost: !!bad?.stranded });
             continue;
           }
           return attention(`AnimeArr's importer: ${bad?.why ?? "nothing to import"}`);
@@ -1149,23 +1161,33 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         return attention(`AnimeArr's importer: ${(e as Error).message}`);
       }
     }
+    const label = (id: number) => {
+      const e = eps.find((x) => x.id === id);
+      return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
+    };
+    // Never "kept the old file" for an episode whose old file is stuck in the bin (its import logged where it is).
+    const keptOld = kept.filter((k) => !k.lost);
+    const lost = kept.filter((k) => k.lost);
+    const lostNote = lost.length
+      ? `the old file of ${lost.map((k) => label(k.id)).join(", ")} couldn't be put back: it is pinned in the recycling bin (see Activity)`
+      : "";
     if (replacing && !swapped && !done.length)
       return attention(
-        `${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). Nothing in your library changed.`,
+        `${replaceLabel} stopped: no episode could be swapped (${[...new Set(kept.map((k) => k.why))].join("; ")}). ${lost.length ? `Not everything is as it was: ${lostNote}.` : "Nothing in your library changed."}`,
       );
     if (replacing) {
       db.prepare("UPDATE grabs SET error = NULL WHERE id = ?").run(row.id);
       if (kept.length) {
-        const label = (id: number) => {
-          const e = eps.find((x) => x.id === id);
-          return e ? `S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}` : String(id);
-        };
+        const parts = [
+          keptOld.length ? `kept the old file for ${keptOld.map((k) => `${label(k.id)} (${k.why})`).join(", ")}` : "",
+          lost.length ? `the old file of ${lost.map((k) => `${label(k.id)} couldn't be put back (${k.why})`).join(", ")}` : "",
+        ].filter(Boolean);
         logDecision("fail", {
           tvdbId: row.tvdb_id,
           title: series.title,
           episodeIds: kept.map((k) => k.id),
           release: row.release,
-          why: `Replace season: kept the old file for ${kept.map((k) => `${label(k.id)} (${k.why})`).join(", ")}; needs a look`,
+          why: `Replace season: ${parts.join("; ")}; needs a look`,
           detail: { grabId: row.id },
         });
       }
@@ -1186,7 +1208,14 @@ export async function importAndVerify(row: GrabRow, clientPath: string, deps: Pi
         setState(
           row.id,
           "needs-attention",
-          `${replaceLabel}: ${kept.length} episode${kept.length === 1 ? "" : "s"} kept their old file (${[...new Set(kept.map((k) => k.why))].join("; ")}). The others were replaced. Fix the cause, then press Retry import`,
+          `${replaceLabel}: ${[
+            keptOld.length
+              ? `${keptOld.length} episode${keptOld.length === 1 ? " kept its" : "s kept their"} old file (${[...new Set(keptOld.map((k) => k.why))].join("; ")})`
+              : "",
+            lostNote,
+          ]
+            .filter(Boolean)
+            .join("; ")}. The others were replaced. Fix the cause, then press Retry import`,
         );
       return;
     }

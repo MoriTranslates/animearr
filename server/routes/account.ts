@@ -16,6 +16,7 @@ import {
 import { cache, db, dbState, startupWarnings } from "../system/db.js";
 import { lastSync, syncRunning } from "../library/library.js";
 import { listManaged } from "../library/managedList.js";
+import { binWarnings } from "../import/binpurge.js";
 
 import {
   DEFAULT_LOGIN,
@@ -26,6 +27,7 @@ import {
   safeEqual,
   setAccount,
   setBypassLocal,
+  settingsStandIn,
 } from "../system/settings.js";
 import { VERSION } from "../system/version.js";
 import type { FastifyInstance } from "fastify";
@@ -87,6 +89,13 @@ export function registerAccountRoutes(app: FastifyInstance) {
               `The database failed its integrity check (${dbState.detail}). AnimeArr is read-only until you restore a backup (System → Backups).`,
             ]
           : []),
+        ...binWarnings(),
+        ...((st) =>
+          st
+            ? [
+                `While the database is damaged, AnimeArr uses the settings of the backup ${st.backup} (${new Date(st.at).toISOString().slice(0, 16).replace("T", " ")}): its password and options, which may be older than your latest changes. The no-password home-network login is off until you restore a backup.`,
+              ]
+            : [])(settingsStandIn()),
       ],
       uiLanguage: s.ui.language,
       textScale: s.ui.textScale ?? null,

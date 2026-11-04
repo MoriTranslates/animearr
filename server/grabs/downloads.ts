@@ -19,10 +19,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { logDecision } from "../system/activity.js";
 import { ownSabHistory, ownTorrents, realClients, type OwnTorrent } from "../arr/clients.js";
-import { allRows, cache, CONFIG_DIR, db, dbState } from "../system/db.js";
+import { allRows, cache, db, dbState } from "../system/db.js";
 import { clientToSonarr, mappedPath } from "../system/paths.js";
 import { ACTIVE, retryImport } from "./pipelineState.js";
-import { libraryRoots } from "../import/mediafiles.js";
+import { touchesProtected } from "../import/protectedPaths.js";
 import { getSettings } from "../system/settings.js";
 import { readBatch } from "./batch.js";
 import { findCompleted } from "../arr/blackhole.js";
@@ -425,32 +425,14 @@ const NOT_RETRYABLE =
   /paused for a review|couldn.t be put back|restarted|outside the allowed|several large|couldn't tell|two files|can't reach|archive|not from AnimeArr|only a manual import/i;
 const retried = new Set<number>();
 
-/** The real path when it exists (symlinks and Windows short names resolved), else the plain resolved path. */
-function real(p: string) {
-  const r = path.resolve(p);
-  try {
-    return fs.realpathSync.native(r);
-  } catch {
-    return r;
-  }
-}
-const sameOrUnder = (p: string, root: string) => {
-  const a = process.platform === "win32" ? p.toLowerCase() : p;
-  const b = process.platform === "win32" ? root.toLowerCase() : root;
-  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
-};
-
 /**
  * A library or allowed root, anything inside one, or anything that CONTAINS one (or AnimeArr's config folder): never
  * deleted by the clean-up, whatever a client says. A client reporting an ancestor of the library as its download path
- * would otherwise take the library with it. Compared by real path, so a symlink can't hide either side.
+ * would otherwise take the library with it. Compared by real path, so a symlink can't hide either side (the shared
+ * guard in protectedPaths.ts).
  */
 export function inProtected(local: string) {
-  const p = real(local);
-  const roots = [...libraryRoots(), ...getSettings().allowedRoots].map((r) => real(mappedPath(r.replace(/\/+$/, ""))));
-  if (roots.some((r) => sameOrUnder(p, r) || sameOrUnder(r, p))) return true;
-  const config = real(CONFIG_DIR);
-  return sameOrUnder(p, config) || sameOrUnder(config, p);
+  return touchesProtected(local);
 }
 const failedAt = (grabId: number) =>
   (db.prepare("SELECT updated_at FROM grabs WHERE id = ?").get(grabId) as { updated_at: number } | undefined)?.updated_at ?? null;
@@ -643,6 +625,9 @@ export async function runCleanup(
       // A torrent is removed through qBittorrent (its own data, its category checked there); folders only inside ours.
       const viaClient = a.step === "leftover" && a.client === "qbittorrent" && !!a.ref && !inProtected(local);
       if (a.step !== "retry" && !viaClient && !inside(local)) throw new Error("outside AnimeArr's own download folders");
+      // Deleted or moved aside here: never a library/allowed root or AnimeArr's own folder, inside or holding one.
+      if (a.step !== "retry" && !viaClient && inProtected(local))
+        throw new Error("it is (or holds) a library folder or AnimeArr's own folder; left alone");
       if (a.grabId && a.step !== "retry") {
         const g = db.prepare("SELECT state, not_ours FROM grabs WHERE id = ?").get(a.grabId) as
           { state: string; not_ours: number } | undefined;

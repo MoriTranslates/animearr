@@ -199,19 +199,21 @@ test("M1: a failing beforeSwap changes nothing, never closes the database and is
   assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key"]);
 });
 
-test("M1: the key rename failing after the close leaves the old database and key, and needs a restart", async () => {
+test("M1: the database rename failing after the close leaves the old database and key, and needs a restart", async () => {
   const { good, dir, paths } = await stoppedSetup();
   const closed: string[] = [];
   let caught: unknown;
+  const renames: string[] = [];
   try {
     withFailingRename(
-      (to) => to === paths.key,
+      (to) => (renames.push(to), to === paths.db),
       () => applyBackup(good, paths, hooksFor(closed)),
     );
   } catch (e) {
     caught = e;
   }
   assert.deepEqual(closed, ["close"]);
+  assert.deepEqual(renames, [paths.db], "the database goes first; the key is never touched once that fails");
   assert.equal(restartNeeded(caught), true);
   const msg = (caught as Error).message;
   assert.match(msg, /EPERM.*undone: your previous database and its key are in place/);
@@ -223,68 +225,25 @@ test("M1: the key rename failing after the close leaves the old database and key
   assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key"], "no temporary files left");
 });
 
-test("M1: the database rename failing after the key was swapped puts the old key back", async () => {
+test("the key rename failing after the database landed: the key is written in place and the restore completes", async () => {
   const { good, dir, paths } = await stoppedSetup();
-  let caught: unknown;
-  try {
-    withFailingRename(
-      (to) => to === paths.db,
-      () => applyBackup(good, paths, hooksFor([])),
-    );
-  } catch (e) {
-    caught = e;
-  }
-  assert.equal(restartNeeded(caught), true);
-  assert.match((caught as Error).message, /undone: your previous database and its key are in place/);
-  assert.equal(fs.readFileSync(paths.db, "utf8"), "old database", "the old database was never replaced");
-  assert.equal(fs.readFileSync(paths.key, "utf8"), "old key", "the old key is back, so database and key match");
+  withFailingRename(
+    (to) => to === paths.key,
+    () => applyBackup(good, paths, hooksFor([])),
+  );
+  assert.ok(good.db.equals(fs.readFileSync(paths.db)), "the backup's database is live");
+  assert.equal(fs.readFileSync(paths.key, "utf8"), good.key.toString("utf8").trim(), "with the backup's key");
   assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key"], "no temporary files left");
 });
 
-test("M1: when the key rename keeps failing, the old key is written back in place", async () => {
+test("if the key can neither be renamed nor written, the waiting key is kept for the next start, and the message says so", async () => {
   const { good, dir, paths } = await stoppedSetup();
-  let caught: unknown;
-  try {
-    withFailingRename(
-      (to) => to === paths.db,
-      () => {
-        // The swap's key rename works; the rollback's rename over the key fails, so the in-place write is used.
-        const real = fs.renameSync;
-        let keyRenames = 0;
-        fs.renameSync = ((a: fs.PathLike, b: fs.PathLike) => {
-          if (String(b) === paths.key && ++keyRenames > 1) throw new Error("EBUSY: resource busy");
-          real(a, b);
-        }) as typeof fs.renameSync;
-        try {
-          return applyBackup(good, paths, hooksFor([]));
-        } finally {
-          fs.renameSync = real;
-        }
-      },
-    );
-  } catch (e) {
-    caught = e;
-  }
-  assert.equal(restartNeeded(caught), true);
-  assert.match((caught as Error).message, /undone/);
-  assert.equal(fs.readFileSync(paths.key, "utf8"), "old key");
-  assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key"]);
-});
-
-test("M1: if the old key can't be put back at all, the message says the folder is mismatched and how to fix it", async () => {
-  const { good, paths } = await stoppedSetup();
   const realWrite = fs.writeFileSync;
   let caught: unknown;
   try {
     withFailingRename(
-      (to) => to === paths.db,
+      (to) => to === paths.key,
       () => {
-        const real = fs.renameSync;
-        let keyRenames = 0;
-        fs.renameSync = ((a: fs.PathLike, b: fs.PathLike) => {
-          if (String(b) === paths.key && ++keyRenames > 1) throw new Error("EBUSY: resource busy");
-          real(a, b);
-        }) as typeof fs.renameSync;
         fs.writeFileSync = ((f: fs.PathOrFileDescriptor, d: string | NodeJS.ArrayBufferView, o?: fs.WriteFileOptions) => {
           if (String(f) === paths.key) throw new Error("EACCES: permission denied");
           realWrite(f, d, o);
@@ -292,7 +251,6 @@ test("M1: if the old key can't be put back at all, the message says the folder i
         try {
           return applyBackup(good, paths, hooksFor([]));
         } finally {
-          fs.renameSync = real;
           fs.writeFileSync = realWrite;
         }
       },
@@ -302,11 +260,16 @@ test("M1: if the old key can't be put back at all, the message says the folder i
   }
   assert.equal(restartNeeded(caught), true);
   const msg = (caught as Error).message;
-  assert.match(msg, /stopped halfway: the backup's secret\.key is in place but your previous database is still there/);
-  assert.match(msg, /copy the safety copy's \.secret\.key file named below/);
+  assert.match(msg, /EPERM.*EACCES/);
+  assert.match(msg, /backup's database is in place.*secret\.key\.restore-tmp.*when it starts again/);
   assert.match(msg, /the-safety-copy/);
-  assert.match(msg, /EBUSY.*EACCES/);
-  assert.equal(fs.readFileSync(paths.db, "utf8"), "old database");
+  assert.ok(good.db.equals(fs.readFileSync(paths.db)), "the restore went forward: the backup's database is live");
+  assert.equal(
+    fs.readFileSync(`${paths.key}.restore-tmp`, "utf8"),
+    good.key.toString("utf8").trim(),
+    "the waiting key is kept, never deleted, for the next start",
+  );
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["animearr.db", "secret.key", "secret.key.restore-tmp"]);
 });
 
 test("M1: closing the database failing is treated as past the point of no return (restart, no retry)", async () => {

@@ -16,6 +16,7 @@ import {
   CONFIG_DIR,
   db,
   dbState,
+  freeBackupName,
   listBackups,
   pruneBackups,
   quickCheck,
@@ -233,21 +234,22 @@ export interface ApplyHooks {
 
 /**
  * Safety copy + swap. The caller restarts the process afterwards. A failure before `closeDb` changes nothing (plain
- * error, a retry is fine). A failure after it is a restoreStopped (blind review round 4, M1): the swap is rolled back so
- * the folder holds a matching database and key, and the message says which; the caller must restart, never retry.
- * The key goes first: it is a few bytes kept in memory, so undoing it needs no second copy of the database, while the
- * database rename is the last step and either lands (restore done) or leaves the old database whole.
+ * error, a retry is fine). A failure after it is a restoreStopped (blind review round 4, M1) unless the swap could still
+ * be completed; the message says what the folder holds, and the caller must restart, never retry.
+ * The database goes first, then the key (the files branch's crash-safe order): a crash or power cut between the two
+ * renames leaves the restored database next to `secret.key.restore-tmp`, and the next start finishes the swap
+ * (secretbox finishKeySwap). The old key-first order left a new key beside the old database there, so the app couldn't
+ * start. Before the database rename lands, the live pair is untouched; after it, the restore only goes forward.
  */
 export function applyBackup(b: Pick<ParsedBackup, "db" | "key">, paths: ApplyPaths, hooks: ApplyHooks) {
   const what = hooks.what ?? "that backup";
   const safetyName = hooks.safety();
   const tmpDb = `${paths.db}.restore-tmp`;
   const tmpKey = `${paths.key}.restore-tmp`;
-  let oldKey: Buffer;
+  const key = b.key.toString("utf8").trim();
   try {
-    oldKey = fs.readFileSync(paths.key);
     fs.writeFileSync(tmpDb, b.db);
-    fs.writeFileSync(tmpKey, b.key.toString("utf8").trim(), { mode: 0o600 });
+    fs.writeFileSync(tmpKey, key, { mode: 0o600 });
     // Checked where it landed (a full disk can leave a short file without an error on some filesystems).
     const d = new DatabaseSync(tmpDb, { readOnly: true });
     const r = quickCheck(d);
@@ -267,43 +269,50 @@ export function applyBackup(b: Pick<ParsedBackup, "db" | "key">, paths: ApplyPat
       { statusCode: 500 },
     );
   }
-  let keySwapped = false;
+  let dbSwapped = false;
   try {
     hooks.closeDb();
     // The rename replaces the live file in one step; deleting it first would only open a window with no database.
     for (const f of [`${paths.db}-wal`, `${paths.db}-shm`]) fs.rmSync(f, { force: true });
-    fs.renameSync(tmpKey, paths.key);
-    keySwapped = true;
     fs.renameSync(tmpDb, paths.db);
+    dbSwapped = true;
+    // Stopped between these two renames (a crash, a power cut), the next start finishes it: secretbox's finishKeySwap
+    // puts the waiting key in place once it opens the restored settings.
+    fs.renameSync(tmpKey, paths.key);
   } catch (e) {
-    throw rollBackSwap(e, {
+    const s = {
       paths,
       tmpDb,
       tmpKey,
-      oldKey,
-      keySwapped,
+      key,
       safetyName,
       what,
       retry: hooks.retry ?? "The uploaded file is not kept; choose it again to retry once AnimeArr is back.",
-    });
+    };
+    if (!dbSwapped) throw stoppedBeforeDatabase(e, s);
+    finishKeyAfterDatabase(e, s); // returns only when the backup's key is in place: the restore is done
   }
 }
 
-/** After a failure past closeDb: puts the old key back if it was replaced, and says exactly what the folder holds. */
-function rollBackSwap(
-  e: unknown,
-  s: {
-    paths: ApplyPaths;
-    tmpDb: string;
-    tmpKey: string;
-    oldKey: Buffer;
-    keySwapped: boolean;
-    safetyName: string | void;
-    what: string;
-    retry: string;
-  },
-) {
-  const why = (e as Error).message;
+interface SwapState {
+  paths: ApplyPaths;
+  tmpDb: string;
+  tmpKey: string;
+  /** The backup's key, as written to tmpKey. */
+  key: string;
+  safetyName: string | void;
+  what: string;
+  retry: string;
+}
+
+const RESTARTING =
+  "AnimeArr is restarting to reopen it; reload the page in a few seconds (start it again yourself if it isn't running in Docker) and log in again.";
+
+/**
+ * A failure past closeDb but before the database rename landed: the live database and key were never replaced, so
+ * removing the temp files is the whole undo. Says exactly what the folder holds.
+ */
+function stoppedBeforeDatabase(e: unknown, s: SwapState) {
   const leftovers: string[] = [];
   for (const f of [s.tmpDb, s.tmpKey])
     try {
@@ -314,35 +323,41 @@ function rollBackSwap(
   const extra = `${leftovers.length ? ` Leftover temporary files that are safe to delete: ${leftovers.join(", ")}.` : ""}${
     s.safetyName ? ` A safety copy of what was here before is in the backups folder: ${s.safetyName}.` : ""
   }`;
-  const restarting =
-    "AnimeArr is restarting to reopen it; reload the page in a few seconds (start it again yourself if it isn't running in Docker) and log in again.";
-  let keyBack = !s.keySwapped;
-  let keyErr = "";
-  if (s.keySwapped) {
-    // Put the old key back: a temp file renamed over it, or, if that rename is what keeps failing, written in place.
-    const back = `${s.paths.key}.rollback-tmp`;
-    try {
-      fs.writeFileSync(back, s.oldKey, { mode: 0o600 });
-      fs.renameSync(back, s.paths.key);
-      keyBack = true;
-    } catch (re1) {
-      try {
-        fs.rmSync(back, { force: true });
-        fs.writeFileSync(s.paths.key, s.oldKey, { mode: 0o600 });
-        keyBack = fs.readFileSync(s.paths.key).equals(s.oldKey);
-        if (!keyBack) keyErr = "it read back different";
-      } catch (re2) {
-        keyErr = `${(re1 as Error).message}; then ${(re2 as Error).message}`;
-      }
-    }
-  }
-  if (keyBack)
-    return restoreStopped(
-      `Couldn't restore ${s.what}: ${why}. The restore stopped after the database was closed and was undone: your previous database and its key are in place, nothing from the backup was applied. ${restarting} ${s.retry}${extra}`,
-      e,
-    );
   return restoreStopped(
-    `Couldn't restore ${s.what}: ${why}. The restore stopped halfway: the backup's secret.key is in place but your previous database is still there, and the previous key couldn't be put back (${keyErr}). AnimeArr will not start like this. Before starting it again, copy the safety copy's .secret.key file named below from the backups folder over secret.key in the config folder (your database was not replaced, so that key matches it).${extra} AnimeArr is stopping now.`,
+    `Couldn't restore ${s.what}: ${(e as Error).message}. The restore stopped after the database was closed and was undone: your previous database and its key are in place, nothing from the backup was applied. ${RESTARTING} ${s.retry}${extra}`,
+    e,
+  );
+}
+
+/**
+ * The database rename landed but the key's didn't: the restore goes forward, never back (undoing it would need the old
+ * database again). The key is a few bytes, so it is written in place and read back; the waiting copy then goes. If even
+ * that fails, the waiting key is LEFT where it is, and the next start puts it in place (finishKeySwap).
+ */
+function finishKeyAfterDatabase(e: unknown, s: SwapState) {
+  const want = Buffer.from(s.key);
+  let err: string;
+  try {
+    fs.writeFileSync(s.paths.key, want, { mode: 0o600 });
+    if (fs.readFileSync(s.paths.key).equals(want)) {
+      console.warn(`Renaming the restored secret.key failed (${(e as Error).message}); it was written in place instead.`);
+      try {
+        fs.rmSync(s.tmpKey, { force: true });
+      } catch (re) {
+        // Harmless to leave, and said in the log: the waiting copy equals the live key, so the next start's
+        // finishKeySwap only renames an identical key over it.
+        console.warn(`Couldn't remove ${path.basename(s.tmpKey)} (${(re as Error).message}); the next start tidies it.`);
+      }
+      return;
+    }
+    err = "it read back different";
+  } catch (we) {
+    err = (we as Error).message;
+  }
+  throw restoreStopped(
+    `Couldn't finish restoring ${s.what}: ${(e as Error).message}; writing the key in place failed too (${err}). The backup's database is in place, and its secret.key waits beside the old one as ${path.basename(s.tmpKey)}: AnimeArr puts it in place when it starts again. If it doesn't start, copy ${path.basename(s.tmpKey)} over secret.key in the config folder yourself.${
+      s.safetyName ? ` A safety copy of what was here before is in the backups folder: ${s.safetyName}.` : ""
+    } ${RESTARTING}`,
     e,
   );
 }
@@ -488,8 +503,8 @@ function writeSafetyCopy(label: string, incoming: number): string[] {
       made.push(dbName);
       base = dbName.replace(/\.db$/, "");
     } else {
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      base = `animearr-damaged-${stamp}${label ? `-${label}` : ""}`;
+      // A name nothing has yet, nor its WAL's or key's name: a clash must never abort the restore this copy protects.
+      base = freeBackupName("animearr-damaged-", `${label ? `-${label}` : ""}.db`).replace(/\.db$/, "");
       // The -shm index is rebuilt from these two, so it isn't kept. A missing database file (it couldn't be opened at
       // all) has nothing to keep.
       for (const [from, ext] of [
@@ -614,8 +629,8 @@ function keyCandidates(name: string, liveKey: Buffer): Buffer[] {
  * the app crash-loop on its next start (blind review round 5, M2). So the key is chosen while everything is still open:
  * the key saved under the backup's own name (safety copies have one), else the live key, else any other saved key,
  * whichever provably opens the backup's settings. If none does, the restore is refused and nothing is touched. The
- * database and that key then go in together through applyBackup, the same key-first swap with rollback an uploaded
- * backup uses. `beforeSwap` is required (blind review round 3, L1): the routes pass the session floor.
+ * database and that key then go in together through applyBackup, the same database-then-key swap an uploaded backup
+ * uses. A backup from a newer AnimeArr is refused up front too. `beforeSwap` is required (blind review round 3, L1): the routes pass the session floor.
  */
 export function restoreBackup(name: string, beforeSwap: () => void) {
   const b = listBackups().find((x) => x.name === name);
@@ -628,6 +643,16 @@ export function restoreBackup(name: string, beforeSwap: () => void) {
   try {
     const r = quickCheck(check);
     if (r !== "ok") throw new Error(`That backup is damaged too (${r})`);
+    // From a newer AnimeArr: this build doesn't know its tables and its startup refuses them (migrateUser), so the
+    // restore is refused here, before anything changes.
+    const version = (check.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+    if (version > userSchemaVersion())
+      throw Object.assign(
+        new Error(
+          `That backup is from a newer AnimeArr (database version ${version}, this one understands up to ${userSchemaVersion()}). Update AnimeArr first; nothing was changed.`,
+        ),
+        { statusCode: 409 },
+      );
     const row = settingsRow(check);
     // No settings row: nothing in it is sealed, so the live key opens it as well as any.
     key = row === undefined ? liveKey : keyCandidates(b.name, liveKey).find((k) => unlocks(row, k));

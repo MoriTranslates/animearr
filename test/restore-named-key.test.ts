@@ -101,7 +101,8 @@ test("M2: the upload restore's safety copy restores together with its own key, s
   const name = backupLockedWith("prerestore", "upload", oldKey, "before-upload");
   // The key file the upload restore's safety copy wrote before this fix: no "-upload" in its name, and its time stamp
   // taken just before the database copy, so it can be a second earlier.
-  const stamp = /^animearr-prerestore-(.{19})-upload\.db$/.exec(name)![1];
+  // (Names carry milliseconds, and -2, -3, ... on a clash, since the merge of the files branch's collision-proof names.)
+  const stamp = /^animearr-prerestore-(.{19})-\d{3}(?:-\d+)?-upload\.db$/.exec(name)![1];
   const iso = `${stamp.slice(0, 10)}T${stamp.slice(11).replace(/-/g, ":")}Z`;
   const earlier = new Date(Date.parse(iso) - 1000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
   fs.writeFileSync(path.join(BACKUP_DIR, `animearr-prerestore-${earlier}.secret.key`), oldKey.toString("hex"));

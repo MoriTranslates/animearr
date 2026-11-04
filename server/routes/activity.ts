@@ -83,6 +83,7 @@ export function registerActivityRoutes(app: FastifyInstance) {
     if (!d?.undo) throw fail("This can't be undone", 404);
     if (d.undoneAt) throw fail("Already undone", 409);
     const a = d.undo.args as Record<string, number | string>;
+    let note = ""; // what the undo left alone, and why
     switch (d.undo.action) {
       case "unmanage":
         setManaged([Number(a.tvdbId)], false);
@@ -116,15 +117,24 @@ export function registerActivityRoutes(app: FastifyInstance) {
       case "undrop":
         undropShow(Number(a.tvdbId));
         break;
-      case "delete-overrides":
-        deleteOverrides(String(a.ids).split(",").map(Number).filter(Boolean));
+      case "delete-overrides": {
+        const left = deleteOverrides(
+          String(a.ids ?? "")
+            .split(",")
+            .map(Number)
+            .filter(Boolean),
+          (d.undo.args.restore ?? []) as Parameters<typeof deleteOverrides>[1],
+          d.undo.args.wrote as Parameters<typeof deleteOverrides>[2],
+        );
+        note = left.map((p) => `${p.split("/").pop()} was changed again after this; left as it is`).join(". ");
         break;
+      }
       case "rename-sidecar-back":
-        renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });
+        await renameSidecarBack(d.undo.args as { dir: string; from: string; to: string });
         break;
     }
     markUndone(d.id);
-    logDecision("info", { tvdbId: d.tvdbId, title: d.title, why: `Undid: ${d.why}` });
-    return { ok: true };
+    logDecision("info", { tvdbId: d.tvdbId, title: d.title, why: `Undid: ${d.why}${note ? ` (${note})` : ""}` });
+    return { ok: true, ...(note ? { note } : {}) };
   });
 }

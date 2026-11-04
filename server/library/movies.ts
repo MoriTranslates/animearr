@@ -780,7 +780,53 @@ export function multiPart<T extends { path: string; size?: number }>(files: T[])
   return keyed.sort((a, b) => a.n! - b.n!).map((k) => k.f);
 }
 
-/** Imports a multi-part movie as Plex-stacked parts (pt1, pt2, …), each verified first; runtimes must add up. */
+/** A part of this movie that this grab placed on an earlier try, still in the library. */
+interface PlacedPart {
+  part: number;
+  destArr: string;
+  local: string;
+  source: string | null;
+}
+
+/** The parts of a multi-part movie this grab already placed (its own import entries), whose files are still there. */
+function partsPlacedBy(grabId: number, movieId: number, deps: PipelineDeps): PlacedPart[] {
+  const rows = db
+    .prepare(
+      "SELECT detail FROM decisions WHERE kind = 'import' AND undone_at IS NULL AND json_extract(detail, '$.grabId') = ? AND json_extract(detail, '$.movieId') = ?",
+    )
+    .all(grabId, movieId) as { detail: string }[];
+  const out: PlacedPart[] = [];
+  for (const r of rows) {
+    const d = JSON.parse(r.detail) as { dest?: string; source?: string };
+    const part = Number(/ - pt(\d+)\.[^./]+$/.exec(d.dest ?? "")?.[1] ?? 0);
+    if (!part || out.some((o) => o.part === part)) continue;
+    const local = deps.localPath(d.dest!);
+    if (!local || !fs.existsSync(local)) continue; // gone since: not done
+    out.push({ part, destArr: d.dest!, local, source: d.source ?? null });
+  }
+  return out.sort((a, b) => a.part - b.part);
+}
+
+/** Same file on disk (real paths; Windows without case). */
+function sameFile(a: string | null, b: string) {
+  if (!a) return false;
+  const norm = (p: string) => {
+    let r = path.resolve(p);
+    try {
+      r = fs.realpathSync(r);
+    } catch {
+      /* gone: compare as given */
+    }
+    return process.platform === "win32" ? r.toLowerCase() : r;
+  };
+  return norm(a) === norm(b);
+}
+
+/**
+ * Imports a multi-part movie as Plex-stacked parts (pt1, pt2, …), each verified first; runtimes must add up. `done`:
+ * parts an earlier try of this grab already placed (a retry): they count towards the parts and the runtime, keep their
+ * numbers, and are not imported again.
+ */
 async function importParts(
   row: GrabRow,
   m: MovieRow,
@@ -792,43 +838,54 @@ async function importParts(
   fail: (why: string, imported: boolean) => Promise<void>,
   label: string,
   trusted: string,
+  done: PlacedPart[] = [],
 ) {
   const native = isNativeMovieId(m.id);
   const runtime = live.runtime ?? m.runtime ?? null;
+  const count = parts.length + done.length;
+  // The remaining parts take the numbers the placed ones don't have (pt1 placed → the rest are pt2, pt3, …).
+  const free = Array.from({ length: count }, (_, i) => i + 1).filter((n) => !done.some((d) => d.part === n));
   // Without the movie's runtime nothing proves these are its parts (they could be two episodes).
   if (!runtime)
     return attention(
-      `the download has ${parts.length} numbered parts, but the movie's runtime isn't known to check them against; import them by hand`,
+      `the download has ${count} numbered parts, but the movie's runtime isn't known to check them against; import them by hand`,
     );
   let total = 0;
+  for (const d of done) {
+    const probe = await deps.probe(d.local).catch(() => null);
+    if (!probe) return attention(`can't read part ${d.part} (${path.posix.basename(d.destArr)}), placed by the earlier try`);
+    total += probe.durationSec ?? 0;
+  }
   for (const [i, p] of parts.entries()) {
     const local = deps.localPath(p.path);
     if (!local) return attention(`can't reach ${p.path} from AnimeArr (check Settings → Paths)`);
     const probe = await deps.probe(local);
     total += probe.durationSec ?? 0;
-    const v = judge(probe, prof, runtime ? Math.round(runtime / parts.length) : null, null);
-    if (!v.ok && !row.keep) return fail(`part ${i + 1} (${path.posix.basename(p.path)}): ${v.why}`, false);
+    const v = judge(probe, prof, runtime ? Math.round(runtime / count) : null, null);
+    if (!v.ok && !row.keep) return fail(`part ${free[i]} (${path.posix.basename(p.path)}): ${v.why}`, false);
     logDecision("verify-ok", {
       title: label,
       release: row.release,
-      why: `Checked part ${i + 1} of ${parts.length} (${path.posix.basename(p.path)}) before import: ${v.why}`,
+      why: `Checked part ${free[i]} of ${count} (${path.posix.basename(p.path)}) before import: ${v.why}`,
       detail: { grabId: row.id, movieId: m.id },
     });
   }
   // The parts must add up to the movie (TMDB runtime), or it's something else (e.g. a batch of episodes).
   if (runtime && total && (total / 60 < runtime * 0.75 || total / 60 > runtime * 1.35))
     return attention(
-      `the download has ${parts.length} parts adding up to ${Math.round(total / 60)} min, but the movie is ${runtime} min; import the right file by hand`,
+      `the download has ${count} parts adding up to ${Math.round(total / 60)} min, but the movie is ${runtime} min; import the right file by hand`,
     );
   const imp = getSettings().importer;
   if (!native && imp.engine === "sonarr")
-    return attention(`a ${parts.length}-part movie is imported by AnimeArr's own importer (Settings → Media management → Importer)`);
+    return attention(`a ${count}-part movie is imported by AnimeArr's own importer (Settings → Media management → Importer)`);
   if (!imp.allowReal || !imp.movies)
     return attention("real movie imports by AnimeArr's importer are switched off (Settings → Media management → Importer)");
   if (!((imp.realBudget ?? 0) < 0 || (imp.realBudget ?? 0) >= parts.length))
     return attention("AnimeArr's importer is paused for a review (Settings → Media management → Importer)");
   try {
-    const liveFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
+    const radarrFile = native ? null : ((live as { movieFile?: { path?: string } }).movieFile?.path ?? null);
+    // Radarr may already list a part this grab placed as the movie's file: that's this release, nothing to replace.
+    const liveFile = done.some((d) => d.destArr === radarrFile) ? null : radarrFile;
     const plans = [];
     const space: SpaceLedger = new Map(); // the parts land together: free space is checked for all of them
     for (const [i, p] of parts.entries())
@@ -841,7 +898,7 @@ async function importParts(
             client: row.client,
             automatic: true,
             trusted,
-            part: i + 1,
+            part: free[i],
             live: native ? undefined : { path: live.path, currentFile: liveFile },
           },
           { probe: probeFile, space },
@@ -856,13 +913,20 @@ async function importParts(
         return false;
       }
     };
-    if (!items.every(placed)) {
-      const res = await executeMovieImport({ ...plans[0], items }, { grabId: row.id });
+    // A part placed by an earlier try is done; only the others are imported (planning a placed one again would refuse it).
+    const todo = items.filter((it) => !placed(it));
+    if (todo.length) {
+      const res = await executeMovieImport({ ...plans[0], items: todo }, { grabId: row.id });
       const bad = res.find((r) => !r.done);
-      if (bad || res.length !== parts.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
+      if (bad || res.length !== todo.length) return attention(`AnimeArr's importer: ${bad?.why ?? "not every part was imported"}`);
     }
+    // Every part in order, the ones placed by an earlier try included.
+    const allDest = [
+      ...done.map((d) => ({ part: d.part, destArr: d.destArr, dest: d.local })),
+      ...items.map((x, i) => ({ part: free[i], destArr: x.destArr, dest: x.dest })),
+    ].sort((a, b) => a.part - b.part);
     if (!native) {
-      const wants = new Set(items.map((x) => x.destArr));
+      const wants = new Set(allDest.map((x) => x.destArr));
       let after: Awaited<ReturnType<NonNullable<PipelineDeps["radarr"]>["movie"]>> | null = null;
       for (let i = 0; i < 24; i++) {
         after = await deps.radarr!.movie(m.id);
@@ -872,10 +936,10 @@ async function importParts(
       // Radarr (v3+) doesn't track stacked parts: AnimeArr remembers the file itself, so neither its own movie search
       // nor the next sync treats the movie as missing.
       if (!after?.movieFile?.path || !wants.has(after.movieFile.path)) {
-        const first = await deps.probe(deps.localPath(items[0].destArr) ?? items[0].dest).catch(() => null);
+        const first = await deps.probe(deps.localPath(allDest[0].destArr) ?? allDest[0].dest).catch(() => null);
         const file = JSON.stringify({
-          path: items[0].destArr,
-          parts: items.map((x) => x.destArr),
+          path: allDest[0].destArr,
+          parts: allDest.map((x) => x.destArr),
           sceneName: row.release,
           releaseGroup: parseRelease(row.release).group,
           quality: null,
@@ -901,7 +965,7 @@ async function importParts(
   logDecision("import", {
     title: label,
     release: row.release,
-    why: `Imported ✓ ${label}: a ${parts.length}-part release, imported as pt1…pt${parts.length} (Plex plays them as one movie)`,
+    why: `Imported ✓ ${label}: a ${count}-part release, imported as pt1…pt${count} (Plex plays them as one movie)${done.length ? `; ${done.length} part${done.length === 1 ? " was" : "s were"} already in place from the earlier try` : ""}`,
     detail: { grabId: row.id, movieId: m.id, final: true },
   });
 }
@@ -939,7 +1003,11 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
   // unless replacing it was asked for.
   const live = native ? { path: m.path, hasFile: !!m.has_file, runtime: m.runtime } : await deps.radarr!.movie(m.id);
   if (!underAllowedRoot(live.path)) return attention(`the movie is now in ${live.path}, outside the allowed root folders`);
-  if (live.hasFile && !row.replace_file)
+  // Parts this grab placed on an earlier try (a retry): the movie's "file" may be one of them, which isn't a reason to stop.
+  const done = partsPlacedBy(row.id, m.id, deps);
+  const liveFile = (live as { movieFile?: { path?: string } }).movieFile?.path ?? null;
+  const ownFile = !!done.length && (!liveFile || done.some((d) => d.destArr === liveFile));
+  if (live.hasFile && !row.replace_file && !ownFile)
     return attention(
       "the movie got a file in the meantime; AnimeArr won't replace it without your OK (remove this download, or search again and confirm replacing)",
     );
@@ -965,6 +1033,14 @@ export async function importMovie(row: GrabRow, clientPath: string, deps: Pipeli
     ReturnType<NonNullable<PipelineDeps["radarr"]>["preview"]>
   >;
   const inThis = items.filter((x) => (single ? x.path === p0 : x.path.startsWith(`${folder}/`)));
+  // Retry of a multi-part movie that stopped part-way: the parts this grab already placed count as done, before any
+  // size or runtime check (with usenet they were moved out, so the download alone looks like one short file). A retry
+  // never fails or blocklists the release: what's already in the library came from it.
+  if (done.length) {
+    const rest = inThis.filter((x) => !done.some((d) => d.source && sameFile(deps.localPath(x.path), d.source)));
+    const ordered = rest.length > 1 ? (multiPart(rest) ?? rest) : rest;
+    return importParts(row, m, live, ordered, profileForMovie(m.id), deps, attention, async (why) => attention(why), label, p0, done);
+  }
   if (!inThis.length)
     return attention(
       `no video files found in ${single ? p0 : folder} (Radarr must see the download folder at the same path as Sonarr; archives aren't unpacked for movies yet)`,

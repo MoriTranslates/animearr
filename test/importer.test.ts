@@ -35,7 +35,7 @@ before(() => {
   fs.mkdirSync(path.join(LIB, "Frieren (2023)"), { recursive: true });
   cache
     .prepare(
-      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, monitored, synced_at) VALUES (10, 424536, 'Frieren: Beyond Journey''s End', 2023, 'anime', '/media/AnimeArr/Frieren (2023)', 1, 0)",
+      "INSERT INTO series (id, tvdb_id, title, year, series_type, path, root_folder, monitored, synced_at) VALUES (10, 424536, 'Frieren: Beyond Journey''s End', 2023, 'anime', '/media/AnimeArr/Frieren (2023)', '/media/AnimeArr', 1, 0)",
     )
     .run();
   for (const [id, e, t] of [
