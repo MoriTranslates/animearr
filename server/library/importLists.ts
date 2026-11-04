@@ -13,7 +13,7 @@ import { logDecision } from "../system/activity.js";
 import { anilistQuery, mediaByIds, type AniMedia } from "../metadata/anilist.js";
 import { fribb } from "../metadata/covers.js";
 import { cache, db } from "../system/db.js";
-import { droppedList } from "./dropped.js";
+import { blockedIds, droppedList } from "./dropped.js";
 import { addToQueue } from "./fillin.js";
 import { setManaged } from "./managed.js";
 import { animeListEntries, USER_AGENT } from "../metadata/metadata.js";
@@ -216,22 +216,23 @@ export const exclusions = () =>
     listName: string;
     at: number;
   }[];
-export function addExclusion(anilistId: number, title = "", listName = "") {
+/** `blockedTvdb`: written by a block (Drop → delete), so Unblock removes exactly these rows; one already there stays the user's. */
+export function addExclusion(anilistId: number, title = "", listName = "", blockedTvdb: number | null = null) {
   if (!Number.isInteger(anilistId) || anilistId <= 0) throw fail("Give the AniList id of the show");
   db.prepare(
-    "INSERT INTO import_list_exclusions (anilist_id, title, list_name, at) VALUES (?, ?, ?, ?) ON CONFLICT(anilist_id) DO NOTHING",
-  ).run(anilistId, title.slice(0, 200), listName.slice(0, 60), Date.now());
+    "INSERT INTO import_list_exclusions (anilist_id, title, list_name, at, tvdb_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(anilist_id) DO NOTHING",
+  ).run(anilistId, title.slice(0, 200), listName.slice(0, 60), Date.now(), blockedTvdb);
 }
 export const removeExclusion = (anilistId: number) =>
   void db.prepare("DELETE FROM import_list_exclusions WHERE anilist_id = ?").run(anilistId);
 /** A show removed from the library: no list adds it (or the other seasons of it) again. */
-export function excludeShow(tvdbId: number, title: string) {
+export function excludeShow(tvdbId: number, title: string, o: { blocked?: boolean } = {}) {
   const ids = new Set<number>(
     (db.prepare("SELECT anilist_id FROM entries WHERE tvdb_id = ?").all(tvdbId) as { anilist_id: number }[]).map((r) => r.anilist_id),
   );
   const n = db.prepare("SELECT anilist_id FROM native_series WHERE tvdb_id = ?").get(tvdbId) as { anilist_id: number } | undefined;
   if (n) ids.add(n.anilist_id);
-  for (const id of ids) addExclusion(id, title);
+  for (const id of ids) addExclusion(id, title, o.blocked ? "Blocked" : "", o.blocked ? tvdbId : null);
   return ids.size;
 }
 
@@ -433,6 +434,7 @@ export async function planList(
     deps,
   );
   const dropped = new Set(droppedList().map((d) => d.tvdbId));
+  const blocked = blockedIds();
   const items: PlanItem[] = [];
   const seen = new Set<number>(); // a show or movie already planned (another season of it adds nothing new)
   const moviesOk = !!movieRootFor(l);
@@ -449,6 +451,7 @@ export async function planList(
       continue;
     }
     if (inLibrary(r.id, i)) skip(i.title, i.kind, "in library");
+    else if (i.kind === "show" && i.tvdbId && blocked.has(i.tvdbId)) skip(i.title, i.kind, "blocked");
     else if (i.kind === "show" && i.tvdbId && dropped.has(i.tvdbId)) skip(i.title, i.kind, "dropped");
     else if (i.kind === "movie" && !moviesOk) skip(i.title, i.kind, "no movie folder");
     else if (i.kind === "show" && !l.rootFolder) skip(i.title, i.kind, "no show folder");

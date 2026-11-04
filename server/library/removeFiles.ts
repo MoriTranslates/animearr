@@ -5,7 +5,8 @@
  * Only the item's own folder (native_series.path / native_movies.path), and only when it is directly inside a library
  * or allowed root (compared by real path, protectedPaths.ts): never a root itself, a folder holding one, a folder
  * outside them, AnimeArr's own folder or the bin. Refused too when another show or movie uses the folder, when Sonarr
- * or Radarr also has the item (its files are that copy's), when a download for it is still in progress, and when the
+ * or Radarr also has the item (its files are that copy's; except Drop → delete, see Owner.block, which needs AnimeArr to
+ * manage the show and never calls Sonarr), when a download for it is still in progress, and when the
  * folder holds a link or anything that isn't a plain file or folder. A folder that can't be read is refused ("can't
  * tell" is never "empty"); a folder that is surely gone (ENOENT) just means there is nothing to move.
  *
@@ -25,7 +26,13 @@ import { NATIVE_BASE } from "./nativeIds.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 
-export type Owner = { kind: "show"; tvdbId: number } | { kind: "movie"; movieId: number };
+/**
+ * `block`: the explicit "Drop → also delete it" (or Remove for a show whose record Sonarr holds), dropShowAndRemove in
+ * dropDelete.ts. Only then may the show be one whose record Sonarr holds, and only when AnimeArr manages it (the
+ * managed table): AnimeArr owns its files for this flow, matched by that tvdbId AND that record's path. No Sonarr call
+ * is ever made; the files go to AnimeArr's own bin.
+ */
+export type Owner = { kind: "show"; tvdbId: number; block?: boolean } | { kind: "movie"; movieId: number };
 
 /** A test seam: how one file is moved (no-clobber; the original stays until the copy is complete). */
 export const removeFilesDeps = { move: moveNoClobber };
@@ -38,14 +45,30 @@ interface Item {
   /** Its own row in the cache (series.id / movies.id), excluded from "another show uses this folder". */
   cacheId: number;
   what: "show" | "movie";
+  /** Why AnimeArr may not bin this item's folder at all (a Sonarr record AnimeArr doesn't manage). */
+  refuse?: string;
 }
 
 function item(o: Owner): Item {
   if (o.kind === "show") {
     const r = db.prepare("SELECT id, title, path FROM native_series WHERE tvdb_id = ?").get(o.tvdbId) as
       { id: number; title: string; path: string } | undefined;
-    if (!r) throw err("That show wasn't added in AnimeArr", 404);
-    return { title: r.title, arr: r.path, cacheId: NATIVE_BASE + r.id, what: "show" };
+    if (r) return { title: r.title, arr: r.path, cacheId: NATIVE_BASE + r.id, what: "show" };
+    const s = o.block
+      ? (cache.prepare(`SELECT id, title, path FROM series WHERE tvdb_id = ? AND id < ${NATIVE_BASE}`).get(o.tvdbId) as
+          { id: number; title: string; path: string | null } | undefined)
+      : undefined;
+    if (!s) throw err(o.block ? "That show isn't in the library" : "That show wasn't added in AnimeArr", 404);
+    const managed =
+      db.prepare("SELECT 1 FROM managed WHERE tvdb_id = ?").get(o.tvdbId) ??
+      db.prepare("SELECT 1 FROM dropped WHERE tvdb_id = ? AND was_managed = 1").get(o.tvdbId); // managed until dropped
+    return {
+      title: s.title,
+      arr: s.path ?? "",
+      cacheId: s.id,
+      what: "show",
+      refuse: managed ? undefined : "AnimeArr doesn't manage this show, so its files are Sonarr's, not AnimeArr's to delete",
+    };
   }
   const r = db.prepare("SELECT id, title, path FROM native_movies WHERE id = ?").get(o.movieId - NATIVE_BASE) as
     { id: number; title: string; path: string } | undefined;
@@ -92,8 +115,20 @@ function check(o: Owner): Checked | { plan: FolderPlan } {
   if (!arr) return no(`this ${it.what} has no folder on record`);
   const bin = binFolder();
   if ("error" in bin) return no(`AnimeArr's recycling bin can't be used (${bin.error}); nothing is ever deleted without it`);
-  if (o.kind === "show" && cache.prepare("SELECT 1 FROM series WHERE tvdb_id = ? AND id < ?").get(o.tvdbId, NATIVE_BASE))
-    return no("Sonarr also has this show; its files belong to Sonarr's copy");
+  if (it.refuse) return no(it.refuse);
+  const block = o.kind === "show" && o.block === true;
+  const sonarrCopies =
+    o.kind === "show"
+      ? (cache.prepare("SELECT id, path FROM series WHERE tvdb_id = ? AND id < ?").all(o.tvdbId, NATIVE_BASE) as {
+          id: number;
+          path: string | null;
+        }[])
+      : [];
+  if (!block && sonarrCopies.length) return no("Sonarr also has this show; its files belong to Sonarr's copy");
+  // Drop → delete: Sonarr's record of this show is AnimeArr's to forget, but only in this one folder; a copy elsewhere
+  // would keep episodes the user asked to delete, so that is refused rather than half-done.
+  const elsewhere = sonarrCopies.find((s) => s.id !== it.cacheId && folderKey(s.path ?? "") !== folderKey(arr));
+  if (block && elsewhere) return no(`Sonarr's record of this show uses another folder (${elsewhere.path}); one delete can't cover both`);
   if (o.kind === "movie") {
     const tmdb = (db.prepare("SELECT tmdb_id FROM native_movies WHERE id = ?").get(o.movieId - NATIVE_BASE) as { tmdb_id: number | null })
       .tmdb_id;
@@ -116,7 +151,7 @@ function check(o: Owner): Checked | { plan: FolderPlan } {
   const others = [
     ...(cache.prepare("SELECT id, path FROM series WHERE path IS NOT NULL").all() as { id: number; path: string }[]).map((r) => ({
       ...r,
-      own: it.what === "show" && r.id === it.cacheId,
+      own: it.what === "show" && (r.id === it.cacheId || (block && sonarrCopies.some((s) => s.id === r.id))),
     })),
     ...(cache.prepare("SELECT id, path FROM movies WHERE path IS NOT NULL").all() as { id: number; path: string }[]).map((r) => ({
       ...r,

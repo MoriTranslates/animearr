@@ -490,6 +490,14 @@ const USER_MIGRATIONS: string[] = [
    ALTER TABLE upgrade_state ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE movie_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE quality_upgrade ADD COLUMN outage_streak INTEGER NOT NULL DEFAULT 0;`,
+  // 48: "Drop" with "also delete it" (or Remove for a show whose record Sonarr holds): the dropped show is also removed
+  // and blocked (the Blocked shows list). A blocked show is never shown or adopted again from Sonarr's cached or synced
+  // list, nor re-added by an import list or Add, until the user unblocks it. Its import-list exclusions carry its
+  // tvdb_id, so Unblock clears them too. was_managed: AnimeArr managed it when it was dropped, so its files stay
+  // AnimeArr's to delete later (dropping ends the managing).
+  `ALTER TABLE dropped ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE dropped ADD COLUMN was_managed INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE import_list_exclusions ADD COLUMN tvdb_id INTEGER;`,
 ];
 
 /** Exported for tests: the user-DB steps, in order. */

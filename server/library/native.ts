@@ -12,6 +12,7 @@
  */
 import { requestSeadex } from "../metadata/seadex.js";
 import { NATIVE_BASE } from "./nativeIds.js";
+import { blockedIds } from "./dropped.js";
 import { anidbForTvdb } from "../metadata/anidb.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -457,6 +458,8 @@ export interface AddResult {
   matchedBy: string;
   /** AniList's trailer (YouTube/Dailymotion id), played from the site: nothing is downloaded. */
   trailer: Trailer | null;
+  /** The user dropped and removed this show (Blocked shows): Add offers "Add anyway", which unblocks it first. */
+  blocked?: boolean;
 }
 
 /** Initials of a title ("Sword Art Online" → "sao", "One Punch Man" → "opm"). */
@@ -604,7 +607,10 @@ export async function searchAdd(
       trailer: normTrailer(m.trailer),
     });
   }
-  const results = [...out.values()];
+  const blocked = blockedIds();
+  const results = [...out.values()].map((r) =>
+    r.kind !== "MOVIE" && (blocked.has(r.tvdbId ?? 0) || blocked.has(NATIVE_BASE + r.anilistId)) ? { ...r, blocked: true } : r,
+  );
   if (year) results.sort((a, b) => Number(b.year === year) - Number(a.year === year));
   return { results, anilist };
 }

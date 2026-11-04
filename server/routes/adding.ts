@@ -1,5 +1,6 @@
 /** Routes: Adding shows: the Sonarr/Radarr cutover, native Add, importing existing folders, import lists. */
-import { refuseDropped } from "../library/dropped.js";
+import { isBlocked, refuseDropped, undropShow } from "../library/dropped.js";
+import { NATIVE_BASE } from "../library/nativeIds.js";
 import {
   ackSpecials,
   adoptMovies,
@@ -121,6 +122,7 @@ export function registerAddingRoutes(app: FastifyInstance) {
       scope?: Scope | null;
       then?: "search" | "queue" | "none";
       live?: boolean;
+      unblock?: boolean;
     };
   }>("/api/add", async (req) => {
     writable();
@@ -143,10 +145,13 @@ export function registerAddingRoutes(app: FastifyInstance) {
       return { ...mv, then };
     }
     const scope = b.scope ? validateScope(b.scope) : null;
-    refuseDropped(
-      (db.prepare("SELECT tvdb_id FROM entries WHERE anilist_id = ?").get(Number(b.anilistId)) as { tvdb_id: number | null } | undefined)
-        ?.tvdb_id,
-    );
+    // A blocked show (dropped and removed): refused unless the user chose "Add anyway", which unblocks it first.
+    const mapped = (
+      db.prepare("SELECT tvdb_id FROM entries WHERE anilist_id = ?").get(Number(b.anilistId)) as { tvdb_id: number | null } | undefined
+    )?.tvdb_id;
+    if (b.unblock === true) for (const t of [mapped, NATIVE_BASE + Number(b.anilistId)]) if (t && isBlocked(t)) undropShow(t);
+    refuseDropped(mapped);
+    refuseDropped(NATIVE_BASE + Number(b.anilistId));
     const added = await addShow({ anilistId: Number(b.anilistId), rootFolder: String(b.rootFolder ?? "") });
     if (b.profileId || b.sizePreset)
       setSeriesPrefs(added.tvdbId, b.profileId || null, null, (b.sizePreset || null) as Parameters<typeof setSeriesPrefs>[3]);

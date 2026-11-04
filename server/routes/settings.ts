@@ -1,7 +1,9 @@
 /** Routes: Settings, connection tests, indexers and download clients, media-server files, dropped shows, the indexer circuit breaker, phone addresses and single-file tools. */
 import os from "node:os";
 import { setIndexerUse } from "../search/indexerPick.js";
-import { droppedList, dropShow, undropShow } from "../library/dropped.js";
+import { blockedList, droppedList, dropShow, isBlocked, undropShow } from "../library/dropped.js";
+import { dropShowAndRemove } from "../library/dropDelete.js";
+import { removalPlan } from "../library/removeFiles.js";
 import { breakerList, setBreaker, testIndexer as retestIndexer } from "../search/health.js";
 import { watchLinks } from "../media/watchIn.js";
 import { indexerNumId } from "../search/indexers.js";
@@ -99,13 +101,32 @@ export function registerSettingsRoutes(app: FastifyInstance) {
   });
   // ---------------------------------------------------------------- dropped shows
   app.get("/api/dropped", async () => droppedList());
-  app.post<{ Params: { tvdbId: string }; Body: { why?: string; unmonitor?: boolean } }>("/api/series/:tvdbId/drop", async (req) => {
+  // remove (and deleteFiles): drop, then remove it from the library and block it (dropDelete.ts; never calls Sonarr).
+  app.post<{ Params: { tvdbId: string }; Body: { why?: string; unmonitor?: boolean; remove?: boolean; deleteFiles?: boolean } }>(
+    "/api/series/:tvdbId/drop",
+    async (req) => {
+      writable();
+      const t = id(req.params.tvdbId);
+      if (!t) throw fail("Unknown show", 400);
+      const why = String(req.body?.why ?? "");
+      if (req.body?.remove === true || req.body?.deleteFiles === true)
+        return dropShowAndRemove(t, { why, deleteFiles: req.body?.deleteFiles === true });
+      return dropShow(t, { why, unmonitor: req.body?.unmonitor === true });
+    },
+  );
+  app.delete<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/drop", async (req) => (writable(), undropShow(id(req.params.tvdbId))));
+  // For the Drop dialog's "also delete it": whether the folder can go to AnimeArr's bin, and what's in it.
+  app.get<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/remove-plan", async (req) =>
+    removalPlan({ kind: "show", tvdbId: id(req.params.tvdbId), block: true }),
+  );
+  // Blocked shows (dropped and removed): the list, and Unblock.
+  app.get("/api/blocked", async () => blockedList());
+  app.delete<{ Params: { tvdbId: string } }>("/api/blocked/:tvdbId", async (req) => {
     writable();
     const t = id(req.params.tvdbId);
-    if (!t) throw fail("Unknown show", 400);
-    return dropShow(t, { why: String(req.body?.why ?? ""), unmonitor: req.body?.unmonitor === true });
+    if (!isBlocked(t)) throw fail("That show isn't blocked", 404);
+    return undropShow(t);
   });
-  app.delete<{ Params: { tvdbId: string } }>("/api/series/:tvdbId/drop", async (req) => (writable(), undropShow(id(req.params.tvdbId))));
   // ---------------------------------------------------------------- indexer circuit breaker
   app.get("/api/indexers/breaker", async () => breakerList());
   // ---------------------------------------------------------------- "Open on your phone": the addresses a phone can use

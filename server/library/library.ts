@@ -20,6 +20,7 @@ import { cache, db, dbState, setJob, tx } from "../system/db.js";
 import { animeListEntries, invalidateIndex } from "../metadata/metadata.js";
 import { markListRead, materializeAll, rematerializeSeries, type ArrApp } from "./native.js";
 import { isNativeSeriesId, NATIVE_BASE } from "./nativeIds.js";
+import { blockedIds } from "./dropped.js";
 import { getSettings } from "../system/settings.js";
 
 let running: Promise<SyncResult> | null = null;
@@ -141,7 +142,11 @@ async function syncSonarr(full: boolean, res: SyncResult) {
     animeTagId = tags.find((t) => t.label?.toLowerCase() === s.sonarr.animeTag.toLowerCase())?.id ?? null;
     tagMissing = animeTagId === null;
   }
-  const anime = all.filter((x) => x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId)));
+  // A show the user dropped and removed (blocked) is never shown again from Sonarr's list, until it's unblocked.
+  const blocked = blockedIds();
+  const anime = all.filter(
+    (x) => (x.seriesType === "anime" || (animeTagId !== null && (x.tags ?? []).includes(animeTagId))) && !blocked.has(x.tvdbId),
+  );
   res.series = anime.length;
   const prev = new Map(
     (
@@ -315,6 +320,8 @@ export async function refreshSeriesEpisodes(seriesId: number, sig?: string) {
   const short = shortEpisodeList(seriesId, eps);
   if (short) throw new Error(`Sonarr's episode list is short (${short}); kept the cached episodes, read again on the next sync`);
   tx(cache, () => {
+    // Forgotten while Sonarr was answering (a show dropped and removed meanwhile): its episodes don't come back.
+    if (!cache.prepare("SELECT 1 FROM series WHERE id = ?").get(seriesId)) return;
     cache.prepare("DELETE FROM episodes WHERE series_id = ?").run(seriesId);
     cache.prepare("DELETE FROM files WHERE series_id = ?").run(seriesId);
     const ins =

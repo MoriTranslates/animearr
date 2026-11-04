@@ -559,6 +559,17 @@ const en = {
     "AnimeArr stops managing it and won't grab, fill in or re-add it, not even from a search. Your files stay. You can un-drop it any time.",
   "drop.unmonitor": "Also unmonitor it in Sonarr",
   "drop.done": "Dropped {title}",
+  "drop.delete": "Also delete it: all episodes, the folder, and remove it from my library",
+  "drop.deleteHelp": "The files go to AnimeArr's recycling bin. Sonarr isn't asked to change anything.",
+  "drop.deleteBody":
+    "AnimeArr drops it, moves every file in its folder to AnimeArr's recycling bin, removes the folder and takes the show out of your library. It is then blocked: Sonarr's list, import lists and Add won't bring it back until you unblock it (Import lists → Blocked shows).",
+  "drop.deleteConfirm": "Drop and delete",
+  "drop.deleteDone": "Dropped and deleted {title}",
+  "drop.removeTitle": "Remove {title}?",
+  "drop.removeBody":
+    "AnimeArr drops it and takes it out of your library; its files on disk are left alone. It is then blocked: Sonarr's list, import lists and Add won't bring it back until you unblock it (Import lists → Blocked shows).",
+  "drop.removeFiles": "Also delete all episodes and the folder",
+  "drop.removeDone": "Removed {title}",
   "pick.use": "Use for anime searches",
   "pick.skipped": "Skipped by AnimeArr · still available to Sonarr/Radarr via Prowlarr",
   "pick.note":
@@ -1569,6 +1580,10 @@ const en = {
   "add.nativeNote": "Added in AnimeArr (Sonarr doesn't have this show).",
   "add.nativeMovieNote": "Added in AnimeArr (Radarr doesn't have this movie).",
   "add.remove": "Remove from AnimeArr",
+  "add.blocked": "Blocked",
+  "add.addAnyway": "Add anyway",
+  "add.blockedNote":
+    "You dropped and removed this show, so it's blocked. Adding it unblocks it (Import lists → Blocked shows lists what's blocked).",
   "add.removeTitle": "Remove {title}?",
   "add.removeMovieBody": "AnimeArr forgets this movie (its search schedule and settings). Its files on disk are left alone.",
   "add.removeBody": "AnimeArr forgets this show (episodes, schedule, settings). Its files on disk are left alone.",

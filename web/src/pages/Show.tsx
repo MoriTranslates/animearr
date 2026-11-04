@@ -18,6 +18,7 @@ import {
   Spinner,
   SplitButton,
   thumbUrl,
+  Toggle,
   useLoad,
   usePageTitle,
   usePoll,
@@ -262,7 +263,7 @@ export function Show({ tvdbId }: { tvdbId: number }) {
                   { label: t("franchise.linkMenu"), onSelect: () => (setLinking(true), setTab("movies")) },
                   ...links.map((l) => ({ label: l.label, onSelect: () => window.open(l.href!, "_blank", "noopener,noreferrer") })),
                   { label: h.dropped ? t("drop.undo") : t("drop.menu"), onSelect: () => (h.dropped ? void undrop() : setPanel("drop")) },
-                  { label: t("add.remove"), onSelect: () => setPanel("remove"), hidden: !h.native, danger: true },
+                  { label: t("add.remove"), onSelect: () => setPanel("remove"), danger: true },
                 ]}
               />
             </div>
@@ -773,7 +774,10 @@ export function Show({ tvdbId }: { tvdbId: number }) {
           onDone={() => void d.reload()}
         />
       )}
-      {panel === "remove" && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
+      {panel === "remove" && h.native && <RemoveNative tvdbId={tvdbId} title={h.title} asked onClose={() => setPanel(null)} />}
+      {panel === "remove" && !h.native && (
+        <DropShow tvdbId={tvdbId} title={h.title} sonarr={false} remove onClose={() => setPanel(null)} onDone={() => void d.reload()} />
+      )}
     </section>
   );
 }
@@ -1340,43 +1344,80 @@ function Franchise({ tvdbId }: { tvdbId: number }) {
   );
 }
 
-/** "Drop this show": AnimeArr stops managing it and never grabs, fills in or re-adds it. Files are kept. */
+interface RemovePlan {
+  path: string;
+  canDelete: boolean;
+  reason?: string;
+  exists: boolean;
+  files: number;
+  bytes: number;
+}
+
+/**
+ * "Drop this show": AnimeArr stops managing it and never grabs, fills in or re-adds it. Files are kept, unless "Also
+ * delete it" is ticked (off by default): then its files go to AnimeArr's bin and it leaves the library, blocked.
+ * `remove`: the show page's Remove for a show whose record Sonarr holds; the same flow, always out of the library.
+ */
 function DropShow({
   tvdbId,
   title,
   sonarr,
+  remove,
   onClose,
   onDone,
 }: {
   tvdbId: number;
   title: string;
   sonarr: boolean;
+  remove?: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
   const toast = useToast();
   const [unmonitor, setUnmonitor] = useState(true);
+  const [del, setDel] = useState(false);
+  const plan = useLoad(() => api<RemovePlan>(`/series/${tvdbId}/remove-plan`), [tvdbId]);
+  const p = plan.data;
+  const deleting = del && !!p?.canDelete;
   return (
     <Confirm
-      title={t("drop.title", { title })}
-      confirmLabel={t("drop.confirm")}
+      danger={deleting || remove}
+      title={t(remove ? "drop.removeTitle" : "drop.title", { title })}
+      confirmLabel={deleting ? t("drop.deleteConfirm") : remove ? t("add.remove") : t("drop.confirm")}
       onClose={onClose}
       onConfirm={async () => {
         try {
-          await api(`/series/${tvdbId}/drop`, { body: { unmonitor: sonarr && unmonitor } });
-          toast(t("drop.done", { title }));
-          onDone();
+          const r = await api<{ binned?: { moved: number; bytes: number; leftBehind: boolean } }>(`/series/${tvdbId}/drop`, {
+            body: deleting || remove ? { remove: true, deleteFiles: deleting } : { unmonitor: sonarr && unmonitor },
+          });
+          toast(t(deleting ? "drop.deleteDone" : remove ? "drop.removeDone" : "drop.done", { title }));
+          if (r.binned?.moved) toast(t("add.removeFilesDone", { files: r.binned.moved, size: fmtSize(r.binned.bytes) }));
+          if (r.binned?.leftBehind) toast(t("add.removeFilesLeft"), true);
+          if (deleting || remove) navigate("/shows");
+          else onDone();
         } catch (e) {
           toast((e as Error).message, true);
         }
       }}
     >
-      <p>{t("drop.body")}</p>
-      {sonarr && (
+      <p>{deleting ? t("drop.deleteBody") : remove ? t("drop.removeBody") : t("drop.body")}</p>
+      {sonarr && !deleting && !remove && (
         <label className="check">
           <input type="checkbox" checked={unmonitor} onChange={(e) => setUnmonitor(e.target.checked)} /> {t("drop.unmonitor")}
         </label>
       )}
+      {p?.canDelete && (
+        <Toggle checked={del} onChange={setDel} label={t(remove ? "drop.removeFiles" : "drop.delete")} help={t("drop.deleteHelp")} />
+      )}
+      {deleting && p && (
+        <p className="mono small">
+          {p.exists
+            ? t("add.removeFilesWhat", { path: p.path, files: p.files, size: fmtSize(p.bytes) })
+            : t("add.removeFilesGone", { path: p.path })}
+        </p>
+      )}
+      {p && !p.canDelete && <p className="muted small">{t("add.removeFilesNo", { reason: p.reason ?? "" })}</p>}
+      {plan.error && <p className="muted small">{t("add.removeFilesNo", { reason: String(plan.error) })}</p>}
     </Confirm>
   );
 }

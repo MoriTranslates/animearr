@@ -25,6 +25,8 @@ interface AddResult {
   inLibrary: { kind: "series" | "movie"; tvdbId?: number; movieId?: number; native: boolean } | null;
   matchedBy: string;
   trailer?: Trailer | null;
+  /** You dropped and removed it (Blocked shows): adding it is "Add anyway", which unblocks it. */
+  blocked?: boolean;
 }
 
 /** AniList formats in plain words. */
@@ -218,8 +220,9 @@ export function Add() {
                   .filter(Boolean)
                   .join(" · ")}
               </span>
+              {r.blocked && <span className="pill bad">{t("add.blocked")}</span>}
               <button className="small" onClick={() => setPick(r)}>
-                + {t("add.add")}
+                + {r.blocked ? t("add.addAnyway") : t("add.add")}
               </button>
               <TrailerButton trailer={r.trailer} title={clean(r.title)} />
             </div>
@@ -273,6 +276,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
           sizePreset: movie ? null : size || null,
           scope: movie ? null : scope,
           then: movie && how === "queue" ? "none" : how,
+          unblock: r.blocked === true,
         },
       });
       toast(t("add.added", { title: res.title, path: res.path }));
@@ -288,6 +292,7 @@ function AddSheet({ r, onClose }: { r: AddResult; onClose: () => void }) {
       {(!s.data || !profiles.data) && <Spinner label={t("app.loading")} />}
       {s.data && profiles.data && (
         <div className="stack">
+          {r.blocked && <p className="banner warn">{t("add.blockedNote")}</p>}
           <div className="row">
             <Cover src={r.cover} alt={r.title} size="md" />
             <div className="stack small">

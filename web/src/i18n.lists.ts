@@ -66,6 +66,13 @@ export const listsStrings = {
   "lists.reason.in library": "already in the library",
   "lists.reason.excluded": "excluded",
   "lists.reason.dropped": "dropped",
+  "lists.reason.blocked": "blocked",
+  "lists.blocked": "Blocked shows",
+  "lists.blockedHelp":
+    "Shows you dropped and removed from the library. Nothing brings them back (Sonarr's list, import lists, Add) until you unblock them.",
+  "lists.blockedNone": "Nothing blocked.",
+  "lists.unblock": "Unblock",
+  "lists.unblocked": "{title} is unblocked",
   "lists.reason.not on AniList": "not found on AniList",
   "lists.reason.no movie folder": "movie but no movie folder",
   "lists.reason.no show folder": "no folder for shows",

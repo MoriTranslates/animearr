@@ -151,6 +151,7 @@ export function ImportLists({ s, upd }: { s: S; upd: (fn: (x: S) => S) => void }
           )}
         </div>
       </div>
+      <Blocked onChanged={d.reload} />
       <Exclusions items={d.data.exclusions} onChanged={d.reload} />
       {edit && (
         <ListForm
@@ -515,6 +516,43 @@ function ListForm({ s, list, onClose, onSaved }: { s: S; list: ImportList | null
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Shows dropped and removed from the library: nothing brings them back until Unblock. */
+function Blocked({ onChanged }: { onChanged: () => void }) {
+  const toast = useToast();
+  const d = useLoad(() => api<{ tvdbId: number; title: string; at: number; why: string }[]>("/blocked"), []);
+  return (
+    <div className="card pad stack">
+      <h2>{t("lists.blocked")}</h2>
+      <p className="muted small">{t("lists.blockedHelp")}</p>
+      {d.error && <ErrorBox error={d.error} />}
+      {d.data && !d.data.length && <p className="muted">{t("lists.blockedNone")}</p>}
+      {d.data?.map((x) => (
+        <div key={x.tvdbId} className="row between">
+          <span>
+            {x.title} <span className="muted small">· {new Date(x.at).toLocaleDateString()}</span>
+            {x.why && <span className="muted small block">{x.why}</span>}
+          </span>
+          <button
+            className="small ghost"
+            onClick={async () => {
+              try {
+                await api(`/blocked/${x.tvdbId}`, { method: "DELETE" });
+                toast(t("lists.unblocked", { title: x.title }));
+                void d.reload();
+                onChanged();
+              } catch (e) {
+                toast((e as Error).message, true);
+              }
+            }}
+          >
+            {t("lists.unblock")}
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 

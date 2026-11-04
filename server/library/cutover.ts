@@ -22,6 +22,7 @@ import { fribb } from "../metadata/covers.js";
 import { allRows, cache, db, dbState, setJob, tx } from "../system/db.js";
 import { buildEpisodes, materialize, materializeMovie, NATIVE_BASE } from "./native.js";
 import { ACTIVE } from "../grabs/pipelineState.js";
+import { isBlocked } from "./dropped.js";
 import { getSettings, patchSettings } from "../system/settings.js";
 
 const err = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
@@ -400,6 +401,10 @@ export function adoptShows(tvdbIds: number[], opts: { acceptSpecials?: boolean }
   if (dbState.corrupt) throw err("The database failed its integrity check", 503);
   const done: { tvdbId: number; ok: boolean; why: string }[] = [];
   for (const tvdbId of tvdbIds) {
+    if (isBlocked(tvdbId)) {
+      done.push({ tvdbId, ok: false, why: "you dropped and removed it (blocked); unblock it first" });
+      continue;
+    }
     const s = cache
       .prepare(`SELECT id, tvdb_id, title, year, path, root_folder FROM series WHERE tvdb_id = ? AND id < ${NATIVE_BASE}`)
       .get(tvdbId) as
