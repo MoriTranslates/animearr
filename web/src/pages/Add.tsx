@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, store, type Settings as S } from "../api";
+import { api, fmtSize, store, type Settings as S } from "../api";
 import { Link, navigate } from "../nav";
 import { t, type I18nKey } from "../i18n";
 import { SIZE_PRESETS, type LanguageProfile, type SizePreset } from "../profiles";
@@ -400,6 +400,17 @@ export function RemoveNative({
   // "Don't let my import lists add it again": offered for a show, once there are lists.
   const lists = useLoad(() => (ask && tvdbId ? api<{ lists: unknown[] }>("/import-lists") : Promise.resolve({ lists: [] })), [ask]);
   const [exclude, setExclude] = useState(true);
+  // "Also delete its folder and files": off by default, offered only when the server says the folder can go to the bin.
+  const base = movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}`;
+  const plan = useLoad(
+    () =>
+      ask
+        ? api<{ path: string; canDelete: boolean; reason?: string; exists: boolean; files: number; bytes: number }>(`${base}/remove-plan`)
+        : Promise.resolve(null),
+    [ask],
+  );
+  const [withFiles, setWithFiles] = useState(false);
+  const p = plan.data;
   return (
     <>
       {asked === undefined && (
@@ -412,12 +423,18 @@ export function RemoveNative({
           danger
           title={t("add.removeTitle", { title })}
           confirmLabel={t("add.remove")}
-          onClose={() => (setAsk(false), onClose?.())}
+          onClose={() => (setAsk(false), setWithFiles(false), onClose?.())}
           onConfirm={async () => {
             try {
-              await api(movieId ? `/add/movie/${movieId}` : `/add/${tvdbId}${exclude && lists.data?.lists.length ? "?exclude=1" : ""}`, {
-                method: "DELETE",
-              });
+              const q = new URLSearchParams();
+              if (!movieId && exclude && lists.data?.lists.length) q.set("exclude", "1");
+              if (withFiles && p?.canDelete) q.set("files", "1");
+              const r = await api<{ binned?: { moved: number; bytes: number; folderMissing: boolean; leftBehind: boolean } }>(
+                `${base}${q.toString() ? `?${q.toString()}` : ""}`,
+                { method: "DELETE" },
+              );
+              if (r.binned?.moved) toast(t("add.removeFilesDone", { files: r.binned.moved, size: fmtSize(r.binned.bytes) }));
+              if (r.binned?.leftBehind) toast(t("add.removeFilesLeft"), true);
               navigate(movieId ? "/movies" : "/shows");
             } catch (e) {
               toast((e as Error).message, true);
@@ -426,6 +443,22 @@ export function RemoveNative({
         >
           <p>{t(movieId ? "add.removeMovieBody" : "add.removeBody")}</p>
           {!movieId && !!lists.data?.lists.length && <Toggle checked={exclude} onChange={setExclude} label={t("lists.removeExclude")} />}
+          {p?.canDelete && (
+            <Toggle
+              checked={withFiles}
+              onChange={setWithFiles}
+              label={t(movieId ? "add.removeMovieFiles" : "add.removeFiles")}
+              help={t("add.removeFilesHelp")}
+            />
+          )}
+          {p?.canDelete && withFiles && (
+            <p className="mono small">
+              {p.exists
+                ? t("add.removeFilesWhat", { path: p.path, files: p.files, size: fmtSize(p.bytes) })
+                : t("add.removeFilesGone", { path: p.path })}
+            </p>
+          )}
+          {p && !p.canDelete && <p className="muted small">{t("add.removeFilesNo", { reason: p.reason ?? "" })}</p>}
         </Confirm>
       )}
     </>

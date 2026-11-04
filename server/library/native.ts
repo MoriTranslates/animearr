@@ -761,8 +761,11 @@ export async function addShow(input: AddInput, deps = { media: mediaByIds, fribb
   return { tvdbId, title, path: showPath, episodes: made.episodes, synthetic };
 }
 
-/** Removes a native show from AnimeArr (its files stay on disk; nothing is deleted). */
-export function removeShow(tvdbId: number) {
+/**
+ * Removes a native show from AnimeArr. Nothing is deleted here: its files stay on disk, unless the caller already moved
+ * its folder to the recycling bin (removeFiles.ts, "Also delete this show's folder and files"); `filesBinned` says so.
+ */
+export function removeShow(tvdbId: number, opts: { filesBinned?: boolean } = {}) {
   const r = db.prepare("SELECT * FROM native_series WHERE tvdb_id = ?").get(tvdbId) as unknown as NativeRow | undefined;
   if (!r) throw err("That show wasn't added in AnimeArr", 404);
   clearRows(NATIVE_BASE + r.id);
@@ -774,7 +777,11 @@ export function removeShow(tvdbId: number) {
         db.prepare(`DELETE FROM ${t} WHERE tvdb_id = ?`).run(tvdbId);
   });
   invalidateIndex();
-  logDecision("info", { tvdbId, title: r.title, why: `Removed ${r.title} from AnimeArr (its files in ${r.path} were left alone)` });
+  logDecision("info", {
+    tvdbId,
+    title: r.title,
+    why: `Removed ${r.title} from AnimeArr (${opts.filesBinned ? `its folder ${r.path} went to the recycling bin first` : `its files in ${r.path} were left alone`})`,
+  });
   return { removed: true };
 }
 
@@ -950,7 +957,7 @@ export async function addMovie(input: { anilistId: number; rootFolder: string },
   return { movieId: NATIVE_BASE + rowId, title, path: moviePath };
 }
 
-export function removeMovie(movieId: number) {
+export function removeMovie(movieId: number, opts: { filesBinned?: boolean } = {}) {
   const r = db.prepare("SELECT * FROM native_movies WHERE id = ?").get(movieId - NATIVE_BASE) as unknown as NativeMovieRow | undefined;
   if (!r) throw err("That movie wasn't added in AnimeArr", 404);
   cache.prepare("DELETE FROM movies WHERE id = ?").run(movieId);
@@ -958,7 +965,10 @@ export function removeMovie(movieId: number) {
     db.prepare("DELETE FROM native_movies WHERE id = ?").run(r.id);
     for (const t of ["movie_prefs", "movie_search"]) db.prepare(`DELETE FROM ${t} WHERE movie_id = ?`).run(movieId);
   });
-  logDecision("info", { title: r.title, why: `Removed the movie ${r.title} from AnimeArr (its files in ${r.path} were left alone)` });
+  logDecision("info", {
+    title: r.title,
+    why: `Removed the movie ${r.title} from AnimeArr (${opts.filesBinned ? `its folder ${r.path} went to the recycling bin first` : `its files in ${r.path} were left alone`})`,
+  });
   return { removed: true };
 }
 

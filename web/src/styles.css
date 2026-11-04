@@ -476,9 +476,8 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent-2); t
 /* ---------------------------------------------------------------- ⋯ menu and split button */
 .menu { position: relative; display: inline-flex; }
 .menu-trigger { font-size: var(--text-lg); line-height: 1; }
-.menu-pop { position: absolute; top: calc(100% + 4px); z-index: 45; list-style: none; margin: 0; padding: 4px; min-width: 200px; max-width: min(320px, calc(100vw - 32px)); box-shadow: var(--shadow); display: flex; flex-direction: column; }
-.menu-pop.right { right: 0; }
-.menu-pop.left { left: 0; }
+/* Portalled to <body>, placed by menuPlace.ts (fixed, so no overflow: hidden parent clips it; above dialogs and sheets). */
+.menu-pop { position: fixed; z-index: 65; list-style: none; margin: 0; padding: 4px; min-width: 200px; max-width: min(320px, calc(100vw - 32px)); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
 .menu-item { width: 100%; justify-content: flex-start; background: none; border: 0; border-radius: var(--radius-sm); padding: 8px 12px; text-align: left; white-space: normal; }
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--panel-2); }
 .danger-text { color: var(--bad); }
@@ -617,7 +616,6 @@ button.conn-card:hover { border-color: var(--accent-2); }
   .proto-head { position: sticky; top: 56px; z-index: 5; background: var(--bg); }
 }
 
-.menu-pop.up { top: auto; bottom: calc(100% + 4px); }
 /* Covers fade in when loaded instead of popping in. */
 .cover img { opacity: 0; transition: opacity 0.2s; }
 .cover.loaded img { opacity: 1; }
@@ -1402,7 +1400,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px; backgr
 .done-list { padding: var(--space-3) var(--space-4); }
 @media (hover: hover) {
   .fill-row .menu, .qcard .qclient .menu { opacity: 0; transition: opacity 0.15s; }
-  .fill-row:hover .menu, .fill-row:focus-within .menu, .qcard:hover .qclient .menu, .qcard:focus-within .qclient .menu { opacity: 1; }
+  .fill-row:hover .menu, .fill-row:focus-within .menu, .qcard:hover .qclient .menu, .qcard:focus-within .qclient .menu, .menu:has([aria-expanded="true"]) { opacity: 1; }
 }
 
 /* ---------------------------------------------------------------- manual import picker */

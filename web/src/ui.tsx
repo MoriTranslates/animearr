@@ -1,4 +1,4 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SheepShip } from "./merry";
 import { Zap } from "lucide-react";
@@ -6,6 +6,7 @@ import { fixesForMessage, runFix, type Flag, BASE } from "./api";
 import { t, type I18nKey } from "./i18n";
 import { exclaimMode } from "./appearance";
 import { detailFor } from "./errors";
+import { placeMenu, type MenuPlacement } from "./menuPlace";
 
 // ---------------------------------------------------------------- toasts (manga speech bubbles by default)
 
@@ -361,14 +362,46 @@ export function Menu({
   up?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<MenuPlacement | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLUListElement>(null);
   const shown = items.filter((i) => !i.hidden);
+  // The list is portalled to <body> at fixed coordinates (menuPlace.ts): a parent with overflow: hidden (the Show
+  // page's hero) clipped the old absolutely-placed list, hiding its last items. Placed before paint, and again on
+  // scroll/resize; it scrolls inside the room there.
+  useLayoutEffect(() => {
+    if (!open) return void setAt(null);
+    const place = () => {
+      const b = btn.current?.getBoundingClientRect();
+      const m = pop.current;
+      if (!b || !m) return;
+      setAt(
+        placeMenu({
+          trigger: b,
+          menu: { width: m.offsetWidth, height: m.scrollHeight },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          align,
+          up,
+        }),
+      );
+    };
+    place();
+    // Scrolling the page (or a panel holding the button) moves the button; scrolling the list itself doesn't.
+    const onScroll = (e: Event) => e.target !== pop.current && place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open, align, up]);
   useEffect(() => {
     if (!open) return;
-    const first = wrap.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])");
-    first?.focus();
-    const onDown = (e: MouseEvent | TouchEvent) => !wrap.current?.contains(e.target as Node) && setOpen(false);
+    const first = pop.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])");
+    first?.focus({ preventScroll: true });
+    const onDown = (e: MouseEvent | TouchEvent) =>
+      !wrap.current?.contains(e.target as Node) && !pop.current?.contains(e.target as Node) && setOpen(false);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown);
     return () => {
@@ -378,7 +411,7 @@ export function Menu({
   }, [open]);
   if (!shown.length) return null;
   const onKey = (e: React.KeyboardEvent) => {
-    const list = [...(wrap.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
+    const list = [...(pop.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
     const i = list.indexOf(document.activeElement as HTMLElement);
     if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setOpen(false), btn.current?.focus());
     else if (e.key === "ArrowDown") (e.preventDefault(), list[(i + 1) % list.length]?.focus());
@@ -400,23 +433,32 @@ export function Menu({
       >
         {trigger}
       </button>
-      {open && (
-        <ul className={`menu-pop card ${align}${up ? " up" : ""}`} role="menu" aria-label={label ?? t("common.moreActions")}>
-          {shown.map((i, n) => (
-            <li key={`${n}-${i.label}`} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                className={`menu-item${i.danger ? " danger-text" : ""}`}
-                disabled={i.disabled}
-                onClick={(e) => (e.preventDefault(), e.stopPropagation(), setOpen(false), btn.current?.focus(), i.onSelect())}
-              >
-                {i.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {open &&
+        createPortal(
+          <ul
+            ref={pop}
+            className="menu-pop card"
+            role="menu"
+            aria-label={label ?? t("common.moreActions")}
+            style={at ? { ...at } : { top: 0, left: 0, visibility: "hidden" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {shown.map((i, n) => (
+              <li key={`${n}-${i.label}`} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`menu-item${i.danger ? " danger-text" : ""}`}
+                  disabled={i.disabled}
+                  onClick={(e) => (e.preventDefault(), e.stopPropagation(), setOpen(false), btn.current?.focus(), i.onSelect())}
+                >
+                  {i.label}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </span>
   );
 }

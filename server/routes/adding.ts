@@ -38,6 +38,7 @@ import { addToQueue } from "../library/fillin.js";
 
 import { adoptFolder, matchFolder, scanRoot } from "../library/folderImport.js";
 import { addMovie, addShow, materializeAll, removeMovie, removeShow, searchAdd, seasonPicks } from "../library/native.js";
+import { binOwnFolder, removalPlan, withRemoveLock } from "../library/removeFiles.js";
 import { getSettings } from "../system/settings.js";
 import type { FastifyInstance } from "fastify";
 import { fail, id, writable } from "./common.js";
@@ -177,17 +178,34 @@ export function registerAddingRoutes(app: FastifyInstance) {
     },
   );
 
-  app.delete<{ Params: { movieId: string } }>("/api/add/movie/:movieId", async (req) => {
+  // "Also delete its folder and files" (?files=1): the folder goes to the recycling bin FIRST (removeFiles.ts); a refused
+  // or failed move throws, and then the show or movie is NOT forgotten. One remove per item at a time (double clicks).
+  app.get<{ Params: { movieId: string } }>("/api/add/movie/:movieId/remove-plan", async (req) =>
+    removalPlan({ kind: "movie", movieId: id(req.params.movieId) }),
+  );
+  app.get<{ Params: { tvdbId: string } }>("/api/add/:tvdbId/remove-plan", async (req) =>
+    removalPlan({ kind: "show", tvdbId: id(req.params.tvdbId) }),
+  );
+  app.delete<{ Params: { movieId: string }; Querystring: { files?: string } }>("/api/add/movie/:movieId", async (req) => {
     writable();
-    return removeMovie(id(req.params.movieId));
+    const owner = { kind: "movie", movieId: id(req.params.movieId) } as const;
+    return withRemoveLock(owner, async () => {
+      if (req.query.files !== "1") return removeMovie(owner.movieId);
+      const binned = await binOwnFolder(owner);
+      return { ...removeMovie(owner.movieId, { filesBinned: binned.moved > 0 }), binned };
+    });
   });
-  app.delete<{ Params: { tvdbId: string }; Querystring: { exclude?: string } }>("/api/add/:tvdbId", async (req) => {
+  app.delete<{ Params: { tvdbId: string }; Querystring: { exclude?: string; files?: string } }>("/api/add/:tvdbId", async (req) => {
     writable();
     const tvdbId = id(req.params.tvdbId);
-    // "Don't let my import lists add it again" (Sonarr's list exclusion), taken before the show's entries are forgotten.
-    const title = (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? "";
-    const out = removeShow(tvdbId);
-    return req.query.exclude === "1" ? { ...out, excluded: excludeShow(tvdbId, title) } : out;
+    const owner = { kind: "show", tvdbId } as const;
+    return withRemoveLock(owner, async () => {
+      const binned = req.query.files === "1" ? await binOwnFolder(owner) : null;
+      // "Don't let my import lists add it again" (Sonarr's list exclusion), taken before the show's entries are forgotten.
+      const title = (cache.prepare("SELECT title FROM series WHERE tvdb_id = ?").get(tvdbId) as { title: string } | undefined)?.title ?? "";
+      const out = { ...removeShow(tvdbId, { filesBinned: !!binned?.moved }), ...(binned ? { binned } : {}) };
+      return req.query.exclude === "1" ? { ...out, excluded: excludeShow(tvdbId, title) } : out;
+    });
   });
 
   // ---------------------------------------------------------------- import lists (AniList / MyAnimeList)
