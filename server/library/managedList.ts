@@ -1,5 +1,6 @@
 /** The list of managed shows (a leaf: SeaDex, quality upgrades, episodes and home read it without importing managed.ts). */
 import { db } from "../system/db.js";
+import { NATIVE_BASE } from "./nativeIds.js";
 
 export interface ManagedRow {
   tvdbId: number;
@@ -8,6 +9,8 @@ export interface ManagedRow {
   dryRun: boolean;
   since: number;
   unmonitoredInSonarr: boolean;
+  /** Sonarr's copy is the one AnimeArr uses (false for shows AnimeArr owns: it never touches Sonarr about those). */
+  sonarrShow: boolean;
 }
 
 export function listManaged(): ManagedRow[] {
@@ -27,5 +30,6 @@ export function listManaged(): ManagedRow[] {
     dryRun: !!r.dry_run,
     since: r.since,
     unmonitoredInSonarr: !!r.unmonitored_in_sonarr,
+    sonarrShow: r.series_id < NATIVE_BASE,
   }));
 }

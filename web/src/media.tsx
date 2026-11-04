@@ -52,7 +52,7 @@ export function MediaManagement({ s, upd }: { s: S; upd: Upd }) {
       <ImporterCard s={s} />
       <div className="row">
         {/* Only with Sonarr or Radarr set up (without them it could only fail). */}
-        {!!((s.sonarr.url && s.sonarr.apiKey) || (s.radarr.url && s.radarr.apiKey)) && (
+        {!!((s.sonarr.url && s.sonarr.apiKey) || (s.radarr.url && s.radarr.apiKey)) && !s.cutover?.withoutArr && (
           <button
             className="small"
             onClick={async () => {

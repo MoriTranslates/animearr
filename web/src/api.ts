@@ -181,6 +181,8 @@ export interface ManagedShow {
   dryRun: boolean;
   since: number;
   unmonitoredInSonarr: boolean;
+  /** Sonarr's copy is used (false for shows AnimeArr owns). */
+  sonarrShow: boolean;
   cover: string | null;
   schedule: ScheduleRow[];
   /** Missing episodes in scope (any age; the schedule lists only the last 30 days). */ missing?: number;
@@ -278,6 +280,8 @@ export interface MediaSettings {
 }
 export interface Settings {
   sonarr: { url: string; apiKey: string; animeTag: string };
+  /** "AnimeArr runs without Sonarr/Radarr" (Settings → Cutover). */
+  cutover?: { allowArrWrites: boolean; withoutArr: boolean };
   radarr: { url: string; apiKey: string; animeRoots: string[]; animeProfileIds: number[] };
   prowlarr: { url: string; apiKey: string; categories: number[]; indexerIds: number[] };
   sabnzbd: { url: string; apiKey: string; category: string };

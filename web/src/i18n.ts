@@ -1700,6 +1700,21 @@ const en = {
   "cut.removeBody":
     "Sonarr/Radarr forget these (files stay on disk, and Sonarr/Radarr won't add them back from their lists). AnimeArr moves its own state over (schedule, upgrades, history, settings) and its copy is live at once. Anything still downloading is skipped.",
   "cut.removed": "Removed {n} from Sonarr/Radarr",
+  "cut.detachTitle": "AnimeArr on its own",
+  "cut.detachHelp":
+    "Detaching makes adopted shows and movies AnimeArr's own. Sonarr and Radarr keep their records untouched as your backup; AnimeArr never asks them anything about these again.",
+  "cut.detachSummary": "{detached} detached, {toDetach} adopted and not detached yet.",
+  "cut.detachAll": "Detach all adopted shows and movies ({n})",
+  "cut.detachConfirmTitle": "Detach from Sonarr/Radarr?",
+  "cut.detachConfirm": "Detach",
+  "cut.detachBody":
+    "AnimeArr takes these over: its own copy is live at once and its schedule, upgrades and history move with them. Nothing is sent to Sonarr or Radarr: they keep their records as they are (your backup), and AnimeArr won't read, change or remove them. Anything AnimeArr is still downloading or importing is skipped and listed.",
+  "cut.detached": "Detached {n}",
+  "cut.detachRefused": "{n} not detached",
+  "cut.withoutArr": "AnimeArr runs without Sonarr/Radarr (never contacts them)",
+  "cut.withoutArrHelp": "Can only be switched on once every anime show and movie is detached. Until then:",
+  "cut.withoutArrOn": "On: AnimeArr sends no request to Sonarr or Radarr.",
+  "cut.withoutArrOff": "Off: AnimeArr may read Sonarr/Radarr again (what it detached stays its own).",
   "plex.help": "After AnimeArr imports or renames something, Plex scans just that folder. AnimeArr doesn't change anything else in Plex.",
   "plex.token": "Plex token",
   "plex.enabled": "Ask Plex to scan after AnimeArr's imports and renames",

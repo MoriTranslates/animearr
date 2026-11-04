@@ -31,8 +31,18 @@ interface Plan {
   shows: ShowCut[];
   movies: MovieCut[];
   checklist: { item: string; ok: boolean; detail: string }[];
-  summary: { shows: number; ready: number; adopted: number; movies: number; moviesReady: number; moviesAdopted: number };
+  summary: {
+    shows: number;
+    ready: number;
+    adopted: number;
+    detached: number;
+    toDetach: number;
+    movies: number;
+    moviesReady: number;
+    moviesAdopted: number;
+  };
   allowArrWrites: boolean;
+  withoutArr: { on: boolean; blockers: string[] };
   builtAt?: number;
 }
 
@@ -52,6 +62,7 @@ export function Cutover() {
   // Hundreds of rows: a search box (title, case-insensitive) narrows shows and movies alike.
   const [q, setQ] = useState("");
   const [ask, setAsk] = useState<null | { shows: ShowCut[]; movies: MovieCut[] }>(null);
+  const [askDetach, setAskDetach] = useState(false);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | { kind: "show" | "movie"; id: number; title: string }>(null);
   if (d.error) return <ErrorBox error={d.error} retry={d.reload} />;
@@ -88,10 +99,10 @@ export function Cutover() {
     else n.add(id);
     fn(n);
   };
-  const run = async (path: string, body: unknown, done: (r: unknown) => string) => {
+  const run = async (path: string, body: unknown, done: (r: unknown) => string, method?: string) => {
     setBusy(true);
     try {
-      const r = await api(path, { body });
+      const r = await api(path, { body, method });
       toast(done(r));
       setSel(new Set());
       setMsel(new Set());
@@ -134,6 +145,37 @@ export function Cutover() {
         </ul>
         {!p.allowArrWrites && <p className="muted small">{t("cut.writesOff")}</p>}
         <Toggle checked={specials} onChange={setSpecials} label={t("cut.acceptSpecials")} />
+      </div>
+
+      <div className="card pad stack">
+        <h2>{t("cut.detachTitle")}</h2>
+        <p className="muted small">{t("cut.detachHelp")}</p>
+        <p className="small">{t("cut.detachSummary", { detached: p.summary.detached, toDetach: p.summary.toDetach })}</p>
+        <button className="primary small self-start" disabled={busy || !p.summary.toDetach} onClick={() => setAskDetach(true)}>
+          {t("cut.detachAll", { n: p.summary.toDetach })}
+        </button>
+        <Toggle
+          checked={p.withoutArr.on}
+          disabled={busy || (!p.withoutArr.on && p.withoutArr.blockers.length > 0)}
+          onChange={(on) => void run("/cutover/without-arr", { on }, () => (on ? t("cut.withoutArrOn") : t("cut.withoutArrOff")), "PUT")}
+          label={t("cut.withoutArr")}
+        />
+        {p.withoutArr.on ? (
+          <p className="muted small">{t("cut.withoutArrOn")}</p>
+        ) : (
+          !!p.withoutArr.blockers.length && (
+            <>
+              <p className="muted small">{t("cut.withoutArrHelp")}</p>
+              <ul className="small">
+                {p.withoutArr.blockers.map((b) => (
+                  <li key={b} className="warn-text">
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        )}
       </div>
 
       <label className="field">
@@ -355,6 +397,30 @@ export function Cutover() {
           ))}
         </ul>
       </div>
+      {askDetach && (
+        <Confirm
+          title={t("cut.detachConfirmTitle")}
+          confirmLabel={t("cut.detachConfirm")}
+          onClose={() => setAskDetach(false)}
+          onConfirm={async () => {
+            setAskDetach(false);
+            await run("/cutover/detach", { all: true, acceptSpecials: specials }, (r) => {
+              const list = (r as { results?: { ok: boolean; why: string }[] }).results ?? [];
+              const bad = list.filter((x) => !x.ok);
+              return `${t("cut.detached", { n: list.length - bad.length })}${
+                bad.length
+                  ? ` · ${t("cut.detachRefused", { n: bad.length })}: ${bad
+                      .slice(0, 2)
+                      .map((x) => x.why)
+                      .join("; ")}`
+                  : ""
+              }`;
+            });
+          }}
+        >
+          <p>{t("cut.detachBody")}</p>
+        </Confirm>
+      )}
       {ask && (
         <Confirm
           danger

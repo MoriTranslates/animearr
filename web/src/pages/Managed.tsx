@@ -48,7 +48,7 @@ export function Managed({ status }: { status: Status }) {
   // Nothing on the 30-day schedule but older episodes missing: they're the missing-episode search's (not "nothing to do").
   const older = idle.filter((m) => (m.missing ?? 0) > 0);
   const quiet = idle.filter((m) => !older.includes(m));
-  const sonarrToo = shows.filter((m) => !m.unmonitoredInSonarr);
+  const sonarrToo = shows.filter((m) => m.sonarrShow && !m.unmonitoredInSonarr);
   const card = (m: ManagedShow) => (
     <article key={m.tvdbId} className="card show-card">
       <div className="row between no-wrap">
@@ -62,13 +62,13 @@ export function Managed({ status }: { status: Status }) {
                   {t("chip.dryRun")}
                 </Chip>
               )}
-              {!m.unmonitoredInSonarr && <Chip tone="warn">{t("managed.sonarrToo")}</Chip>}
+              {m.sonarrShow && !m.unmonitoredInSonarr && <Chip tone="warn">{t("managed.sonarrToo")}</Chip>}
             </span>
           </span>
         </ShowLink>
         <Menu
           label={`${m.title}: ${t("common.moreActions")}`}
-          items={[{ label: t("managed.sonarrMonitor"), onSelect: () => setConfirm(m), hidden: m.unmonitoredInSonarr }]}
+          items={[{ label: t("managed.sonarrMonitor"), onSelect: () => setConfirm(m), hidden: !m.sonarrShow || m.unmonitoredInSonarr }]}
         />
       </div>
       <ul className="sched show-body">
