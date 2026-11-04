@@ -115,6 +115,30 @@ test("files under the show's folder (AnimeArr's own records) become the episodes
   assert.ok(cache.prepare("SELECT 1 FROM files WHERE id = ?").get(e2.file_id));
 });
 
+test("a multi-episode file covers every episode in its name, in both forms; a resolution after a dash is not one", () => {
+  const s = cache.prepare("SELECT id FROM series WHERE tvdb_id = ?").get(NATIVE_BASE + 101) as { id: number };
+  const dir = "/media/Anime/The Founder of Diabolism (2018)/Season 1/";
+  const withFile = () =>
+    (
+      cache.prepare("SELECT episode FROM episodes WHERE series_id = ? AND has_file = 1 ORDER BY episode").all(s.id) as { episode: number }[]
+    ).map((e) => e.episode);
+  const only = (name: string) => {
+    db.prepare("DELETE FROM media_files WHERE path LIKE ?").run(`${dir}%`);
+    db.prepare("INSERT INTO media_files (path, root, size, mtime, seen_at) VALUES (?, '/media/Anime', 5, 1, 1)").run(dir + name);
+    rematerializeSeries(s.id);
+    return withFile();
+  };
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01-02-03 - x.mkv"), [1, 2, 3]);
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01E02E03 - x.mkv"), [1, 2, 3]);
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01-E02 - x.mkv"), [1, 2]);
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01-1080p.mkv"), [1]);
+  // Review #9: a bit depth after a dash is not the end of a range (was episodes 1-10, so all 3 of this show).
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01-10bit.mkv"), [1]);
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E01-720.mkv"), [1]);
+  // Put back the single file the earlier test added.
+  assert.deepEqual(only("The Founder of Diabolism (2018) - S01E02 - x.mkv"), [2]);
+});
+
 test("movies and roots outside the allowed ones are refused", async () => {
   await assert.rejects(
     addShow({ anilistId: 202, rootFolder: "/elsewhere" }, { media: async (ids) => ids.map((i) => media(i, { format: "MOVIE" })), fribb }),

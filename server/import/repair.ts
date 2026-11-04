@@ -22,7 +22,7 @@ import { logDecision } from "../system/activity.js";
 import * as sonarr from "../arr/sonarr.js";
 import { burnedInFact } from "../library/audit.js";
 import { langList } from "../core/langs.js";
-import { parseRelease } from "../core/parser.js";
+import { fileNameOf, parseRelease } from "../core/parser.js";
 import { cache, db, dbState, setJob } from "../system/db.js";
 import { searchAgainSoon } from "../library/episodes.js";
 import { radarrMovieSpecials } from "../library/franchise.js";
@@ -74,6 +74,24 @@ export interface CheckOutcome {
 const kvGet = (k: string) => (db.prepare("SELECT value FROM kv WHERE key = ?").get(k) as { value: string } | undefined)?.value;
 const kvSet = (k: string, v: string) =>
   db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, v);
+
+/**
+ * The release name to parse from a Sonarr import record. `sourceTitle` is normally the release title, which may itself
+ * hold a "/" ("Fate/Zero - 01"); for some imports it is a file path. A name that clearly is a path (see `fileNameOf`)
+ * is reduced to its file name. Any other "a/b" is a path only when the import's `droppedPath` ends with it (with or
+ * without the file's extension); otherwise it is a title and kept whole.
+ */
+export function historyReleaseName(sourceTitle: string, droppedPath?: string): string {
+  const reduced = fileNameOf(sourceTitle);
+  if (reduced !== sourceTitle || !sourceTitle.includes("/")) return reduced;
+  const title = sourceTitle.replace(/^\/+/, "").toLowerCase();
+  const dropped = (droppedPath ?? "").replace(/\\/g, "/").toLowerCase();
+  // Only the dropped file's own extension is removed: "Show.S01E05.1080p.x264" must still match "...x264.mkv".
+  const endsWith = (p: string) => p.endsWith("/" + title);
+  return dropped && (endsWith(dropped) || endsWith(dropped.replace(/\.[a-z0-9]{2,4}$/, "")))
+    ? (sourceTitle.split("/").pop() ?? sourceTitle)
+    : sourceTitle;
+}
 
 /** Is this import AnimeArr's own (already verified by the pipeline, or still being handled by it)? */
 function ownImport(h: sonarr.HistoryItem, importedAt: number): string | null {
@@ -213,11 +231,12 @@ export async function checkNewImports(deps: RepairDeps = realRepairDeps, now = D
         record({ ok: false, action: "unchecked", why: "couldn't read the file or Sonarr's track info" });
         continue;
       }
-      const parsed = parseRelease(h.sourceTitle);
+      const releaseName = historyReleaseName(h.sourceTitle, h.data.droppedPath);
+      const parsed = parseRelease(releaseName);
       if (probe)
         learnFromVerify(
           h.data.releaseGroup ?? parsed.group,
-          parsed.platform ?? sourceKey(h.sourceTitle, null, parsed.source),
+          parsed.platform ?? sourceKey(releaseName, null, parsed.source),
           v.subs,
           v.audio,
         );

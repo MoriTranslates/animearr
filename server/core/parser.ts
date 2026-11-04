@@ -260,9 +260,105 @@ const isYear = (n: number) => n >= 1950 && n <= 2049;
 const RES_RE = /\b(?:(\d{3,4})x(\d{3,4})|(2160|1080|720|576|540|480|360)[pi])\b|\b4K\b|\bUHD\b/i;
 const CRC_RE = /[\[(]([A-F0-9]{8})[\])]/i;
 
+/** A part made only of language or dub words, joined by "/", "," or "+": "Japanese", "German/Deutsch", "English Dubs". */
+const LANGUAGE_WORD =
+  "(?:japanese|english|german|deutsch|spanish|french|italian|portuguese|russian|chinese|korean|dubs?|dual[ -]?audio|multi|subs?)";
+const LANGUAGE_ONLY = new RegExp(`^${LANGUAGE_WORD}(?:(?:\\s*[/,+]\\s*|\\s+)${LANGUAGE_WORD})*$`, "i");
+
 /** Brackets/parens that are only release metadata (resolution, codec, crc, source...). */
 const META_TOKEN =
   /^(?:\d{3,4}p|\d{3,4}x\d{3,4}|[A-F0-9]{8}|batch|complete|web(?:[ -]?(?:dl|rip))?|bd(?:rip)?|blu-?ray|dvd(?:rip)?|hevc|avc|x26[45]|h\.?26[45]|av1|aac.*|flac.*|opus.*|e?ac3.*|dts.*|hi10p?|10[ -]?bits?|8[ -]?bits?|multi.*|dual.*|eng.*|english.*|vostfr.*|raw|mkv|mp4|uncensored|uncut|v\d|end|fin(?:al)?|hdr|sdr|remux|\d+bit|cr|amzn|nf|hidive|dsnp|b-global|japanese.*sub.*|jp.*sub.*)$/i;
+
+/** Subtitle-language words in Chinese brackets: 繁體, 简繁日内封, 繁中. */
+const CJK_TAG = /^(?:繁體|繁体|簡體|简体|簡繁|简繁|簡中|简中|繁中|繁|簡|简|日|中日|內封|内封|內嵌|内嵌|外掛|外挂|雙語|双语|中文|字幕)+$/;
+/** Other bracket words that are tags, not titles, next to META_TOKEN. */
+const TAG_WORD = /^(?:cht|chs|jap|big5|gbk?|jptc|jpsc|sc|tc|cn|mixed|sub|subs|softsubs?|hardsubs?|bdrip|h26[45]|ma|lossless|audio)$/i;
+/** A bracket made only of tag words ("CHT", "BIG5 GB", "HEVC AAC 10bit FLAC Mixed", "WebRip.1080p.AVC.AAC", 繁體). */
+function isTagBracket(text: string): boolean {
+  const t = text.trim();
+  if (CJK_TAG.test(t)) return true;
+  const allTags = (sep: RegExp) => {
+    const words = t.split(sep).filter(Boolean);
+    return words.length > 0 && words.every((w) => TAG_WORD.test(w) || META_TOKEN.test(w) || RES_RE.test(w));
+  };
+  // Dots split only as a second try, so "H.264" and "AAC2.0" stay one word.
+  return allTags(/[\s/+&,_]+/) || allTags(/[\s/+&,_.]+/);
+}
+
+/** Words that name what a release is (movie, special, preview, box), not which show: never an all-bracket title. */
+const GENERIC_TITLE =
+  /^(?:movies?|specials?|sp|ova|oad|ona|pv|cm|ncop|nced|bd ?box|bd|tv|ep|episodes?|batch|complete|preview|menu|anime)$/i;
+/** A bracket that is only a season, part or cour: "S2", "Season 2", "Part 2", "Cour 2", 第二季. */
+const SEASON_ONLY = /^(?:S\d{1,2}|Seasons?\b.*|Part\s*\d+|Cour\s*\d+|第.{1,4}[季期部])$/i;
+/** An all-bracket EP number: 2-3 digits and not a resolution (so never 480, 576, 720 or 1080, and never a year). */
+/** A season, part or cour word anywhere in a title bracket: 2期, 第二季, 2nd, Part 2, Final Season, Season 2, S2, a trailing II/III. */
+const SEASON_WORD_IN_TITLE =
+  /[季期]|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:Part|Cour)\s*\d|\bFinal\s+Season\b|\bSeasons?(?!\p{L})|S[0-9]{1,2}(?![0-9\p{L}])|\s(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)$/iu;
+/** The Unicode Roman numerals (U+2160 to U+217F), built from code points; they count glued to a word too. */
+const UNICODE_ROMAN = new RegExp(`[${String.fromCharCode(0x2160)}-${String.fromCharCode(0x217f)}]`);
+/** True when a title bracket holds a season, part or cour form, also after NFKC (full-width digits and letters). */
+const hasSeasonWord = (t: string) =>
+  SEASON_WORD_IN_TITLE.test(t) || UNICODE_ROMAN.test(t) || SEASON_WORD_IN_TITLE.test(t.normalize("NFKC"));
+/** A bracket after the episode that says the number is a pack (Batch, Complete, Fin...), so it is not one episode. */
+const PACK_BRACKET = /\b(?:batch|complete|completed|fin|finished|end|full|pack|box|bd ?box|全集|合集|完结|完結)\b|全\d+[话話集]/i;
+const isBracketEp = (n: string) => /^\d{2,3}$/.test(n) && !/^(?:480|576|720)$/.test(n);
+
+/**
+ * The one all-bracket shape that yields a title: "[Title][EP]" (the group is already cut), then only recognised tags.
+ * Leading brackets may come before the title only when every one is a recognised tag ("[CHT][Show][01]"). EP is a
+ * 2-3 digit number with an optional "v2", or a range "01-13" with both ends 2-3 digits, never a resolution; a 4-digit
+ * EP gives unknown (long-runners use other naming). Anything else returns null and the name stays unknown: a season or
+ * part bracket anywhere, a bare "[2]", 2期, a generic word as title, a second name bracket, any extra bracket or text
+ * after the tags. Unknown is safe (nothing is grabbed or imported); a wrong title or season is not.
+ * Returns `s` with the title unwrapped ("Title [EP][tags]..."), or null.
+ */
+function allBracketTitle(s: string): string | null {
+  const brackets: string[] = [];
+  const re = /\s*\[([^\]]{1,100})\]\s*/y;
+  let m: RegExpExecArray | null;
+  let end = 0;
+  while ((m = re.exec(s))) {
+    brackets.push(m[1].trim());
+    end = re.lastIndex;
+  }
+  // Nothing may follow the brackets.
+  if (s.slice(end).trim() !== "") return null;
+  let i = 0;
+  while (i < brackets.length && isTagBracket(brackets[i])) i++;
+  const isTitle = (t: string) =>
+    /\p{L}/u.test(t) && !/^\d/.test(t) && !GENERIC_TITLE.test(t) && !SEASON_ONLY.test(t) && !isTagBracket(t) && !RES_RE.test(t);
+  const title = brackets[i];
+  if (title === undefined || !isTitle(title)) return null;
+  // A season or part word, or a hyphen number ("Show-100"), inside the title bracket: unknown.
+  if (hasSeasonWord(title) || /[-~]\s*\d/.test(title)) return null;
+  const next = i + 1;
+  const ep = brackets[next] ?? "";
+  const plain = ep.match(/^(\d+)(?:v\d)?$/);
+  const range = ep.match(/^(\d+)\s*[-~]\s*(\d+)(?:v\d)?$/);
+  const epOk = plain ? isBracketEp(plain[1]) : range ? isBracketEp(range[1]) && isBracketEp(range[2]) : false;
+  if (!epOk) return null;
+  if (!brackets.slice(next + 1).every(isTagBracket)) return null;
+  // A single number followed by a pack bracket ("[12][Batch]") is a pack's count, not an episode.
+  if (plain && brackets.slice(next + 1).some((b) => PACK_BRACKET.test(b))) return null;
+  // Cut through the title bracket: everything before it is the leading tags.
+  let cut = 0;
+  for (let k = 0; k <= i; k++) cut = s.indexOf("]", cut) + 1;
+  return `${title} ${s.slice(cut)}`;
+}
+
+/**
+ * A "[v2]" / "(v2)" in the tag block at the very end of the text after the episode: only more bracket groups and an
+ * optional file extension follow it. Plain words after it ("- The (v2) Mission") mean it is part of an episode title.
+ */
+function trailingBracketVersion(afterEpisode: string): RegExpExecArray | null {
+  const re = /[[(]\s*v(\d)\s*[\])]/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(afterEpisode))) {
+    const rest = afterEpisode.slice(m.index + m[0].length);
+    if (/^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))*\s*(?:\.[A-Za-z0-9]{2,4})?\s*$/.test(rest)) return m;
+  }
+  return null;
+}
 
 function cleanSpaces(s: string) {
   return s.replace(/\s+/g, " ").trim();
@@ -367,19 +463,50 @@ interface Marker {
   fan?: boolean;
   /** Weak markers (bare trailing numbers) only count when no strong marker exists. */
   weak?: boolean;
+  /** An "NxM" season-episode marker ("10x14"), the only form an absolute number may directly precede. */
+  cross?: boolean;
+  /** A Batch name whose range end can't be trusted; the number is where the range starts. */
+  untrustedStart?: number;
 }
 
 const range = (a: number, b: number) => (b >= a && b - a < 2000 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]);
 
+const VIDEO_EXT = /\.(?:mkv|mp4|avi|m4v|ts|m2ts|wmv|webm|mov|flv|ogm|rmvb)$/i;
+
+/**
+ * The file name when `name` truly looks like a path, else `name` unchanged. Only a "/" outside [...] and (...) can be a
+ * folder separator ("[1080p/HEVC]", "(German/Deutsch)" are tags). A path: a backslash; a leading "/", "./", "../",
+ * "~/" or drive letter; or unspaced "/" whose last part is a file name: a "[Group] name" after it ("Show Batch/[Group]
+ * Show - 05") or, with two or more folders, a video extension ("Anime/Show/Show - 04.mkv"). Anything else keeps its
+ * "/" as part of the title ("Fate/Zero", "Fate/kaleid liner Prisma/Illya", "Yes/No/Maybe").
+ */
+export function fileNameOf(name: string): string {
+  const trimmed = name.replace(/[\\/]+$/, "");
+  // Bracket contents masked out (same length), so only separators outside tags count.
+  const outside = trimmed.replace(/\[[^\]]*\]|\([^)]*\)/g, (m) => "_".repeat(m.length));
+  const cut = Math.max(outside.lastIndexOf("/"), outside.lastIndexOf("\\"));
+  if (cut < 0) return name;
+  const lastPart = trimmed.slice(cut + 1);
+  const unspaced = [...outside.matchAll(/(?<=\S)\/(?=\S)/g)].length;
+  const path =
+    trimmed.includes("\\") ||
+    /^(?:[A-Za-z]:|~|\.{1,2})?\//.test(trimmed) ||
+    (/\S/.test(trimmed[cut - 1] ?? "") && /^\[[^\]]+\]\s*[^\s[]/.test(lastPart)) ||
+    (unspaced >= 2 && VIDEO_EXT.test(lastPart));
+  return path && lastPart ? lastPart : name;
+}
+
 export function parseRelease(input: string): ParsedRelease {
   const raw = input;
-  let s = stripDecorations(input);
-
-  // Path → last component (manual-import file names).
-  if (/[\\/]/.test(s)) s = s.split(/[\\/]/).filter(Boolean).pop() ?? s;
+  // Path → last component (manual-import file names); before the extension is stripped, which the path check uses.
+  let s = stripDecorations(fileNameOf(input));
 
   // CJK brackets → square brackets; full-width spaces.
   s = s.replace(/【/g, "[").replace(/】/g, "]").replace(/　/g, " ");
+
+  // An unclosed leading "[" (another "[" comes before its "]"): the name inside it was stripped upstream, as in
+  // "[ /Shinchou Yuusha 01 [WebRip ...][]". It is no group; drop it so it can't swallow the title.
+  if (/^\s*\[[^\]]*\[/.test(s)) s = s.replace(/^\s*\[\s*/, "");
 
   // ---- group: leading [Group] (possibly several: [WtF-aNiMe][SCY]) or trailing -GROUP (scene).
   let group: string | null = null;
@@ -387,11 +514,36 @@ export function parseRelease(input: string): ParsedRelease {
   if (lead && !/^\d+$/.test(lead[1]) && !RES_RE.test(lead[1])) {
     group = lead[1].trim();
     s = s.slice(lead[0].length);
-    // A second leading bracket that looks like a group tag ([F-B], [SCY]).
+    // A second leading bracket that looks like a group tag ([F-B], [SCY], [Fan Edit]) is dropped. It is the title
+    // itself, and is unwrapped, only when nothing but the episode follows it: "[Show] - 05", or the end of the name;
+    // or, for a multi-word mixed-case bracket, an SxxEyy or season marker ("[Oshi no Ko] S02E05", "... 2nd Season").
+    // A digit-first title after it stays the title ("[SCY] 86 - 05", "[TV Series] 2 - 05").
     const lead2 = s.match(/^\s*\[([A-Za-z][\w.& -]{0,20})\]\s*[._ ]?/);
-    if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) s = s.slice(lead2[0].length);
+    // A tag bracket followed by another bracket ("[Group][CHT][Show][01]") goes to the all-bracket branch below.
+    const tagThenBracket = lead2 && isTagBracket(lead2[1]) && /^\[/.test(s.slice(lead2[0].length));
+    // A bracket followed by an episode bracket ("[Group][Gleipnir][01]") is the all-bracket title, short or long.
+    const titleThenEpisode = lead2 && /^\[\s*\d/.test(s.slice(lead2[0].length));
+    if (lead2 && !tagThenBracket && !titleThenEpisode && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) {
+      const rest = s.slice(lead2[0].length);
+      const titleLike = /\s/.test(lead2[1].trim()) && lead2[1] !== lead2[1].toUpperCase();
+      // A multi-word mixed-case bracket is the title when a marker follows. Any other bracket is, only when nothing
+      // but the marker follows (a tag or the end), since dropping it would leave an empty title: "[Frieren] S01E05
+      // [1080p]". "[TV] E01 Show" keeps "Show" as the title.
+      const marker = /^\s*(?:-\s*)?(?:S\d|E\d|Season\b|\d{1,2}(?:st|nd|rd|th)\s+Season\b)/i;
+      const markerOnly = /^\s*(?:-\s*)?(?:S\d+E\d+(?:-E?\d+)?|E\d+|Season\s*\d+|\d{1,2}(?:st|nd|rd|th)\s+Season)(?=\s*(?:$|[-\[(._]))/i;
+      const noTitle = /^\s*(?:-\s*\d{1,4}(?!\d|[pi]\b|bit\b)|$)/i.test(rest) || (titleLike ? marker.test(rest) : markerOnly.test(rest));
+      s = noTitle ? `${lead2[1]} ${rest}` : rest;
+    } else {
+      // An all-bracket name, "[Group][Title][01-13][BDRip]...": only the one shape allBracketTitle accepts yields a
+      // title. Any other all-bracket name stays as before: a second bracket that looks like a group tag is dropped,
+      // and with no title left the name is unknown.
+      const unwrapped = allBracketTitle(s);
+      if (unwrapped !== null) s = unwrapped;
+      else if (lead2 && !META_TOKEN.test(lead2[1]) && !/^\d/.test(lead2[1])) s = s.slice(lead2[0].length);
+    }
   }
-  s = s.replace(/^[._\s-]+/, "");
+  // Leading separators, and a "/" left when a "CJK / Romaji" name lost its CJK part ("[&LoliHouse]  / Gleipnir").
+  s = s.replace(/^[._\s/-]+/, "");
 
   // ---- dot/underscore separated names → spaces (keep "H.264", "AAC2.0", "12.5" intact).
   const dots = (s.match(/\./g) ?? []).length;
@@ -460,7 +612,8 @@ export function parseRelease(input: string): ParsedRelease {
         p.length < 4 ||
         META_TOKEN.test(p) ||
         /\b(sub|subs|audio|dub|uncensored|web|1080|720|batch|season|bd|dual|multi)\b/i.test(p) ||
-        /^\d/.test(p)
+        /^\d/.test(p) ||
+        LANGUAGE_ONLY.test(p)
       )
         continue;
       altTitles.push(p);
@@ -480,13 +633,29 @@ export function parseRelease(input: string): ParsedRelease {
     markers.push({ at: m.index!, end: m.index! + m[0].length, ...mk });
   let m: RegExpExecArray | null;
 
-  // S01E02(-E03|E03)(v2), S01E01-02
-  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?(?:(?:[-~]|-?E)E?(\d{1,4})(?!\d))?(?:v(\d))?/gi;
-  while ((m = reSE.exec(work)))
-    push(m, { season: +m[1], episodes: m[4] ? range(+m[2], +m[4]) : [+m[2]], version: Number(m[3] ?? m[5] ?? 1) });
+  // S01E02(-E03|E03)(v2), S01E01-02, and longer chains: S01E01-02-03, S01E01E02E03, S01E01-E02-E03 (first to last).
+  // A chained number must end at a separator, another "E", a "v2" or the end, so "-10bit" and "-1080p" are not
+  // ranges; and a range longer than 200 episodes ("S01E05-720 Group") is the first episode only.
+  const reSE = /\bS(\d{1,2})[ ._]?E(\d{1,4})(?:v(\d))?((?:(?:[-~]|-?E)E?\d{1,4}(?=$|[^a-z\d]|E\d|v\d|x\d|END|FIN))*)(?:v(\d))?/gi;
+  while ((m = reSE.exec(work))) {
+    const last = m[4] ? Number(m[4].match(/\d+/g)!.at(-1)) : undefined;
+    // The 200 cap only guards a bare "-NNN" (could be a resolution); an explicit "E" or a batch word is a real range,
+    // but never 2000 or more episodes past the start (no real pack is that long; it is a typo or a bitrate), and a
+    // bare end that looks like a resolution (480, 576, 720, 1080, 2160) is never a range end, Batch word or not.
+    const endsExplicitE = !!m[4] && /E\d+$/i.test(m[4]);
+    const explicit = endsExplicitE || (!!m[4] && /\b(batch|complete)\b/i.test(s));
+    const resLike = last !== undefined && !endsExplicitE && [480, 576, 720, 1080, 2160].includes(last);
+    const trusted = last !== undefined && !resLike && last - +m[2] < 2000 && (explicit || last - +m[2] <= 200);
+    // A Batch/Complete name whose range end can't be trusted is a pack of unknown size: no episode list (a whole-season
+    // pack), never "episode 1", which would import or grab the pack as one episode.
+    const untrustedPack = last !== undefined && !trusted && /\b(batch|complete)\b/i.test(s);
+    const eps = trusted ? range(+m[2], last!) : untrustedPack ? [] : [+m[2]];
+    push(m, { season: +m[1], episodes: eps, version: Number(m[3] ?? m[5] ?? 1), ...(untrustedPack ? { untrustedStart: +m[2] } : {}) });
+  }
   // 10x14
   const reX = /\b(\d{1,2})x(\d{2,3})\b/g;
-  while ((m = reX.exec(work))) if (!(Number(m[1]) > 99 || /\d{3,4}x\d{3,4}/.test(m[0]))) push(m, { season: +m[1], episodes: [+m[2]] });
+  while ((m = reX.exec(work)))
+    if (!(Number(m[1]) > 99 || /\d{3,4}x\d{3,4}/.test(m[0]))) push(m, { season: +m[1], episodes: [+m[2]], cross: true });
   // Multi-season pack: S01-S03 / Season 1-3 (the second S is REQUIRED, unlike Sonarr's regex).
   const reMS = /\bS(\d{1,2})\s*[-~]\s*S(\d{1,2})\b|\bSeasons?\s*(\d{1,2})\s*[-~]\s*(\d{1,2})\b/gi;
   while ((m = reMS.exec(work))) push(m, { season: +(m[1] ?? m[3]), seasonsTo: +(m[2] ?? m[4]), batch: true, fullSeason: true });
@@ -504,13 +673,24 @@ export function parseRelease(input: string): ParsedRelease {
   const reSeasonOnly = /(?<!\b\d{1,2}(?:st|nd|rd|th)\s+)\(?\bSeason\s+(\d{1,2})\b\)?|\bS(\d{1,2})\b(?!\s*-\s*\d)(?![ ._]?E\d)/gi;
   while ((m = reSeasonOnly.exec(work))) push(m, { season: +(m[1] ?? m[2]), fullSeason: true, batch: true });
   // Ranges: "(01-12)", "01~10", "01 - 119", "091-123", "[01-05]", "Ep01-12", "Episode 99-100", "1-13"
-  const reRange = /(?:^|\s|\(|-\s)(?:EP?|Episode\s?)?(\d{1,4})\s*(?:[-~]|\s-\s)\s*(\d{1,4})(?=\s|\)|$|v\d)/gi;
+  const reRange = /(?:^|\s|\(|-\s)(?:EP?|Episode\s?)?(\d{1,4})\s*(?:[-~]|\s-\s)\s*(?:EP?)?(\d{1,4})(?=\s|\)|$|v\d)/gi;
   while ((m = reRange.exec(work))) {
     const a = +m[1];
     const b = +m[2];
     const spacedDash = /\d\s+-\s+\d/.test(m[0]);
     const batchWord = /\b(batch|complete)\b/i.test(s);
+    // A bare "0" right after the title, before " - ", ends the title ("Steins;Gate 0 - 05"); look again from the next
+    // number for a range after it ("Steins;Gate 0 - 01 - 23 [Batch]"). A padded start ("01 - 12", "00 - 12"), a "0"
+    // after a dash ("Show - 0 - 12") and a batch with no other range ("Show 0 - 12 [Batch]") stay ranges, as before.
+    const later = /^\d{1,4}\s*(?:[-~]|\s-\s)\s*\d{1,4}(?=\s|\)|$|v\d)/.test(work.slice(m.index + m[0].length - m[2].length));
+    if (spacedDash && m[1] === "0" && !m[0].startsWith("-") && (!batchWord || later)) {
+      reRange.lastIndex = m.index + 1;
+      continue;
+    }
     if (spacedDash && !(m[1].startsWith("0") || batchWord)) continue;
+    // "Ranma 1-2 2024 S03E04": an unpadded "1-2" right before an optional year and an SxxEyy marker is part of the title
+    // ("Ranma 1/2"), not an episode range. The SxxEyy already says which episode this is.
+    if (!m[1].startsWith("0") && /^[ ._]*(?:(?:19|20)\d\d[ ._]+)?S\d{1,2}[ ._]?E\d/i.test(work.slice(m.index + m[0].length))) continue;
     if (b > a && !(isYear(a) || isYear(b)) && b - a < 1500) {
       const off = m[0].search(/\d/);
       const idx =
@@ -530,11 +710,17 @@ export function parseRelease(input: string): ParsedRelease {
     if (/^\s+[A-Za-z]/.test(rest) && !/^\s+-/.test(rest) && /\s-\s?\d{1,4}(?:v\d)?(?=\s|$|\(|\[)/.test(rest)) continue;
     push(m, { absolute: [n], version: Number(m[2] ?? 1) });
   }
-  // EP06 / Ep01 / E1135 / Episode 56 / e66 / #957 / 第07话 / {01}
-  const reEp = /(?:\bEP?|\bEpisode\s?|\bEpisodio\s|#|\be)(\d{1,4})(?:v(\d))?(?![\d.x])|第\s*(\d{1,4})\s*[话話集]/gi;
+  // EP06 / Ep01 / Ep 01 / Ep.01 / E1135 / Episode 56 / e66 / #957 / 第07话 / {01}
+  const reEp = /(?:\bEP?|\bEP\.?\s?|\bEpisode\s?|\bEpisodio\s|#|\be)(\d{1,4})(?:v(\d))?(?![\d.x])|第\s*(\d{1,4})\s*[话話集]/gi;
   while ((m = reEp.exec(work))) {
     // "E1135" must not be part of SxxEyy (handled above).
     if (/S\d{1,2}[ ._]?$/i.test(work.slice(Math.max(0, m.index - 4), m.index))) continue;
+    // ...nor the "-E03" end of an SxxEyy range ("S01E01-E03").
+    if (markers.some((x) => x.episodes && m!.index >= x.at && m!.index < x.end)) continue;
+    // "Show #1 - 05", "Show #1 S01E05": a "#N" followed by the real episode marker is part of the title.
+    // A resolution or bit depth after the dash ("#12 - 1080p", "#12 - 10bit") is not an episode, so "#N" is.
+    if (m[0].startsWith("#") && /^\s+(?:-\s?\d{1,4}(?!\d|[pi]\b|bit\b)|S\d{1,2}[ ._]?E\d)/i.test(work.slice(m.index + m[0].length)))
+      continue;
     push(m, { absolute: [+(m[1] ?? m[3])], version: Number(m[2] ?? 1) });
   }
   // "[01]" / "[05v2]" episode in brackets (Chinese/Russian style)
@@ -659,6 +845,18 @@ export function parseRelease(input: string): ParsedRelease {
   const scene =
     /(?:^|[^A-Za-z0-9])(?:proper|repack|rerip)(\d)?(?![A-Za-z0-9])/i.exec(tail) ?? /(?:^|[^A-Za-z0-9])REAL(\d)?(?![A-Za-z0-9])/.exec(tail);
   if (scene) version = Math.max(version, Number(scene[1] ?? 1) + 1);
+  // A version on its own after the episode number: a bare "v2" right after it ("- 05 v2", "S01E05 v2"), or "[v2]" /
+  // "(v2)" right after it, among the bracket tags that follow it, or in the closing tag block ("- 05 - Title [1080p][v2]"). A "v2" inside the title
+  // ("Superstar!! v2 - 05") or in an episode title ("- 05 - The (v2) Mission") is not one. With no episode number,
+  // a bracketed version anywhere after the title counts, as before.
+  const epEnd = chosen.find((c) => c.episodes || c.absolute)?.end;
+  const verM =
+    epEnd === undefined
+      ? /[[(]\s*v(\d)\s*[\])]/i.exec(tail)
+      : (/^\s?v(\d)(?![A-Za-z0-9])/i.exec(work.slice(epEnd)) ??
+        /^(?:\s*(?:\[[^\]]*\]|\([^)]*\)))*?\s*[[(]\s*v(\d)\s*[\])]/i.exec(s.slice(epEnd)) ??
+        trailingBracketVersion(s.slice(epEnd)));
+  if (verM) version = Math.max(version, Number(verM[1]));
   // A dash number right after a fan "S6 - 01" is the same number; don't double-count.
   if (fan && absolute.length === 1 && episodes.length === 1 && absolute[0] === episodes[0]) absolute = [];
   // "S01E01-02 - 001-002" keeps both; SxxEyy plus a weak trailing number "S10E14 214" → absolute 214.
@@ -668,10 +866,11 @@ export function parseRelease(input: string): ParsedRelease {
     if (absAfter) absolute = absAfter.absolute!;
     else if (after && after.absolute![0] > 0 && after.at - (chosen.find((c) => c.episodes)?.end ?? 0) <= 3) absolute = after.absolute!;
   }
-  // "[K-F] Some Anime Show 214 10x14": absolute before the SxE.
+  // "[K-F] Some Anime Show 214 10x14": absolute before the SxE. Only before "NxM": a number right before SxxEyy ends
+  // the title ("Mob Psycho 100 S03E05", "Kaiju No. 8 S01E05", "Golgo 13 S01E05").
   if (episodes.length && !absolute.length) {
     const epMk = chosen.find((c) => c.episodes);
-    const before = epMk && !epMk.fan ? weak.find((w) => w.end >= epMk.at - 1 && w.end <= epMk.at + 1) : undefined;
+    const before = epMk?.cross ? weak.find((w) => w.end >= epMk.at - 1 && w.end <= epMk.at + 1) : undefined;
     if (before) {
       absolute = before.absolute!;
       titleEnd = Math.min(titleEnd, before.at);
@@ -688,14 +887,30 @@ export function parseRelease(input: string): ParsedRelease {
     batch = false;
     fullSeason = false;
   }
+  // An untrusted range end is a whole-season pack only when it starts at episode 1 and names one season; anything
+  // else is unknown (no episodes, no fullSeason), so it is neither grabbed nor imported.
+  const untrusted = chosen.find((c) => c.untrustedStart !== undefined);
+  // Any other season marker in the name (a second SxxEyy, S02, 2nd Season, Season N, Part N, a CJK season) is unknown.
+  if (untrusted && !episodes.length && !absolute.length) {
+    const otherSeason =
+      (s.match(/\bS\d{1,2}\s?E\d/gi) ?? []).length > 1 || /\bS\d{1,2}(?!\s?E\d)\b|\bSeasons?\b|\b(?:Part|Cour)\s*\d|[季期]/i.test(s);
+    fullSeason = untrusted.untrustedStart === 1 && seasons.length <= 1 && !otherSeason;
+  }
 
   // ---- title
   let title = s.slice(0, titleEnd);
   title = title.replace(/\[[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ");
-  // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go.
+  // "Shingeki no Kyojin / Attack on Titan": a spaced slash separates two names; the last one is the title, as before.
+  // An empty side (the CJK name was stripped: "Carole & Tuesday / ") doesn't count.
+  title =
+    title
+      .split(/\s\/\s/)
+      .filter((p) => p.trim())
+      .pop() ?? "";
+  // Year in parens stays (Sonarr keeps "Series Title (2014)"); trailing separators go, and a bare "/" at either end.
   title = cleanSpaces(title)
-    .replace(/[\s\-–~|:,.]+$/, "")
-    .replace(/^[\s\-–~|:,.]+/, "");
+    .replace(/[\s\-–~|:,./]+$/, "")
+    .replace(/^[\s\-–~|:,./]+/, "");
   // Remove a trailing "(Season 2)" left by "Title (Season 2) - 33".
   title = title.replace(/\s*\(\s*Season\s+\d+\s*\)\s*$/i, "").trim();
   // Trailing ordinal season, "Season N" or "SN" inside the title: the season is already a marker.
@@ -707,7 +922,8 @@ export function parseRelease(input: string): ParsedRelease {
   // "(Complete)", "Complete Series", "(Batch)" name the pack, not the show.
   title = title.replace(/[\s(\[]*\b(?:complete(?:\s+series)?|batch)\b[)\]]?\s*$/i, "").trim();
   title = title.replace(/[\s\-–~|:,([]+$/, "").trim();
-  if (!title && group && !lead) title = group;
+  // A trailing [Group] tag is never the title: "Ep.78 - Episode name [Dual Audio] [KaiDubs]" has no series name, and
+  // calling it "KaiDubs" could match a show of that name. Better an empty title (unknown) than a wrong one.
 
   const hints = detectHints(raw, group, platform);
   return {
